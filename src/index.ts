@@ -14,7 +14,27 @@ export type {
 } from './app/types';
 export { createExtensionPoint, createServiceToken } from './app/utils';
 export { Schedule } from './app/schedule';
+export {
+  ChildOf,
+  IsA,
+  defineComponent,
+  defineRelation
+} from './ecs/component';
 export { World } from './ecs/world';
-export type { ResourceType } from './ecs/types';
+export type {
+  ComponentDefinition,
+  ComponentField,
+  ComponentFieldDefinition,
+  ComponentFieldType,
+  ComponentInput,
+  ComponentSchema,
+  ComponentType,
+  Entity,
+  QueryFilter,
+  QueryItem,
+  Relation,
+  RelationType,
+  ResourceType
+} from './ecs/types';
 export { DefaultPlugins, MinimalPlugins } from './plugins/default-plugins';
 export { Time, TimePlugin } from './plugins/time-plugin';
