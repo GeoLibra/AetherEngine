@@ -3,7 +3,14 @@ import { ChildOf, createComponentView, serializeComponent } from './component';
 import { EntityAllocator } from './entity';
 import { EntityBuilder } from './entity-builder';
 import { QueryBuilder } from './query';
-import { Table } from './table';
+import {
+  ChildOfIndex,
+  createRelationAnyTag,
+  createRelationTargetTag,
+  sameStringSet
+} from './relation';
+import { createArchetypeId, Table } from './table';
+import { findMatchingTables as findTablesMatchingQuery } from './table-query';
 import type {
   ComponentInput,
   ComponentSchema,
@@ -32,7 +39,11 @@ export class World {
   private readonly componentRegistry = new Map<string, ComponentSchema<object>>();
   private readonly resources = new Map<ResourceType<unknown>, unknown>();
   private readonly changeTracker = new ChangeTracker();
+
+  // Relation payloads live here for exact API lookups, while relation tags on tables make
+  // relation queries participate in archetype matching.
   private readonly relations = new Map<Entity, Map<symbol, Relation>>();
+  private readonly childOfIndex = new ChildOfIndex();
 
   spawn(): EntityBuilder {
     return new EntityBuilder(this, this.entityAllocator.allocate());
@@ -43,18 +54,30 @@ export class World {
       return false;
     }
 
-    const location = this.entityLocations.get(entity);
-    if (location) {
-      this.removeFromTable(entity, location);
+    // Remove outgoing relation indexes before deleting the source relation map.
+    for (const relation of this.relations.get(entity)?.values() ?? []) {
+      this.childOfIndex.remove(entity, relation);
     }
 
     this.relations.delete(entity);
-    for (const entityRelations of this.relations.values()) {
-      for (const [relationId, relation] of entityRelations) {
+
+    // Incoming relations must be removed through removeRelation() so their source entities
+    // migrate out of relation-tagged archetypes as well.
+    const relationsToRemove: Array<{ source: Entity; relation: RelationType }> = [];
+    for (const [source, entityRelations] of this.relations) {
+      for (const relation of entityRelations.values()) {
         if (relation.target === entity) {
-          entityRelations.delete(relationId);
+          relationsToRemove.push({ source, relation: relation.relation });
         }
       }
+    }
+    for (const relationToRemove of relationsToRemove) {
+      this.removeRelation(relationToRemove.source, relationToRemove.relation);
+    }
+
+    const location = this.entityLocations.get(entity);
+    if (location) {
+      this.removeFromTable(entity, location);
     }
 
     this.changeTracker.markRemoved(entity);
@@ -86,7 +109,8 @@ export class World {
     const location = this.entityLocations.get(entity);
 
     if (!location) {
-      const table = this.getOrCreateTable([schema]);
+      // Empty entities gain a table only once they receive components or relation tags.
+      const table = this.getOrCreateTable([schema], this.getEntityTags(entity));
       const row = table.insert(entity, new Map([[schema.name, serialized]]));
       this.entityLocations.set(entity, { table, row });
       this.changeTracker.markAdded(entity, schema.name);
@@ -113,12 +137,11 @@ export class World {
 
     const schema = this.getRegisteredComponent(componentType);
     const location = this.entityLocations.get(entity);
-    const column = location?.table.getColumnBuffer(schema.name);
-    if (!location || !column) {
+    if (!location || !location.table.hasComponent(schema.name)) {
       return null;
     }
 
-    return this.createView(schema, column, location.row, entity);
+    return this.createView(schema, entity);
   }
 
   hasComponent<TView extends object>(entity: Entity, componentType: ComponentType<TView>): boolean {
@@ -138,7 +161,8 @@ export class World {
     componentTypes: TComponents,
     filter: QueryFilter
   ): Iterator<QueryItem<TComponents>> {
-    if (componentTypes.length === 0) {
+    if (componentTypes.length === 0 && !this.shouldUseTablesForEmptyQuery(filter)) {
+      // Unfiltered entity-only queries must include totally empty entities, which have no table.
       for (const entity of this.entityAllocator.aliveEntities()) {
         if (this.entityMatchesFilter(entity, filter)) {
           yield [entity] as unknown as QueryItem<TComponents>;
@@ -155,9 +179,7 @@ export class World {
           continue;
         }
 
-        const views = schemas.map((schema) =>
-          this.createView(schema, table.getRequiredColumn(schema.name), row, entity)
-        );
+        const views = schemas.map((schema) => this.createView(schema, entity));
         yield [entity, ...views] as unknown as QueryItem<TComponents>;
       }
     }
@@ -167,46 +189,10 @@ export class World {
     componentTypes: readonly ComponentSchema<object>[],
     filter: QueryFilter = {}
   ): Table[] {
-    const requiredComponentNames = new Set(componentTypes.map((componentType) => componentType.name));
-    for (const term of filter.with ?? []) {
-      if (this.isComponentTerm(term)) {
-        requiredComponentNames.add(term.name);
-      }
-    }
-
-    const excludedComponentNames = new Set<string>();
-    for (const term of filter.without ?? []) {
-      if (this.isComponentTerm(term)) {
-        excludedComponentNames.add(term.name);
-      }
-    }
-
-    const matching: Table[] = [];
-    for (const table of this.tables.values()) {
-      let hasAll = true;
-      for (const componentName of requiredComponentNames) {
-        if (!table.hasComponent(componentName)) {
-          hasAll = false;
-          break;
-        }
-      }
-      if (!hasAll) {
-        continue;
-      }
-
-      let hasExcluded = false;
-      for (const componentName of excludedComponentNames) {
-        if (table.hasComponent(componentName)) {
-          hasExcluded = true;
-          break;
-        }
-      }
-      if (!hasExcluded) {
-        matching.push(table);
-      }
-    }
-
-    return matching;
+    // Kept public for tests and future query planning; the pure matcher owns the tag logic.
+    return findTablesMatchingQuery(this.tables.values(), componentTypes, filter, (term) =>
+      this.isComponentTerm(term)
+    );
   }
 
   addRelation(entity: Entity, relation: RelationType, target: Entity): this {
@@ -219,12 +205,35 @@ export class World {
       this.relations.set(entity, entityRelations);
     }
 
+    const previous = entityRelations.get(relation.id);
+    if (previous) {
+      this.childOfIndex.remove(entity, previous);
+    }
+
+    // A relation is both metadata and an archetype tag. Updating it may move the entity table.
     entityRelations.set(relation.id, { relation, target });
+    this.childOfIndex.add(entity, { relation, target });
+    this.syncEntityArchetype(entity);
     return this;
   }
 
   removeRelation(entity: Entity, relation: RelationType): boolean {
-    return this.relations.get(entity)?.delete(relation.id) ?? false;
+    const entityRelations = this.relations.get(entity);
+    const existing = entityRelations?.get(relation.id);
+    if (!entityRelations || !existing) {
+      return false;
+    }
+
+    entityRelations.delete(relation.id);
+    if (entityRelations.size === 0) {
+      this.relations.delete(entity);
+    }
+
+    this.childOfIndex.remove(entity, existing);
+    if (this.entityAllocator.isAlive(entity)) {
+      this.syncEntityArchetype(entity);
+    }
+    return true;
   }
 
   getRelation(entity: Entity, relation: RelationType): Relation | null {
@@ -232,13 +241,7 @@ export class World {
   }
 
   getChildren(parent: Entity): Entity[] {
-    const children: Entity[] = [];
-    for (const entity of this.entityAllocator.aliveEntities()) {
-      if (this.getRelation(entity, ChildOf)?.target === parent) {
-        children.push(entity);
-      }
-    }
-    return children;
+    return this.childOfIndex.getChildren(parent, (entity) => this.entityAllocator.isAlive(entity));
   }
 
   getParent(entity: Entity): Entity | null {
@@ -285,16 +288,18 @@ export class World {
 
   private createView<TView extends object>(
     schema: ComponentSchema<TView>,
-    column: ArrayBuffer,
-    row: number,
     entity: Entity
   ): TView {
-    return createComponentView(schema, column, row, () => {
+    // The closure resolves current storage on every field access so old views remain valid
+    // after table growth, component insertion, or relation retagging.
+    return createComponentView(schema, () => this.getComponentStorage(entity, schema), () => {
       this.changeTracker.markChanged(entity, schema.name);
     });
   }
 
   private entityMatchesFilter(entity: Entity, filter: QueryFilter, table?: Table): boolean {
+    // Table matching prunes most relation/component filters; this row-level pass handles
+    // entity-specific relation payloads and frame-local change/added filters.
     if (filter.relation) {
       const [relation, target] = filter.relation;
       if (this.getRelation(entity, relation)?.target !== target) {
@@ -352,12 +357,17 @@ export class World {
     return registered as ComponentSchema<TView>;
   }
 
-  private getOrCreateTable(componentTypes: readonly ComponentSchema<object>[]): Table {
+  private getOrCreateTable(
+    componentTypes: readonly ComponentSchema<object>[],
+    tags: Iterable<string> = []
+  ): Table {
+    // Archetypes are keyed by component set plus relation tags. Tags have no column storage.
     const sorted = [...componentTypes].sort((left, right) => left.name.localeCompare(right.name));
-    const archetypeId = sorted.map((componentType) => componentType.name).join(',');
+    const tagList = [...tags].sort();
+    const archetypeId = createArchetypeId(sorted, tagList);
     let table = this.tables.get(archetypeId);
     if (!table) {
-      table = new Table(sorted);
+      table = new Table(sorted, tagList);
       this.tables.set(archetypeId, table);
     }
     return table;
@@ -376,11 +386,81 @@ export class World {
     oldComponents.set(newSchema.name, newData);
 
     const oldTypes = [...oldLocation.table.componentTypes];
+    const oldTags = oldLocation.table.tags;
+    // Component insertion preserves existing relation tags while moving to a wider table.
     this.removeFromTable(entity, oldLocation);
 
-    const newTable = this.getOrCreateTable([...oldTypes, newSchema]);
+    const newTable = this.getOrCreateTable([...oldTypes, newSchema], oldTags);
     const row = newTable.insert(entity, oldComponents);
     this.entityLocations.set(entity, { table: newTable, row });
+  }
+
+  private syncEntityArchetype(entity: Entity): void {
+    const tags = this.getEntityTags(entity);
+    const location = this.entityLocations.get(entity);
+
+    if (!location) {
+      // Relation-only entities still need a tag table so relation queries can find them.
+      if (tags.size === 0) {
+        return;
+      }
+
+      const table = this.getOrCreateTable([], tags);
+      const row = table.insert(entity, new Map());
+      this.entityLocations.set(entity, { table, row });
+      return;
+    }
+
+    if (sameStringSet(location.table.tags, tags)) {
+      return;
+    }
+
+    const components = new Map<string, ArrayBuffer>();
+    for (const schema of location.table.componentTypes) {
+      components.set(schema.name, location.table.readComponent(schema, location.row));
+    }
+    const componentTypes = [...location.table.componentTypes];
+
+    // Relation changes retag the archetype without altering component bytes.
+    this.removeFromTable(entity, location);
+    if (componentTypes.length === 0 && tags.size === 0) {
+      return;
+    }
+
+    const table = this.getOrCreateTable(componentTypes, tags);
+    const row = table.insert(entity, components);
+    this.entityLocations.set(entity, { table, row });
+  }
+
+  private getComponentStorage<TView extends object>(
+    entity: Entity,
+    schema: ComponentSchema<TView>
+  ): { readonly buffer: ArrayBuffer; readonly row: number } {
+    const location = this.entityLocations.get(entity);
+    if (!location || !location.table.hasComponent(schema.name)) {
+      throw new Error(`Entity "${entity}" does not have component "${schema.name}".`);
+    }
+
+    return {
+      buffer: location.table.getRequiredColumn(schema.name),
+      row: location.row
+    };
+  }
+
+  private getEntityTags(entity: Entity): Set<string> {
+    const tags = new Set<string>();
+    for (const relation of this.relations.get(entity)?.values() ?? []) {
+      // Store both "has relation type" and "has relation-to-target" tags.
+      tags.add(createRelationAnyTag(relation.relation));
+      tags.add(createRelationTargetTag(relation.relation, relation.target));
+    }
+    return tags;
+  }
+
+  private shouldUseTablesForEmptyQuery(filter: QueryFilter): boolean {
+    // Relation filters are encoded in tables, so even an entity-only relation query should
+    // iterate matching tables instead of every alive entity.
+    return Boolean(filter.relation || (filter.with?.length ?? 0) > 0);
   }
 
   private removeFromTable(entity: Entity, location: EntityLocation): void {
@@ -388,6 +468,7 @@ export class World {
     this.entityLocations.delete(entity);
 
     if (removal?.moved !== undefined) {
+      // Table removal is swap-remove; the moved entity inherits the removed row index.
       this.entityLocations.set(removal.moved, { table: location.table, row: location.row });
     }
   }

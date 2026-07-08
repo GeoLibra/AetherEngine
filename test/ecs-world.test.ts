@@ -135,6 +135,43 @@ describe('World relationships and queries', () => {
       source
     ]);
   });
+
+  test('keeps ChildOf index synchronized when relations are replaced and entities despawn', () => {
+    const world = new World();
+    const firstParent = world.spawn().build();
+    const secondParent = world.spawn().build();
+    const child = world.spawn().addRelation(ChildOf, firstParent).build();
+
+    expect(world.getChildren(firstParent)).toEqual([child]);
+    expect(world.getChildren(secondParent)).toEqual([]);
+
+    world.addRelation(child, ChildOf, secondParent);
+
+    expect(world.getChildren(firstParent)).toEqual([]);
+    expect(world.getChildren(secondParent)).toEqual([child]);
+
+    world.despawn(child);
+
+    expect(world.getChildren(secondParent)).toEqual([]);
+  });
+
+  test('keeps relation queries correct after relation removal changes archetype membership', () => {
+    const world = new World();
+    world.registerComponent(Transform);
+
+    const parent = world.spawn().build();
+    const child = world.spawn().insert(Transform, { position: [1, 0, 0] }).build();
+
+    world.addRelation(child, ChildOf, parent);
+    expect([...world.query([Transform], { relation: [ChildOf, parent] })].map(([entity]) => entity)).toEqual([
+      child
+    ]);
+
+    expect(world.removeRelation(child, ChildOf)).toBe(true);
+
+    expect([...world.query([Transform], { relation: [ChildOf, parent] })]).toEqual([]);
+    expect([...world.query([Transform])].map(([entity]) => entity)).toContain(child);
+  });
 });
 
 describe('World change detection', () => {
@@ -159,6 +196,59 @@ describe('World change detection', () => {
     transform!.position[0] = 42;
 
     expect([...world.query([Transform], { changed: [Transform] })].map(([row]) => row)).toEqual([
+      entity
+    ]);
+  });
+
+  test('tracks vector mutating methods as component changes', () => {
+    const world = new World();
+    world.registerComponent(Transform);
+    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+
+    world.clearTrackers();
+    world.getComponent<TransformView>(entity, Transform)!.position.set([9, 9, 9]);
+
+    expect([...world.query([Transform], { changed: [Transform] })].map(([row]) => row)).toEqual([
+      entity
+    ]);
+
+    world.clearTrackers();
+    world.getComponent<TransformView>(entity, Transform)!.scale.fill(2);
+
+    expect([...world.query([Transform], { changed: [Transform] })].map(([row]) => row)).toEqual([
+      entity
+    ]);
+  });
+
+  test('keeps existing component views valid after table reallocation', () => {
+    const world = new World();
+    world.registerComponent(Transform);
+    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const beforeGrowth = world.getComponent<TransformView>(entity, Transform);
+
+    for (let index = 0; index < 100; index++) {
+      world.spawn().insert(Transform, { position: [0, 0, 0] }).build();
+    }
+
+    beforeGrowth!.position[0] = 42;
+
+    expect(world.getComponent<TransformView>(entity, Transform)!.position[0]).toBe(42);
+  });
+
+  test('keeps existing component views valid after archetype migrations', () => {
+    const world = new World();
+    world.registerComponent(Transform).registerComponent(Velocity);
+    const parent = world.spawn().build();
+    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const transform = world.getComponent<TransformView>(entity, Transform);
+
+    world.insertComponent(entity, Velocity, { linear: [1, 0, 0] });
+    world.addRelation(entity, ChildOf, parent);
+
+    transform!.position[0] = 77;
+
+    expect(world.getComponent<TransformView>(entity, Transform)!.position[0]).toBe(77);
+    expect([...world.query([Transform, Velocity], { relation: [ChildOf, parent] })].map(([row]) => row)).toEqual([
       entity
     ]);
   });

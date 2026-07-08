@@ -46,6 +46,7 @@ export class EntityAllocator {
     }
 
     meta.alive = false;
+    // Bump generation on free so handles captured before despawn fail future liveness checks.
     meta.generation = (meta.generation + 1) & ENTITY_GENERATION_MASK;
     this.freeList.push(decoded.index);
     this.livingCount--;
@@ -83,6 +84,7 @@ export function encodeEntity(index: number, generation: number): Entity {
       `Entity generation must fit in ${ENTITY_GENERATION_BITS} bits, received "${generation}".`
     );
   }
+  // Multiplication avoids signed 32-bit bitshift behavior while keeping a compact number handle.
   return index * ENTITY_INDEX_MULTIPLIER + generation;
 }
 

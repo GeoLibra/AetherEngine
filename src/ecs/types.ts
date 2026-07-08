@@ -41,6 +41,7 @@ export type ComponentInput = Record<string, unknown>;
 export interface RelationType {
   readonly name: string;
   readonly id: symbol;
+  readonly key: string;
 }
 
 export interface Relation {

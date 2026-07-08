@@ -10,14 +10,18 @@ export class Table {
   readonly archetypeId: string;
   readonly componentTypes: readonly ComponentSchema<object>[];
 
+  // Tags are zero-sized archetype members, used for relation pairs such as ChildOf(parent).
+  readonly tags: ReadonlySet<string>;
+
   private readonly columns = new Map<string, ArrayBuffer>();
   private entities = new Uint32Array(0);
   private capacity = 0;
   private count = 0;
 
-  constructor(componentTypes: readonly ComponentSchema<object>[]) {
+  constructor(componentTypes: readonly ComponentSchema<object>[], tags: readonly string[] = []) {
     this.componentTypes = [...componentTypes].sort((left, right) => left.name.localeCompare(right.name));
-    this.archetypeId = this.componentTypes.map((componentType) => componentType.name).join(',');
+    this.tags = new Set([...tags].sort());
+    this.archetypeId = createArchetypeId(this.componentTypes, this.tags);
     this.allocate(DEFAULT_TABLE_CAPACITY);
   }
 
@@ -48,6 +52,7 @@ export class Table {
     let moved: Entity | undefined;
 
     if (row !== lastRow) {
+      // Swap-remove keeps deletion O(1). World must update the moved entity's row afterward.
       moved = this.entities[lastRow] as Entity;
       this.entities[row] = moved;
 
@@ -63,6 +68,10 @@ export class Table {
 
   hasComponent(componentName: string): boolean {
     return this.columns.has(componentName);
+  }
+
+  hasTag(tag: string): boolean {
+    return this.tags.has(tag);
   }
 
   getColumnBuffer(componentName: string): ArrayBuffer | undefined {
@@ -104,6 +113,7 @@ export class Table {
   }
 
   private allocate(newCapacity: number): void {
+    // Growth replaces column buffers. Component views therefore must resolve buffers lazily.
     const nextEntities = new Uint32Array(newCapacity);
     nextEntities.set(this.entities.subarray(0, this.count));
     this.entities = nextEntities;
@@ -119,4 +129,18 @@ export class Table {
 
     this.capacity = newCapacity;
   }
+}
+
+export function createArchetypeId(
+  componentTypes: readonly ComponentSchema<object>[],
+  tags: Iterable<string> = []
+): string {
+  // Sorting makes archetype identity independent from insertion order.
+  const componentPart = [...componentTypes]
+    .map((componentType) => componentType.name)
+    .sort()
+    .join(',');
+  const tagPart = [...tags].sort().join(',');
+
+  return `${componentPart}|${tagPart}`;
 }
