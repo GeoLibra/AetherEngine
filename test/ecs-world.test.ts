@@ -235,6 +235,26 @@ describe('World change detection', () => {
     expect(world.getComponent<TransformView>(entity, Transform)!.position[0]).toBe(42);
   });
 
+  test('can shrink empty table chunks after scene cleanup', () => {
+    const world = new World();
+    world.registerComponent(Transform);
+    const entities: Entity[] = [];
+
+    for (let index = 0; index < 80; index++) {
+      entities.push(world.spawn().insert(Transform, { position: [index, 0, 0] }).build());
+    }
+
+    const [table] = world.findMatchingTables([Transform]);
+    expect(table?.allocatedCapacity).toBeGreaterThan(0);
+
+    for (const entity of entities) {
+      world.despawn(entity);
+    }
+    world.shrinkTablesToFit();
+
+    expect(table?.allocatedCapacity).toBe(0);
+  });
+
   test('keeps existing component views valid after archetype migrations', () => {
     const world = new World();
     world.registerComponent(Transform).registerComponent(Velocity);

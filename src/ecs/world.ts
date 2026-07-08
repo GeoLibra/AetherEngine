@@ -286,6 +286,12 @@ export class World {
     this.changeTracker.clear();
   }
 
+  shrinkTablesToFit(): void {
+    for (const table of this.tables.values()) {
+      table.shrinkToFit();
+    }
+  }
+
   private createView<TView extends object>(
     schema: ComponentSchema<TView>,
     entity: Entity
@@ -442,8 +448,7 @@ export class World {
     }
 
     return {
-      buffer: location.table.getRequiredColumn(schema.name),
-      row: location.row
+      ...location.table.getComponentStorage(schema.name, location.row)
     };
   }
 

@@ -1,9 +1,37 @@
-import { DEFAULT_TABLE_CAPACITY } from './constants';
+import {
+  DEFAULT_TABLE_CHUNK_CAPACITY,
+  DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY
+} from './constants';
 import type { ComponentSchema, Entity } from './types';
 
 export interface TableRemoval {
   readonly removed: Entity;
   readonly moved?: Entity;
+}
+
+export interface ComponentStorage {
+  readonly buffer: ArrayBuffer;
+  readonly row: number;
+}
+
+export interface TableOptions {
+  readonly initialChunkCapacity?: number;
+  readonly chunkCapacity?: number;
+}
+
+interface EntityChunk {
+  readonly rows: Uint32Array;
+  readonly capacity: number;
+}
+
+interface RowLocation {
+  readonly chunkIndex: number;
+  readonly rowInChunk: number;
+}
+
+interface TableColumn {
+  readonly schema: ComponentSchema<object>;
+  readonly chunks: ArrayBuffer[];
 }
 
 export class Table {
@@ -13,25 +41,45 @@ export class Table {
   // Tags are zero-sized archetype members, used for relation pairs such as ChildOf(parent).
   readonly tags: ReadonlySet<string>;
 
-  private readonly columns = new Map<string, ArrayBuffer>();
-  private entities = new Uint32Array(0);
-  private capacity = 0;
+  private readonly columns = new Map<string, TableColumn>();
+  private readonly entityChunks: EntityChunk[] = [];
+  private readonly initialChunkCapacity: number;
+  private readonly chunkCapacity: number;
+  private allocatedRows = 0;
   private count = 0;
 
-  constructor(componentTypes: readonly ComponentSchema<object>[], tags: readonly string[] = []) {
+  constructor(
+    componentTypes: readonly ComponentSchema<object>[],
+    tags: readonly string[] = [],
+    options: TableOptions = {}
+  ) {
     this.componentTypes = [...componentTypes].sort((left, right) => left.name.localeCompare(right.name));
     this.tags = new Set([...tags].sort());
     this.archetypeId = createArchetypeId(this.componentTypes, this.tags);
-    this.allocate(DEFAULT_TABLE_CAPACITY);
+    this.initialChunkCapacity = resolveChunkCapacity(
+      options.initialChunkCapacity,
+      DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY,
+      'initialChunkCapacity'
+    );
+    this.chunkCapacity = resolveChunkCapacity(
+      options.chunkCapacity,
+      DEFAULT_TABLE_CHUNK_CAPACITY,
+      'chunkCapacity'
+    );
+    for (const schema of this.componentTypes) {
+      this.columns.set(schema.name, { schema, chunks: [] });
+    }
+    this.allocateChunk();
   }
 
   insert(entity: Entity, components: ReadonlyMap<string, ArrayBuffer>): number {
     if (this.count >= this.capacity) {
-      this.allocate(this.capacity * 2);
+      this.allocateChunk();
     }
 
     const row = this.count;
-    this.entities[row] = entity;
+    const location = this.locateRow(row);
+    this.entityChunks[location.chunkIndex]!.rows[location.rowInChunk] = entity;
 
     for (const schema of this.componentTypes) {
       const data = components.get(schema.name) ?? new ArrayBuffer(schema.size);
@@ -48,17 +96,16 @@ export class Table {
     }
 
     const lastRow = this.count - 1;
-    const removed = this.entities[row] as Entity;
+    const removed = this.getEntityAt(row);
     let moved: Entity | undefined;
 
     if (row !== lastRow) {
       // Swap-remove keeps deletion O(1). World must update the moved entity's row afterward.
-      moved = this.entities[lastRow] as Entity;
-      this.entities[row] = moved;
+      moved = this.getEntityAt(lastRow);
+      this.setEntity(row, moved);
 
       for (const schema of this.componentTypes) {
-        const column = new Uint8Array(this.getRequiredColumn(schema.name));
-        column.copyWithin(row * schema.size, lastRow * schema.size, lastRow * schema.size + schema.size);
+        this.copyComponent(schema, lastRow, row);
       }
     }
 
@@ -74,26 +121,24 @@ export class Table {
     return this.tags.has(tag);
   }
 
-  getColumnBuffer(componentName: string): ArrayBuffer | undefined {
-    return this.columns.get(componentName);
-  }
-
-  getRequiredColumn(componentName: string): ArrayBuffer {
-    const column = this.columns.get(componentName);
-    if (!column) {
-      throw new Error(`Component "${componentName}" is not present in table "${this.archetypeId}".`);
+  getComponentStorage(componentName: string, row: number): ComponentStorage {
+    const column = this.getRequiredTableColumn(componentName);
+    const location = this.locateExistingRow(row);
+    const buffer = column.chunks[location.chunkIndex];
+    if (!buffer) {
+      throw new Error(`Component "${componentName}" chunk ${location.chunkIndex} is missing.`);
     }
-    return column;
+    return { buffer, row: location.rowInChunk };
   }
 
   getEntity(row: number): Entity {
-    return this.entities[row] as Entity;
+    return this.getEntityAt(row);
   }
 
   readComponent(schema: ComponentSchema<object>, row: number): ArrayBuffer {
     const data = new ArrayBuffer(schema.size);
-    const column = this.getRequiredColumn(schema.name);
-    new Uint8Array(data).set(new Uint8Array(column, row * schema.size, schema.size));
+    const { buffer, row: rowInChunk } = this.getComponentStorage(schema.name, row);
+    new Uint8Array(data).set(new Uint8Array(buffer, rowInChunk * schema.size, schema.size));
     return data;
   }
 
@@ -104,31 +149,128 @@ export class Table {
       );
     }
 
-    const column = this.getRequiredColumn(schema.name);
-    new Uint8Array(column, row * schema.size, schema.size).set(new Uint8Array(data));
+    const { buffer, row: rowInChunk } = this.getWritableComponentStorage(schema.name, row);
+    new Uint8Array(buffer, rowInChunk * schema.size, schema.size).set(new Uint8Array(data));
   }
 
   get length(): number {
     return this.count;
   }
 
-  private allocate(newCapacity: number): void {
-    // Growth replaces column buffers. Component views therefore must resolve buffers lazily.
-    const nextEntities = new Uint32Array(newCapacity);
-    nextEntities.set(this.entities.subarray(0, this.count));
-    this.entities = nextEntities;
+  get allocatedCapacity(): number {
+    return this.allocatedRows;
+  }
 
-    for (const schema of this.componentTypes) {
-      const previous = this.columns.get(schema.name);
-      const next = new ArrayBuffer(schema.size * newCapacity);
-      if (previous) {
-        new Uint8Array(next).set(new Uint8Array(previous, 0, schema.size * this.count));
-      }
-      this.columns.set(schema.name, next);
+  shrinkToFit(): void {
+    const requiredChunks = this.getRequiredChunkCountForLength(this.count);
+    if (requiredChunks === this.entityChunks.length) {
+      return;
     }
 
-    this.capacity = newCapacity;
+    this.entityChunks.length = requiredChunks;
+    for (const column of this.columns.values()) {
+      column.chunks.length = requiredChunks;
+    }
+    this.allocatedRows = this.entityChunks.reduce((total, chunk) => total + chunk.capacity, 0);
   }
+
+  private get capacity(): number {
+    return this.allocatedRows;
+  }
+
+  private allocateChunk(): void {
+    const capacity = this.entityChunks.length === 0 ? this.initialChunkCapacity : this.chunkCapacity;
+    this.entityChunks.push({
+      rows: new Uint32Array(capacity),
+      capacity
+    });
+
+    for (const column of this.columns.values()) {
+      column.chunks.push(new ArrayBuffer(column.schema.size * capacity));
+    }
+    this.allocatedRows += capacity;
+  }
+
+  private copyComponent(schema: ComponentSchema<object>, sourceRow: number, targetRow: number): void {
+    const source = this.getComponentStorage(schema.name, sourceRow);
+    const target = this.getComponentStorage(schema.name, targetRow);
+    new Uint8Array(target.buffer, target.row * schema.size, schema.size).set(
+      new Uint8Array(source.buffer, source.row * schema.size, schema.size)
+    );
+  }
+
+  private getEntityAt(row: number): Entity {
+    const location = this.locateExistingRow(row);
+    return this.entityChunks[location.chunkIndex]!.rows[location.rowInChunk] as Entity;
+  }
+
+  private setEntity(row: number, entity: Entity): void {
+    const location = this.locateExistingRow(row);
+    this.entityChunks[location.chunkIndex]!.rows[location.rowInChunk] = entity;
+  }
+
+  private getRequiredTableColumn(componentName: string): TableColumn {
+    const column = this.columns.get(componentName);
+    if (!column) {
+      throw new Error(`Component "${componentName}" is not present in table "${this.archetypeId}".`);
+    }
+    return column;
+  }
+
+  private getWritableComponentStorage(componentName: string, row: number): ComponentStorage {
+    const column = this.getRequiredTableColumn(componentName);
+    const location = this.locateWritableRow(row);
+    const buffer = column.chunks[location.chunkIndex];
+    if (!buffer) {
+      throw new Error(`Component "${componentName}" chunk ${location.chunkIndex} is missing.`);
+    }
+    return { buffer, row: location.rowInChunk };
+  }
+
+  private locateExistingRow(row: number): RowLocation {
+    if (row < 0 || row >= this.count) {
+      throw new Error(`Row ${row} is outside table "${this.archetypeId}" length ${this.count}.`);
+    }
+    return this.locateRow(row);
+  }
+
+  private locateWritableRow(row: number): RowLocation {
+    if (row < 0 || row > this.count || row >= this.capacity) {
+      throw new Error(`Row ${row} is outside writable table "${this.archetypeId}" capacity ${this.capacity}.`);
+    }
+    return this.locateRow(row);
+  }
+
+  private locateRow(row: number): RowLocation {
+    const firstChunk = this.entityChunks[0];
+    if (firstChunk && row < firstChunk.capacity) {
+      return { chunkIndex: 0, rowInChunk: row };
+    }
+
+    const rowAfterInitialChunk = row - (firstChunk?.capacity ?? this.initialChunkCapacity);
+    return {
+      chunkIndex: 1 + Math.floor(rowAfterInitialChunk / this.chunkCapacity),
+      rowInChunk: rowAfterInitialChunk % this.chunkCapacity
+    };
+  }
+
+  private getRequiredChunkCountForLength(length: number): number {
+    if (length === 0) {
+      return 0;
+    }
+    if (length <= this.initialChunkCapacity) {
+      return 1;
+    }
+    return 1 + Math.ceil((length - this.initialChunkCapacity) / this.chunkCapacity);
+  }
+}
+
+function resolveChunkCapacity(value: number | undefined, fallback: number, label: string): number {
+  const capacity = value ?? fallback;
+  if (!Number.isInteger(capacity) || capacity <= 0) {
+    throw new Error(`Table ${label} must be a positive integer.`);
+  }
+  return capacity;
 }
 
 export function createArchetypeId(
