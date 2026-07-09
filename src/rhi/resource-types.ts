@@ -3,6 +3,7 @@ import type {
   GPUBindGroupLayoutEntry,
   GPUBufferDescriptor,
   GPUBufferUsageFlags,
+  GPUIndexFormat,
   GPUMapModeFlags,
   GPUOrigin3D,
   GPUPrimitiveTopology,
@@ -110,6 +111,87 @@ export interface RHIComputePipeline extends RHIResource {
   readonly layout: RHIPipelineLayout | undefined;
 }
 
+export type GPUVertexFormat = string;
+export type GPUVertexStepMode = 'vertex' | 'instance';
+export type GPUFrontFace = 'ccw' | 'cw';
+export type GPUCullMode = 'none' | 'front' | 'back';
+export type GPUIndexFormatWithUndefined = GPUIndexFormat | undefined;
+export type GPUCompareFunction =
+  | 'never'
+  | 'less'
+  | 'equal'
+  | 'less-equal'
+  | 'greater'
+  | 'not-equal'
+  | 'greater-equal'
+  | 'always';
+export type GPUBlendFactor = string;
+export type GPUBlendOperation = 'add' | 'subtract' | 'reverse-subtract' | 'min' | 'max';
+export type GPUColorWriteFlags = number;
+
+export interface GPUProgrammableStage {
+  module: RHIShaderModule;
+  entryPoint?: string;
+  constants?: Readonly<Record<string, number>>;
+}
+
+export interface GPUVertexAttribute {
+  format: GPUVertexFormat;
+  offset: number;
+  shaderLocation: number;
+}
+
+export interface GPUVertexBufferLayout {
+  arrayStride: number;
+  stepMode?: GPUVertexStepMode;
+  attributes: readonly GPUVertexAttribute[];
+}
+
+export interface GPUVertexState extends GPUProgrammableStage {
+  buffers?: readonly (GPUVertexBufferLayout | null)[];
+}
+
+export interface GPUBlendComponent {
+  operation?: GPUBlendOperation;
+  srcFactor: GPUBlendFactor;
+  dstFactor: GPUBlendFactor;
+}
+
+export interface GPUBlendState {
+  color: GPUBlendComponent;
+  alpha: GPUBlendComponent;
+}
+
+export interface GPUColorTargetState {
+  format: GPUTextureFormat;
+  blend?: GPUBlendState;
+  writeMask?: GPUColorWriteFlags;
+}
+
+export interface GPUFragmentState extends GPUProgrammableStage {
+  targets: readonly (GPUColorTargetState | null)[];
+}
+
+export interface GPUPrimitiveState {
+  topology?: GPUPrimitiveTopology;
+  stripIndexFormat?: GPUIndexFormatWithUndefined;
+  frontFace?: GPUFrontFace;
+  cullMode?: GPUCullMode;
+  unclippedDepth?: boolean;
+}
+
+export interface GPUDepthStencilState {
+  format: GPUTextureFormat;
+  depthWriteEnabled?: boolean;
+  depthCompare?: GPUCompareFunction;
+}
+
+export interface GPUMultisampleState {
+  count?: number;
+  mask?: number;
+  alphaToCoverageEnabled?: boolean;
+}
+
 export interface GPUBufferBinding {
   buffer: RHIBuffer;
   offset?: number;
@@ -144,12 +226,15 @@ export interface GPUImageCopyTexture {
 export interface RHIRenderPipelineDescriptor {
   label?: string;
   layout?: RHIPipelineLayout;
-  primitive?: {
-    topology?: GPUPrimitiveTopology;
-  };
+  vertex?: GPUVertexState;
+  primitive?: GPUPrimitiveState;
+  depthStencil?: GPUDepthStencilState;
+  multisample?: GPUMultisampleState;
+  fragment?: GPUFragmentState;
 }
 
 export interface RHIComputePipelineDescriptor {
   label?: string;
   layout?: RHIPipelineLayout;
+  compute?: GPUProgrammableStage;
 }

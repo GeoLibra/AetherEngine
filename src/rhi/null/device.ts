@@ -5,7 +5,7 @@ import { NullComputePipeline, NullRenderPipeline } from './pipelines';
 import { NullQueue } from './queue';
 import { NullSampler, NullTexture } from './texture';
 import { NullRenderTarget } from '../render-target';
-import { assertResourceOwnedBy, NullResourceBase } from '../resource';
+import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from '../resource';
 import type {
   GPUBindGroupDescriptor,
   GPUBindGroupLayoutDescriptor,
@@ -73,11 +73,17 @@ export class NullDevice implements RHIDevice {
 
   createRenderPipeline(descriptor: RHIRenderPipelineDescriptor): RHIRenderPipeline {
     validatePipelineLayout(descriptor.layout, this.owner);
+    if (descriptor.fragment !== undefined && descriptor.vertex === undefined) {
+      throw new Error('Vertex stage must be provided if fragment stage is present.');
+    }
+    validatePipelineStageModule(descriptor.vertex, 'Vertex', this.owner);
+    validatePipelineStageModule(descriptor.fragment, 'Fragment', this.owner);
     return new NullRenderPipeline(this.allocateId(), this.owner, descriptor);
   }
 
   createComputePipeline(descriptor: RHIComputePipelineDescriptor = {}): RHIComputePipeline {
     validatePipelineLayout(descriptor.layout, this.owner);
+    validatePipelineStageModule(descriptor.compute, 'Compute', this.owner);
     return new NullComputePipeline(this.allocateId(), this.owner, descriptor);
   }
 
@@ -107,4 +113,19 @@ export class NullDevice implements RHIDevice {
     this.nextResourceId += 1;
     return id;
   }
+}
+
+function validatePipelineStageModule(
+  stage: { module?: RHIShaderModule } | undefined,
+  name: 'Vertex' | 'Fragment' | 'Compute',
+  owner: symbol
+): void {
+  if (stage === undefined) {
+    return;
+  }
+  if (stage.module === undefined) {
+    throw new Error(`${name} stage module is required.`);
+  }
+  assertResourceOwnedBy(stage.module, owner);
+  assertResourceLive(stage.module);
 }
