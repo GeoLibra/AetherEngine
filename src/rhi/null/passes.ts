@@ -32,6 +32,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
   private ended = false;
   private pipeline: RHIRenderPipeline | undefined;
   private debugGroupDepth = 0;
+  private readonly extent: RenderPassExtent;
   private readonly bindGroups = new Map<number, { bindGroup: RHIBindGroup; dynamicOffsets: readonly number[] }>();
   private readonly vertexBuffers = new Map<number, RHIBuffer>();
   private indexBuffer: RHIBuffer | undefined;
@@ -39,7 +40,9 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
   constructor(
     private readonly encoder: NullPassController,
     private readonly descriptor: RHIRenderPassDescriptor
-  ) {}
+  ) {
+    this.extent = resolveRenderPassExtent(descriptor);
+  }
 
   pushDebugGroup(groupLabel: string): void {
     this.ensureActive();
@@ -106,6 +109,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     validateNonNegativeFiniteNumber(height, 'Viewport height');
     validateDepthRange(minDepth, 'Viewport minDepth');
     validateDepthRange(maxDepth, 'Viewport maxDepth');
+    validateRectangleInExtent('Viewport', x, y, width, height, this.extent);
     this.encoder.record({ kind: 'setViewport', x, y, width, height, minDepth, maxDepth });
   }
 
@@ -115,6 +119,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     validateNonNegativeInteger(y, 'Scissor y');
     validateNonNegativeInteger(width, 'Scissor width');
     validateNonNegativeInteger(height, 'Scissor height');
+    validateRectangleInExtent('Scissor', x, y, width, height, this.extent);
     this.encoder.record({ kind: 'setScissorRect', x, y, width, height });
   }
 
@@ -367,5 +372,50 @@ function validateNonNegativeInteger(value: number, label: string): void {
   }
   if (value < 0) {
     throw new Error(`${label} must be non-negative.`);
+  }
+}
+
+interface RenderPassExtent {
+  width: number;
+  height: number;
+}
+
+function resolveRenderPassExtent(descriptor: RHIRenderPassDescriptor): RenderPassExtent {
+  const attachments = [
+    ...descriptor.colorAttachments.map((attachment) => attachment.view),
+    ...(descriptor.depthStencilAttachment === undefined ? [] : [descriptor.depthStencilAttachment.view])
+  ];
+  if (attachments.length === 0) {
+    throw new Error(`Render pass "${descriptor.label ?? 'anonymous'}" requires at least one attachment.`);
+  }
+
+  const first = attachments[0];
+  if (first === undefined) {
+    throw new Error(`Render pass "${descriptor.label ?? 'anonymous'}" requires at least one attachment.`);
+  }
+  const extent = { width: first.width, height: first.height };
+  attachments.slice(1).forEach((view, index) => {
+    if (view.width !== extent.width || view.height !== extent.height) {
+      throw new Error(
+        `Render pass "${descriptor.label ?? 'anonymous'}" attachment at index ${index + 1} size ${view.width}x${view.height} does not match render pass extent ${extent.width}x${extent.height}.`
+      );
+    }
+  });
+  return extent;
+}
+
+function validateRectangleInExtent(
+  label: 'Viewport' | 'Scissor',
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  extent: RenderPassExtent
+): void {
+  // Loop 007: NullDevice uses strict containment to catch engine logic errors before backend-specific clipping.
+  if (x < 0 || y < 0 || x + width > extent.width || y + height > extent.height) {
+    throw new Error(
+      `${label} rectangle ${x},${y} ${width}x${height} exceeds render pass extent ${extent.width}x${extent.height}.`
+    );
   }
 }

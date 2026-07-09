@@ -79,9 +79,9 @@ export class NullCommandEncoder implements RHICommandEncoder {
   beginRenderPass(descriptor: RHIRenderPassDescriptor): RHIRenderPassEncoder {
     this.ensureCanBeginPass('render');
     validateRenderPassDescriptorResources(descriptor, this.owner);
+    const pass = new NullRenderPassEncoder(this, descriptor);
     this.stats.renderPasses += 1;
     this.record(withOptionalLabel({ kind: 'beginRenderPass', colorAttachmentCount: descriptor.colorAttachments.length }, descriptor.label));
-    const pass = new NullRenderPassEncoder(this, descriptor);
     this.activePass = pass;
     return pass;
   }
