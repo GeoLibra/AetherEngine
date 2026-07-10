@@ -29,8 +29,8 @@ export const TimePlugin = definePlugin({
   build(app) {
     app.insertResource(new Time());
     app.addSystem('First', {
-      system: timeUpdateSystem,
-      name: 'time_update'
+      id: 'time.update',
+      run: timeUpdateSystem
     });
   }
 });

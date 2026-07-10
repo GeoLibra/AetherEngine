@@ -15,61 +15,89 @@ class Counter {
 }
 
 describe('Schedule', () => {
-  test('runs systems in before/after order and caches that order until changed', async () => {
+  test('runs systems in stable before/after order', () => {
     const order: string[] = [];
     const schedule = new Schedule('Update');
 
-    schedule
-      .addSystem({ name: 'render', after: ['simulate'], system: () => void order.push('render') })
-      .addSystem({ name: 'input', before: ['simulate'], system: () => void order.push('input') })
-      .addSystem({ name: 'simulate', system: () => void order.push('simulate') });
+    schedule.addSystem({
+      id: 'render',
+      after: ['simulate'],
+      run: () => void order.push('render')
+    });
+    schedule.addSystem({
+      id: 'input',
+      before: ['simulate'],
+      run: () => void order.push('input')
+    });
+    schedule.addSystem({ id: 'simulate', run: () => void order.push('simulate') });
 
-    await schedule.run(new App().getWorld());
+    schedule.runSync(new App().getWorld());
 
     expect(order).toEqual(['input', 'simulate', 'render']);
   });
 
-  test('skips systems when runIf returns false and supports async systems', async () => {
-    const world = new App().getWorld();
+  test('rejects missing required ordering targets and permits optional targets', () => {
+    const schedule = new Schedule('Update');
+    schedule.addSystem({ id: 'render', after: ['missing'], run: () => undefined });
+
+    expect(() => schedule.runSync(new App().getWorld())).toThrow(
+      'Schedule "Update" system "render" references missing ordering target "missing".'
+    );
+
+    const optional = new Schedule('Update');
+    optional.addSystem({ id: 'render', optionalAfter: ['missing'], run: () => undefined });
+
+    expect(() => optional.runSync(new App().getWorld())).not.toThrow();
+  });
+
+  test('removes a registered system and invalidates cached order', () => {
     const schedule = new Schedule('Update');
     const order: string[] = [];
+    const first = schedule.addSystem({ id: 'first', run: () => void order.push('first') });
+    schedule.addSystem({
+      id: 'second',
+      optionalAfter: ['first'],
+      run: () => void order.push('second')
+    });
 
-    schedule
-      .addSystem({ name: 'skip', runIf: () => false, system: () => void order.push('skip') })
-      .addSystem(async () => {
+    schedule.runSync(new App().getWorld());
+    expect(schedule.removeSystem(first)).toBe(true);
+    expect(schedule.removeSystem(first)).toBe(false);
+    schedule.runSync(new App().getWorld());
+
+    expect(order).toEqual(['first', 'second', 'second']);
+  });
+
+  test('skips systems when runIf returns false and startup schedules may await', async () => {
+    const world = new App().getWorld();
+    const schedule = new Schedule('Startup');
+    const order: string[] = [];
+
+    schedule.addSystem({
+      id: 'skip',
+      runIf: () => false,
+      run: () => void order.push('skip')
+    });
+    schedule.addSystem({
+      id: 'async',
+      run: async () => {
         await Promise.resolve();
         order.push('async');
-      });
+      }
+    });
 
     await schedule.run(world);
 
     expect(order).toEqual(['async']);
   });
 
-  test('allows function systems with repeated minified names when no explicit label is provided', async () => {
-    const world = new App().getWorld();
+  test('reports the cycle path', () => {
     const schedule = new Schedule('Update');
-    const order: string[] = [];
-    const update = () => void order.push('first');
-    const anotherUpdate = Object.defineProperty(() => void order.push('second'), 'name', {
-      value: 'update'
-    });
+    schedule.addSystem({ id: 'a', after: ['b'], run: () => undefined });
+    schedule.addSystem({ id: 'b', after: ['a'], run: () => undefined });
 
-    schedule.addSystem(update).addSystem(anotherUpdate);
-
-    await schedule.run(world);
-
-    expect(order).toEqual(['first', 'second']);
-  });
-
-  test('throws when schedule dependencies contain a cycle', async () => {
-    const schedule = new Schedule('Update');
-    schedule
-      .addSystem({ name: 'a', after: ['b'], system: () => undefined })
-      .addSystem({ name: 'b', after: ['a'], system: () => undefined });
-
-    await expect(schedule.run(new App().getWorld())).rejects.toThrow(
-      'Circular dependency detected in schedule "Update"'
+    expect(() => schedule.runSync(new App().getWorld())).toThrow(
+      'Schedule "Update" contains a cycle: a -> b -> a.'
     );
   });
 });

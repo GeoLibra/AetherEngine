@@ -32,11 +32,18 @@ export type ScheduleLabel =
 export type System = (world: World) => void | Promise<void>;
 
 export interface SystemDescriptor {
-  system: System;
-  name?: string;
-  before?: string[];
-  after?: string[];
-  runIf?: (world: World) => boolean;
+  readonly id: string;
+  readonly run: System;
+  readonly before?: readonly string[];
+  readonly after?: readonly string[];
+  readonly optionalBefore?: readonly string[];
+  readonly optionalAfter?: readonly string[];
+  readonly runIf?: (world: World) => boolean;
+}
+
+export interface SystemRegistration {
+  readonly schedule: ScheduleLabel;
+  readonly id: string;
 }
 
 // Plugin system interfaces

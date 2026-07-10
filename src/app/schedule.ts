@@ -1,5 +1,5 @@
 import type { World } from '../ecs/world';
-import type { ScheduleLabel, System, SystemDescriptor } from './types';
+import type { ScheduleLabel, System, SystemDescriptor, SystemRegistration } from './types';
 import { isPromiseLike } from './utils';
 
 /**
@@ -7,15 +7,12 @@ import { isPromiseLike } from './utils';
  * Couples system execution pointers with metadata and ordering directives.
  */
 interface SystemNode {
-  // Unique generated identifier to isolate node in the dependency graph.
-  // Resolves name minification conflicts when multiple function systems share compressed names.
   id: string;
-  system: System;
-  // Optional unique string label to allow referencing in before/after rules.
-  name?: string;
-  debugName: string;
-  before: string[];
-  after: string[];
+  run: System;
+  before: readonly string[];
+  after: readonly string[];
+  optionalBefore: readonly string[];
+  optionalAfter: readonly string[];
   runIf?: (world: World) => boolean;
 }
 
@@ -35,15 +32,28 @@ export class Schedule {
     this.label = label;
   }
 
-  addSystem(descriptor: SystemDescriptor | System): this {
+  addSystem(descriptor: SystemDescriptor | System): SystemRegistration {
     const node = this.createNode(descriptor);
-    if (node.name && this.systems.some((system) => system.name === node.name)) {
-      throw new Error(`System "${node.name}" already exists in schedule "${this.label}".`);
+    if (this.systems.some((system) => system.id === node.id)) {
+      throw new Error(`System "${node.id}" already exists in schedule "${this.label}".`);
     }
 
     this.systems.push(node);
     this.isDirty = true;
-    return this;
+    return { schedule: this.label, id: node.id };
+  }
+
+  removeSystem(registration: SystemRegistration): boolean {
+    if (registration.schedule !== this.label) {
+      return false;
+    }
+    const index = this.systems.findIndex((system) => system.id === registration.id);
+    if (index < 0) {
+      return false;
+    }
+    this.systems.splice(index, 1);
+    this.isDirty = true;
+    return true;
   }
 
   /**
@@ -57,7 +67,7 @@ export class Schedule {
       if (node.runIf && !node.runIf(world)) {
         continue;
       }
-      await node.system(world);
+      await node.run(world);
     }
   }
 
@@ -73,40 +83,39 @@ export class Schedule {
         continue;
       }
 
-      const result = node.system(world);
+      const result = node.run(world);
       if (isPromiseLike(result)) {
         throw new Error(
-          `Async system "${node.debugName}" cannot run in ${kind} schedule "${this.label}".`
+          `Async system "${node.id}" cannot run in ${kind} schedule "${this.label}".`
         );
       }
     }
   }
 
   private createNode(descriptor: SystemDescriptor | System): SystemNode {
-    // Generate a unique fallback ID to safeguard against function name minification clashes.
-    const id = `system_${this.nextSystemId++}`;
-
     if (typeof descriptor === 'function') {
+      const id = `system_${this.nextSystemId++}`;
       return {
         id,
-        system: descriptor,
-        debugName: descriptor.name || id,
+        run: descriptor,
         before: [],
-        after: []
+        after: [],
+        optionalBefore: [],
+        optionalAfter: []
       };
     }
 
-    const node: SystemNode = {
-      id,
-      system: descriptor.system,
-      debugName: descriptor.name || descriptor.system.name || id,
-      before: descriptor.before ?? [],
-      after: descriptor.after ?? []
-    };
-
-    if (descriptor.name) {
-      node.name = descriptor.name;
+    if (descriptor.id.trim() === '') {
+      throw new Error(`Schedule "${this.label}" requires a non-empty system id.`);
     }
+    const node: SystemNode = {
+      id: descriptor.id,
+      run: descriptor.run,
+      before: descriptor.before ?? [],
+      after: descriptor.after ?? [],
+      optionalBefore: descriptor.optionalBefore ?? [],
+      optionalAfter: descriptor.optionalAfter ?? []
+    };
 
     if (descriptor.runIf) {
       node.runIf = descriptor.runIf;
@@ -121,16 +130,12 @@ export class Schedule {
    */
   private computeExecutionOrder(): SystemNode[] {
     const nodeMap = new Map<string, SystemNode>();
-    const labelMap = new Map<string, string>();
     const dependents = new Map<string, Set<string>>();
     const inDegree = new Map<string, number>();
 
     // Index systems by their unique internal ID.
     for (const node of this.systems) {
       nodeMap.set(node.id, node);
-      if (node.name) {
-        labelMap.set(node.name, node.id);
-      }
       dependents.set(node.id, new Set());
       inDegree.set(node.id, 0);
     }
@@ -149,18 +154,23 @@ export class Schedule {
       inDegree.set(to, (inDegree.get(to) ?? 0) + 1);
     };
 
-    // Resolve dependencies using label mappings.
     for (const node of this.systems) {
       for (const target of node.before) {
-        const targetId = labelMap.get(target);
-        if (targetId) {
-          addEdge(node.id, targetId);
-        }
+        this.assertOrderingTarget(node.id, target, nodeMap);
+        addEdge(node.id, target);
       }
       for (const dependency of node.after) {
-        const dependencyId = labelMap.get(dependency);
-        if (dependencyId) {
-          addEdge(dependencyId, node.id);
+        this.assertOrderingTarget(node.id, dependency, nodeMap);
+        addEdge(dependency, node.id);
+      }
+      for (const target of node.optionalBefore) {
+        if (nodeMap.has(target)) {
+          addEdge(node.id, target);
+        }
+      }
+      for (const dependency of node.optionalAfter) {
+        if (nodeMap.has(dependency)) {
+          addEdge(dependency, node.id);
         }
       }
     }
@@ -191,7 +201,8 @@ export class Schedule {
     }
 
     if (ordered.length !== this.systems.length) {
-      throw new Error(`Circular dependency detected in schedule "${this.label}"`);
+      const cycle = findCyclePath(this.systems.map((node) => node.id), dependents);
+      throw new Error(`Schedule "${this.label}" contains a cycle: ${cycle.join(' -> ')}.`);
     }
 
     return ordered;
@@ -205,4 +216,55 @@ export class Schedule {
 
     return this.executionOrder;
   }
+
+  private assertOrderingTarget(
+    systemId: string,
+    target: string,
+    nodeMap: ReadonlyMap<string, SystemNode>
+  ): void {
+    if (!nodeMap.has(target)) {
+      throw new Error(
+        `Schedule "${this.label}" system "${systemId}" references missing ordering target "${target}".`
+      );
+    }
+  }
+}
+
+function findCyclePath(
+  nodeIds: readonly string[],
+  dependents: ReadonlyMap<string, ReadonlySet<string>>
+): string[] {
+  const visited = new Set<string>();
+  const active = new Set<string>();
+  const path: string[] = [];
+
+  const visit = (nodeId: string): string[] | undefined => {
+    visited.add(nodeId);
+    active.add(nodeId);
+    path.push(nodeId);
+    for (const dependent of dependents.get(nodeId) ?? []) {
+      if (!visited.has(dependent)) {
+        const cycle = visit(dependent);
+        if (cycle) {
+          return cycle;
+        }
+      } else if (active.has(dependent)) {
+        const start = path.indexOf(dependent);
+        return [...path.slice(start), dependent];
+      }
+    }
+    path.pop();
+    active.delete(nodeId);
+    return undefined;
+  };
+
+  for (const nodeId of nodeIds) {
+    if (!visited.has(nodeId)) {
+      const cycle = visit(nodeId);
+      if (cycle) {
+        return cycle;
+      }
+    }
+  }
+  return [];
 }
