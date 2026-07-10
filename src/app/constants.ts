@@ -6,6 +6,11 @@ export const DEFAULT_SCHEDULES: ScheduleLabel[] = [
   'PostStartup',
   'First',
   'PreUpdate',
+  'FixedFirst',
+  'FixedPreUpdate',
+  'FixedUpdate',
+  'FixedPostUpdate',
+  'FixedLast',
   'Update',
   'PostUpdate',
   'Last',
@@ -15,9 +20,15 @@ export const DEFAULT_SCHEDULES: ScheduleLabel[] = [
 ];
 
 export const STARTUP_SCHEDULES: ScheduleLabel[] = ['PreStartup', 'Startup', 'PostStartup'];
-export const FRAME_SCHEDULES: ScheduleLabel[] = [
-  'First',
-  'PreUpdate',
+export const FRAME_BEFORE_FIXED_SCHEDULES: ScheduleLabel[] = ['First', 'PreUpdate'];
+export const FIXED_SCHEDULES: ScheduleLabel[] = [
+  'FixedFirst',
+  'FixedPreUpdate',
+  'FixedUpdate',
+  'FixedPostUpdate',
+  'FixedLast'
+];
+export const FRAME_AFTER_FIXED_SCHEDULES: ScheduleLabel[] = [
   'Update',
   'PostUpdate',
   'Last',

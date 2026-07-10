@@ -1,36 +1,28 @@
 import { definePlugin } from '../app/plugin';
-import type { World } from '../ecs/world';
+import {
+  FixedTime,
+  FrameTime,
+  TimeControl,
+  TimeDiagnostics,
+  TimePolicy,
+  TimeRuntime
+} from '../app/time';
+import type { TimePolicyOptions } from '../app/time-types';
 
-export class Time {
-  elapsed = 0;
-  delta = 0;
-  frameCount = 0;
-
-  private lastTime = 0;
-
-  update(now: number = performance.now() / 1000): void {
-    if (this.lastTime === 0) {
-      this.lastTime = now;
+export function createTimePlugin(options: TimePolicyOptions = {}) {
+  const policyOptions = Object.freeze({ ...options });
+  return definePlugin({
+    id: 'aether.time',
+    build(builder) {
+      const policy = new TimePolicy(policyOptions);
+      builder.insertResource(policy);
+      builder.insertResource(new FrameTime());
+      builder.insertResource(new FixedTime(policy.fixedStep, policy.maxSubsteps));
+      builder.insertResource(new TimeControl());
+      builder.insertResource(new TimeDiagnostics());
+      builder.insertResource(new TimeRuntime());
     }
-
-    this.delta = now - this.lastTime;
-    this.elapsed += this.delta;
-    this.lastTime = now;
-    this.frameCount++;
-  }
+  });
 }
 
-function timeUpdateSystem(world: World): void {
-  world.getResource(Time)?.update();
-}
-
-export const TimePlugin = definePlugin({
-  id: 'aether.time',
-  build(builder) {
-    builder.insertResource(new Time());
-    builder.addSystem('First', {
-      id: 'time.update',
-      run: timeUpdateSystem
-    });
-  }
-});
+export const TimePlugin = createTimePlugin();

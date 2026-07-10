@@ -67,7 +67,9 @@ export type {
   ResourceType
 } from './ecs/types';
 export { DefaultPlugins, MinimalPlugins } from './plugins/default-plugins';
-export { Time, TimePlugin } from './plugins/time-plugin';
+export { FixedTime, FrameTime, TimeControl, TimeDiagnostics, TimePolicy } from './app/time';
+export type { FixedOverrunPolicy, TimePolicyOptions } from './app/time-types';
+export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
 export { NullDevice, NullRenderTarget } from './rhi';
 export type {
   ColorAttachmentDescriptor,

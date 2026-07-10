@@ -1,4 +1,5 @@
-export type ResourceType<T> = abstract new (...args: unknown[]) => T;
+// Resource constructors are identity tokens only; World never invokes them.
+export type ResourceType<T> = abstract new (...args: never[]) => T;
 
 export type Entity = number;
 

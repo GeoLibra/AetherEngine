@@ -9,7 +9,7 @@ export interface AppExit {
 
 export interface RunnerContext {
   readonly stopRequested: boolean;
-  frame(): FrameOutcome;
+  frame(timestampSeconds: number): FrameOutcome;
 }
 
 export interface Runner {
@@ -19,22 +19,34 @@ export interface Runner {
 
 export interface HeadlessRunnerOptions {
   readonly frames: number;
+  readonly frameDelta?: number;
+  readonly startTime?: number;
 }
 
 /** Deterministic finite runner for tests, servers, and offline tools. */
 export class HeadlessRunner implements Runner {
   private stopReason?: string;
+  private readonly frameDelta: number;
+  private readonly startTime: number;
 
   constructor(private readonly options: HeadlessRunnerOptions) {
     if (!Number.isInteger(options.frames) || options.frames < 0) {
       throw new Error('HeadlessRunner frames must be a non-negative integer.');
+    }
+    this.frameDelta = options.frameDelta ?? 1 / 60;
+    this.startTime = options.startTime ?? 0;
+    if (!Number.isFinite(this.frameDelta) || this.frameDelta < 0) {
+      throw new Error('HeadlessRunner frameDelta must be a non-negative finite number.');
+    }
+    if (!Number.isFinite(this.startTime)) {
+      throw new Error('HeadlessRunner startTime must be finite.');
     }
   }
 
   async run(context: RunnerContext): Promise<AppExit> {
     let frames = 0;
     while (frames < this.options.frames && !this.stopReason && !context.stopRequested) {
-      context.frame();
+      context.frame(this.startTime + frames * this.frameDelta);
       frames++;
     }
     return Object.freeze({
@@ -94,7 +106,7 @@ export class BrowserRunner implements Runner {
   }
 
   private schedule(context: RunnerContext): void {
-    this.pendingFrame = this.host.request(() => {
+    this.pendingFrame = this.host.request((timestampMilliseconds) => {
       this.pendingFrame = undefined;
       if (this.stopReason || context.stopRequested) {
         this.finish(this.stopReason ?? 'requested');
@@ -102,7 +114,7 @@ export class BrowserRunner implements Runner {
       }
       this.executingFrame = true;
       try {
-        context.frame();
+        context.frame(timestampMilliseconds / 1000);
         this.frameCount++;
       } catch (error) {
         this.executingFrame = false;

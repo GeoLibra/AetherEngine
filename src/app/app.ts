@@ -1,12 +1,27 @@
 import type { ResourceType } from '../ecs/types';
 import { World } from '../ecs/world';
-import { DEFAULT_SCHEDULES, FRAME_SCHEDULES, STARTUP_SCHEDULES } from './constants';
+import {
+  DEFAULT_SCHEDULES,
+  FIXED_SCHEDULES,
+  FRAME_AFTER_FIXED_SCHEDULES,
+  FRAME_BEFORE_FIXED_SCHEDULES,
+  STARTUP_SCHEDULES
+} from './constants';
 import { createLifecycleDiagnostic } from './lifecycle';
 import { sortPlugins } from './plugin-graph';
 import { ExtensionRegistry, ServiceRegistry } from './registry';
 import type { AppExit, FrameOutcome, Runner, RunnerContext } from './runner';
 import { Schedule } from './schedule';
 import { RegistrationTransaction, removeRegistrations } from './transaction';
+import {
+  FixedTime,
+  FrameTime,
+  TimeControl,
+  TimeDiagnostics,
+  TimePolicy,
+  TimeRuntime,
+  consumeSingleStep
+} from './time';
 import type {
   AppScope,
   AppState,
@@ -285,8 +300,8 @@ export class App {
       get stopRequested(): boolean {
         return app.state === 'stopping' || app.state === 'failed';
       },
-      frame(): FrameOutcome {
-        return app.executeFrame();
+      frame(timestampSeconds: number): FrameOutcome {
+        return app.executeFrame(timestampSeconds);
       }
     });
 
@@ -312,12 +327,77 @@ export class App {
     }
   }
 
-  private executeFrame(): FrameOutcome {
+  private executeFrame(timestampSeconds: number): FrameOutcome {
     let primaryError: unknown;
     let failed = false;
     const cleanupErrors: unknown[] = [];
     try {
-      for (const label of FRAME_SCHEDULES) {
+      const frameTime = this.world.getResource(FrameTime);
+      const fixedTime = this.world.getResource(FixedTime);
+      const timePolicy = this.world.getResource(TimePolicy);
+      const timeRuntime = this.world.getResource(TimeRuntime);
+      const timeControl = this.world.getResource(TimeControl);
+      const timeDiagnostics = this.world.getResource(TimeDiagnostics);
+      if (
+        frameTime &&
+        fixedTime &&
+        timePolicy &&
+        timeRuntime &&
+        timeControl &&
+        timeDiagnostics
+      ) {
+        timeRuntime.beginFrame(
+          timestampSeconds,
+          frameTime,
+          timePolicy,
+          timeControl,
+          timeDiagnostics
+        );
+      }
+
+      for (const label of FRAME_BEFORE_FIXED_SCHEDULES) {
+        this.schedules.get(label)?.runSync(this.world, 'frame');
+      }
+
+      if (
+        frameTime &&
+        fixedTime &&
+        timePolicy &&
+        timeRuntime &&
+        timeControl &&
+        timeDiagnostics
+      ) {
+        let substep = 0;
+        let accumulatorSubsteps = 0;
+        if (consumeSingleStep(timeControl)) {
+          substep++;
+          timeRuntime.beginFixedStep(fixedTime, substep, false);
+          for (const label of FIXED_SCHEDULES) {
+            this.schedules.get(label)?.runSync(this.world, 'frame');
+          }
+        }
+        while (
+          !timeControl.paused &&
+          timeControl.timeScale > 0 &&
+          substep < timePolicy.maxSubsteps &&
+          timeRuntime.canRunFixedStep(timePolicy)
+        ) {
+          substep++;
+          accumulatorSubsteps++;
+          timeRuntime.beginFixedStep(fixedTime, substep);
+          for (const label of FIXED_SCHEDULES) {
+            this.schedules.get(label)?.runSync(this.world, 'frame');
+          }
+        }
+        timeRuntime.finishFrame(
+          frameTime,
+          timePolicy,
+          timeDiagnostics,
+          accumulatorSubsteps
+        );
+      }
+
+      for (const label of FRAME_AFTER_FIXED_SCHEDULES) {
         this.schedules.get(label)?.runSync(this.world, 'frame');
       }
     } catch (error) {

@@ -2,7 +2,9 @@ import { describe, expect, test } from 'vitest';
 import {
   App,
   BrowserRunner,
+  FrameTime,
   HeadlessRunner,
+  createTimePlugin,
   createServiceToken,
   definePlugin,
   serviceFactory,
@@ -135,6 +137,34 @@ describe('App runners', () => {
 
     expect(exit).toEqual({ reason: 'inside-frame', frames: 1 });
     expect(callbacks.has(2)).toBe(false);
+  });
+
+  test('BrowserRunner forwards animation timestamps to FrameTime in seconds', async () => {
+    const callbacks = new Map<number, (timestamp: number) => void>();
+    let nextId = 0;
+    const host: AnimationFrameHost = {
+      request(callback) {
+        const id = ++nextId;
+        callbacks.set(id, callback);
+        return id;
+      },
+      cancel(id) {
+        callbacks.delete(id);
+      }
+    };
+    const app = new App().addPlugin(createTimePlugin());
+    const running = app.run(new BrowserRunner(host));
+    for (let attempt = 0; attempt < 8 && !callbacks.has(1); attempt++) {
+      await Promise.resolve();
+    }
+
+    callbacks.get(1)?.(1000);
+    callbacks.get(2)?.(1016);
+    app.stop('test');
+    await running;
+
+    expect(app.getResource(FrameTime)?.frame).toBe(2);
+    expect(app.getResource(FrameTime)?.rawDelta).toBeCloseTo(0.016);
   });
 
   test('rejects concurrent runners', async () => {
