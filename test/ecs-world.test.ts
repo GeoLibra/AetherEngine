@@ -19,17 +19,21 @@ interface VelocityView {
 }
 
 const Transform = defineComponent<TransformView>({
+  id: 'test.transform',
+  version: 1,
   name: 'Transform',
   fields: [
-    { name: 'position', type: 'vec3' },
-    { name: 'rotation', type: 'vec4' },
-    { name: 'scale', type: 'vec3' }
+    { id: 'position', name: 'position', type: 'vec3' },
+    { id: 'rotation', name: 'rotation', type: 'vec4' },
+    { id: 'scale', name: 'scale', type: 'vec3' }
   ]
 });
 
 const Velocity = defineComponent<VelocityView>({
+  id: 'test.velocity',
+  version: 1,
   name: 'Velocity',
-  fields: [{ name: 'linear', type: 'vec3' }]
+  fields: [{ id: 'linear', name: 'linear', type: 'vec3' }]
 });
 
 describe('World entities and components', () => {
@@ -71,6 +75,26 @@ describe('World entities and components', () => {
 
     const transformRows = [...world.query([Transform], { without: [Velocity] })];
     expect(transformRows.map(([entity]) => entity)).toEqual([staticEntity]);
+  });
+
+  test('uses stable schema ids rather than display names for component identity', () => {
+    const AlternateTransform = defineComponent<{ value: number }>({
+      id: 'test.alternate-transform',
+      version: 1,
+      name: 'Transform',
+      fields: [{ id: 'value', name: 'value', type: 'f32' }]
+    });
+    const world = new World();
+    world.registerComponent(Transform).registerComponent(AlternateTransform);
+
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .insert(AlternateTransform, { value: 42 })
+      .build();
+
+    expect(world.getComponent(entity, AlternateTransform)?.value).toBe(42);
+    expect([...world.query([Transform, AlternateTransform])]).toHaveLength(1);
   });
 
   test('supports typed resources alongside ECS storage', () => {

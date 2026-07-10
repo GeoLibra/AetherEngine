@@ -1,5 +1,6 @@
 import type { World } from '../ecs/world';
 import type { ResourceType } from '../ecs/types';
+import type { SchemaMigration, TypeSchema } from '../schema';
 // Registry scopes and token types
 export type AppScope = 'main' | 'render' | 'editor' | 'asset-worker' | 'global';
 export type ServiceToken<T> = symbol & { readonly __type?: T };
@@ -106,6 +107,8 @@ export interface AppBuilder {
   provideService<T>(token: ServiceToken<T>, registration: ServiceRegistration<T>): void;
   replaceService<T>(token: ServiceToken<T>, registration: ServiceRegistration<T>): void;
   addExtension<T>(point: ExtensionPoint<T>, contribution: ExtensionContribution<T>): void;
+  registerSchema<T>(schema: TypeSchema<T>): void;
+  registerSchemaMigration(migration: SchemaMigration): void;
 }
 
 export interface ReadonlyAppContext {

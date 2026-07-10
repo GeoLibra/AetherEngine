@@ -1,4 +1,6 @@
 import { FIELD_TYPE_SIZES } from './constants';
+import { defineSchema } from '../schema';
+import type { ValidationIssue, ValidationResult, ValueTypeDefinition } from '../schema';
 import type {
   ComponentDefinition,
   ComponentField,
@@ -62,19 +64,48 @@ export function defineComponent<TView extends object>(
     throw new Error('Component name must not be empty.');
   }
 
+  const schema = defineSchema<TView>({
+    id: definition.id,
+    version: definition.version,
+    kind: 'component',
+    storage: 'packed',
+    fields: definition.fields.map((field) => ({
+      id: field.id,
+      name: field.name,
+      type: toValueType(field.type),
+      required: field.required ?? field.type !== 'entity',
+      ...(field.defaultValue !== undefined
+        ? { defaultValue: field.defaultValue }
+        : field.type === 'entity'
+          ? {}
+          : { defaultValue: defaultPackedValue(field.type) }),
+      compare: field.compare ?? 'exact',
+      serialization: field.serialization ?? 'save',
+      ...(field.editor === undefined ? {} : { editor: field.editor }),
+      ...(field.replication === undefined ? {} : { replication: field.replication })
+    })),
+    validate:
+      (definition.validate as ((input: unknown) => ValidationResult<TView>) | undefined) ??
+      ((input) => validatePackedComponent<TView>(definition, input))
+  });
+
   let offset = 0;
-  const fields: ComponentField[] = definition.fields.map((field) => {
-    const size = FIELD_TYPE_SIZES[field.type];
-    const resolved = { ...field, offset, size };
+  const fields: ComponentField[] = schema.fields.map((field, index) => {
+    const packedType = definition.fields[index]!.type;
+    const size = FIELD_TYPE_SIZES[packedType];
+    const resolved = Object.freeze({ ...field, packedType, offset, size });
     offset += size;
     return resolved;
   });
 
-  return {
+  return Object.freeze({
+    ...schema,
+    kind: 'component' as const,
+    storage: 'packed' as const,
     name: definition.name,
-    fields,
+    fields: Object.freeze(fields),
     size: offset
-  };
+  });
 }
 
 export function serializeComponent(
@@ -136,7 +167,7 @@ export function compileComponentViewFactory<TView extends object>(
 }
 
 function writeField(view: DataView, field: ComponentField, value: unknown): void {
-  switch (field.type) {
+  switch (field.packedType) {
     case 'f32':
       view.setFloat32(field.offset, toNumber(value), true);
       return;
@@ -168,7 +199,7 @@ function readField(
   const byteOffset = storage.row * schema.size;
   const dataView = new DataView(storage.buffer, byteOffset, schema.size);
 
-  switch (field.type) {
+  switch (field.packedType) {
     case 'f32':
       return dataView.getFloat32(field.offset, true);
     case 'i32':
@@ -188,18 +219,18 @@ function readField(
             byteOffset: current.row * schema.size + field.offset
           };
         },
-        FLOAT_VECTOR_LENGTHS[field.type] ?? 0,
+        FLOAT_VECTOR_LENGTHS[field.packedType] ?? 0,
         markChanged
       );
   }
 }
 
 function writeFloatVector(view: DataView, field: ComponentField, value: unknown): void {
-  const length = FLOAT_VECTOR_LENGTHS[field.type] ?? 0;
+  const length = FLOAT_VECTOR_LENGTHS[field.packedType] ?? 0;
   const values = isArrayLike(value) ? value : [];
 
   for (let index = 0; index < length; index++) {
-    const fallback = field.type === 'vec4' && index === 3 ? 1 : 0;
+    const fallback = field.packedType === 'vec4' && index === 3 ? 1 : 0;
     view.setFloat32(field.offset + index * 4, toNumber(values[index], fallback), true);
   }
 }
@@ -255,4 +286,73 @@ function isNumericProperty(property: string | symbol): boolean {
 
 function toNumber(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function toValueType(type: ComponentFieldType): ValueTypeDefinition {
+  switch (type) {
+    case 'f32':
+    case 'i32':
+    case 'u32':
+      return { kind: 'number', format: type };
+    case 'vec2':
+      return { kind: 'vector', length: 2 };
+    case 'vec3':
+      return { kind: 'vector', length: 3 };
+    case 'vec4':
+      return { kind: 'vector', length: 4 };
+    case 'mat4':
+      return { kind: 'matrix', columns: 4, rows: 4 };
+    case 'entity':
+      return { kind: 'entity-ref', policy: 'required' };
+  }
+}
+
+function defaultPackedValue(type: ComponentFieldType): number | readonly number[] {
+  switch (type) {
+    case 'vec2':
+      return Object.freeze([0, 0]);
+    case 'vec3':
+      return Object.freeze([0, 0, 0]);
+    case 'vec4':
+      return Object.freeze([0, 0, 0, 1]);
+    case 'mat4':
+      return Object.freeze(Array.from({ length: 16 }, () => 0));
+    default:
+      return 0;
+  }
+}
+
+function validatePackedComponent<TView extends object>(
+  definition: ComponentDefinition,
+  input: unknown
+): ValidationResult<TView> {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return { ok: false, issues: [{ path: [], message: 'Expected a component object.' }] };
+  }
+
+  const record = input as Record<string, unknown>;
+  const issues: ValidationIssue[] = [];
+  for (const field of definition.fields) {
+    const value = record[field.name];
+    if (value === undefined && (field.required ?? field.type !== 'entity') === false) {
+      continue;
+    }
+    if (!isPackedValue(value, field.type)) {
+      issues.push({ path: [field.id], message: `Expected packed ${field.type} value.` });
+    }
+  }
+  return issues.length === 0
+    ? { ok: true, value: record as TView }
+    : { ok: false, issues: Object.freeze(issues) };
+}
+
+function isPackedValue(value: unknown, type: ComponentFieldType): boolean {
+  if (type === 'f32' || type === 'i32' || type === 'u32' || type === 'entity') {
+    return typeof value === 'number' && Number.isFinite(value);
+  }
+  const length = FLOAT_VECTOR_LENGTHS[type] ?? 0;
+  if (!isArrayLike(value) || value.length !== length) {
+    return false;
+  }
+  return Array.from(value).every((entry) => typeof entry === 'number' && Number.isFinite(entry));
 }

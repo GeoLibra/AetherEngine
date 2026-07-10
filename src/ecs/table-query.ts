@@ -10,8 +10,8 @@ export function findMatchingTables(
 ): Table[] {
   // Compile query filters into table-level component/tag requirements first. Row-level checks
   // still validate per-entity relation payloads and frame-local change state.
-  const requiredComponentNames = new Set(componentTypes.map((componentType) => componentType.name));
-  const excludedComponentNames = new Set<string>();
+  const requiredComponentIds = new Set(componentTypes.map((componentType) => componentType.id));
+  const excludedComponentIds = new Set<string>();
   const requiredTags = new Set<string>();
   const excludedTags = new Set<string>();
 
@@ -21,7 +21,7 @@ export function findMatchingTables(
 
   for (const term of filter.with ?? []) {
     if (isComponentTerm(term)) {
-      requiredComponentNames.add(term.name);
+      requiredComponentIds.add(term.id);
     } else {
       requiredTags.add(createRelationAnyTag(term));
     }
@@ -29,7 +29,7 @@ export function findMatchingTables(
 
   for (const term of filter.without ?? []) {
     if (isComponentTerm(term)) {
-      excludedComponentNames.add(term.name);
+      excludedComponentIds.add(term.id);
     } else {
       excludedTags.add(createRelationAnyTag(term));
     }
@@ -37,25 +37,25 @@ export function findMatchingTables(
 
   return [...tables].filter(
     (table) =>
-      hasAllComponents(table, requiredComponentNames) &&
-      hasNoComponents(table, excludedComponentNames) &&
+      hasAllComponents(table, requiredComponentIds) &&
+      hasNoComponents(table, excludedComponentIds) &&
       hasAllTags(table, requiredTags) &&
       hasNoTags(table, excludedTags)
   );
 }
 
-function hasAllComponents(table: Table, componentNames: ReadonlySet<string>): boolean {
-  for (const componentName of componentNames) {
-    if (!table.hasComponent(componentName)) {
+function hasAllComponents(table: Table, componentIds: ReadonlySet<string>): boolean {
+  for (const componentId of componentIds) {
+    if (!table.hasComponent(componentId)) {
       return false;
     }
   }
   return true;
 }
 
-function hasNoComponents(table: Table, componentNames: ReadonlySet<string>): boolean {
-  for (const componentName of componentNames) {
-    if (table.hasComponent(componentName)) {
+function hasNoComponents(table: Table, componentIds: ReadonlySet<string>): boolean {
+  for (const componentId of componentIds) {
+    if (table.hasComponent(componentId)) {
       return false;
     }
   }

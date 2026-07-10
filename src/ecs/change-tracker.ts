@@ -5,12 +5,12 @@ export class ChangeTracker {
   private readonly added = new Map<string, Set<Entity>>();
   private readonly removed = new Set<Entity>();
 
-  markChanged(entity: Entity, componentName: string): void {
-    getEntitySet(this.changed, componentName).add(entity);
+  markChanged(entity: Entity, componentId: string): void {
+    getEntitySet(this.changed, componentId).add(entity);
   }
 
-  markAdded(entity: Entity, componentName: string): void {
-    getEntitySet(this.added, componentName).add(entity);
+  markAdded(entity: Entity, componentId: string): void {
+    getEntitySet(this.added, componentId).add(entity);
   }
 
   markRemoved(entity: Entity): void {
@@ -18,11 +18,11 @@ export class ChangeTracker {
   }
 
   hasChanged(entity: Entity, componentTypes: readonly ComponentType<object>[]): boolean {
-    return componentTypes.some((componentType) => this.changed.get(componentType.name)?.has(entity));
+    return componentTypes.some((componentType) => this.changed.get(componentType.id)?.has(entity));
   }
 
   wasAdded(entity: Entity, componentTypes: readonly ComponentType<object>[]): boolean {
-    return componentTypes.some((componentType) => this.added.get(componentType.name)?.has(entity));
+    return componentTypes.some((componentType) => this.added.get(componentType.id)?.has(entity));
   }
 
   wasRemoved(entity: Entity): boolean {

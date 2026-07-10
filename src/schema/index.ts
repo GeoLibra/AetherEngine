@@ -1,0 +1,41 @@
+export { defineSchema } from './definition';
+export { SchemaValidationError } from './payload';
+export { mapSchemaReferences, visitSchemaReferences } from './references';
+export { SchemaRegistry } from './registry';
+export type {
+  EditorHint,
+  DecodedSchemaPayload,
+  DocumentReference,
+  FieldComparison,
+  FieldDefinition,
+  FieldId,
+  FieldSchema,
+  FieldSerialization,
+  MigrationResult,
+  MigrationStepResult,
+  MigrationWarning,
+  KnownSchemaPayload,
+  OpaqueSchemaPayload,
+  ReferenceMapper,
+  ReferencePathSegment,
+  ReferenceVisit,
+  ReferenceVisitor,
+  ReferencePolicy,
+  ReplicationPolicy,
+  SchemaDefinition,
+  SchemaId,
+  SchemaKind,
+  SchemaMigration,
+  SchemaMigrationRegistration,
+  SchemaRegistration,
+  SchemaPayload,
+  SchemaStorage,
+  SchemaView,
+  SchemaViewKind,
+  SchemaVersion,
+  TypeSchema,
+  ValidationIssue,
+  ValidationResult,
+  ValueType,
+  ValueTypeDefinition
+} from './types';

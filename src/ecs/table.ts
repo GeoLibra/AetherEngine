@@ -53,7 +53,7 @@ export class Table {
     tags: readonly string[] = [],
     options: TableOptions = {}
   ) {
-    this.componentTypes = [...componentTypes].sort((left, right) => left.name.localeCompare(right.name));
+    this.componentTypes = [...componentTypes].sort((left, right) => left.id.localeCompare(right.id));
     this.tags = new Set([...tags].sort());
     this.archetypeId = createArchetypeId(this.componentTypes, this.tags);
     this.initialChunkCapacity = resolveChunkCapacity(
@@ -67,7 +67,7 @@ export class Table {
       'chunkCapacity'
     );
     for (const schema of this.componentTypes) {
-      this.columns.set(schema.name, { schema, chunks: [] });
+      this.columns.set(schema.id, { schema, chunks: [] });
     }
     this.allocateChunk();
   }
@@ -82,7 +82,7 @@ export class Table {
     this.entityChunks[location.chunkIndex]!.rows[location.rowInChunk] = entity;
 
     for (const schema of this.componentTypes) {
-      const data = components.get(schema.name) ?? new ArrayBuffer(schema.size);
+      const data = components.get(schema.id) ?? new ArrayBuffer(schema.size);
       this.writeComponent(schema, row, data);
     }
 
@@ -113,20 +113,20 @@ export class Table {
     return moved === undefined ? { removed } : { removed, moved };
   }
 
-  hasComponent(componentName: string): boolean {
-    return this.columns.has(componentName);
+  hasComponent(componentId: string): boolean {
+    return this.columns.has(componentId);
   }
 
   hasTag(tag: string): boolean {
     return this.tags.has(tag);
   }
 
-  getComponentStorage(componentName: string, row: number): ComponentStorage {
-    const column = this.getRequiredTableColumn(componentName);
+  getComponentStorage(componentId: string, row: number): ComponentStorage {
+    const column = this.getRequiredTableColumn(componentId);
     const location = this.locateExistingRow(row);
     const buffer = column.chunks[location.chunkIndex];
     if (!buffer) {
-      throw new Error(`Component "${componentName}" chunk ${location.chunkIndex} is missing.`);
+      throw new Error(`Component "${componentId}" chunk ${location.chunkIndex} is missing.`);
     }
     return { buffer, row: location.rowInChunk };
   }
@@ -137,7 +137,7 @@ export class Table {
 
   readComponent(schema: ComponentSchema<object>, row: number): ArrayBuffer {
     const data = new ArrayBuffer(schema.size);
-    const { buffer, row: rowInChunk } = this.getComponentStorage(schema.name, row);
+    const { buffer, row: rowInChunk } = this.getComponentStorage(schema.id, row);
     new Uint8Array(data).set(new Uint8Array(buffer, rowInChunk * schema.size, schema.size));
     return data;
   }
@@ -149,7 +149,7 @@ export class Table {
       );
     }
 
-    const { buffer, row: rowInChunk } = this.getWritableComponentStorage(schema.name, row);
+    const { buffer, row: rowInChunk } = this.getWritableComponentStorage(schema.id, row);
     new Uint8Array(buffer, rowInChunk * schema.size, schema.size).set(new Uint8Array(data));
   }
 
@@ -192,8 +192,8 @@ export class Table {
   }
 
   private copyComponent(schema: ComponentSchema<object>, sourceRow: number, targetRow: number): void {
-    const source = this.getComponentStorage(schema.name, sourceRow);
-    const target = this.getComponentStorage(schema.name, targetRow);
+    const source = this.getComponentStorage(schema.id, sourceRow);
+    const target = this.getComponentStorage(schema.id, targetRow);
     new Uint8Array(target.buffer, target.row * schema.size, schema.size).set(
       new Uint8Array(source.buffer, source.row * schema.size, schema.size)
     );
@@ -209,20 +209,20 @@ export class Table {
     this.entityChunks[location.chunkIndex]!.rows[location.rowInChunk] = entity;
   }
 
-  private getRequiredTableColumn(componentName: string): TableColumn {
-    const column = this.columns.get(componentName);
+  private getRequiredTableColumn(componentId: string): TableColumn {
+    const column = this.columns.get(componentId);
     if (!column) {
-      throw new Error(`Component "${componentName}" is not present in table "${this.archetypeId}".`);
+      throw new Error(`Component "${componentId}" is not present in table "${this.archetypeId}".`);
     }
     return column;
   }
 
-  private getWritableComponentStorage(componentName: string, row: number): ComponentStorage {
-    const column = this.getRequiredTableColumn(componentName);
+  private getWritableComponentStorage(componentId: string, row: number): ComponentStorage {
+    const column = this.getRequiredTableColumn(componentId);
     const location = this.locateWritableRow(row);
     const buffer = column.chunks[location.chunkIndex];
     if (!buffer) {
-      throw new Error(`Component "${componentName}" chunk ${location.chunkIndex} is missing.`);
+      throw new Error(`Component "${componentId}" chunk ${location.chunkIndex} is missing.`);
     }
     return { buffer, row: location.rowInChunk };
   }
@@ -279,7 +279,7 @@ export function createArchetypeId(
 ): string {
   // Sorting makes archetype identity independent from insertion order.
   const componentPart = [...componentTypes]
-    .map((componentType) => componentType.name)
+    .map((componentType) => componentType.id)
     .sort()
     .join(',');
   const tagPart = [...tags].sort().join(',');

@@ -1,4 +1,5 @@
 import { ChangeTracker } from './change-tracker';
+import { SchemaRegistry } from '../schema';
 import { ChildOf, createComponentView, serializeComponent } from './component';
 import { EntityAllocator } from './entity';
 import { EntityBuilder } from './entity-builder';
@@ -45,6 +46,10 @@ export class World {
   private readonly relations = new Map<Entity, Map<symbol, Relation>>();
   private readonly childOfIndex = new ChildOfIndex();
 
+  constructor(schemaRegistry: SchemaRegistry = new SchemaRegistry()) {
+    this.resources.set(SchemaRegistry, schemaRegistry);
+  }
+
   spawn(): EntityBuilder {
     return new EntityBuilder(this, this.entityAllocator.allocate());
   }
@@ -89,12 +94,16 @@ export class World {
   }
 
   registerComponent<TView extends object>(schema: ComponentType<TView>): this {
-    const existing = this.componentRegistry.get(schema.name);
+    const existing = this.componentRegistry.get(schema.id);
     if (existing && existing !== schema) {
-      throw new Error(`Component "${schema.name}" is already registered with a different schema.`);
+      throw new Error(`Component "${schema.id}" is already registered with a different schema.`);
+    }
+    if (existing === schema) {
+      return this;
     }
 
-    this.componentRegistry.set(schema.name, schema as ComponentSchema<object>);
+    this.getSchemaRegistry().register(schema);
+    this.componentRegistry.set(schema.id, schema as ComponentSchema<object>);
     return this;
   }
 
@@ -111,22 +120,22 @@ export class World {
     if (!location) {
       // Empty entities gain a table only once they receive components or relation tags.
       const table = this.getOrCreateTable([schema], this.getEntityTags(entity));
-      const row = table.insert(entity, new Map([[schema.name, serialized]]));
+      const row = table.insert(entity, new Map([[schema.id, serialized]]));
       this.entityLocations.set(entity, { table, row });
-      this.changeTracker.markAdded(entity, schema.name);
-      this.changeTracker.markChanged(entity, schema.name);
+      this.changeTracker.markAdded(entity, schema.id);
+      this.changeTracker.markChanged(entity, schema.id);
       return this;
     }
 
-    if (location.table.hasComponent(schema.name)) {
+    if (location.table.hasComponent(schema.id)) {
       location.table.writeComponent(schema, location.row, serialized);
-      this.changeTracker.markChanged(entity, schema.name);
+      this.changeTracker.markChanged(entity, schema.id);
       return this;
     }
 
     this.migrateEntity(entity, location, schema, serialized);
-    this.changeTracker.markAdded(entity, schema.name);
-    this.changeTracker.markChanged(entity, schema.name);
+    this.changeTracker.markAdded(entity, schema.id);
+    this.changeTracker.markChanged(entity, schema.id);
     return this;
   }
 
@@ -137,7 +146,7 @@ export class World {
 
     const schema = this.getRegisteredComponent(componentType);
     const location = this.entityLocations.get(entity);
-    if (!location || !location.table.hasComponent(schema.name)) {
+    if (!location || !location.table.hasComponent(schema.id)) {
       return null;
     }
 
@@ -147,7 +156,7 @@ export class World {
   hasComponent<TView extends object>(entity: Entity, componentType: ComponentType<TView>): boolean {
     const schema = this.getRegisteredComponent(componentType);
     const location = this.entityLocations.get(entity);
-    return location?.table.hasComponent(schema.name) === true;
+    return location?.table.hasComponent(schema.id) === true;
   }
 
   query<const TComponents extends readonly ComponentType<object>[]>(
@@ -260,6 +269,9 @@ export class World {
   }
 
   insertResource<T extends object>(resource: T): this {
+    if (resource instanceof SchemaRegistry && resource !== this.getSchemaRegistry()) {
+      throw new Error('World owns exactly one SchemaRegistry; it cannot be replaced.');
+    }
     this.resources.set(resource.constructor as ResourceType<T>, resource);
     return this;
   }
@@ -273,6 +285,9 @@ export class World {
   }
 
   removeResource<T>(type: ResourceType<T>): T | undefined {
+    if (type === (SchemaRegistry as unknown as ResourceType<T>)) {
+      throw new Error('World SchemaRegistry cannot be removed.');
+    }
     const resource = this.getResource(type);
     this.resources.delete(type);
     return resource;
@@ -299,7 +314,7 @@ export class World {
     // The closure resolves current storage on every field access so old views remain valid
     // after table growth, component insertion, or relation retagging.
     return createComponentView(schema, () => this.getComponentStorage(entity, schema), () => {
-      this.changeTracker.markChanged(entity, schema.name);
+      this.changeTracker.markChanged(entity, schema.id);
     });
   }
 
@@ -338,13 +353,15 @@ export class World {
 
   private entityHasTerm(entity: Entity, term: QueryFilterTerm, table?: Table): boolean {
     if (!isRelationTerm(term)) {
-      return table?.hasComponent(term.name) ?? this.hasComponent(entity, term);
+      return table?.hasComponent(term.id) ?? this.hasComponent(entity, term);
     }
     return this.getRelation(entity, term) !== null;
   }
 
   private isComponentTerm(term: QueryFilterTerm): term is ComponentType<object> {
-    return !isRelationTerm(term) && this.componentRegistry.has(term.name);
+    return (
+      !isRelationTerm(term) && this.componentRegistry.get(term.id) === term
+    );
   }
 
   private assertAlive(entity: Entity): void {
@@ -356,9 +373,9 @@ export class World {
   private getRegisteredComponent<TView extends object>(
     schema: ComponentType<TView>
   ): ComponentSchema<TView> {
-    const registered = this.componentRegistry.get(schema.name);
-    if (!registered) {
-      throw new Error(`Component "${schema.name}" has not been registered.`);
+    const registered = this.componentRegistry.get(schema.id);
+    if (!registered || registered !== schema) {
+      throw new Error(`Component "${schema.id}" has not been registered.`);
     }
     return registered as ComponentSchema<TView>;
   }
@@ -368,7 +385,7 @@ export class World {
     tags: Iterable<string> = []
   ): Table {
     // Archetypes are keyed by component set plus relation tags. Tags have no column storage.
-    const sorted = [...componentTypes].sort((left, right) => left.name.localeCompare(right.name));
+    const sorted = [...componentTypes].sort((left, right) => left.id.localeCompare(right.id));
     const tagList = [...tags].sort();
     const archetypeId = createArchetypeId(sorted, tagList);
     let table = this.tables.get(archetypeId);
@@ -387,9 +404,9 @@ export class World {
   ): void {
     const oldComponents = new Map<string, ArrayBuffer>();
     for (const schema of oldLocation.table.componentTypes) {
-      oldComponents.set(schema.name, oldLocation.table.readComponent(schema, oldLocation.row));
+      oldComponents.set(schema.id, oldLocation.table.readComponent(schema, oldLocation.row));
     }
-    oldComponents.set(newSchema.name, newData);
+    oldComponents.set(newSchema.id, newData);
 
     const oldTypes = [...oldLocation.table.componentTypes];
     const oldTags = oldLocation.table.tags;
@@ -423,7 +440,7 @@ export class World {
 
     const components = new Map<string, ArrayBuffer>();
     for (const schema of location.table.componentTypes) {
-      components.set(schema.name, location.table.readComponent(schema, location.row));
+      components.set(schema.id, location.table.readComponent(schema, location.row));
     }
     const componentTypes = [...location.table.componentTypes];
 
@@ -443,13 +460,17 @@ export class World {
     schema: ComponentSchema<TView>
   ): { readonly buffer: ArrayBuffer; readonly row: number } {
     const location = this.entityLocations.get(entity);
-    if (!location || !location.table.hasComponent(schema.name)) {
+    if (!location || !location.table.hasComponent(schema.id)) {
       throw new Error(`Entity "${entity}" does not have component "${schema.name}".`);
     }
 
     return {
-      ...location.table.getComponentStorage(schema.name, location.row)
+      ...location.table.getComponentStorage(schema.id, location.row)
     };
+  }
+
+  private getSchemaRegistry(): SchemaRegistry {
+    return this.resources.get(SchemaRegistry) as SchemaRegistry;
   }
 
   private getEntityTags(entity: Entity): Set<string> {
@@ -480,5 +501,5 @@ export class World {
 }
 
 function isRelationTerm(term: QueryFilterTerm): term is RelationType {
-  return 'id' in term;
+  return typeof term.id === 'symbol';
 }

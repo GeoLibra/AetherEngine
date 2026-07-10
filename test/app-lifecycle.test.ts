@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
   App,
+  SchemaRegistry,
   createExtensionPoint,
   createServiceToken,
   definePlugin,
+  defineSchema,
   serviceValue
 } from '../src';
 
@@ -41,6 +43,20 @@ describe('App plugin preflight and transactions', () => {
     class Counter {}
     const Token = createServiceToken<object>('rollback.service');
     const Point = createExtensionPoint<string>('rollback.extension');
+    const schemaV1 = defineSchema<Record<string, unknown>>({
+      id: 'test.rollback-schema',
+      version: 1,
+      kind: 'document',
+      fields: [],
+      validate: (input) => ({ ok: true, value: input as Record<string, unknown> })
+    });
+    const schemaV2 = defineSchema<Record<string, unknown>>({
+      id: 'test.rollback-schema',
+      version: 2,
+      kind: 'document',
+      fields: [],
+      validate: (input) => ({ ok: true, value: input as Record<string, unknown> })
+    });
     const app = new App().addPlugin(
       definePlugin({
         id: 'failing',
@@ -49,6 +65,14 @@ describe('App plugin preflight and transactions', () => {
           builder.addSystem('Update', { id: 'failing.system', run: () => undefined });
           builder.provideService(Token, serviceValue({}));
           builder.addExtension(Point, { id: 'failing.extension', value: 'value' });
+          builder.registerSchema(schemaV1);
+          builder.registerSchema(schemaV2);
+          builder.registerSchemaMigration({
+            schema: 'test.rollback-schema',
+            from: 1,
+            to: 2,
+            migrate: (input) => ({ value: input })
+          });
           throw new Error('build failed');
         }
       })
@@ -59,6 +83,8 @@ describe('App plugin preflight and transactions', () => {
     expect(app.getResource(Counter)).toBeUndefined();
     expect(() => app.getService(Token)).toThrow('not registered');
     expect(app.listExtensions(Point)).toEqual([]);
+    expect(app.getResource(SchemaRegistry)?.get('test.rollback-schema', 1)).toBeUndefined();
+    expect(app.getResource(SchemaRegistry)?.get('test.rollback-schema', 2)).toBeUndefined();
   });
 });
 

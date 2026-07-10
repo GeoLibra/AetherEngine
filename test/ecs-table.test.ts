@@ -11,8 +11,10 @@ interface CounterView {
 }
 
 const Counter = defineComponent<CounterView>({
+  id: 'test.counter',
+  version: 1,
   name: 'Counter',
-  fields: [{ name: 'value', type: 'u32' }]
+  fields: [{ id: 'value', name: 'value', type: 'u32' }]
 });
 
 function counterData(value: number): ArrayBuffer {
@@ -25,10 +27,10 @@ describe('Table chunk storage', () => {
   test('starts cold archetypes with a small initial chunk', () => {
     const table = new Table([Counter]);
 
-    table.insert(0, new Map([[Counter.name, counterData(0)]]));
+    table.insert(0, new Map([[Counter.id, counterData(0)]]));
 
     expect(table.allocatedCapacity).toBe(DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY);
-    expect(table.getComponentStorage(Counter.name, 0).buffer.byteLength).toBe(
+    expect(table.getComponentStorage(Counter.id, 0).buffer.byteLength).toBe(
       Counter.size * DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY
     );
   });
@@ -37,11 +39,11 @@ describe('Table chunk storage', () => {
     const table = new Table([Counter]);
 
     for (let index = 0; index < DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY + DEFAULT_TABLE_CHUNK_CAPACITY + 1; index++) {
-      table.insert(index, new Map([[Counter.name, counterData(index)]]));
+      table.insert(index, new Map([[Counter.id, counterData(index)]]));
     }
 
-    const firstStorage = table.getComponentStorage(Counter.name, 0);
-    const boundaryStorage = table.getComponentStorage(Counter.name, DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY);
+    const firstStorage = table.getComponentStorage(Counter.id, 0);
+    const boundaryStorage = table.getComponentStorage(Counter.id, DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY);
 
     expect(firstStorage.buffer).not.toBe(boundaryStorage.buffer);
     expect(firstStorage.row).toBe(0);
@@ -57,19 +59,19 @@ describe('Table chunk storage', () => {
     const table = new Table([Counter], [], { initialChunkCapacity: 2, chunkCapacity: 3 });
 
     for (let index = 0; index < 5; index++) {
-      table.insert(index, new Map([[Counter.name, counterData(index)]]));
+      table.insert(index, new Map([[Counter.id, counterData(index)]]));
     }
 
     expect(table.allocatedCapacity).toBe(5);
-    expect(table.getComponentStorage(Counter.name, 0).buffer.byteLength).toBe(Counter.size * 2);
-    expect(table.getComponentStorage(Counter.name, 2).buffer.byteLength).toBe(Counter.size * 3);
+    expect(table.getComponentStorage(Counter.id, 0).buffer.byteLength).toBe(Counter.size * 2);
+    expect(table.getComponentStorage(Counter.id, 2).buffer.byteLength).toBe(Counter.size * 3);
   });
 
   test('shrinks trailing empty chunks and can allocate again after a full clear', () => {
     const table = new Table([Counter], [], { initialChunkCapacity: 2, chunkCapacity: 3 });
 
     for (let index = 0; index < 8; index++) {
-      table.insert(index, new Map([[Counter.name, counterData(index)]]));
+      table.insert(index, new Map([[Counter.id, counterData(index)]]));
     }
 
     expect(table.allocatedCapacity).toBe(8);
@@ -90,7 +92,7 @@ describe('Table chunk storage', () => {
     expect(table.length).toBe(0);
     expect(table.allocatedCapacity).toBe(0);
 
-    table.insert(99, new Map([[Counter.name, counterData(99)]]));
+    table.insert(99, new Map([[Counter.id, counterData(99)]]));
 
     expect(table.allocatedCapacity).toBe(2);
     expect(new DataView(table.readComponent(Counter, 0)).getUint32(0, true)).toBe(99);

@@ -1,5 +1,7 @@
 import type { ResourceType } from '../ecs/types';
 import type { World } from '../ecs/world';
+import { SchemaRegistry } from '../schema';
+import type { SchemaMigration, TypeSchema } from '../schema';
 import type { ExtensionRegistry, ServiceRegistry } from './registry';
 import type { Schedule } from './schedule';
 import type {
@@ -95,6 +97,16 @@ export class RegistrationTransaction implements AppBuilder {
     this.handles.push(this.host.extensions.add(point, this.ownerPlugin, contribution));
   }
 
+  registerSchema<T>(schema: TypeSchema<T>): void {
+    this.assertOpen();
+    this.handles.push(this.getSchemaRegistry().register(schema));
+  }
+
+  registerSchemaMigration(migration: SchemaMigration): void {
+    this.assertOpen();
+    this.handles.push(this.getSchemaRegistry().registerMigration(migration));
+  }
+
   commit(): readonly RegistrationHandle[] {
     this.assertOpen();
     this.closed = true;
@@ -114,6 +126,14 @@ export class RegistrationTransaction implements AppBuilder {
     if (this.closed) {
       throw new Error(`Registration transaction for plugin "${this.ownerPlugin}" is closed.`);
     }
+  }
+
+  private getSchemaRegistry(): SchemaRegistry {
+    const registry = this.host.world.getResource(SchemaRegistry);
+    if (!registry) {
+      throw new Error('World SchemaRegistry is not available.');
+    }
+    return registry;
   }
 }
 

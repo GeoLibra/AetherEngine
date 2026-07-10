@@ -1,3 +1,13 @@
+import type {
+  EditorHint,
+  FieldComparison,
+  FieldSchema,
+  FieldSerialization,
+  ReplicationPolicy,
+  TypeSchema,
+  ValueType
+} from '../schema';
+
 // Resource constructors are identity tokens only; World never invokes them.
 export type ResourceType<T> = abstract new (...args: never[]) => T;
 
@@ -14,27 +24,41 @@ export type ComponentFieldType =
   | 'entity';
 
 export interface ComponentFieldDefinition {
+  readonly id: string;
   readonly name: string;
   readonly type: ComponentFieldType;
+  readonly required?: boolean;
+  readonly defaultValue?: unknown;
+  readonly compare?: FieldComparison;
+  readonly serialization?: FieldSerialization;
+  readonly editor?: EditorHint;
+  readonly replication?: ReplicationPolicy;
 }
 
-export interface ComponentField extends ComponentFieldDefinition {
+export interface ComponentField extends Omit<FieldSchema, 'type'> {
+  readonly type: ValueType;
+  readonly packedType: ComponentFieldType;
   readonly offset: number;
   readonly size: number;
 }
 
-export interface ComponentSchema<TView extends object = Record<string, unknown>> {
+export interface ComponentSchema<TView extends object = Record<string, unknown>>
+  extends TypeSchema<TView> {
+  readonly kind: 'component';
+  readonly storage: 'packed';
   readonly name: string;
   readonly fields: readonly ComponentField[];
   readonly size: number;
-  readonly __viewType?: TView;
 }
 
 export type ComponentType<TView extends object = Record<string, unknown>> = ComponentSchema<TView>;
 
 export interface ComponentDefinition {
+  readonly id: string;
+  readonly version: number;
   readonly name: string;
   readonly fields: readonly ComponentFieldDefinition[];
+  readonly validate?: TypeSchema<object>['validate'];
 }
 
 export type ComponentInput = Record<string, unknown>;
