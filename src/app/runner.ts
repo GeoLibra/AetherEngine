@@ -61,6 +61,7 @@ export class BrowserRunner implements Runner {
   private reject: ((error: unknown) => void) | undefined;
   private frameCount = 0;
   private running = false;
+  private executingFrame = false;
 
   constructor(private readonly host: AnimationFrameHost) {}
 
@@ -87,7 +88,7 @@ export class BrowserRunner implements Runner {
       this.host.cancel(this.pendingFrame);
       this.pendingFrame = undefined;
     }
-    if (this.running) {
+    if (this.running && !this.executingFrame) {
       this.finish(this.stopReason);
     }
   }
@@ -99,14 +100,21 @@ export class BrowserRunner implements Runner {
         this.finish(this.stopReason ?? 'requested');
         return;
       }
+      this.executingFrame = true;
       try {
         context.frame();
         this.frameCount++;
       } catch (error) {
+        this.executingFrame = false;
         this.fail(error);
         return;
       }
-      this.schedule(context);
+      this.executingFrame = false;
+      if (this.stopReason || context.stopRequested) {
+        this.finish(this.stopReason ?? 'requested');
+      } else if (this.running) {
+        this.schedule(context);
+      }
     });
   }
 

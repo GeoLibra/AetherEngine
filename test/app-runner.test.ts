@@ -101,6 +101,42 @@ describe('App runners', () => {
     expect(app.state).toBe('stopped');
   });
 
+  test('BrowserRunner completes the current frame before honoring an in-frame stop', async () => {
+    const callbacks = new Map<number, (timestamp: number) => void>();
+    let nextId = 0;
+    const host: AnimationFrameHost = {
+      request(callback) {
+        const id = ++nextId;
+        callbacks.set(id, callback);
+        return id;
+      },
+      cancel(id) {
+        callbacks.delete(id);
+      }
+    };
+    const app = new App().addPlugin(
+      definePlugin({
+        id: 'stop-inside-frame',
+        build(builder) {
+          builder.addSystem('Update', {
+            id: 'request-stop',
+            run: () => app.stop('inside-frame')
+          });
+        }
+      })
+    );
+    const running = app.run(new BrowserRunner(host));
+    for (let attempt = 0; attempt < 8 && !callbacks.has(1); attempt++) {
+      await Promise.resolve();
+    }
+
+    callbacks.get(1)?.(0);
+    const exit = await running;
+
+    expect(exit).toEqual({ reason: 'inside-frame', frames: 1 });
+    expect(callbacks.has(2)).toBe(false);
+  });
+
   test('rejects concurrent runners', async () => {
     let release: (() => void) | undefined;
     const blockingRunner = {
