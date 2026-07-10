@@ -1,12 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
-  ExtensionRegistry,
-  ServiceRegistry,
   createExtensionPoint,
   createServiceToken,
   serviceFactory,
   serviceValue
 } from '../src';
+import { ExtensionRegistry, ServiceRegistry } from '../src/app/registry';
 
 describe('ServiceRegistry', () => {
   test('distinguishes function values from factories and detects factory cycles', () => {

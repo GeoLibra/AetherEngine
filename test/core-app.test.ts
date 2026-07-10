@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'vitest';
-import { Schedule, World } from '../src';
+import {
+  App,
+  HeadlessRunner,
+  MinimalPlugins,
+  Schedule,
+  Time,
+  World,
+  type Plugin
+} from '../src';
 
 describe('Schedule', () => {
   test('runs systems in stable before/after order', () => {
@@ -88,3 +96,32 @@ describe('Schedule', () => {
     );
   });
 });
+
+describe('V2 public App surface', () => {
+  test('built-in plugins use V2 ids and run through HeadlessRunner', async () => {
+    const app = new App().addPlugins(new MinimalPlugins());
+
+    const exit = await app.run(new HeadlessRunner({ frames: 1 }));
+
+    expect(app.hasPlugin('aether.time')).toBe(true);
+    expect(app.getResource(Time)?.frameCount).toBe(1);
+    expect(exit.frames).toBe(1);
+  });
+});
+
+function assertRemovedV1Surface(app: App, plugin: Plugin): void {
+  // @ts-expect-error V2 plugins use stable ids, not display names.
+  void plugin.name;
+  // @ts-expect-error V2 plugins use shutdown(), not cleanup().
+  void plugin.cleanup;
+  // @ts-expect-error Plugin registration is deferred through addPlugin().
+  app.registerPlugin(plugin);
+  // @ts-expect-error Registries are reachable only through narrow App lookup methods.
+  void app.services;
+  // @ts-expect-error Registries are reachable only through narrow App lookup methods.
+  void app.extensions;
+  // @ts-expect-error Frames are available only through a private RunnerContext.
+  app.runFrame();
+}
+
+void assertRemovedV1Surface;

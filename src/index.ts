@@ -10,7 +10,6 @@ export type {
   ReadonlyAppContext,
   ShutdownContext
 } from './app/types';
-export { ExtensionRegistry, ServiceRegistry } from './app/registry';
 export type {
   AppScope,
   ExtensionContribution,
