@@ -160,6 +160,199 @@ describe('RHI pipeline descriptors', () => {
     ).toThrow('Compute stage module is required.');
   });
 
+  test('rejects invalid pipeline descriptor values from untyped callers', () => {
+    const device = new NullDevice();
+    const vertexModule = device.createShaderModule({ label: 'validation-vertex', code: '@vertex fn main() {}' });
+    const fragmentModule = device.createShaderModule({ label: 'validation-fragment', code: '@fragment fn main() {}' });
+    const computeModule = device.createShaderModule({ label: 'validation-compute', code: '@compute fn main() {}' });
+
+    const invalidDescriptors: Array<{ create: () => void; message: string }> = [
+      {
+        create: () => {
+          device.createRenderPipeline(null as never);
+        },
+        message: 'Render pipeline descriptor must be an object.'
+      },
+      {
+        create: () => {
+          device.createComputePipeline(null as never);
+        },
+        message: 'Compute pipeline descriptor must be an object.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({ vertex: { module: vertexModule, entryPoint: '' } });
+        },
+        message: 'Vertex stage entryPoint must be a non-empty string.'
+      },
+      {
+        create: () => {
+          device.createComputePipeline({ compute: { module: computeModule, constants: { bad: Number.NaN } } });
+        },
+        message: 'Compute stage constant "bad" must be a finite number.'
+      },
+      {
+        create: () => {
+          device.createComputePipeline({ compute: { module: computeModule, entryPoint: '' } });
+        },
+        message: 'Compute stage entryPoint must be a non-empty string.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({ vertex: { module: vertexModule, constants: { bad: Number.POSITIVE_INFINITY } } });
+        },
+        message: 'Vertex stage constant "bad" must be a finite number.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: { module: vertexModule, buffers: [{ arrayStride: -1, attributes: [] }] }
+          });
+        },
+        message: 'Vertex buffer 0 arrayStride must be a non-negative integer.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: { module: vertexModule, buffers: [{ arrayStride: 4, attributes: {} as never }] }
+          });
+        },
+        message: 'Vertex buffer 0 attributes must be an array.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: {
+              module: vertexModule,
+              buffers: [{ arrayStride: 4, attributes: [{ format: '', offset: 0, shaderLocation: 0 }] }]
+            }
+          });
+        },
+        message: 'Vertex buffer 0 attribute 0 format must be a non-empty string.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: {
+              module: vertexModule,
+              buffers: [{ arrayStride: 4, attributes: [{ format: 'float32', offset: -1, shaderLocation: 0 }] }]
+            }
+          });
+        },
+        message: 'Vertex buffer 0 attribute 0 offset must be a non-negative integer.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: {
+              module: vertexModule,
+              buffers: [{ arrayStride: 4, attributes: [{ format: 'float32', offset: 0, shaderLocation: 1.5 }] }]
+            }
+          });
+        },
+        message: 'Vertex buffer 0 attribute 0 shaderLocation must be a non-negative integer.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: { module: vertexModule },
+            fragment: { module: fragmentModule, targets: {} as never }
+          });
+        },
+        message: 'Fragment targets must be an array.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: { module: vertexModule },
+            fragment: { module: fragmentModule, constants: { bad: Number.NEGATIVE_INFINITY }, targets: [{ format: '' }] }
+          });
+        },
+        message: 'Fragment stage constant "bad" must be a finite number.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: { module: vertexModule },
+            fragment: { module: fragmentModule, targets: [{ format: '' }] }
+          });
+        },
+        message: 'Fragment target 0 format must be a non-empty string.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: { module: vertexModule },
+            fragment: { module: fragmentModule, targets: [{ format: 'rgba8unorm', writeMask: -1 }] }
+          });
+        },
+        message: 'Fragment target 0 writeMask must be a non-negative integer.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: { module: vertexModule },
+            fragment: {
+              module: fragmentModule,
+              targets: [
+                {
+                  format: 'rgba8unorm',
+                  blend: {
+                    color: { srcFactor: '', dstFactor: 'one' },
+                    alpha: { srcFactor: 'one', dstFactor: 'zero' }
+                  }
+                }
+              ]
+            }
+          });
+        },
+        message: 'Fragment target 0 blend color srcFactor must be a non-empty string.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({
+            vertex: { module: vertexModule },
+            fragment: {
+              module: fragmentModule,
+              targets: [
+                {
+                  format: 'rgba8unorm',
+                  blend: {
+                    color: { srcFactor: 'one', dstFactor: 'zero' },
+                    alpha: { srcFactor: 'one', dstFactor: '' }
+                  }
+                }
+              ]
+            }
+          });
+        },
+        message: 'Fragment target 0 blend alpha dstFactor must be a non-empty string.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({ depthStencil: { format: '' } });
+        },
+        message: 'Depth-stencil format must be a non-empty string.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({ multisample: { count: 0 } });
+        },
+        message: 'Multisample count must be a positive integer.'
+      },
+      {
+        create: () => {
+          device.createRenderPipeline({ multisample: { mask: -1 } });
+        },
+        message: 'Multisample mask must be a non-negative integer.'
+      }
+    ];
+
+    for (const { create, message } of invalidDescriptors) {
+      expect(create).toThrow(message);
+    }
+  });
+
   test('preserves null entries in vertex buffers and fragment targets', () => {
     const device = new NullDevice();
     const vertexModule = device.createShaderModule({ label: 'nullable-vertex', code: '@vertex fn main() {}' });

@@ -2,10 +2,11 @@ import { NullBindGroup, NullBindGroupLayout, NullPipelineLayout, NullShaderModul
 import { NullBuffer } from './buffer';
 import { NullCommandEncoder } from './command';
 import { NullComputePipeline, NullRenderPipeline } from './pipelines';
+import { validateComputePipelineDescriptor, validateRenderPipelineDescriptor } from './pipeline-validation';
 import { NullQueue } from './queue';
 import { NullSampler, NullTexture } from './texture';
 import { NullRenderTarget } from '../render-target';
-import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from '../resource';
+import { assertResourceOwnedBy, NullResourceBase } from '../resource';
 import type {
   GPUBindGroupDescriptor,
   GPUBindGroupLayoutDescriptor,
@@ -72,18 +73,16 @@ export class NullDevice implements RHIDevice {
   }
 
   createRenderPipeline(descriptor: RHIRenderPipelineDescriptor): RHIRenderPipeline {
+    validatePipelineDescriptorObject(descriptor, 'Render');
     validatePipelineLayout(descriptor.layout, this.owner);
-    if (descriptor.fragment !== undefined && descriptor.vertex === undefined) {
-      throw new Error('Vertex stage must be provided if fragment stage is present.');
-    }
-    validatePipelineStageModule(descriptor.vertex, 'Vertex', this.owner);
-    validatePipelineStageModule(descriptor.fragment, 'Fragment', this.owner);
+    validateRenderPipelineDescriptor(descriptor, this.owner);
     return new NullRenderPipeline(this.allocateId(), this.owner, descriptor);
   }
 
   createComputePipeline(descriptor: RHIComputePipelineDescriptor = {}): RHIComputePipeline {
+    validatePipelineDescriptorObject(descriptor, 'Compute');
     validatePipelineLayout(descriptor.layout, this.owner);
-    validatePipelineStageModule(descriptor.compute, 'Compute', this.owner);
+    validateComputePipelineDescriptor(descriptor, this.owner);
     return new NullComputePipeline(this.allocateId(), this.owner, descriptor);
   }
 
@@ -115,17 +114,11 @@ export class NullDevice implements RHIDevice {
   }
 }
 
-function validatePipelineStageModule(
-  stage: { module?: RHIShaderModule } | undefined,
-  name: 'Vertex' | 'Fragment' | 'Compute',
-  owner: symbol
+function validatePipelineDescriptorObject(
+  descriptor: RHIRenderPipelineDescriptor | RHIComputePipelineDescriptor,
+  name: 'Render' | 'Compute'
 ): void {
-  if (stage === undefined) {
-    return;
+  if (typeof descriptor !== 'object' || descriptor === null || Array.isArray(descriptor)) {
+    throw new Error(`${name} pipeline descriptor must be an object.`);
   }
-  if (stage.module === undefined) {
-    throw new Error(`${name} stage module is required.`);
-  }
-  assertResourceOwnedBy(stage.module, owner);
-  assertResourceLive(stage.module);
 }
