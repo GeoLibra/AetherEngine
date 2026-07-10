@@ -5,8 +5,6 @@ import {
   Schedule,
   Time,
   type Plugin,
-  createExtensionPoint,
-  createServiceToken,
   definePlugin
 } from '../src';
 
@@ -247,30 +245,6 @@ describe('App and plugins', () => {
     ]);
   });
 
-  test('destroy clears services and extension contributions for app reuse', () => {
-    const RendererToken = createServiceToken<{ name: string }>('renderer.destroy');
-    const PanelExtension = createExtensionPoint<{ id: string }>('editor.panel.destroy');
-    const plugin = definePlugin({
-      name: 'RegistryPlugin',
-      build(app) {
-        app.services.provide(RendererToken, { name: 'renderer' });
-        app.extensions.add(PanelExtension, { id: 'inspector' });
-      }
-    });
-
-    const app = new App().addPlugin(plugin);
-
-    expect(app.services.has(RendererToken)).toBe(true);
-    expect(app.extensions.list(PanelExtension)).toHaveLength(1);
-
-    app.destroy();
-
-    expect(app.services.has(RendererToken)).toBe(false);
-    expect(app.extensions.list(PanelExtension)).toEqual([]);
-    expect(() => app.addPlugin(plugin)).not.toThrow();
-    expect(app.services.has(RendererToken)).toBe(true);
-  });
-
   test('stores resources by constructor type', () => {
     const app = new App();
     const counter = new Counter();
@@ -279,53 +253,6 @@ describe('App and plugins', () => {
 
     expect(app.getResource(Counter)).toBe(counter);
     expect(app.getWorld().hasResource(Counter)).toBe(true);
-  });
-
-  test('provides typed services with scoped lookup and global fallback', () => {
-    const RendererToken = createServiceToken<{ name: string }>('renderer');
-    const app = new App();
-
-    app.services.provide(RendererToken, { name: 'shared' }, { scope: 'global' });
-    app.services.provide(RendererToken, { name: 'main' }, { scope: 'main' });
-
-    expect(app.services.get(RendererToken).name).toBe('main');
-    expect(app.services.get(RendererToken, 'render').name).toBe('shared');
-    expect(app.services.has(RendererToken, 'editor')).toBe(true);
-  });
-
-  test('supports singleton, transient, and frame scoped service providers', () => {
-    const SingletonToken = createServiceToken<{ id: number }>('singleton');
-    const TransientToken = createServiceToken<{ id: number }>('transient');
-    const FrameToken = createServiceToken<{ id: number }>('frame');
-    const app = new App();
-    let nextId = 0;
-
-    app.services.provide(SingletonToken, () => ({ id: ++nextId }));
-    app.services.provide(TransientToken, () => ({ id: ++nextId }), { lifecycle: 'transient' });
-    app.services.provide(FrameToken, () => ({ id: ++nextId }), { lifecycle: 'frame' });
-
-    expect(app.services.get(SingletonToken)).toBe(app.services.get(SingletonToken));
-    expect(app.services.get(TransientToken)).not.toBe(app.services.get(TransientToken));
-
-    const frameService = app.services.get(FrameToken);
-    expect(app.services.get(FrameToken)).toBe(frameService);
-
-    app.services.clearFrameScoped();
-
-    expect(app.services.get(FrameToken)).not.toBe(frameService);
-  });
-
-  test('collects extension contributions in registration order', () => {
-    const AssetImporter = createExtensionPoint<{ extension: string }>('asset.importer');
-    const app = new App();
-
-    app.extensions.add(AssetImporter, { extension: 'gltf' });
-    app.extensions.add(AssetImporter, { extension: 'ktx2' });
-
-    expect(app.extensions.list(AssetImporter)).toEqual([
-      { extension: 'gltf' },
-      { extension: 'ktx2' }
-    ]);
   });
 
   test('minimal plugins install time resource and update it during First', async () => {

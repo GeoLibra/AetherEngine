@@ -4,15 +4,28 @@ export type { Plugin, PluginGroup } from './app/types';
 export { ExtensionRegistry, ServiceRegistry } from './app/registry';
 export type {
   AppScope,
+  ExtensionContribution,
   ExtensionPoint,
+  ExtensionSnapshot,
+  RegistrationHandle,
+  ServiceFactoryRegistration,
+  ServiceLifecycle,
   ServiceOptions,
-  ServiceProvider,
+  ServiceRegistration,
+  ServiceResolver,
   ServiceToken,
+  ServiceValueRegistration,
   ScheduleLabel,
   System,
-  SystemDescriptor
+  SystemDescriptor,
+  SystemRegistration
 } from './app/types';
-export { createExtensionPoint, createServiceToken } from './app/utils';
+export {
+  createExtensionPoint,
+  createServiceToken,
+  serviceFactory,
+  serviceValue
+} from './app/utils';
 export { Schedule } from './app/schedule';
 export {
   ChildOf,

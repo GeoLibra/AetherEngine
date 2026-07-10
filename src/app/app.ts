@@ -245,7 +245,7 @@ export class App {
       plugin.cleanup?.(this);
     }
 
-    this.services.clear();
+    this.services.clearRegistrations();
     this.extensions.clear();
     this.pluginBuildOrder.length = 0;
     this.plugins.clear();
