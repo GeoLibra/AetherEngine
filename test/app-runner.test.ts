@@ -1,0 +1,124 @@
+import { describe, expect, test } from 'vitest';
+import {
+  App,
+  BrowserRunner,
+  HeadlessRunner,
+  createServiceToken,
+  definePlugin,
+  serviceFactory,
+  type AnimationFrameHost
+} from '../src';
+
+describe('App runners', () => {
+  test('HeadlessRunner executes a finite number of identical App frames', async () => {
+    let frames = 0;
+    const app = new App().addPlugin(
+      definePlugin({
+        id: 'frame-counter',
+        build(builder) {
+          builder.addSystem('Update', {
+            id: 'count-frame',
+            run: () => void frames++
+          });
+        }
+      })
+    );
+
+    const exit = await app.run(new HeadlessRunner({ frames: 3 }));
+
+    expect(frames).toBe(3);
+    expect(exit).toEqual({ reason: 'completed', frames: 3 });
+    expect(app.state).toBe('stopped');
+  });
+
+  test('frame cleanup runs after a system throws and preserves the primary error', async () => {
+    const Frame = createServiceToken<object>('frame');
+    const events: string[] = [];
+    const app = new App().addPlugin(
+      definePlugin({
+        id: 'frame.failure',
+        build(builder) {
+          builder.provideService(
+            Frame,
+            serviceFactory(() => ({}), {
+              lifecycle: 'frame',
+              dispose: () => {
+                events.push('disposed');
+                throw new Error('cleanup failed');
+              }
+            })
+          );
+          builder.addSystem('Update', {
+            id: 'throw',
+            run: () => {
+              throw new Error('boom');
+            }
+          });
+        }
+      })
+    );
+    await app.startup();
+    app.getService(Frame);
+
+    await expect(app.run(new HeadlessRunner({ frames: 1 }))).rejects.toThrow('boom');
+
+    expect(events).toEqual(['disposed']);
+    expect(app.state).toBe('failed');
+    const destroyed = await app.destroy();
+    expect(destroyed.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+      'FRAME_CLEANUP_FAILED',
+      'APP_RUNTIME_FAILED'
+    ]);
+  });
+
+  test('BrowserRunner uses only the injected animation frame host', async () => {
+    const callbacks = new Map<number, (timestamp: number) => void>();
+    const cancelled: number[] = [];
+    let nextId = 0;
+    const host: AnimationFrameHost = {
+      request(callback) {
+        const id = ++nextId;
+        callbacks.set(id, callback);
+        return id;
+      },
+      cancel(id) {
+        cancelled.push(id);
+        callbacks.delete(id);
+      }
+    };
+    const app = new App();
+    const running = app.run(new BrowserRunner(host));
+    for (let attempt = 0; attempt < 8 && !callbacks.has(1); attempt++) {
+      await Promise.resolve();
+    }
+    callbacks.get(1)?.(0);
+    app.stop('test');
+
+    const exit = await running;
+
+    expect(exit).toEqual({ reason: 'test', frames: 1 });
+    expect(cancelled).toContain(2);
+    expect(app.state).toBe('stopped');
+  });
+
+  test('rejects concurrent runners', async () => {
+    let release: (() => void) | undefined;
+    const blockingRunner = {
+      run: async () => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return { reason: 'released', frames: 0 };
+      },
+      requestStop: () => undefined
+    };
+    const app = new App();
+    const first = app.run(blockingRunner);
+
+    await expect(app.run(new HeadlessRunner({ frames: 1 }))).rejects.toThrow(
+      'Runner is already active'
+    );
+    release?.();
+    await first;
+  });
+});

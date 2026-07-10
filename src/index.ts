@@ -36,6 +36,15 @@ export {
   serviceValue
 } from './app/utils';
 export { Schedule } from './app/schedule';
+export { BrowserRunner, HeadlessRunner } from './app/runner';
+export type {
+  AnimationFrameHost,
+  AppExit,
+  FrameOutcome,
+  HeadlessRunnerOptions,
+  Runner,
+  RunnerContext
+} from './app/runner';
 export {
   ChildOf,
   IsA,

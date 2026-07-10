@@ -1,9 +1,10 @@
 import type { ResourceType } from '../ecs/types';
 import { World } from '../ecs/world';
-import { DEFAULT_SCHEDULES, STARTUP_SCHEDULES } from './constants';
+import { DEFAULT_SCHEDULES, FRAME_SCHEDULES, STARTUP_SCHEDULES } from './constants';
 import { createLifecycleDiagnostic } from './lifecycle';
 import { sortPlugins } from './plugin-graph';
 import { ExtensionRegistry, ServiceRegistry } from './registry';
+import type { AppExit, FrameOutcome, Runner, RunnerContext } from './runner';
 import { Schedule } from './schedule';
 import { RegistrationTransaction, removeRegistrations } from './transaction';
 import type {
@@ -42,7 +43,10 @@ export class App {
   private currentState: AppState = 'created';
   private startupPromise?: Promise<void>;
   private destroyPromise?: Promise<DestroyResult>;
+  private activeRunner: Runner | undefined;
+  private activeRunPromise: Promise<AppExit> | undefined;
   private stopReason = 'requested';
+  private frameCount = 0;
 
   constructor() {
     for (const label of DEFAULT_SCHEDULES) {
@@ -111,8 +115,26 @@ export class App {
     }
     this.stopReason = reason;
     this.currentState = 'stopping';
-    // Until a Runner is attached, stop completes synchronously.
-    this.currentState = 'stopped';
+    if (this.activeRunner) {
+      this.activeRunner.requestStop(reason);
+    } else {
+      this.currentState = 'stopped';
+    }
+  }
+
+  run(runner: Runner): Promise<AppExit> {
+    if (this.activeRunPromise) {
+      return Promise.reject(new Error('Runner is already active for this App.'));
+    }
+    const execution = this.runInternal(runner);
+    let tracked: Promise<AppExit>;
+    tracked = execution.finally(() => {
+      if (this.activeRunPromise === tracked) {
+        this.activeRunPromise = undefined;
+      }
+    });
+    this.activeRunPromise = tracked;
+    return tracked;
   }
 
   destroy(): Promise<DestroyResult> {
@@ -204,7 +226,14 @@ export class App {
       }
     }
 
-    if (this.currentState === 'running') {
+    if (this.activeRunPromise) {
+      this.stop('destroy');
+      try {
+        await this.activeRunPromise;
+      } catch {
+        // Runtime failure remains the primary failure and is already diagnosed.
+      }
+    } else if (this.currentState === 'running') {
       this.stop('destroy');
     }
     if (this.currentState !== 'failed' && this.currentState !== 'destroyed') {
@@ -234,6 +263,86 @@ export class App {
         return app.listExtensions(point);
       }
     });
+  }
+
+  private async runInternal(runner: Runner): Promise<AppExit> {
+    if (this.currentState === 'created') {
+      await this.startup();
+    } else if (
+      this.currentState === 'building' ||
+      this.currentState === 'waiting-ready' ||
+      this.currentState === 'starting'
+    ) {
+      await this.startup();
+    }
+    if (this.currentState !== 'running') {
+      throw new Error(`Cannot run App while it is in state "${this.currentState}".`);
+    }
+
+    this.activeRunner = runner;
+    const app = this;
+    const context: RunnerContext = Object.freeze({
+      get stopRequested(): boolean {
+        return app.state === 'stopping' || app.state === 'failed';
+      },
+      frame(): FrameOutcome {
+        return app.executeFrame();
+      }
+    });
+
+    try {
+      const exit = await runner.run(context);
+      if (this.currentState === 'running') {
+        this.stopReason = exit.reason;
+        this.currentState = 'stopping';
+      }
+      if (this.currentState === 'stopping') {
+        this.currentState = 'stopped';
+      }
+      return Object.freeze({ reason: this.stopReason, frames: exit.frames });
+    } catch (error) {
+      runner.requestStop('runner-error');
+      this.currentState = 'failed';
+      this.diagnostics.push(createLifecycleDiagnostic('runtime', error));
+      throw error;
+    } finally {
+      if (this.activeRunner === runner) {
+        this.activeRunner = undefined;
+      }
+    }
+  }
+
+  private executeFrame(): FrameOutcome {
+    let primaryError: unknown;
+    let failed = false;
+    const cleanupErrors: unknown[] = [];
+    try {
+      for (const label of FRAME_SCHEDULES) {
+        this.schedules.get(label)?.runSync(this.world, 'frame');
+      }
+    } catch (error) {
+      failed = true;
+      primaryError = error;
+    } finally {
+      cleanupErrors.push(...this.services.clearFrameScoped());
+      try {
+        this.world.clearTrackers();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+      for (const error of cleanupErrors) {
+        this.diagnostics.push(createLifecycleDiagnostic('frame-cleanup', error));
+      }
+    }
+
+    if (failed) {
+      throw primaryError;
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, 'Frame cleanup failed.');
+    }
+    this.frameCount++;
+    return Object.freeze({ frame: this.frameCount });
   }
 
   private createShutdownContext(pluginId: string, reason: string): ShutdownContext {
