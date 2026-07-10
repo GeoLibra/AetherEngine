@@ -1,324 +1,290 @@
-import { World } from '../ecs/world';
 import type { ResourceType } from '../ecs/types';
+import { World } from '../ecs/world';
+import { DEFAULT_SCHEDULES, STARTUP_SCHEDULES } from './constants';
+import { createLifecycleDiagnostic } from './lifecycle';
+import { sortPlugins } from './plugin-graph';
 import { ExtensionRegistry, ServiceRegistry } from './registry';
 import { Schedule } from './schedule';
-import type { ScheduleLabel, System, SystemDescriptor, Plugin, PluginGroup } from './types';
-import { DEFAULT_SCHEDULES, STARTUP_SCHEDULES, FRAME_SCHEDULES } from './constants';
+import { RegistrationTransaction, removeRegistrations } from './transaction';
+import type {
+  AppScope,
+  AppState,
+  DestroyResult,
+  ExtensionPoint,
+  ExtensionSnapshot,
+  LifecycleDiagnostic,
+  Plugin,
+  PluginGroup,
+  ReadonlyAppContext,
+  RegistrationHandle,
+  ScheduleLabel,
+  ServiceToken,
+  ShutdownContext
+} from './types';
 
-/**
- * Entry point of AetherEngine. Manages plugin lifecycles, schedules, 
- * global/scoped service dependency registries, and the rendering/tick loop.
- */
+/** V2 composition root. Structural mutation is available only inside plugin transactions. */
 export class App {
-  // Service dependency injection and extensibility registries.
-  readonly services = new ServiceRegistry();
-  readonly extensions = new ExtensionRegistry();
-
   private readonly world = new World();
   private readonly schedules = new Map<ScheduleLabel, Schedule>();
-  private readonly plugins = new Map<string, Plugin>();
-  
-  // Accumulated plugins waiting to be sorted and built at startup.
-  private readonly pendingPlugins = new Map<string, Plugin>();
-  
-  // Tracked plugin build sequence to perform cleanup in reverse topological order.
-  private readonly pluginBuildOrder: Plugin[] = [];
-  private isRunning = false;
-  private hasStarted = false;
+  private readonly services = new ServiceRegistry();
+  private readonly extensions = new ExtensionRegistry();
+  private readonly pendingPlugins: Plugin[] = [];
+  private readonly builtPlugins: Plugin[] = [];
+  private readonly registrations: RegistrationHandle[] = [];
+  private readonly diagnostics: LifecycleDiagnostic[] = [];
+  private readonly transactionHost = {
+    world: this.world,
+    schedules: this.schedules,
+    services: this.services,
+    extensions: this.extensions
+  };
+
+  private currentState: AppState = 'created';
+  private startupPromise?: Promise<void>;
+  private destroyPromise?: Promise<DestroyResult>;
+  private stopReason = 'requested';
 
   constructor() {
-    for (const schedule of DEFAULT_SCHEDULES) {
-      this.addSchedule(schedule);
-    }
-  }
-
-  /**
-   * Immediately builds and installs a plugin. Requires all dependencies 
-   * to already be installed. Use registerPlugin() for deferred topological ordering.
-   */
-  addPlugin(plugin: Plugin): this {
-    if (this.plugins.has(plugin.name)) {
-      console.warn(`Plugin "${plugin.name}" already added, skipping.`);
-      return this;
-    }
-
-    this.pendingPlugins.delete(plugin.name);
-
-    for (const dependency of plugin.dependencies ?? []) {
-      if (!this.plugins.has(dependency)) {
-        throw new Error(`Plugin "${plugin.name}" requires "${dependency}" to be registered.`);
-      }
-    }
-
-    plugin.build(this);
-    this.plugins.set(plugin.name, plugin);
-    this.pluginBuildOrder.push(plugin);
-    return this;
-  }
-
-  /**
-   * Sorts the provided batch of plugins topologically and installs them immediately.
-   */
-  addPlugins(plugins: Plugin[] | PluginGroup): this {
-    const list = Array.isArray(plugins) ? plugins : plugins.plugins();
-    for (const plugin of this.sortPlugins(list)) {
-      this.installPlugin(plugin);
-    }
-    return this;
-  }
-
-  /**
-   * Registers a plugin for deferred installation. Its build() method 
-   * will be triggered during startup() after topological sorting.
-   */
-  registerPlugin(plugin: Plugin): this {
-    if (this.plugins.has(plugin.name) || this.pendingPlugins.has(plugin.name)) {
-      console.warn(`Plugin "${plugin.name}" already added, skipping.`);
-      return this;
-    }
-
-    this.pendingPlugins.set(plugin.name, plugin);
-    return this;
-  }
-
-  /**
-   * Registers a batch of plugins for deferred topological installation.
-   */
-  registerPlugins(plugins: Plugin[] | PluginGroup): this {
-    const list = Array.isArray(plugins) ? plugins : plugins.plugins();
-    for (const plugin of list) {
-      this.registerPlugin(plugin);
-    }
-    return this;
-  }
-
-  /**
-   * Sorts and builds all pending deferred plugins topologically.
-   */
-  buildPlugins(): this {
-    for (const pluginName of this.pendingPlugins.keys()) {
-      if (this.plugins.has(pluginName)) {
-        this.pendingPlugins.delete(pluginName);
-      }
-    }
-
-    if (this.pendingPlugins.size === 0) {
-      return this;
-    }
-
-    const sorted = this.sortPlugins([...this.pendingPlugins.values()]);
-    for (const plugin of sorted) {
-      this.installPlugin(plugin);
-      this.pendingPlugins.delete(plugin.name);
-    }
-    return this;
-  }
-
-  hasPlugin(name: string): boolean {
-    return this.plugins.has(name);
-  }
-
-  addSchedule(label: ScheduleLabel): this {
-    if (!this.schedules.has(label)) {
+    for (const label of DEFAULT_SCHEDULES) {
       this.schedules.set(label, new Schedule(label));
     }
+  }
+
+  get state(): AppState {
+    return this.currentState;
+  }
+
+  addPlugin(plugin: Plugin): this {
+    this.assertCreated('add plugin');
+    this.pendingPlugins.push(plugin);
     return this;
   }
 
-  getSchedule(label: ScheduleLabel): Schedule | undefined {
-    return this.schedules.get(label);
-  }
-
-  addSystem(stage: ScheduleLabel, system: SystemDescriptor | System): this {
-    const schedule = this.schedules.get(stage);
-    if (!schedule) {
-      throw new Error(`Schedule "${stage}" not found.`);
-    }
-
-    schedule.addSystem(system);
+  addPlugins(plugins: readonly Plugin[] | PluginGroup): this {
+    this.assertCreated('add plugins');
+    const entries = 'plugins' in plugins ? plugins.plugins() : plugins;
+    this.pendingPlugins.push(...entries);
     return this;
   }
 
-  addSystems(stage: ScheduleLabel, systems: Array<SystemDescriptor | System>): this {
-    for (const system of systems) {
-      this.addSystem(stage, system);
-    }
-    return this;
+  hasPlugin(id: string): boolean {
+    return this.pendingPlugins.some((plugin) => plugin.id === id);
   }
 
-  insertResource<T extends object>(resource: T): this {
-    this.world.insertResource(resource);
-    return this;
-  }
-
-  getResource<T>(type: ResourceType<T>): T | undefined {
+  getResource<T extends object>(type: ResourceType<T>): T | undefined {
     return this.world.getResource(type);
   }
 
-  getWorld(): World {
-    return this.world;
+  getService<T>(token: ServiceToken<T>, scope?: AppScope): T {
+    return scope === undefined ? this.services.get(token) : this.services.get(token, scope);
   }
 
-  /**
-   * Prepares and initializes the application. Builds deferred plugins 
-   * and runs PreStartup, Startup, and PostStartup stages.
-   * Asynchronous to allow for async systems (e.g. GPU device negotiation or asset loads).
-   */
-  async startup(): Promise<void> {
-    if (this.hasStarted) {
+  listExtensions<T>(point: ExtensionPoint<T>): readonly ExtensionSnapshot<T>[] {
+    return this.extensions.list(point);
+  }
+
+  startup(): Promise<void> {
+    if (this.currentState === 'running') {
+      return this.startupPromise ?? Promise.resolve();
+    }
+    if (
+      this.currentState === 'building' ||
+      this.currentState === 'waiting-ready' ||
+      this.currentState === 'starting'
+    ) {
+      return this.startupPromise as Promise<void>;
+    }
+    if (this.currentState !== 'created') {
+      return Promise.reject(
+        new Error(`Cannot start App while it is in state "${this.currentState}".`)
+      );
+    }
+
+    const startup = this.startupInternal();
+    this.startupPromise = startup;
+    return startup;
+  }
+
+  stop(reason = 'requested'): void {
+    if (this.currentState !== 'running') {
       return;
     }
-
-    this.buildPlugins();
-
-    for (const label of STARTUP_SCHEDULES) {
-      await this.runSchedule(label);
-    }
-    this.hasStarted = true;
+    this.stopReason = reason;
+    this.currentState = 'stopping';
+    // Until a Runner is attached, stop completes synchronously.
+    this.currentState = 'stopped';
   }
 
-  /**
-   * Executes a single tick update synchronously.
-   * Runs all update/render stages, clears single-frame cached services and ECS trackers.
-   * Strictly synchronous to prevent Promise allocation overhead in the main loop.
-   */
-  runFrame(): void {
-    for (const label of FRAME_SCHEDULES) {
-      this.runScheduleSync(label);
+  destroy(): Promise<DestroyResult> {
+    if (!this.destroyPromise) {
+      this.destroyPromise = this.destroyInternal();
     }
-    this.services.clearFrameScoped();
-    this.world.clearTrackers();
+    return this.destroyPromise;
   }
 
-  /**
-   * Starts the main animation loop. Auto-negotiates environments that 
-   * support requestAnimationFrame, falling back to a single tick execution.
-   */
-  async run(): Promise<void> {
-    if (this.isRunning) {
-      throw new Error('App is already running.');
-    }
-
-    this.isRunning = true;
-    await this.startup();
-
-    const requestFrame = globalThis.requestAnimationFrame;
-    if (!requestFrame) {
-      this.runFrame();
-      this.stop();
-      return;
-    }
-
-    // Loop callback with strict try-catch to stop the loop on system error,
-    // avoiding phantom raf cycles.
-    const loop = (): void => {
-      if (!this.isRunning) {
-        return;
+  private async startupInternal(): Promise<void> {
+    this.currentState = 'building';
+    try {
+      const orderedPlugins = sortPlugins(this.pendingPlugins);
+      for (const plugin of orderedPlugins) {
+        const transaction = new RegistrationTransaction(this.transactionHost, plugin.id);
+        try {
+          const result = plugin.build(transaction) as unknown;
+          if (isPromiseLike(result)) {
+            void Promise.resolve(result).catch(() => undefined);
+            throw new Error(`Plugin "${plugin.id}" build() must be synchronous.`);
+          }
+          this.registrations.push(...transaction.commit());
+          this.builtPlugins.push(plugin);
+        } catch (error) {
+          this.rollbackTransaction(transaction, plugin.id);
+          throw error;
+        }
       }
 
-      try {
-        this.runFrame();
-      } catch (error) {
-        this.stop();
-        throw error;
+      this.currentState = 'waiting-ready';
+      const readonlyContext = this.createReadonlyContext();
+      for (const plugin of orderedPlugins) {
+        if ((await plugin.ready?.(readonlyContext)) === false) {
+          throw new Error(`Plugin "${plugin.id}" reported that it is not ready.`);
+        }
       }
 
-      requestFrame(loop);
-    };
-
-    requestFrame(loop);
-  }
-
-  stop(): void {
-    this.isRunning = false;
-  }
-
-  /**
-   * Tears down the application. Cleans up plugins in reverse build order, 
-   * and clears service and extension contribution registries.
-   */
-  destroy(): void {
-    this.stop();
-
-    // Cleanup in reverse dependency build sequence.
-    for (const plugin of [...this.pluginBuildOrder].reverse()) {
-      plugin.cleanup?.(this);
-    }
-
-    this.services.clearRegistrations();
-    this.extensions.clear();
-    this.pluginBuildOrder.length = 0;
-    this.plugins.clear();
-    this.pendingPlugins.clear();
-    this.hasStarted = false;
-  }
-
-  private async runSchedule(label: ScheduleLabel): Promise<void> {
-    await this.schedules.get(label)?.run(this.world);
-  }
-
-  private runScheduleSync(label: ScheduleLabel): void {
-    this.schedules.get(label)?.runSync(this.world, 'frame');
-  }
-
-  private installPlugin(plugin: Plugin): void {
-    if (this.plugins.has(plugin.name)) {
-      console.warn(`Plugin "${plugin.name}" already added, skipping.`);
-      return;
-    }
-
-    this.pendingPlugins.delete(plugin.name);
-    plugin.build(this);
-    this.plugins.set(plugin.name, plugin);
-    this.pluginBuildOrder.push(plugin);
-  }
-
-  /**
-   * Sorts plugins topologically based on dependencies using Depth-First Search.
-   * Throws on cyclic dependencies.
-   */
-  private sortPlugins(plugins: Plugin[]): Plugin[] {
-    const candidates = new Map<string, Plugin>();
-    for (const plugin of plugins) {
-      if (!this.plugins.has(plugin.name) && !candidates.has(plugin.name)) {
-        candidates.set(plugin.name, plugin);
-      }
-    }
-
-    const temporary = new Set<string>();
-    const permanent = new Set<string>();
-    const sorted: Plugin[] = [];
-
-    const visit = (plugin: Plugin): void => {
-      if (this.plugins.has(plugin.name) || permanent.has(plugin.name)) {
-        return;
-      }
-      if (temporary.has(plugin.name)) {
-        throw new Error('Circular plugin dependency detected.');
-      }
-
-      temporary.add(plugin.name);
-      for (const dependencyName of plugin.dependencies ?? []) {
-        if (this.plugins.has(dependencyName)) {
+      this.currentState = 'starting';
+      for (const plugin of orderedPlugins) {
+        if (!plugin.finish) {
           continue;
         }
-
-        const dependency = candidates.get(dependencyName);
-        if (!dependency) {
-          throw new Error(`Plugin "${plugin.name}" requires "${dependencyName}" to be registered.`);
+        const transaction = new RegistrationTransaction(this.transactionHost, plugin.id);
+        let committed: readonly RegistrationHandle[] | undefined;
+        try {
+          const result = plugin.finish(transaction);
+          // Structural registration ends when finish() returns; only its async work may continue.
+          committed = transaction.commit();
+          await result;
+          this.registrations.push(...committed);
+        } catch (error) {
+          if (committed) {
+            for (const cleanupError of removeRegistrations(committed)) {
+              this.diagnostics.push(
+                createLifecycleDiagnostic('contribution-cleanup', cleanupError, plugin.id)
+              );
+            }
+          } else {
+            this.rollbackTransaction(transaction, plugin.id);
+          }
+          throw error;
         }
-
-        visit(dependency);
       }
-      temporary.delete(plugin.name);
-      permanent.add(plugin.name);
-      sorted.push(plugin);
-    };
 
-    for (const plugin of candidates.values()) {
-      visit(plugin);
+      for (const label of STARTUP_SCHEDULES) {
+        await this.schedules.get(label)?.run(this.world);
+      }
+      this.currentState = 'running';
+    } catch (error) {
+      this.currentState = 'failed';
+      this.diagnostics.push(createLifecycleDiagnostic('startup', error));
+      await this.shutdownBuiltPlugins('startup-failed');
+      await this.disposeAndRemoveContributions();
+      throw error;
+    }
+  }
+
+  private async destroyInternal(): Promise<DestroyResult> {
+    if (
+      this.startupPromise &&
+      (this.currentState === 'building' ||
+        this.currentState === 'waiting-ready' ||
+        this.currentState === 'starting')
+    ) {
+      try {
+        await this.startupPromise;
+      } catch {
+        // Startup already recorded its primary failure and performed cleanup.
+      }
     }
 
-    return sorted;
+    if (this.currentState === 'running') {
+      this.stop('destroy');
+    }
+    if (this.currentState !== 'failed' && this.currentState !== 'destroyed') {
+      this.stopReason = this.currentState === 'created' ? 'destroyed-before-startup' : this.stopReason;
+    }
+
+    await this.shutdownBuiltPlugins(this.stopReason);
+    await this.disposeAndRemoveContributions();
+    this.pendingPlugins.length = 0;
+    this.currentState = 'destroyed';
+    return Object.freeze({ diagnostics: Object.freeze([...this.diagnostics]) });
   }
+
+  private createReadonlyContext(): ReadonlyAppContext {
+    const app = this;
+    return Object.freeze({
+      get state(): AppState {
+        return app.state;
+      },
+      getResource<T extends object>(type: ResourceType<T>): T | undefined {
+        return app.getResource(type);
+      },
+      getService<T>(token: ServiceToken<T>, scope?: AppScope): T {
+        return app.getService(token, scope);
+      },
+      listExtensions<T>(point: ExtensionPoint<T>): readonly ExtensionSnapshot<T>[] {
+        return app.listExtensions(point);
+      }
+    });
+  }
+
+  private createShutdownContext(pluginId: string, reason: string): ShutdownContext {
+    const readonly = this.createReadonlyContext();
+    return Object.freeze({
+      ...readonly,
+      pluginId,
+      reason
+    });
+  }
+
+  private async shutdownBuiltPlugins(reason: string): Promise<void> {
+    for (const plugin of [...this.builtPlugins].reverse()) {
+      try {
+        await plugin.shutdown?.(this.createShutdownContext(plugin.id, reason));
+      } catch (error) {
+        this.diagnostics.push(createLifecycleDiagnostic('shutdown', error, plugin.id));
+      }
+    }
+    this.builtPlugins.length = 0;
+  }
+
+  private async disposeAndRemoveContributions(): Promise<void> {
+    for (const error of await this.services.disposeAll()) {
+      this.diagnostics.push(createLifecycleDiagnostic('service-disposal', error));
+    }
+    for (const error of removeRegistrations(this.registrations)) {
+      this.diagnostics.push(createLifecycleDiagnostic('contribution-cleanup', error));
+    }
+    this.registrations.length = 0;
+    this.services.clearRegistrations();
+    this.extensions.clear();
+  }
+
+  private rollbackTransaction(transaction: RegistrationTransaction, pluginId: string): void {
+    try {
+      transaction.rollback();
+    } catch (error) {
+      this.diagnostics.push(
+        createLifecycleDiagnostic('contribution-cleanup', error, pluginId)
+      );
+    }
+  }
+
+  private assertCreated(operation: string): void {
+    if (this.currentState !== 'created') {
+      throw new Error(`Cannot ${operation} while App is in state "${this.currentState}".`);
+    }
+  }
+}
+
+function isPromiseLike(value: unknown): value is Promise<unknown> {
+  return typeof value === 'object' && value !== null && 'then' in value;
 }

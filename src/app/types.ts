@@ -1,4 +1,5 @@
 import type { World } from '../ecs/world';
+import type { ResourceType } from '../ecs/types';
 // Registry scopes and token types
 export type AppScope = 'main' | 'render' | 'editor' | 'asset-worker' | 'global';
 export type ServiceToken<T> = symbol & { readonly __type?: T };
@@ -82,14 +83,62 @@ export interface SystemRegistration {
   readonly id: string;
 }
 
-// Plugin system interfaces
+export type AppState =
+  | 'created'
+  | 'building'
+  | 'waiting-ready'
+  | 'starting'
+  | 'running'
+  | 'stopping'
+  | 'stopped'
+  | 'failed'
+  | 'destroyed';
+
+export interface AppBuilder {
+  addSystem(stage: ScheduleLabel, descriptor: SystemDescriptor): void;
+  insertResource<T extends object>(resource: T): void;
+  replaceResource<T extends object>(resource: T): void;
+  provideService<T>(token: ServiceToken<T>, registration: ServiceRegistration<T>): void;
+  replaceService<T>(token: ServiceToken<T>, registration: ServiceRegistration<T>): void;
+  addExtension<T>(point: ExtensionPoint<T>, contribution: ExtensionContribution<T>): void;
+}
+
+export interface ReadonlyAppContext {
+  readonly state: AppState;
+  getResource<T extends object>(type: ResourceType<T>): T | undefined;
+  getService<T>(token: ServiceToken<T>, scope?: AppScope): T;
+  listExtensions<T>(point: ExtensionPoint<T>): readonly ExtensionSnapshot<T>[];
+}
+
+export interface ShutdownContext extends ReadonlyAppContext {
+  readonly pluginId: string;
+  readonly reason: string;
+}
+
 export interface Plugin {
-  readonly name: string;
-  readonly dependencies?: string[];
-  build(app: any): void; // Use any to avoid circular import issues with App
-  cleanup?(app: any): void;
+  readonly id: string;
+  readonly dependencies?: readonly string[];
+  build(app: AppBuilder): void;
+  ready?(app: ReadonlyAppContext): boolean | Promise<boolean>;
+  finish?(app: AppBuilder): void | Promise<void>;
+  shutdown?(app: ShutdownContext): void | Promise<void>;
 }
 
 export interface PluginGroup {
-  plugins(): Plugin[];
+  plugins(): readonly Plugin[];
+}
+
+export interface LifecycleDiagnostic {
+  readonly code:
+    | 'APP_STARTUP_FAILED'
+    | 'PLUGIN_SHUTDOWN_FAILED'
+    | 'SERVICE_DISPOSAL_FAILED'
+    | 'CONTRIBUTION_CLEANUP_FAILED';
+  readonly phase: 'startup' | 'shutdown' | 'service-disposal' | 'contribution-cleanup';
+  readonly pluginId?: string;
+  readonly error: unknown;
+}
+
+export interface DestroyResult {
+  readonly diagnostics: readonly LifecycleDiagnostic[];
 }

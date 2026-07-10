@@ -91,11 +91,11 @@ export class ServiceRegistry implements ServiceResolver {
   }
 
   get<T>(token: ServiceToken<T>, scope: AppScope = 'main'): T {
-    const value = this.tryGet(token, scope);
-    if (value === undefined) {
+    const entry = this.findEntry(token, scope);
+    if (!entry) {
       throw new Error(`Service "${tokenName(token)}" is not registered for scope "${scope}".`);
     }
-    return value;
+    return this.resolve(entry, scope);
   }
 
   tryGet<T>(token: ServiceToken<T>, scope: AppScope = 'main'): T | undefined {
@@ -259,11 +259,6 @@ export class ServiceRegistry implements ServiceResolver {
     const token = entry.token as ServiceToken<unknown>;
     if (!scopedEntries || scopedEntries.get(token) !== entry) {
       return false;
-    }
-    if (entry.resolved) {
-      throw new Error(
-        `Resolved service "${tokenName(entry.token)}" cannot be removed structurally.`
-      );
     }
     scopedEntries.delete(token);
     if (scopedEntries.size === 0) {

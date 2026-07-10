@@ -25,10 +25,10 @@ function timeUpdateSystem(world: World): void {
 }
 
 export const TimePlugin = definePlugin({
-  name: 'Time',
-  build(app) {
-    app.insertResource(new Time());
-    app.addSystem('First', {
+  id: 'aether.time',
+  build(builder) {
+    builder.insertResource(new Time());
+    builder.addSystem('First', {
       id: 'time.update',
       run: timeUpdateSystem
     });

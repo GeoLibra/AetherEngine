@@ -26,13 +26,12 @@ export class Schedule {
   private readonly systems: SystemNode[] = [];
   private executionOrder: SystemNode[] = [];
   private isDirty = true;
-  private nextSystemId = 0;
 
   constructor(label: ScheduleLabel) {
     this.label = label;
   }
 
-  addSystem(descriptor: SystemDescriptor | System): SystemRegistration {
+  addSystem(descriptor: SystemDescriptor): SystemRegistration {
     const node = this.createNode(descriptor);
     if (this.systems.some((system) => system.id === node.id)) {
       throw new Error(`System "${node.id}" already exists in schedule "${this.label}".`);
@@ -92,19 +91,7 @@ export class Schedule {
     }
   }
 
-  private createNode(descriptor: SystemDescriptor | System): SystemNode {
-    if (typeof descriptor === 'function') {
-      const id = `system_${this.nextSystemId++}`;
-      return {
-        id,
-        run: descriptor,
-        before: [],
-        after: [],
-        optionalBefore: [],
-        optionalAfter: []
-      };
-    }
-
+  private createNode(descriptor: SystemDescriptor): SystemNode {
     if (descriptor.id.trim() === '') {
       throw new Error(`Schedule "${this.label}" requires a non-empty system id.`);
     }

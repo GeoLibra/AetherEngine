@@ -1,6 +1,15 @@
 export { App } from './app/app';
 export { definePlugin } from './app/utils';
-export type { Plugin, PluginGroup } from './app/types';
+export type {
+  AppBuilder,
+  AppState,
+  DestroyResult,
+  LifecycleDiagnostic,
+  Plugin,
+  PluginGroup,
+  ReadonlyAppContext,
+  ShutdownContext
+} from './app/types';
 export { ExtensionRegistry, ServiceRegistry } from './app/registry';
 export type {
   AppScope,
