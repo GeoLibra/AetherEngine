@@ -14,7 +14,7 @@ interface JobRecord extends QueuedJobOrder {
   readonly transferBytes: number;
   readonly summary: Readonly<Record<string, unknown>>;
   readonly resolve: (result: JobResult<unknown>) => void;
-  readonly controller: AbortController;
+  controller: AbortController;
   state: 'queued' | 'active' | 'terminal';
   attempt: number;
   terminal: boolean;
@@ -131,6 +131,7 @@ export class JobScheduler {
     } catch (error) {
       outcome = { status: 'crashed', reason: String(error) };
     }
+    let workerReplaced = false;
     if (!record.terminal) {
       if (outcome.status === 'completed') {
         try {
@@ -149,12 +150,21 @@ export class JobScheduler {
         } catch (error) {
           this.fail(record, 'job-decode-failed', String(error), worker.id);
         }
+      } else if (outcome.status === 'crashed') {
+        this.pool.replace(worker);
+        workerReplaced = true;
+        if (record.type.idempotent && record.attempt <= record.type.retryLimit) {
+          record.state = 'queued';
+          record.controller = new AbortController();
+          this.queue.push(record);
+        } else {
+          this.fail(record, 'job-worker-crashed', 'Worker crashed.', worker.id);
+        }
       } else {
-        this.fail(record, outcome.status === 'crashed' ? 'job-worker-crashed' : 'job-worker-failed',
-          outcome.status === 'crashed' ? outcome.reason : String(outcome.error), worker.id);
+        this.fail(record, 'job-worker-failed', String(outcome.error), worker.id);
       }
     }
-    this.pool.release(worker);
+    if (!workerReplaced) this.pool.release(worker);
     this.pump();
   }
 

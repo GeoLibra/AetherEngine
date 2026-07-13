@@ -1,11 +1,13 @@
 import type { WorkerExecutor, WorkerFactory } from './types';
 
-interface WorkerSlot { readonly executor: WorkerExecutor; busy: boolean; }
+interface WorkerSlot { executor: WorkerExecutor; busy: boolean; }
 
 export class WorkerPool {
   private readonly slots: WorkerSlot[];
+  private readonly factory: WorkerFactory | undefined;
 
   constructor(factory: WorkerFactory | undefined, count: number) {
+    this.factory = factory;
     if (!Number.isInteger(count) || count < 0) {
       throw new Error('Job workerCount must be a non-negative integer.');
     }
@@ -27,6 +29,13 @@ export class WorkerPool {
   release(executor: WorkerExecutor): void {
     const slot = this.slots.find((candidate) => candidate.executor === executor);
     if (slot) slot.busy = false;
+  }
+
+  replace(executor: WorkerExecutor): void {
+    const index = this.slots.findIndex((candidate) => candidate.executor === executor);
+    if (index < 0 || !this.factory) return;
+    void Promise.resolve(executor.dispose());
+    this.slots[index] = { executor: this.factory.create(index), busy: false };
   }
 
   async destroy(): Promise<void> {
