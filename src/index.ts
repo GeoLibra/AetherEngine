@@ -69,6 +69,7 @@ export type {
   ComponentSchema,
   ComponentType,
   Entity,
+  WorldId,
   QueryFilter,
   QueryItem,
   RemovedComponent,

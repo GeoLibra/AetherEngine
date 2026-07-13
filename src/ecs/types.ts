@@ -12,7 +12,8 @@ import type {
 // Resource constructors are identity tokens only; World never invokes them.
 export type ResourceType<T> = abstract new (...args: never[]) => T;
 
-export type Entity = number;
+export type WorldId = number & { readonly __worldId: unique symbol };
+export type Entity = number & { readonly __entity: unique symbol };
 
 export interface ChangeWindow {
   readonly sinceExclusive: number;

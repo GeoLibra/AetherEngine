@@ -3,7 +3,8 @@ import {
   App,
   HeadlessRunner,
   StateStore,
-  definePlugin
+  definePlugin,
+  type Entity
 } from '../src';
 
 type GameState = 'menu' | 'playing' | 'paused';
@@ -74,7 +75,7 @@ describe('StateStore', () => {
   });
 
   test('App applies registered transitions and scoped cleanup commands at PostUpdate', async () => {
-    let scopedEntity = 0;
+    let scopedEntity!: Entity;
     const state = new StateStore<GameState>('menu', {
       onCleanup(_transition, context) {
         context.commands?.despawn(scopedEntity);

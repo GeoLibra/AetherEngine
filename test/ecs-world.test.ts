@@ -18,6 +18,10 @@ interface VelocityView {
   linear: Float32Array;
 }
 
+interface EntityTargetView {
+  target: Entity;
+}
+
 const Transform = defineComponent<TransformView>({
   id: 'test.transform',
   version: 1,
@@ -36,7 +40,38 @@ const Velocity = defineComponent<VelocityView>({
   fields: [{ id: 'linear', name: 'linear', type: 'vec3' }]
 });
 
+const EntityTarget = defineComponent<EntityTargetView>({
+  id: 'test.entity-target',
+  version: 1,
+  name: 'EntityTarget',
+  fields: [{ id: 'target', name: 'target', type: 'entity' }]
+});
+
 describe('World entities and components', () => {
+  test('scopes entity handles to their owning World', () => {
+    const firstWorld = new World();
+    const secondWorld = new World();
+    firstWorld.registerComponent(Transform).registerComponent(EntityTarget);
+
+    const local = firstWorld.spawn().build();
+    const source = firstWorld.spawn().build();
+    const foreign = secondWorld.spawn().build();
+
+    expect(firstWorld.id).not.toBe(secondWorld.id);
+    expect(local).not.toBe(foreign);
+    expect(() => firstWorld.insertComponent(foreign, Transform, {})).toThrow('cross-world');
+    expect(() => firstWorld.insertComponent(local, EntityTarget, { target: foreign })).toThrow(
+      'cross-world'
+    );
+    expect(() => firstWorld.addRelation(source, ChildOf, foreign)).toThrow('cross-world');
+    expect(() => firstWorld.hasChanged(foreign, [Transform])).toThrow('cross-world');
+    expect(() => firstWorld.query([], { relation: [ChildOf, foreign] })).toThrow('cross-world');
+    expect(() => firstWorld.findMatchingTables([], { relation: [ChildOf, foreign] })).toThrow(
+      'cross-world'
+    );
+    expect(() => firstWorld.despawn(foreign)).toThrow('cross-world');
+  });
+
   test('invalidates stale entity ids when a slot is reused', () => {
     const world = new World();
     const first = world.spawn().build();
@@ -50,6 +85,31 @@ describe('World entities and components', () => {
     expect(second).not.toBe(first);
     expect(world.isAlive(second)).toBe(true);
     expect(world.despawn(first)).toBe(false);
+  });
+
+  test('retires an entity slot before its generation can wrap', () => {
+    const world = new World();
+    const first = world.spawn().build();
+    world.despawn(first);
+
+    for (let generation = 1; generation <= 4095; generation++) {
+      const entity = world.spawn().build();
+      expect(world.despawn(entity)).toBe(true);
+    }
+
+    const replacement = world.spawn().build();
+
+    expect(replacement).not.toBe(first);
+    expect(world.isAlive(first)).toBe(false);
+  });
+
+  test('keeps omitted optional entity fields at their empty sentinel', () => {
+    const world = new World();
+    world.registerComponent(EntityTarget);
+
+    const entity = world.spawn().insert(EntityTarget).build();
+
+    expect(world.getComponent(entity, EntityTarget)?.target).toBe(0);
   });
 
   test('stores component data in archetypes and migrates entities when components are added', () => {

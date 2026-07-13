@@ -11,7 +11,7 @@ import {
   serializeComponent,
   validateComponentInput
 } from './component';
-import { EntityAllocator } from './entity';
+import { createWorldId, decodeEntity, EntityAllocator } from './entity';
 import { EntityBuilder } from './entity-builder';
 import { QueryBuilder } from './query';
 import { ObserverRegistry } from './observer';
@@ -46,7 +46,8 @@ import type {
   ChangeWindow,
   ObjectComponentSchema,
   PackedComponentSchema,
-  TagComponentSchema
+  TagComponentSchema,
+  WorldId
 } from './types';
 
 interface EntityLocation {
@@ -58,7 +59,8 @@ interface EntityLocation {
  * ECS storage environment holding entities, components, relationships, and resources.
  */
 export class World {
-  private readonly entityAllocator = new EntityAllocator();
+  readonly id: WorldId;
+  private readonly entityAllocator: EntityAllocator;
   private readonly tables = new Map<string, Table>();
   private readonly entityLocations = new Map<Entity, EntityLocation>();
   private readonly componentRegistry = new Map<string, ComponentType<object>>();
@@ -78,6 +80,8 @@ export class World {
   private observerDispatchDepth = 0;
 
   constructor(schemaRegistry: SchemaRegistry = new SchemaRegistry()) {
+    this.id = createWorldId();
+    this.entityAllocator = new EntityAllocator(this.id);
     this.resources.set(SchemaRegistry, schemaRegistry);
     this.resources.set(CommandBuffer, new CommandBuffer());
     this.resources.set(EventRegistry, new EventRegistry());
@@ -92,6 +96,7 @@ export class World {
 
   despawn(entity: Entity): boolean {
     this.assertStructuralMutationAllowed();
+    this.assertOwned(entity);
     if (!this.entityAllocator.isAlive(entity)) {
       return false;
     }
@@ -176,6 +181,7 @@ export class World {
   }
 
   isAlive(entity: Entity): boolean {
+    this.assertOwned(entity);
     return this.entityAllocator.isAlive(entity);
   }
 
@@ -202,6 +208,7 @@ export class World {
     this.assertStructuralMutationAllowed();
     this.assertAlive(entity);
     const schema = this.getRegisteredComponent(componentType);
+    this.assertOwnedEntityReferences(schema, data);
     validateComponentInput(schema as ComponentType<object>, data);
     if (schema.storage === 'object') {
       this.insertObjectComponent(entity, schema, data);
@@ -247,6 +254,7 @@ export class World {
   }
 
   getComponent<TView extends object>(entity: Entity, componentType: ComponentType<TView>): TView | null {
+    this.assertOwned(entity);
     if (!this.entityAllocator.isAlive(entity)) {
       return null;
     }
@@ -275,6 +283,7 @@ export class World {
   }
 
   hasComponent<TView extends object>(entity: Entity, componentType: ComponentType<TView>): boolean {
+    this.assertOwned(entity);
     const schema = this.getRegisteredComponent(componentType);
     if (schema.storage === 'object') {
       return this.objectComponents.get(schema.id)?.has(entity) === true;
@@ -353,6 +362,7 @@ export class World {
     componentTypes: TComponents,
     filter?: QueryFilter
   ): QueryBuilder<TComponents> {
+    this.assertOwnedFilter(filter);
     return new QueryBuilder(this, componentTypes).withFilter(filter);
   }
 
@@ -395,6 +405,7 @@ export class World {
     componentTypes: readonly ComponentType<object>[],
     filter: QueryFilter = {}
   ): Table[] {
+    this.assertOwnedFilter(filter);
     // Kept public for tests and future query planning; the pure matcher owns the tag logic.
     return findTablesMatchingQuery(this.tables.values(), componentTypes, filter, (term) =>
       this.isComponentTerm(term)
@@ -448,6 +459,7 @@ export class World {
 
   removeRelation(entity: Entity, relation: RelationType): boolean {
     this.assertStructuralMutationAllowed();
+    this.assertOwned(entity);
     const entityRelations = this.relations.get(entity);
     const existing = entityRelations?.get(relation.id);
     if (!entityRelations || !existing) {
@@ -476,6 +488,7 @@ export class World {
   }
 
   getRelation(entity: Entity, relation: RelationType): Relation | null {
+    this.assertOwned(entity);
     return this.relations.get(entity)?.get(relation.id) ?? null;
   }
 
@@ -484,6 +497,8 @@ export class World {
     relation: RelationType,
     target: Entity
   ): boolean {
+    this.assertOwned(source);
+    this.assertOwned(target);
     const visited = new Set<Entity>();
     let current: Entity | null = target;
     while (current !== null) {
@@ -497,14 +512,17 @@ export class World {
   }
 
   getChildren(parent: Entity): Entity[] {
+    this.assertOwned(parent);
     return this.childOfIndex.getChildren(parent, (entity) => this.entityAllocator.isAlive(entity));
   }
 
   getParent(entity: Entity): Entity | null {
+    this.assertOwned(entity);
     return this.getRelation(entity, ChildOf)?.target ?? null;
   }
 
   traverseDescendants(root: Entity, callback: (entity: Entity, depth: number) => void): void {
+    this.assertOwned(root);
     const visit = (entity: Entity, depth: number): void => {
       callback(entity, depth);
       for (const child of this.getChildren(entity)) {
@@ -577,6 +595,7 @@ export class World {
   }
 
   hasChanged(entity: Entity, componentTypes: readonly ComponentType<object>[]): boolean {
+    this.assertOwned(entity);
     return this.changeTracker.hasChanged(entity, componentTypes, this.getChangeWindow());
   }
 
@@ -715,8 +734,41 @@ export class World {
   }
 
   private assertAlive(entity: Entity): void {
+    this.assertOwned(entity);
     if (!this.entityAllocator.isAlive(entity)) {
       throw new Error(`Entity "${entity}" is not alive.`);
+    }
+  }
+
+  private assertOwned(entity: Entity): void {
+    const owner = decodeEntity(entity).worldId;
+    if (owner !== this.id) {
+      throw new Error(
+        `Entity "${entity}" belongs to World "${owner}" and cannot be used cross-world in World "${this.id}".`
+      );
+    }
+  }
+
+  private assertOwnedEntityReferences(
+    schema: ComponentType<object>,
+    data: ComponentInput
+  ): void {
+    if (schema.storage !== 'packed') {
+      return;
+    }
+    for (const field of schema.fields) {
+      if (field.packedType === 'entity' && Object.hasOwn(data, field.name)) {
+        const entity = data[field.name];
+        if (entity !== undefined && entity !== 0) {
+          this.assertOwned(entity as Entity);
+        }
+      }
+    }
+  }
+
+  private assertOwnedFilter(filter: QueryFilter | undefined): void {
+    if (filter?.relation) {
+      this.assertOwned(filter.relation[1]);
     }
   }
 

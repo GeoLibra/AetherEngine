@@ -287,8 +287,10 @@ function writeField(view: DataView, field: ComponentField, value: unknown): void
       view.setInt32(field.offset, toNumber(value), true);
       return;
     case 'u32':
-    case 'entity':
       view.setUint32(field.offset, toNumber(value), true);
+      return;
+    case 'entity':
+      view.setFloat64(field.offset, toEntityNumber(value), true);
       return;
     case 'vec2':
     case 'vec3':
@@ -321,8 +323,9 @@ function readField(
     case 'i32':
       return dataView.getInt32(field.offset, true);
     case 'u32':
+      return dataView.getUint32(field.offset, true);
     case 'entity':
-      return dataView.getUint32(field.offset, true) as Entity;
+      return dataView.getFloat64(field.offset, true) as Entity;
     case 'vec2':
     case 'vec3':
     case 'vec4':
@@ -457,6 +460,16 @@ function toNumber(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function toEntityNumber(value: unknown): number {
+  if (value === undefined) {
+    return 0;
+  }
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`Entity reference must be a non-negative safe integer, received "${value}".`);
+  }
+  return value;
+}
+
 function toValueType(type: ComponentFieldType): ValueTypeDefinition {
   switch (type) {
     case 'f32':
@@ -528,6 +541,7 @@ function isPackedValue(value: unknown, type: ComponentFieldType): boolean {
     return (
       typeof value === 'number' &&
       Number.isFinite(value) &&
+      (type !== 'entity' || (Number.isSafeInteger(value) && value >= 0)) &&
       (type !== 'f32' || Number.isFinite(Math.fround(value)))
     );
   }

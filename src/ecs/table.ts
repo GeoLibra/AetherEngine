@@ -20,7 +20,7 @@ export interface TableOptions {
 }
 
 interface EntityChunk {
-  readonly rows: Uint32Array;
+  readonly rows: Float64Array;
   readonly capacity: number;
 }
 
@@ -181,7 +181,7 @@ export class Table {
   private allocateChunk(): void {
     const capacity = this.entityChunks.length === 0 ? this.initialChunkCapacity : this.chunkCapacity;
     this.entityChunks.push({
-      rows: new Uint32Array(capacity),
+      rows: new Float64Array(capacity),
       capacity
     });
 

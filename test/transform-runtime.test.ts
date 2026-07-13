@@ -7,7 +7,8 @@ import {
   TransformRuntime,
   World,
   WorldOrigin,
-  WorldTransform
+  WorldTransform,
+  type Entity
 } from '../src';
 
 describe('TransformRuntime', () => {
@@ -209,8 +210,8 @@ describe('TransformRuntime', () => {
   test('propagates a deep hierarchy without recursive stack growth', () => {
     const world = new World();
     const transforms = TransformRuntime.install(world);
-    let parent: number | undefined;
-    let last = 0;
+    let parent: Entity | undefined;
+    let last!: Entity;
     for (let index = 0; index < 512; index++) {
       const entity = world.spawn().build();
       transforms.attach(entity, { translation: [1, 0, 0] });

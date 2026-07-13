@@ -3,7 +3,7 @@ import {
   DEFAULT_TABLE_CHUNK_CAPACITY,
   DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY
 } from '../src/ecs/constants';
-import { defineComponent } from '../src';
+import { defineComponent, type Entity } from '../src';
 import { Table } from '../src/ecs/table';
 
 interface CounterView {
@@ -23,11 +23,24 @@ function counterData(value: number): ArrayBuffer {
   return data;
 }
 
+function entityHandle(value: number): Entity {
+  return value as Entity;
+}
+
 describe('Table chunk storage', () => {
+  test('preserves world-scoped entity handles above 32 bits', () => {
+    const table = new Table([Counter]);
+    const entity = entityHandle(2 ** 32 + 17);
+
+    table.insert(entity, new Map([[Counter.id, counterData(1)]]));
+
+    expect(table.getEntity(0)).toBe(entity);
+  });
+
   test('starts cold archetypes with a small initial chunk', () => {
     const table = new Table([Counter]);
 
-    table.insert(0, new Map([[Counter.id, counterData(0)]]));
+    table.insert(entityHandle(0), new Map([[Counter.id, counterData(0)]]));
 
     expect(table.allocatedCapacity).toBe(DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY);
     expect(table.getComponentStorage(Counter.id, 0).buffer.byteLength).toBe(
@@ -39,7 +52,7 @@ describe('Table chunk storage', () => {
     const table = new Table([Counter]);
 
     for (let index = 0; index < DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY + DEFAULT_TABLE_CHUNK_CAPACITY + 1; index++) {
-      table.insert(index, new Map([[Counter.id, counterData(index)]]));
+      table.insert(entityHandle(index), new Map([[Counter.id, counterData(index)]]));
     }
 
     const firstStorage = table.getComponentStorage(Counter.id, 0);
@@ -59,7 +72,7 @@ describe('Table chunk storage', () => {
     const table = new Table([Counter], [], { initialChunkCapacity: 2, chunkCapacity: 3 });
 
     for (let index = 0; index < 5; index++) {
-      table.insert(index, new Map([[Counter.id, counterData(index)]]));
+      table.insert(entityHandle(index), new Map([[Counter.id, counterData(index)]]));
     }
 
     expect(table.allocatedCapacity).toBe(5);
@@ -71,7 +84,7 @@ describe('Table chunk storage', () => {
     const table = new Table([Counter], [], { initialChunkCapacity: 2, chunkCapacity: 3 });
 
     for (let index = 0; index < 8; index++) {
-      table.insert(index, new Map([[Counter.id, counterData(index)]]));
+      table.insert(entityHandle(index), new Map([[Counter.id, counterData(index)]]));
     }
 
     expect(table.allocatedCapacity).toBe(8);
@@ -92,7 +105,7 @@ describe('Table chunk storage', () => {
     expect(table.length).toBe(0);
     expect(table.allocatedCapacity).toBe(0);
 
-    table.insert(99, new Map([[Counter.id, counterData(99)]]));
+    table.insert(entityHandle(99), new Map([[Counter.id, counterData(99)]]));
 
     expect(table.allocatedCapacity).toBe(2);
     expect(new DataView(table.readComponent(Counter, 0)).getUint32(0, true)).toBe(99);
