@@ -35,4 +35,25 @@ describe('job scheduler metrics', () => {
 
     expect(JSON.stringify(result)).not.toContain('secret-token-123');
   });
+
+  test('marks a repeatedly failing job type unavailable and retains a safe reason', async () => {
+    const scheduler = new JobScheduler({ budgets: { background: {
+      maxInFlightJobs: 0, maxInputBytes: 0, maxDecodeBytes: 0
+    } } });
+    const Job = defineJobType({
+      id: 'test.unavailable-job',
+      encode: () => ({ payload: null, inputBytes: 0, decodeBytes: 0, transfer: [] }),
+      decode: Number, summarize: () => ({ safe: true })
+    });
+    scheduler.register(Job);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await scheduler.schedule(Job, {
+        input: undefined, priority: 0, budgetClass: 'background'
+      }).result;
+    }
+
+    expect(scheduler.metrics().healthByType['test.unavailable-job']).toEqual({
+      status: 'unavailable', consecutiveFailures: 3, lastReason: 'job-budget-exceeded'
+    });
+  });
 });

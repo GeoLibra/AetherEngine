@@ -1,4 +1,6 @@
-import type { JobSchedulerMetrics } from './types';
+import type { JobSchedulerMetrics, JobTypeHealth } from './types';
+
+const UNAVAILABLE_FAILURE_THRESHOLD = 3;
 
 export class JobMetricsCollector {
   completed = 0;
@@ -13,10 +15,24 @@ export class JobMetricsCollector {
   copyBytes = 0;
   committedOutputBytes = 0;
   private readonly failuresByType = new Map<string, number>();
+  private readonly healthByType = new Map<string, JobTypeHealth>();
 
-  recordFailure(type: string): void {
+  recordFailure(type: string, reason: string): void {
     this.failures++;
     this.failuresByType.set(type, (this.failuresByType.get(type) ?? 0) + 1);
+    const count = (this.healthByType.get(type)?.consecutiveFailures ?? 0) + 1;
+    this.healthByType.set(type, Object.freeze({
+      status: count >= UNAVAILABLE_FAILURE_THRESHOLD ? 'unavailable' : 'degraded',
+      consecutiveFailures: count,
+      lastReason: reason
+    }));
+  }
+
+  recordSuccess(type: string): void {
+    this.healthByType.set(type, Object.freeze({
+      status: 'healthy',
+      consecutiveFailures: 0
+    }));
   }
 
   snapshot(queued: number, active: number, busyWorkers: number, workers: number): JobSchedulerMetrics {
@@ -35,7 +51,8 @@ export class JobMetricsCollector {
       transferBytes: this.transferBytes,
       copyBytes: this.copyBytes,
       committedOutputBytes: this.committedOutputBytes,
-      failuresByType: Object.freeze(Object.fromEntries(this.failuresByType))
+      failuresByType: Object.freeze(Object.fromEntries(this.failuresByType)),
+      healthByType: Object.freeze(Object.fromEntries(this.healthByType))
     });
   }
 }

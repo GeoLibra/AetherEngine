@@ -5,6 +5,8 @@ interface WorkerSlot { executor: WorkerExecutor; busy: boolean; }
 export class WorkerPool {
   private readonly slots: WorkerSlot[];
   private readonly factory: WorkerFactory | undefined;
+  private readonly retiredDisposals: Promise<void>[] = [];
+  private readonly retiredDisposalErrors: unknown[] = [];
 
   constructor(factory: WorkerFactory | undefined, count: number) {
     this.factory = factory;
@@ -42,11 +44,26 @@ export class WorkerPool {
   replace(executor: WorkerExecutor): void {
     const index = this.slots.findIndex((candidate) => candidate.executor === executor);
     if (index < 0 || !this.factory) return;
-    void Promise.resolve(executor.dispose());
+    // Retired workers may dispose asynchronously. Capture failures immediately so they
+    // cannot surface as unhandled rejections before the scheduler lifecycle ends.
+    this.retiredDisposals.push(
+      Promise.resolve()
+        .then(() => executor.dispose())
+        .catch((error: unknown) => { this.retiredDisposalErrors.push(error); })
+    );
     this.slots[index] = { executor: this.factory.create(index), busy: false };
   }
 
   async destroy(): Promise<void> {
-    await Promise.all(this.slots.map(({ executor }) => executor.dispose()));
+    await Promise.all([
+      ...this.retiredDisposals,
+      ...this.slots.map(({ executor }) => Promise.resolve().then(() => executor.dispose()))
+    ]);
+    if (this.retiredDisposalErrors.length > 0) {
+      throw new AggregateError(
+        this.retiredDisposalErrors,
+        'One or more retired job workers failed to dispose.'
+      );
+    }
   }
 }

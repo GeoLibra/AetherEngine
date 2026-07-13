@@ -1,6 +1,7 @@
 export { defineJobType } from './registration';
 export { JobScheduler } from './scheduler';
 export { CommitQueue } from './commit-queue';
+export { JobSchedulerService, createJobsPlugin } from './plugin';
 export type {
   BudgetClassLimits,
   CommitBudget,
@@ -17,7 +18,9 @@ export type {
   JobResult,
   JobSchedulerOptions,
   JobSchedulerMetrics,
+  JobSchedulerState,
   JobType,
+  JobTypeHealth,
   JobTypeDefinition,
   WorkerExecutor,
   WorkerFactory,

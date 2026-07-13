@@ -12,6 +12,12 @@ const BytesJob = defineJobType({
 });
 
 describe('JobScheduler budgets', () => {
+  test('rejects invalid budget configuration synchronously', () => {
+    expect(() => new JobScheduler({ budgets: { interactive: {
+      maxInFlightJobs: -1, maxInputBytes: 8, maxDecodeBytes: 16
+    } } })).toThrow('maxInFlightJobs');
+  });
+
   test('requires registration and rejects duplicate job type ids', () => {
     const scheduler = new JobScheduler();
     expect(() => scheduler.schedule(BytesJob, request(new ArrayBuffer(1)))).toThrow('not registered');

@@ -6,7 +6,7 @@ import type {
   BudgetClassLimits, CommitBudget, CommitDrainResult, EncodedJobInput,
   JobBudgetClass, JobClock, JobCommitEntry, JobDiagnostic, JobHandle, JobRequest,
   JobResult, JobSchedulerMetrics, JobSchedulerOptions, JobType, WorkerExecutor,
-  WorkerOutcome
+  WorkerOutcome, JobSchedulerState
 } from './types';
 
 interface BudgetUsage { jobs: number; inputBytes: number; decodeBytes: number; }
@@ -40,12 +40,15 @@ export class JobScheduler {
   private readonly pool: WorkerPool;
   private readonly commits: CommitQueue;
   private readonly metricValues = new JobMetricsCollector();
+  private readonly records = new Map<number, JobRecord>();
+  private currentState: JobSchedulerState = 'running';
   private nextId = 0;
   private nextSequence = 0;
 
   constructor(options: JobSchedulerOptions = {}) {
     this.clock = options.clock ?? { now: () => 0 };
     this.budgets = options.budgets ?? {};
+    validateBudgets(this.budgets);
     this.capabilities = { sharedMemory: options.capabilities?.sharedMemory ?? false };
     this.pool = new WorkerPool(
       options.workerFactory,
@@ -56,20 +59,27 @@ export class JobScheduler {
 
   get queuedCount(): number { return this.queue.length; }
 
+  get state(): JobSchedulerState { return this.currentState; }
+
   metrics(): JobSchedulerMetrics {
+    const activeJobs = [...this.records.values()].filter(
+      (record) => record.state === 'active'
+    ).length;
     return this.metricValues.snapshot(
       this.queue.length,
-      this.pool.busyCount,
+      activeJobs,
       this.pool.busyCount,
       this.pool.size
     );
   }
 
   enqueueCommit<T>(entry: JobCommitEntry<T>): void {
+    this.assertRunning();
     this.commits.enqueue(entry);
   }
 
   drainCommits(budget: CommitBudget): CommitDrainResult {
+    this.assertRunning();
     const result = this.commits.drain(budget);
     this.metricValues.commitLatencyMs += this.commits.takeDrainedLatency();
     this.metricValues.committedOutputBytes += result.outputBytes;
@@ -77,6 +87,7 @@ export class JobScheduler {
   }
 
   register<I, O>(type: JobType<I, O>): this {
+    this.assertRunning();
     if (this.registrations.has(type.id)) {
       throw new Error(`Job type "${type.id}" is already registered.`);
     }
@@ -85,6 +96,12 @@ export class JobScheduler {
   }
 
   schedule<I, O>(type: JobType<I, O>, request: JobRequest<I>): JobHandle<O> {
+    this.assertRunning();
+    assertFinite(request.priority, 'priority');
+    if (request.deadlineMs !== undefined) assertFinite(request.deadlineMs, 'deadlineMs');
+    if (request.screenSpaceError !== undefined) {
+      assertFinite(request.screenSpaceError, 'screenSpaceError');
+    }
     if (this.registrations.get(type.id) !== type) {
       throw new Error(`Job type "${type.id}" is not registered.`);
     }
@@ -93,14 +110,14 @@ export class JobScheduler {
     let encoded: EncodedJobInput;
     try { encoded = type.encode(request.input); }
     catch {
-      this.metricValues.recordFailure(type.id);
+      this.metricValues.recordFailure(type.id, 'job-encode-failed');
       return failedHandle(
         id,
         diagnostic('job-encode-failed', type.id, summary, 'Job input encoding failed.')
       );
     }
     if (encoded.usesSharedMemory && (!this.capabilities.sharedMemory || !type.allowSharedMemory)) {
-      this.metricValues.recordFailure(type.id);
+      this.metricValues.recordFailure(type.id, 'job-shared-memory-unsupported');
       return failedHandle(
         id,
         diagnostic('job-shared-memory-unsupported', type.id, summary, 'Shared memory is not enabled.')
@@ -111,7 +128,7 @@ export class JobScheduler {
     if (usage.jobs + 1 > limits.maxInFlightJobs ||
         usage.inputBytes + encoded.inputBytes > limits.maxInputBytes ||
         usage.decodeBytes + encoded.decodeBytes > limits.maxDecodeBytes) {
-      this.metricValues.recordFailure(type.id);
+      this.metricValues.recordFailure(type.id, 'job-budget-exceeded');
       return failedHandle(id, diagnostic('job-budget-exceeded', type.id, summary, 'Job budget exceeded.'));
     }
 
@@ -129,6 +146,7 @@ export class JobScheduler {
       ...(request.screenSpaceError === undefined ? {} : { screenSpaceError: request.screenSpaceError })
     };
     this.queue.push(record);
+    this.records.set(record.id, record);
     this.addUsage(record.budgetClass, encoded, 1);
     this.metricValues.inFlightBytes += encoded.inputBytes + encoded.decodeBytes;
     const cancel = (reason = 'cancelled'): void => this.cancel(record, reason);
@@ -138,6 +156,15 @@ export class JobScheduler {
     }
     this.pump();
     return Object.freeze({ id, result, cancel });
+  }
+
+  async destroy(): Promise<void> {
+    if (this.currentState === 'destroyed') return;
+    this.currentState = 'destroyed';
+    for (const record of [...this.records.values()]) {
+      this.cancel(record, 'scheduler destroyed');
+    }
+    await this.pool.destroy();
   }
 
   private pump(): void {
@@ -182,6 +209,7 @@ export class JobScheduler {
             })
           }));
           this.metricValues.completed++;
+          this.metricValues.recordSuccess(record.type.id);
           this.metricValues.executionTimeMs +=
             this.clock.now() - (record.startedAt ?? this.clock.now());
           this.metricValues.transferBytes += record.transferBytes;
@@ -193,7 +221,12 @@ export class JobScheduler {
       } else if (outcome.status === 'crashed') {
         this.pool.replace(worker);
         workerReplaced = true;
-        if (record.type.idempotent && record.attempt <= record.type.retryLimit) {
+        // Transferred ownership is lost with the crashed worker; only retained inputs are retryable.
+        if (
+          record.type.idempotent &&
+          record.transferBytes === 0 &&
+          record.attempt <= record.type.retryLimit
+        ) {
           this.metricValues.retries++;
           record.state = 'queued';
           record.controller = new AbortController();
@@ -218,7 +251,7 @@ export class JobScheduler {
   }
 
   private fail(record: JobRecord, code: string, message: string, workerId?: string): void {
-    this.metricValues.recordFailure(record.type.id);
+    this.metricValues.recordFailure(record.type.id, code);
     this.finish(record, Object.freeze({
       status: 'failed', diagnostic: diagnostic(code, record.type.id, record.summary, message, record.attempt, workerId)
     }));
@@ -228,6 +261,7 @@ export class JobScheduler {
     if (record.terminal) return;
     record.terminal = true;
     record.state = 'terminal';
+    this.records.delete(record.id);
     this.addUsage(record.budgetClass, record.encoded, -1);
     this.metricValues.inFlightBytes -=
       record.encoded.inputBytes + record.encoded.decodeBytes;
@@ -245,6 +279,35 @@ export class JobScheduler {
     usage.jobs += direction;
     usage.inputBytes += direction * encoded.inputBytes;
     usage.decodeBytes += direction * encoded.decodeBytes;
+  }
+
+  private assertRunning(): void {
+    if (this.currentState !== 'running') {
+      throw new Error('JobScheduler is destroyed.');
+    }
+  }
+}
+
+function validateBudgets(
+  budgets: Partial<Record<JobBudgetClass, BudgetClassLimits>>
+): void {
+  for (const limits of Object.values(budgets)) {
+    if (!limits) continue;
+    assertNonNegativeSafeInteger(limits.maxInFlightJobs, 'maxInFlightJobs');
+    assertNonNegativeSafeInteger(limits.maxInputBytes, 'maxInputBytes');
+    assertNonNegativeSafeInteger(limits.maxDecodeBytes, 'maxDecodeBytes');
+  }
+}
+
+function assertNonNegativeSafeInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`Job ${label} must be a non-negative safe integer.`);
+  }
+}
+
+function assertFinite(value: number, label: string): void {
+  if (!Number.isFinite(value)) {
+    throw new Error(`Job ${label} must be finite.`);
   }
 }
 

@@ -143,4 +143,13 @@ export interface JobSchedulerMetrics {
   readonly copyBytes: number;
   readonly committedOutputBytes: number;
   readonly failuresByType: Readonly<Record<string, number>>;
+  readonly healthByType: Readonly<Record<string, JobTypeHealth>>;
 }
+
+export interface JobTypeHealth {
+  readonly status: 'healthy' | 'degraded' | 'unavailable';
+  readonly consecutiveFailures: number;
+  readonly lastReason?: string;
+}
+
+export type JobSchedulerState = 'running' | 'destroyed';

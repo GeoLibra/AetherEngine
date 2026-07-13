@@ -48,6 +48,7 @@ describe('worker crash retry', () => {
     await expect(handle.result).resolves.toMatchObject({
       status: 'completed', output: 2, metrics: { attempts: 2 }
     });
+    expect(scheduler.metrics().retries).toBe(1);
   });
 
   test('fails non-idempotent work with redacted context', async () => {

@@ -59,6 +59,23 @@ describe('job worker execution', () => {
 
     await expect(scheduler.schedule(SharedJob, request(new SharedArrayBuffer(4))).result)
       .resolves.toMatchObject({ status: 'failed', diagnostic: { code: 'job-shared-memory-unsupported' } });
+
+    const SharedOptInJob = defineJobType({
+      id: 'test.shared-opt-in-job',
+      encode: (input: SharedArrayBuffer) => ({
+        payload: input, inputBytes: input.byteLength, decodeBytes: 0, transfer: [],
+        usesSharedMemory: true
+      }),
+      decode: () => true,
+      summarize: () => ({ shared: true }),
+      allowSharedMemory: true
+    });
+    scheduler.register(SharedOptInJob);
+
+    const accepted = scheduler.schedule(SharedOptInJob, request(new SharedArrayBuffer(4)));
+    expect(scheduler.queuedCount).toBe(1);
+    accepted.cancel();
+    await expect(accepted.result).resolves.toMatchObject({ status: 'cancelled' });
   });
 });
 
