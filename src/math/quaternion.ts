@@ -58,21 +58,27 @@ export const Quat = Object.freeze({
     ]);
   },
 
-  toEulerYXZ(rotation: Quaternion): EulerYXZ {
+  toEulerYXZ(rotation: Quaternion, nearestTo?: EulerYXZ): EulerYXZ {
+    if (nearestTo !== undefined) {
+      assertFiniteEuler(nearestTo, 'Euler YXZ reference');
+    }
     const normalized = Quat.normalize(rotation);
     const matrix = quaternionMatrixTerms(normalized);
     const sinX = clamp(-matrix.m23, -1, 1);
     const x = Math.asin(sinX);
     const cosX = Math.sqrt(Math.max(0, 1 - sinX * sinX));
 
-    if (cosX <= SINGULAR_COSINE_EPSILON) {
-      return [x, wrapPi(Math.atan2(-matrix.m31, matrix.m11)), 0];
-    }
-    return [
-      x,
-      wrapPi(Math.atan2(matrix.m13, matrix.m33)),
-      wrapPi(Math.atan2(matrix.m21, matrix.m22))
-    ];
+    const singular = cosX <= SINGULAR_COSINE_EPSILON;
+    const canonical: EulerYXZ = singular
+      ? [x, wrapPi(Math.atan2(-matrix.m31, matrix.m11)), 0]
+      : [
+          x,
+          wrapPi(Math.atan2(matrix.m13, matrix.m33)),
+          wrapPi(Math.atan2(matrix.m21, matrix.m22))
+        ];
+    return nearestTo === undefined
+      ? canonical
+      : nearestEquivalentEuler(canonical, nearestTo, singular);
   },
 
   multiply(left: Quaternion, right: Quaternion): Quaternion {
@@ -144,4 +150,65 @@ function clamp(value: number, minimum: number, maximum: number): number {
 function wrapPi(value: number): number {
   const wrapped = ((value + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
   return wrapped === -Math.PI ? Math.PI : wrapped;
+}
+
+function nearestEquivalentEuler(
+  canonical: EulerYXZ,
+  reference: EulerYXZ,
+  singular: boolean
+): EulerYXZ {
+  if (singular) {
+    return nearestSingularEuler(canonical, reference);
+  }
+  const alternateX =
+    canonical[0] >= 0 ? Math.PI - canonical[0] : -Math.PI - canonical[0];
+  const candidates: readonly EulerYXZ[] = [
+    canonical,
+    [alternateX, canonical[1] + Math.PI, canonical[2] + Math.PI]
+  ];
+  return candidates
+    .map((candidate) => unwrapEulerNear(candidate, reference))
+    .reduce((closest, candidate) =>
+      squaredDistance(candidate, reference) < squaredDistance(closest, reference)
+        ? candidate
+        : closest
+    );
+}
+
+function nearestSingularEuler(canonical: EulerYXZ, reference: EulerYXZ): EulerYXZ {
+  const x = unwrapNear(canonical[0], reference[0]);
+  const invariant = canonical[1];
+  if (canonical[0] >= 0) {
+    const difference = unwrapNear(invariant, reference[1] - reference[2]);
+    return [
+      x,
+      (reference[1] + reference[2] + difference) * 0.5,
+      (reference[1] + reference[2] - difference) * 0.5
+    ];
+  }
+  const sum = unwrapNear(invariant, reference[1] + reference[2]);
+  return [
+    x,
+    (reference[1] - reference[2] + sum) * 0.5,
+    (-reference[1] + reference[2] + sum) * 0.5
+  ];
+}
+
+function unwrapEulerNear(value: EulerYXZ, reference: EulerYXZ): EulerYXZ {
+  return [
+    unwrapNear(value[0], reference[0]),
+    unwrapNear(value[1], reference[1]),
+    unwrapNear(value[2], reference[2])
+  ];
+}
+
+function unwrapNear(value: number, reference: number): number {
+  return value + Math.round((reference - value) / TWO_PI) * TWO_PI;
+}
+
+function squaredDistance(left: EulerYXZ, right: EulerYXZ): number {
+  const dx = left[0] - right[0];
+  const dy = left[1] - right[1];
+  const dz = left[2] - right[2];
+  return dx * dx + dy * dy + dz * dz;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import type { Quaternion } from '../src';
 import {
   Color,
   Frustum,
@@ -73,6 +74,46 @@ describe('Foundation math conventions', () => {
     }
   });
 
+  test('selects the nearest equivalent YXZ branch for authoring continuity', () => {
+    for (const reference of [
+      [0.2, Math.PI + 0.05, -0.3],
+      [Math.PI / 2, 1.1, -0.6],
+      [-Math.PI / 2, 0.8, 0.4],
+      [Math.PI / 2 + 1e-6, 0.9, -0.2],
+      [-Math.PI / 2 - 1e-6, -0.7, 0.35]
+    ] as const) {
+      const rotation = Quat.fromEulerYXZ(reference);
+      const displayed = Quat.toEulerYXZ(rotation, reference);
+      expectQuaternionEquivalent(Quat.fromEulerYXZ(displayed), rotation);
+      expectVector(displayed, reference, 1e-5);
+    }
+  });
+
+  test('treats quaternion signs as equivalent and interpolates by the shortest path', () => {
+    const rotation = Quat.fromEulerYXZ([0.2, -0.7, 0.4]);
+    const negated = [
+      -rotation[0],
+      -rotation[1],
+      -rotation[2],
+      -rotation[3]
+    ] as const;
+    expectQuaternionEquivalent(rotation, negated);
+    expectQuaternionEquivalent(Quat.slerp(rotation, negated, 0.5), rotation);
+
+    const start = Quat.fromEulerYXZ([0, 0, 0]);
+    const end = Quat.fromEulerYXZ([0, (Math.PI * 3) / 2, 0]);
+    const midpoint = Quat.slerp(start, end, 0.5);
+    expectQuaternionEquivalent(midpoint, Quat.fromEulerYXZ([0, -Math.PI / 4, 0]));
+  });
+
+  test('rejects invalid Euler rotations and continuity references', () => {
+    expect(() => Quat.fromEulerYXZ([Number.NaN, 0, 0])).toThrow('finite');
+    expect(() => Quat.toEulerYXZ([0, 0, 0, 0])).toThrow('near-zero');
+    expect(() =>
+      Quat.toEulerYXZ(Quat.identity(), [0, Number.POSITIVE_INFINITY, 0])
+    ).toThrow('finite');
+  });
+
   test('uses WebGPU zero-to-one depth and the z >= 0 near frustum plane', () => {
     const projection = Mat4.perspective(Math.PI / 2, 1, 0.1, 100);
 
@@ -131,8 +172,8 @@ function expectVector(
 }
 
 function expectQuaternionEquivalent(
-  actual: readonly number[],
-  expected: readonly number[],
+  actual: Quaternion,
+  expected: Quaternion,
   epsilon = 1e-10
 ): void {
   const dot = Math.abs(
