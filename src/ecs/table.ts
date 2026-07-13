@@ -164,6 +164,10 @@ export class Table {
     return this.allocatedRows;
   }
 
+  get chunkCount(): number {
+    return this.entityChunks.length;
+  }
+
   shrinkToFit(): void {
     const requiredChunks = this.getRequiredChunkCountForLength(this.count);
     if (requiredChunks === this.entityChunks.length) {

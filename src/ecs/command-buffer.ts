@@ -19,9 +19,14 @@ export class CommandBuffer {
   private readonly commands: WorldCommand[] = [];
   private readonly lastResolved = new Map<SpawnTicket, Entity>();
   private nextTicket = 0;
+  private lastBatchSize = 0;
 
   get length(): number {
     return this.commands.length;
+  }
+
+  get lastAppliedBatchSize(): number {
+    return this.lastBatchSize;
   }
 
   spawn(bundle: ComponentBundle = []): SpawnTicket {
@@ -166,6 +171,8 @@ export class CommandBuffer {
     }
 
     this.commands.length = 0;
+    this.lastBatchSize = commandCount;
+    world.recordCommandBatch(commandCount);
     this.lastResolved.clear();
     for (const [ticket, entity] of resolved) {
       this.lastResolved.set(ticket, entity);

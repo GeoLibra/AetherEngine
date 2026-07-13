@@ -43,6 +43,11 @@ export class ChangeTracker {
     return this.tick;
   }
 
+  get removedLogAge(): number {
+    const oldest = this.removed[0];
+    return oldest === undefined ? 0 : (this.tick - oldest.tick) >>> 0;
+  }
+
   createReader(options: ChangeReaderOptions = {}): ChangeReader {
     const reader = new ChangeReader(options.from === 'beginning' ? 0 : this.tick);
     this.readers.add(reader);

@@ -20,6 +20,8 @@ export interface QueryStateRuntime<TComponents extends readonly ComponentType<ob
     matchingTables: readonly Table[],
     recordRowFilter: () => void
   ): Iterator<QueryItem<TComponents>>;
+  recordCacheHit(): void;
+  recordRowFilter(): void;
 }
 
 export class QueryState<TComponents extends readonly ComponentType<object>[]>
@@ -60,7 +62,10 @@ export class QueryState<TComponents extends readonly ComponentType<object>[]>
       this.componentTypes,
       this.filter,
       this.matchingTables,
-      () => this.rowFilters++
+      () => {
+        this.rowFilters++;
+        this.runtime.recordRowFilter();
+      }
     );
   }
 
@@ -74,6 +79,7 @@ export class QueryState<TComponents extends readonly ComponentType<object>[]>
     this.catalogTablesExamined += refresh.examined;
     if (refresh.examined === 0) {
       this.cacheHits++;
+      this.runtime.recordCacheHit();
     }
     for (const table of refresh.matching) {
       if (!this.matchedTableIds.has(table.id)) {

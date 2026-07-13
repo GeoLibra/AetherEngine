@@ -56,6 +56,7 @@ export {
 export { World } from './ecs/world';
 export type { QueryState } from './ecs/query-state';
 export type { QueryCandidateSource, QueryDebugPlan } from './ecs/query-types';
+export type { MonotonicClock, WorldMetricsSnapshot, WorldOptions } from './ecs/world-metrics';
 export { defineResource } from './ecs/resource';
 export { ChangeReader } from './ecs/change-tracker';
 export { CommandBuffer, CommandBufferResource } from './ecs/command-buffer';

@@ -19,6 +19,7 @@ import { QueryBuilder } from './query';
 import { QueryState } from './query-state';
 import type { QueryCandidateSource } from './query-types';
 import { RelationIndex } from './relation-index';
+import type { MonotonicClock, WorldMetricsSnapshot, WorldOptions } from './world-metrics';
 import { ObserverRegistry } from './observer';
 import type {
   ObserverDescriptor,
@@ -85,10 +86,19 @@ export class World {
   private activeQueryIterations = 0;
   private nextQueryId = 0;
   private observerDispatchDepth = 0;
+  private queryCacheHits = 0;
+  private queryRowFilters = 0;
+  private observerTimeMs = 0;
+  private lastCommandBatchSize = 0;
   private currentState: WorldState = 'created';
+  private readonly clock: MonotonicClock;
 
-  constructor(schemaRegistry: SchemaRegistry = new SchemaRegistry()) {
+  constructor(
+    schemaRegistry: SchemaRegistry = new SchemaRegistry(),
+    options: WorldOptions = {}
+  ) {
     this.id = createWorldId();
+    this.clock = options.clock ?? { now: () => 0 };
     this.entityAllocator = new EntityAllocator(this.id);
     this.resources.insert(SchemaRegistryResource, schemaRegistry, true);
     this.resources.insert(CommandBufferResource, new CommandBuffer(), true);
@@ -466,8 +476,38 @@ export class World {
           matchingTables,
           candidateSource,
           recordRowFilter
-        )
+        ),
+      recordCacheHit: () => this.queryCacheHits++,
+      recordRowFilter: () => this.queryRowFilters++
     });
+  }
+
+  metrics(): WorldMetricsSnapshot {
+    this.assertUsable();
+    const tables = [...this.archetypes.values()];
+    const archetypes = this.archetypes.snapshot();
+    return Object.freeze({
+      aliveEntities: [...this.entityAllocator.aliveEntities()].length,
+      tables: tables.length,
+      chunks: tables.reduce((sum, table) => sum + table.chunkCount, 0),
+      allocatedRows: tables.reduce((sum, table) => sum + table.allocatedCapacity, 0),
+      liveRows: tables.reduce((sum, table) => sum + table.length, 0),
+      migrations: archetypes.migrations,
+      archetypeEdgeHits: archetypes.edgeHits,
+      archetypeEdgeMisses: archetypes.edgeMisses,
+      queryCacheHits: this.queryCacheHits,
+      rowFilters: this.queryRowFilters,
+      relationEdges: this.relationIndex.edgeCount,
+      lastCommandBatchSize: this.lastCommandBatchSize,
+      observerTimeMs: this.observerTimeMs,
+      removedLogAge: this.changeTracker.removedLogAge
+    });
+  }
+
+  /** Records the successful apply boundary owned by CommandBuffer. */
+  recordCommandBatch(commandCount: number): void {
+    this.assertUsable();
+    this.lastCommandBatchSize = commandCount;
   }
 
   iterateQuery<const TComponents extends readonly ComponentType<object>[]>(
@@ -919,9 +959,11 @@ export class World {
       return undefined;
     }
     this.observerDispatchDepth++;
+    const startedAt = this.clock.now();
     try {
       return this.observerRegistry.dispatch(events, this);
     } finally {
+      this.observerTimeMs += Math.max(0, this.clock.now() - startedAt);
       this.observerDispatchDepth--;
     }
   }
