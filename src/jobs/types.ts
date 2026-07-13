@@ -79,4 +79,31 @@ export interface BudgetClassLimits {
 export interface JobSchedulerOptions {
   readonly clock?: JobClock;
   readonly budgets?: Partial<Record<JobBudgetClass, BudgetClassLimits>>;
+  readonly workerFactory?: WorkerFactory;
+  readonly workerCount?: number;
+  readonly capabilities?: { readonly sharedMemory?: boolean };
 }
+
+export interface JobEnvelope {
+  readonly id: number;
+  readonly type: string;
+  readonly payload: unknown;
+  readonly attempt: number;
+}
+
+export type WorkerOutcome =
+  | { readonly status: 'completed'; readonly output: unknown }
+  | { readonly status: 'failed'; readonly error: unknown }
+  | { readonly status: 'crashed'; readonly reason: string };
+
+export interface WorkerExecutor {
+  readonly id: string;
+  execute(
+    envelope: JobEnvelope,
+    transfer: readonly ArrayBuffer[],
+    signal: AbortSignal
+  ): Promise<WorkerOutcome>;
+  dispose(): void | Promise<void>;
+}
+
+export interface WorkerFactory { create(workerId: number): WorkerExecutor; }

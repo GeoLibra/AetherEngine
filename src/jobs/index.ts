@@ -8,9 +8,13 @@ export type {
   JobDiagnostic,
   JobExecutionMetrics,
   JobHandle,
+  JobEnvelope,
   JobRequest,
   JobResult,
   JobSchedulerOptions,
   JobType,
-  JobTypeDefinition
+  JobTypeDefinition,
+  WorkerExecutor,
+  WorkerFactory,
+  WorkerOutcome
 } from './types';
