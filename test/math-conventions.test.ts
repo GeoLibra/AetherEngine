@@ -44,6 +44,35 @@ describe('Foundation math conventions', () => {
     expect(() => radiansToDegrees(Number.POSITIVE_INFINITY)).toThrow('finite');
   });
 
+  test('constructs intrinsic YXZ rotations from known and mixed angles', () => {
+    const yOnly = Quat.fromEulerYXZ([0, Math.PI / 2, 0]);
+    expectQuaternionEquivalent(yOnly, Quat.fromAxisAngle([0, 1, 0], Math.PI / 2));
+
+    const euler = [0.35, -0.7, 0.2] as const;
+    const composed = Quat.multiply(
+      Quat.multiply(
+        Quat.fromAxisAngle([0, 1, 0], euler[1]),
+        Quat.fromAxisAngle([1, 0, 0], euler[0])
+      ),
+      Quat.fromAxisAngle([0, 0, 1], euler[2])
+    );
+    expectQuaternionEquivalent(Quat.fromEulerYXZ(euler), composed);
+  });
+
+  test('canonicalizes YXZ Euler angles without changing the rotation', () => {
+    for (const euler of [
+      [0.35, -0.7, 0.2],
+      [Math.PI / 2, 1.1, -0.6],
+      [-Math.PI / 2, 0.8, 0.4]
+    ] as const) {
+      const rotation = Quat.fromEulerYXZ(euler);
+      const canonical = Quat.toEulerYXZ(rotation);
+      expect(canonical[0]).toBeGreaterThanOrEqual(-Math.PI / 2);
+      expect(canonical[0]).toBeLessThanOrEqual(Math.PI / 2);
+      expectQuaternionEquivalent(Quat.fromEulerYXZ(canonical), rotation);
+    }
+  });
+
   test('uses WebGPU zero-to-one depth and the z >= 0 near frustum plane', () => {
     const projection = Mat4.perspective(Math.PI / 2, 1, 0.1, 100);
 
@@ -99,6 +128,20 @@ function expectVector(
 ): void {
   expect(actual).toHaveLength(expected.length);
   expected.forEach((value, index) => expect(actual[index]).toBeCloseTo(value, digits(epsilon)));
+}
+
+function expectQuaternionEquivalent(
+  actual: readonly number[],
+  expected: readonly number[],
+  epsilon = 1e-10
+): void {
+  const dot = Math.abs(
+    actual[0] * expected[0] +
+      actual[1] * expected[1] +
+      actual[2] * expected[2] +
+      actual[3] * expected[3]
+  );
+  expect(1 - dot).toBeLessThanOrEqual(epsilon);
 }
 
 function digits(epsilon: number): number {

@@ -1,6 +1,8 @@
-import type { Quaternion, Vec3 } from './types';
+import type { EulerYXZ, Quaternion, Vec3 } from './types';
 
 const MIN_QUATERNION_LENGTH = 1e-8;
+const SINGULAR_COSINE_EPSILON = Math.sqrt(Number.EPSILON) * 2;
+const TWO_PI = Math.PI * 2;
 
 export const Quat = Object.freeze({
   identity(): Quaternion {
@@ -34,6 +36,43 @@ export const Quat = Object.freeze({
       axis[2] * scale,
       Math.cos(half)
     ]);
+  },
+
+  fromEulerYXZ(euler: EulerYXZ): Quaternion {
+    assertFiniteEuler(euler, 'Euler YXZ rotation');
+    const [x, y, z] = euler;
+    const halfX = x * 0.5;
+    const halfY = y * 0.5;
+    const halfZ = z * 0.5;
+    const cx = Math.cos(halfX);
+    const cy = Math.cos(halfY);
+    const cz = Math.cos(halfZ);
+    const sx = Math.sin(halfX);
+    const sy = Math.sin(halfY);
+    const sz = Math.sin(halfZ);
+    return Quat.normalize([
+      sx * cy * cz + cx * sy * sz,
+      cx * sy * cz - sx * cy * sz,
+      cx * cy * sz - sx * sy * cz,
+      cx * cy * cz + sx * sy * sz
+    ]);
+  },
+
+  toEulerYXZ(rotation: Quaternion): EulerYXZ {
+    const normalized = Quat.normalize(rotation);
+    const matrix = quaternionMatrixTerms(normalized);
+    const sinX = clamp(-matrix.m23, -1, 1);
+    const x = Math.asin(sinX);
+    const cosX = Math.sqrt(Math.max(0, 1 - sinX * sinX));
+
+    if (cosX <= SINGULAR_COSINE_EPSILON) {
+      return [x, wrapPi(Math.atan2(-matrix.m31, matrix.m11)), 0];
+    }
+    return [
+      x,
+      wrapPi(Math.atan2(matrix.m13, matrix.m33)),
+      wrapPi(Math.atan2(matrix.m21, matrix.m22))
+    ];
   },
 
   multiply(left: Quaternion, right: Quaternion): Quaternion {
@@ -79,3 +118,30 @@ export const Quat = Object.freeze({
     ]);
   }
 });
+
+function assertFiniteEuler(value: EulerYXZ, label: string): void {
+  if (!value.every(Number.isFinite)) {
+    throw new Error(`${label} components must be finite.`);
+  }
+}
+
+function quaternionMatrixTerms([x, y, z, w]: Quaternion) {
+  return {
+    m11: 1 - 2 * (y * y + z * z),
+    m13: 2 * (x * z + y * w),
+    m21: 2 * (x * y + z * w),
+    m22: 1 - 2 * (x * x + z * z),
+    m23: 2 * (y * z - x * w),
+    m31: 2 * (x * z - y * w),
+    m33: 1 - 2 * (x * x + y * y)
+  };
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function wrapPi(value: number): number {
+  const wrapped = ((value + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
+  return wrapped === -Math.PI ? Math.PI : wrapped;
+}
