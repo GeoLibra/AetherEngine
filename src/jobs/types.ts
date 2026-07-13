@@ -67,3 +67,16 @@ export interface JobHandle<O> {
   readonly result: Promise<JobResult<O>>;
   cancel(reason?: string): void;
 }
+
+export interface JobClock { now(): number; }
+
+export interface BudgetClassLimits {
+  readonly maxInFlightJobs: number;
+  readonly maxInputBytes: number;
+  readonly maxDecodeBytes: number;
+}
+
+export interface JobSchedulerOptions {
+  readonly clock?: JobClock;
+  readonly budgets?: Partial<Record<JobBudgetClass, BudgetClassLimits>>;
+}
