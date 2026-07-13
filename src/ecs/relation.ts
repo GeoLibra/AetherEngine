@@ -33,6 +33,10 @@ export class ChildOfIndex {
     // Filter liveness at read time so stale children from external lifecycle changes cannot leak.
     return [...(this.childrenByParent.get(parent) ?? [])].filter(isAlive);
   }
+
+  clear(): void {
+    this.childrenByParent.clear();
+  }
 }
 
 export function createRelationAnyTag(relation: RelationType): string {

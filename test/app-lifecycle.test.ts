@@ -7,7 +7,8 @@ import {
   definePlugin,
   defineResource,
   defineSchema,
-  serviceValue
+  serviceValue,
+  type World
 } from '../src';
 
 describe('App plugin preflight and transactions', () => {
@@ -91,6 +92,30 @@ describe('App plugin preflight and transactions', () => {
 });
 
 describe('App lifecycle', () => {
+  test('starts and destroys its owned World with the App lifecycle', async () => {
+    let mainWorld: World | undefined;
+    const app = new App().addPlugin(
+      definePlugin({
+        id: 'test.world-lifecycle',
+        build(builder) {
+          builder.addSystem('PreStartup', {
+            id: 'test.capture-world-lifecycle',
+            run(world) {
+              mainWorld = world;
+              expect(world.state).toBe('running');
+            }
+          });
+        }
+      })
+    );
+
+    await app.startup();
+    expect(mainWorld?.state).toBe('running');
+
+    await app.destroy();
+    expect(mainWorld?.state).toBe('destroyed');
+  });
+
   test('runs build, ready, and finish in dependency order and shutdown in reverse', async () => {
     const events: string[] = [];
     const makePlugin = (id: string, dependencies: readonly string[] = []) =>

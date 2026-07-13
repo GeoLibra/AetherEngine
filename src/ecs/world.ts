@@ -48,7 +48,8 @@ import type {
   ObjectComponentSchema,
   PackedComponentSchema,
   TagComponentSchema,
-  WorldId
+  WorldId,
+  WorldState
 } from './types';
 
 interface EntityLocation {
@@ -79,6 +80,7 @@ export class World {
   private readonly observerRegistry = new ObserverRegistry();
   private activeQueryIterations = 0;
   private observerDispatchDepth = 0;
+  private currentState: WorldState = 'created';
 
   constructor(schemaRegistry: SchemaRegistry = new SchemaRegistry()) {
     this.id = createWorldId();
@@ -88,6 +90,77 @@ export class World {
     this.resources.insert(EventRegistryResource, new EventRegistry(), true);
     this.resources.insert(StateRegistryResource, new StateRegistry(), true);
     this.resources.insert(DiagnosticStoreResource, new DiagnosticStore(), true);
+  }
+
+  get state(): WorldState {
+    return this.currentState;
+  }
+
+  start(): void {
+    this.assertUsable();
+    if (this.currentState === 'running') {
+      return;
+    }
+    if (this.currentState !== 'created') {
+      throw new Error(`Cannot start World while it is in state "${this.currentState}".`);
+    }
+    this.currentState = 'running';
+  }
+
+  clear(): void {
+    this.assertStructuralMutationAllowed();
+    if (this.currentState === 'clearing') {
+      throw new Error('Cannot clear World while it is already clearing.');
+    }
+    const previousState = this.currentState;
+    this.currentState = 'clearing';
+    try {
+      for (const entity of this.entityAllocator.aliveEntities()) {
+        this.despawn(entity);
+      }
+    } finally {
+      this.currentState = previousState;
+    }
+  }
+
+  destroy(): void {
+    if (this.currentState === 'destroyed') {
+      return;
+    }
+    if (this.currentState === 'clearing') {
+      throw new Error('Cannot destroy World while it is clearing.');
+    }
+    this.assertStructuralMutationAllowed();
+    let clearError: unknown;
+    let clearFailed = false;
+    try {
+      this.clear();
+    } catch (error) {
+      clearError = error;
+      clearFailed = true;
+    }
+
+    this.entityAllocator.clear();
+    this.tables.clear();
+    this.entityLocations.clear();
+    this.componentRegistry.clear();
+    this.objectComponents.clear();
+    this.tagComponents.clear();
+    this.tagViews.clear();
+    this.relations.clear();
+    this.childOfIndex.clear();
+    this.changeTracker.clear();
+    this.systemChangeReaders.clear();
+    this.observerRegistry.clear();
+    this.resources.clear();
+    this.activeChangeWindow = undefined;
+    this.activeQueryIterations = 0;
+    this.observerDispatchDepth = 0;
+    this.currentState = 'destroyed';
+
+    if (clearFailed) {
+      throw clearError;
+    }
   }
 
   spawn(): EntityBuilder {
@@ -344,6 +417,7 @@ export class World {
   }
 
   isComponentRegistered<TView extends object>(componentType: ComponentType<TView>): boolean {
+    this.assertUsable();
     return this.componentRegistry.get(componentType.id) === componentType;
   }
 
@@ -363,6 +437,7 @@ export class World {
     componentTypes: TComponents,
     filter?: QueryFilter
   ): QueryBuilder<TComponents> {
+    this.assertUsable();
     this.assertOwnedFilter(filter);
     return new QueryBuilder(this, componentTypes).withFilter(filter);
   }
@@ -371,6 +446,7 @@ export class World {
     componentTypes: TComponents,
     filter: QueryFilter
   ): Iterator<QueryItem<TComponents>> {
+    this.assertUsable();
     this.activeQueryIterations++;
     try {
       if (componentTypes.length === 0 && !this.shouldUseTablesForEmptyQuery(filter)) {
@@ -406,6 +482,7 @@ export class World {
     componentTypes: readonly ComponentType<object>[],
     filter: QueryFilter = {}
   ): Table[] {
+    this.assertUsable();
     this.assertOwnedFilter(filter);
     // Kept public for tests and future query planning; the pure matcher owns the tag logic.
     return findTablesMatchingQuery(this.tables.values(), componentTypes, filter, (term) =>
@@ -537,27 +614,33 @@ export class World {
   addObserver<TView extends object>(
     descriptor: ObserverDescriptor<TView>
   ): ObserverRegistration {
+    this.assertUsable();
     return this.observerRegistry.add(descriptor);
   }
 
   insertResource<T>(token: ResourceToken<T>, resource: T): this {
+    this.assertUsable();
     this.resources.insert(token, resource);
     return this;
   }
 
   replaceResource<T>(token: ResourceToken<T>, resource: T): T {
+    this.assertUsable();
     return this.resources.replace(token, resource);
   }
 
   getResource<T>(token: ResourceToken<T>): T | undefined {
+    this.assertUsable();
     return this.resources.get(token);
   }
 
   hasResource<T>(token: ResourceToken<T>): boolean {
+    this.assertUsable();
     return this.resources.has(token);
   }
 
   removeResource<T>(token: ResourceToken<T>): T | undefined {
+    this.assertUsable();
     return this.resources.remove(token);
   }
 
@@ -567,18 +650,22 @@ export class World {
   }
 
   clearTrackers(): void {
+    this.assertUsable();
     this.changeTracker.advanceDefault();
   }
 
   createChangeReader(options: ChangeReaderOptions = {}): ChangeReader {
+    this.assertUsable();
     return this.changeTracker.createReader(options);
   }
 
   releaseChangeReader(reader: ChangeReader): boolean {
+    this.assertUsable();
     return this.changeTracker.releaseReader(reader);
   }
 
   withChangeReader<T>(reader: ChangeReader, run: () => T): T {
+    this.assertUsable();
     if (this.activeChangeWindow) {
       throw new Error('Change reader scopes cannot be nested.');
     }
@@ -593,6 +680,7 @@ export class World {
   }
 
   runTrackedSystem<T>(systemId: string, run: () => T): T {
+    this.assertUsable();
     let reader = this.systemChangeReaders.get(systemId);
     if (!reader) {
       reader = this.changeTracker.createSystemReader();
@@ -602,6 +690,7 @@ export class World {
   }
 
   async runTrackedSystemAsync<T>(systemId: string, run: () => Promise<T>): Promise<T> {
+    this.assertUsable();
     let reader = this.systemChangeReaders.get(systemId);
     if (!reader) {
       reader = this.changeTracker.createSystemReader();
@@ -623,10 +712,12 @@ export class World {
   readRemoved<TView extends object>(
     component: ComponentType<TView>
   ): readonly RemovedComponent<TView>[] {
+    this.assertUsable();
     return this.changeTracker.readRemoved(component, this.getChangeWindow());
   }
 
   shrinkTablesToFit(): void {
+    this.assertUsable();
     for (const table of this.tables.values()) {
       table.shrinkToFit();
     }
@@ -708,6 +799,7 @@ export class World {
   }
 
   private assertOwned(entity: Entity): void {
+    this.assertUsable();
     const owner = decodeEntity(entity).worldId;
     if (owner !== this.id) {
       throw new Error(
@@ -740,6 +832,7 @@ export class World {
   }
 
   private assertStructuralMutationAllowed(): void {
+    this.assertUsable();
     if (this.observerDispatchDepth > 0) {
       throw new Error(
         'Direct structural mutation is not allowed during observer dispatch; use DeferredWorld.commands.'
@@ -749,6 +842,12 @@ export class World {
       throw new Error(
         'Direct structural mutation is not allowed during query iteration; use CommandBuffer.'
       );
+    }
+  }
+
+  private assertUsable(): void {
+    if (this.currentState === 'destroyed') {
+      throw new Error(`World "${this.id}" is destroyed.`);
     }
   }
 

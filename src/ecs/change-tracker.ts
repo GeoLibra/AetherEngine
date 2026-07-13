@@ -151,6 +151,15 @@ export class ChangeTracker {
     this.pruneRemoved();
   }
 
+  clear(): void {
+    this.changed.clear();
+    this.added.clear();
+    this.removed.length = 0;
+    this.readers.clear();
+    this.tick = 0;
+    this.defaultSince = 0;
+  }
+
   private nextTick(): number {
     this.tick = (this.tick + 1) >>> 0;
     return this.tick;

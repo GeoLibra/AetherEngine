@@ -92,6 +92,11 @@ export class ObserverRegistry {
     }
     return deferred.commands;
   }
+
+  clear(): void {
+    this.observers.clear();
+    this.nextOrder = 0;
+  }
 }
 
 function matches(descriptor: ObserverDescriptor<object>, event: ObserverEvent): boolean {

@@ -49,6 +49,57 @@ const EntityTarget = defineComponent<EntityTargetView>({
 });
 
 describe('World entities and components', () => {
+  test('preserves schemas and resources across clear and rejects access after destroy', () => {
+    const world = new World();
+    const MarkerResource = defineResource<{ value: number }>('test.world-marker');
+    const marker = { value: 1 };
+    const events: string[] = [];
+    world.registerComponent(Transform);
+    world.insertResource(MarkerResource, marker);
+    world.addObserver({
+      id: 'test.clear-component-removed',
+      event: 'component-removed',
+      component: Transform,
+      run: () => events.push('component-removed')
+    });
+    world.addObserver({
+      id: 'test.clear-entity-despawned',
+      event: 'entity-despawned',
+      run: () => events.push('entity-despawned')
+    });
+    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+
+    expect(world.state).toBe('created');
+    world.start();
+    expect(world.state).toBe('running');
+
+    world.clear();
+
+    expect(world.state).toBe('running');
+    expect(world.isAlive(entity)).toBe(false);
+    expect(world.isComponentRegistered(Transform)).toBe(true);
+    expect(world.getResource(MarkerResource)).toBe(marker);
+    expect(events).toEqual(['component-removed', 'entity-despawned']);
+
+    world.destroy();
+    world.destroy();
+
+    expect(world.state).toBe('destroyed');
+    expect(() => world.spawn()).toThrow('destroyed');
+    expect(() => world.getResource(MarkerResource)).toThrow('destroyed');
+    expect(() => world.query([])).toThrow('destroyed');
+    expect(() => world.isAlive(entity)).toThrow('destroyed');
+  });
+
+  test('restores created state after clearing before startup', () => {
+    const world = new World();
+    world.spawn().build();
+
+    world.clear();
+
+    expect(world.state).toBe('created');
+  });
+
   test('scopes entity handles to their owning World', () => {
     const firstWorld = new World();
     const secondWorld = new World();

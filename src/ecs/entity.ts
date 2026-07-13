@@ -101,6 +101,12 @@ export class EntityAllocator {
     return alive;
   }
 
+  clear(): void {
+    this.entities.length = 0;
+    this.freeList.length = 0;
+    this.livingCount = 0;
+  }
+
   get count(): number {
     return this.livingCount;
   }

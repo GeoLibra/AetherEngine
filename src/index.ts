@@ -71,6 +71,7 @@ export type {
   ComponentType,
   Entity,
   WorldId,
+  WorldState,
   QueryFilter,
   QueryItem,
   RemovedComponent,

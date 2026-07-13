@@ -220,6 +220,7 @@ export class App {
         }
       }
 
+      this.world.start();
       for (const label of STARTUP_SCHEDULES) {
         await this.schedules.get(label)?.run(this.world);
         this.applyCommands(`after:${label}`);
@@ -265,6 +266,7 @@ export class App {
     await this.shutdownBuiltPlugins(this.stopReason);
     await this.disposeAndRemoveContributions();
     this.pendingPlugins.length = 0;
+    this.world.destroy();
     this.currentState = 'destroyed';
     return Object.freeze({ diagnostics: Object.freeze([...this.diagnostics]) });
   }
