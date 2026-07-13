@@ -1,5 +1,7 @@
 export { defineSchema } from './definition';
 export { SchemaValidationError } from './payload';
+export { applyPrefabOverride, createPrefabOverridePath } from './prefab-path';
+export { ReferenceResolutionError } from './reference-transaction';
 export { mapSchemaReferences, visitSchemaReferences } from './references';
 export { SchemaRegistry } from './registry';
 export type {
@@ -16,12 +18,19 @@ export type {
   MigrationWarning,
   KnownSchemaPayload,
   OpaqueSchemaPayload,
+  PrefabOverridePath,
+  PrefabOverridePathDefinition,
+  PrefabPathSegment,
   ReferenceMapper,
+  ReferenceResolutionIssue,
+  ReferenceResolver,
   ReferencePathSegment,
+  ReferenceTransactionEntry,
   ReferenceVisit,
   ReferenceVisitor,
   ReferencePolicy,
   ReplicationPolicy,
+  ResolvedReferenceEntry,
   SchemaDefinition,
   SchemaId,
   SchemaKind,

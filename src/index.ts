@@ -3,6 +3,7 @@ export { definePlugin } from './app/utils';
 export type {
   AppBuilder,
   AppState,
+  CommandApplyPointDescriptor,
   DestroyResult,
   LifecycleDiagnostic,
   Plugin,
@@ -48,10 +49,18 @@ export {
   ChildOf,
   IsA,
   defineComponent,
-  defineRelation
+  defineObjectComponent,
+  defineRelation,
+  defineTagComponent
 } from './ecs/component';
 export { World } from './ecs/world';
+export { ChangeReader } from './ecs/change-tracker';
+export { CommandBuffer } from './ecs/command-buffer';
+export { SpawnTicket } from './ecs/command-types';
+export { DeferredWorld, ObserverRegistry } from './ecs/observer';
 export type {
+  ChangeReaderOptions,
+  ChangeWindow,
   ComponentDefinition,
   ComponentField,
   ComponentFieldDefinition,
@@ -62,10 +71,34 @@ export type {
   Entity,
   QueryFilter,
   QueryItem,
+  RemovedComponent,
+  ObjectComponentDefinition,
+  ObjectComponentSchema,
+  PackedComponentSchema,
   Relation,
+  RelationOptions,
   RelationType,
-  ResourceType
+  ResourceType,
+  TagComponentDefinition,
+  TagComponentSchema
 } from './ecs/types';
+export type {
+  CommandApplyResult,
+  CommandEntity,
+  ComponentBundle,
+  ComponentCommandValue,
+  WorldCommand
+} from './ecs/command-types';
+export type {
+  ObserverDescriptor,
+  ObserverEvent,
+  ObserverEventKind,
+  ObserverRegistration
+} from './ecs/observer';
+export * from './events';
+export * from './diagnostics';
+export * from './math';
+export * from './transform';
 export { DefaultPlugins, MinimalPlugins } from './plugins/default-plugins';
 export { FixedTime, FrameTime, TimeControl, TimeDiagnostics, TimePolicy } from './app/time';
 export type { FixedOverrunPolicy, TimePolicyOptions } from './app/time-types';

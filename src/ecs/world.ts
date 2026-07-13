@@ -1,17 +1,35 @@
-import { ChangeTracker } from './change-tracker';
+import { ChangeReader, ChangeTracker } from './change-tracker';
+import { CommandBuffer } from './command-buffer';
+import { EventRegistry } from '../events/event-registry';
+import { StateRegistry } from '../events/state-registry';
+import { DiagnosticStore } from '../diagnostics/store';
 import { SchemaRegistry } from '../schema';
-import { ChildOf, createComponentView, serializeComponent } from './component';
+import {
+  ChildOf,
+  createComponentView,
+  createObjectComponentValue,
+  serializeComponent,
+  validateComponentInput
+} from './component';
 import { EntityAllocator } from './entity';
 import { EntityBuilder } from './entity-builder';
 import { QueryBuilder } from './query';
+import { ObserverRegistry } from './observer';
+import type {
+  ObserverDescriptor,
+  ObserverEvent,
+  ObserverRegistration
+} from './observer';
 import {
   ChildOfIndex,
   createRelationAnyTag,
-  createRelationTargetTag,
   sameStringSet
 } from './relation';
 import { createArchetypeId, Table } from './table';
-import { findMatchingTables as findTablesMatchingQuery } from './table-query';
+import {
+  createComponentTag,
+  findMatchingTables as findTablesMatchingQuery
+} from './table-query';
 import type {
   ComponentInput,
   ComponentSchema,
@@ -22,7 +40,13 @@ import type {
   QueryItem,
   Relation,
   RelationType,
-  ResourceType
+  ResourceType,
+  ChangeReaderOptions,
+  RemovedComponent,
+  ChangeWindow,
+  ObjectComponentSchema,
+  PackedComponentSchema,
+  TagComponentSchema
 } from './types';
 
 interface EntityLocation {
@@ -37,47 +61,104 @@ export class World {
   private readonly entityAllocator = new EntityAllocator();
   private readonly tables = new Map<string, Table>();
   private readonly entityLocations = new Map<Entity, EntityLocation>();
-  private readonly componentRegistry = new Map<string, ComponentSchema<object>>();
+  private readonly componentRegistry = new Map<string, ComponentType<object>>();
+  private readonly objectComponents = new Map<string, Map<Entity, object>>();
+  private readonly tagComponents = new Map<string, Set<Entity>>();
+  private readonly tagViews = new Map<string, object>();
   private readonly resources = new Map<ResourceType<unknown>, unknown>();
   private readonly changeTracker = new ChangeTracker();
+  private readonly systemChangeReaders = new Map<string, ChangeReader>();
+  private activeChangeWindow: ChangeWindow | undefined;
 
-  // Relation payloads live here for exact API lookups, while relation tags on tables make
-  // relation queries participate in archetype matching.
+  // Relation payloads and exact targets live here; tables contain relation-type tags only.
   private readonly relations = new Map<Entity, Map<symbol, Relation>>();
   private readonly childOfIndex = new ChildOfIndex();
+  private readonly observerRegistry = new ObserverRegistry();
+  private activeQueryIterations = 0;
+  private observerDispatchDepth = 0;
 
   constructor(schemaRegistry: SchemaRegistry = new SchemaRegistry()) {
     this.resources.set(SchemaRegistry, schemaRegistry);
+    this.resources.set(CommandBuffer, new CommandBuffer());
+    this.resources.set(EventRegistry, new EventRegistry());
+    this.resources.set(StateRegistry, new StateRegistry());
+    this.resources.set(DiagnosticStore, new DiagnosticStore());
   }
 
   spawn(): EntityBuilder {
+    this.assertStructuralMutationAllowed();
     return new EntityBuilder(this, this.entityAllocator.allocate());
   }
 
   despawn(entity: Entity): boolean {
+    this.assertStructuralMutationAllowed();
     if (!this.entityAllocator.isAlive(entity)) {
       return false;
     }
 
+    const entityComponentTypes = this.getEntityComponentTypes(entity);
+    const outgoingRelations = [...(this.relations.get(entity)?.values() ?? [])];
+    const incomingRelations: Array<{ readonly source: Entity; readonly value: Relation }> = [];
+    for (const [source, entityRelations] of this.relations) {
+      if (source === entity) {
+        continue;
+      }
+      for (const value of entityRelations.values()) {
+        if (value.target === entity) {
+          incomingRelations.push({ source, value });
+        }
+      }
+    }
+    const deferred = this.dispatchObservers([
+      ...entityComponentTypes.map(
+        (component): ObserverEvent => ({
+          kind: 'component-removed',
+          entity,
+          component
+        })
+      ),
+      ...outgoingRelations.map(
+        (value): ObserverEvent => ({
+          kind: 'relation-removed',
+          entity,
+          relation: value.relation,
+          target: value.target
+        })
+      ),
+      ...incomingRelations.map(
+        ({ source, value }): ObserverEvent => ({
+          kind: 'relation-removed',
+          entity: source,
+          relation: value.relation,
+          target: value.target
+        })
+      ),
+      { kind: 'entity-despawned', entity }
+    ]);
+
     // Remove outgoing relation indexes before deleting the source relation map.
-    for (const relation of this.relations.get(entity)?.values() ?? []) {
+    for (const relation of outgoingRelations) {
       this.childOfIndex.remove(entity, relation);
     }
 
     this.relations.delete(entity);
-
-    // Incoming relations must be removed through removeRelation() so their source entities
-    // migrate out of relation-tagged archetypes as well.
-    const relationsToRemove: Array<{ source: Entity; relation: RelationType }> = [];
-    for (const [source, entityRelations] of this.relations) {
-      for (const relation of entityRelations.values()) {
-        if (relation.target === entity) {
-          relationsToRemove.push({ source, relation: relation.relation });
-        }
-      }
+    for (const storage of this.objectComponents.values()) {
+      storage.delete(entity);
     }
-    for (const relationToRemove of relationsToRemove) {
-      this.removeRelation(relationToRemove.source, relationToRemove.relation);
+    for (const storage of this.tagComponents.values()) {
+      storage.delete(entity);
+    }
+
+    // Observer validation already succeeded for the full despawn mutation. Remove incoming
+    // edges without redispatching so one failing observer cannot leave a half-detached graph.
+    for (const { source, value } of incomingRelations) {
+      const sourceRelations = this.relations.get(source);
+      sourceRelations?.delete(value.relation.id);
+      if (sourceRelations?.size === 0) {
+        this.relations.delete(source);
+      }
+      this.childOfIndex.remove(source, value);
+      this.syncEntityArchetype(source);
     }
 
     const location = this.entityLocations.get(entity);
@@ -85,8 +166,13 @@ export class World {
       this.removeFromTable(entity, location);
     }
 
-    this.changeTracker.markRemoved(entity);
-    return this.entityAllocator.free(entity);
+    this.changeTracker.markRemoved(
+      entity,
+      entityComponentTypes.map((component) => component.id)
+    );
+    const removed = this.entityAllocator.free(entity);
+    this.enqueueObserverCommands(deferred);
+    return removed;
   }
 
   isAlive(entity: Entity): boolean {
@@ -94,6 +180,7 @@ export class World {
   }
 
   registerComponent<TView extends object>(schema: ComponentType<TView>): this {
+    this.assertStructuralMutationAllowed();
     const existing = this.componentRegistry.get(schema.id);
     if (existing && existing !== schema) {
       throw new Error(`Component "${schema.id}" is already registered with a different schema.`);
@@ -103,7 +190,7 @@ export class World {
     }
 
     this.getSchemaRegistry().register(schema);
-    this.componentRegistry.set(schema.id, schema as ComponentSchema<object>);
+    this.componentRegistry.set(schema.id, schema as ComponentType<object>);
     return this;
   }
 
@@ -112,10 +199,30 @@ export class World {
     componentType: ComponentType<TView>,
     data: ComponentInput = {}
   ): this {
+    this.assertStructuralMutationAllowed();
     this.assertAlive(entity);
     const schema = this.getRegisteredComponent(componentType);
+    validateComponentInput(schema as ComponentType<object>, data);
+    if (schema.storage === 'object') {
+      this.insertObjectComponent(entity, schema, data);
+      return this;
+    }
+    if (schema.storage === 'tag') {
+      this.insertTagComponent(entity, schema);
+      return this;
+    }
     const serialized = serializeComponent(schema, data);
     const location = this.entityLocations.get(entity);
+    const isAdded = !location?.table.hasComponent(schema.id);
+    const deferred = isAdded
+      ? this.dispatchObservers([
+          {
+            kind: 'component-added',
+            entity,
+            component: schema as ComponentType<object>
+          }
+        ])
+      : undefined;
 
     if (!location) {
       // Empty entities gain a table only once they receive components or relation tags.
@@ -123,7 +230,7 @@ export class World {
       const row = table.insert(entity, new Map([[schema.id, serialized]]));
       this.entityLocations.set(entity, { table, row });
       this.changeTracker.markAdded(entity, schema.id);
-      this.changeTracker.markChanged(entity, schema.id);
+      this.enqueueObserverCommands(deferred);
       return this;
     }
 
@@ -135,7 +242,7 @@ export class World {
 
     this.migrateEntity(entity, location, schema, serialized);
     this.changeTracker.markAdded(entity, schema.id);
-    this.changeTracker.markChanged(entity, schema.id);
+    this.enqueueObserverCommands(deferred);
     return this;
   }
 
@@ -145,6 +252,20 @@ export class World {
     }
 
     const schema = this.getRegisteredComponent(componentType);
+    if (schema.storage === 'object') {
+      return (this.objectComponents.get(schema.id)?.get(entity) as TView | undefined) ?? null;
+    }
+    if (schema.storage === 'tag') {
+      if (!this.tagComponents.get(schema.id)?.has(entity)) {
+        return null;
+      }
+      let view = this.tagViews.get(schema.id);
+      if (!view) {
+        view = Object.freeze({});
+        this.tagViews.set(schema.id, view);
+      }
+      return view as TView;
+    }
     const location = this.entityLocations.get(entity);
     if (!location || !location.table.hasComponent(schema.id)) {
       return null;
@@ -155,8 +276,77 @@ export class World {
 
   hasComponent<TView extends object>(entity: Entity, componentType: ComponentType<TView>): boolean {
     const schema = this.getRegisteredComponent(componentType);
+    if (schema.storage === 'object') {
+      return this.objectComponents.get(schema.id)?.has(entity) === true;
+    }
+    if (schema.storage === 'tag') {
+      return this.tagComponents.get(schema.id)?.has(entity) === true;
+    }
     const location = this.entityLocations.get(entity);
     return location?.table.hasComponent(schema.id) === true;
+  }
+
+  removeComponent<TView extends object>(
+    entity: Entity,
+    componentType: ComponentType<TView>
+  ): boolean {
+    this.assertStructuralMutationAllowed();
+    this.assertAlive(entity);
+    const schema = this.getRegisteredComponent(componentType);
+    if (schema.storage === 'object') {
+      return this.removeObjectComponent(entity, schema);
+    }
+    if (schema.storage === 'tag') {
+      return this.removeTagComponent(entity, schema);
+    }
+    const location = this.entityLocations.get(entity);
+    if (!location || !location.table.hasComponent(schema.id)) {
+      return false;
+    }
+    const deferred = this.dispatchObservers([
+      {
+        kind: 'component-removed',
+        entity,
+        component: schema as ComponentType<object>
+      }
+    ]);
+
+    const remainingTypes = location.table.componentTypes.filter(
+      (component) => component.id !== schema.id
+    );
+    const remainingData = new Map<string, ArrayBuffer>();
+    for (const remaining of remainingTypes) {
+      remainingData.set(
+        remaining.id,
+        location.table.readComponent(remaining, location.row)
+      );
+    }
+    const tags = location.table.tags;
+    this.removeFromTable(entity, location);
+    if (remainingTypes.length > 0 || tags.size > 0) {
+      const table = this.getOrCreateTable(remainingTypes, tags);
+      const row = table.insert(entity, remainingData);
+      this.entityLocations.set(entity, { table, row });
+    }
+    this.changeTracker.markRemoved(entity, [schema.id]);
+    this.enqueueObserverCommands(deferred);
+    return true;
+  }
+
+  isComponentRegistered<TView extends object>(componentType: ComponentType<TView>): boolean {
+    return this.componentRegistry.get(componentType.id) === componentType;
+  }
+
+  markComponentChanged<TView extends object>(
+    entity: Entity,
+    componentType: ComponentType<TView>
+  ): void {
+    this.assertAlive(entity);
+    const schema = this.getRegisteredComponent(componentType);
+    if (!this.hasComponent(entity, schema)) {
+      throw new Error(`Entity "${entity}" does not have component "${schema.id}".`);
+    }
+    this.changeTracker.markChanged(entity, schema.id);
   }
 
   query<const TComponents extends readonly ComponentType<object>[]>(
@@ -170,32 +360,39 @@ export class World {
     componentTypes: TComponents,
     filter: QueryFilter
   ): Iterator<QueryItem<TComponents>> {
-    if (componentTypes.length === 0 && !this.shouldUseTablesForEmptyQuery(filter)) {
-      // Unfiltered entity-only queries must include totally empty entities, which have no table.
-      for (const entity of this.entityAllocator.aliveEntities()) {
-        if (this.entityMatchesFilter(entity, filter)) {
-          yield [entity] as unknown as QueryItem<TComponents>;
+    this.activeQueryIterations++;
+    try {
+      if (componentTypes.length === 0 && !this.shouldUseTablesForEmptyQuery(filter)) {
+        // Unfiltered entity-only queries must include totally empty entities, which have no table.
+        for (const entity of this.entityAllocator.aliveEntities()) {
+          if (this.entityMatchesFilter(entity, filter)) {
+            yield [entity] as unknown as QueryItem<TComponents>;
+          }
+        }
+        return;
+      }
+
+      const schemas = componentTypes.map((componentType) =>
+        this.getRegisteredComponent(componentType)
+      );
+      for (const table of this.findMatchingTables(schemas, filter)) {
+        for (let row = 0; row < table.length; row++) {
+          const entity = table.getEntity(row);
+          if (!this.entityMatchesFilter(entity, filter, table)) {
+            continue;
+          }
+
+          const views = schemas.map((schema) => this.getComponent(entity, schema));
+          yield [entity, ...views] as unknown as QueryItem<TComponents>;
         }
       }
-      return;
-    }
-
-    const schemas = componentTypes.map((componentType) => this.getRegisteredComponent(componentType));
-    for (const table of this.findMatchingTables(schemas, filter)) {
-      for (let row = 0; row < table.length; row++) {
-        const entity = table.getEntity(row);
-        if (!this.entityMatchesFilter(entity, filter, table)) {
-          continue;
-        }
-
-        const views = schemas.map((schema) => this.createView(schema, entity));
-        yield [entity, ...views] as unknown as QueryItem<TComponents>;
-      }
+    } finally {
+      this.activeQueryIterations--;
     }
   }
 
   findMatchingTables(
-    componentTypes: readonly ComponentSchema<object>[],
+    componentTypes: readonly ComponentType<object>[],
     filter: QueryFilter = {}
   ): Table[] {
     // Kept public for tests and future query planning; the pure matcher owns the tag logic.
@@ -205,16 +402,38 @@ export class World {
   }
 
   addRelation(entity: Entity, relation: RelationType, target: Entity): this {
+    this.assertStructuralMutationAllowed();
     this.assertAlive(entity);
     this.assertAlive(target);
-
+    if (relation.acyclic && this.wouldCreateRelationCycle(entity, relation, target)) {
+      throw new Error(
+        `Relation "${relation.name}" would create a cycle from "${entity}" to "${target}".`
+      );
+    }
     let entityRelations = this.relations.get(entity);
+    const previous = entityRelations?.get(relation.id);
+    if (previous?.target === target) {
+      return this;
+    }
+    const deferred = this.dispatchObservers([
+      ...(previous
+        ? ([
+            {
+              kind: 'relation-removed',
+              entity,
+              relation,
+              target: previous.target
+            }
+          ] as const)
+        : []),
+      { kind: 'relation-added', entity, relation, target }
+    ]);
+
     if (!entityRelations) {
       entityRelations = new Map<symbol, Relation>();
       this.relations.set(entity, entityRelations);
     }
 
-    const previous = entityRelations.get(relation.id);
     if (previous) {
       this.childOfIndex.remove(entity, previous);
     }
@@ -223,15 +442,25 @@ export class World {
     entityRelations.set(relation.id, { relation, target });
     this.childOfIndex.add(entity, { relation, target });
     this.syncEntityArchetype(entity);
+    this.enqueueObserverCommands(deferred);
     return this;
   }
 
   removeRelation(entity: Entity, relation: RelationType): boolean {
+    this.assertStructuralMutationAllowed();
     const entityRelations = this.relations.get(entity);
     const existing = entityRelations?.get(relation.id);
     if (!entityRelations || !existing) {
       return false;
     }
+    const deferred = this.dispatchObservers([
+      {
+        kind: 'relation-removed',
+        entity,
+        relation,
+        target: existing.target
+      }
+    ]);
 
     entityRelations.delete(relation.id);
     if (entityRelations.size === 0) {
@@ -242,11 +471,29 @@ export class World {
     if (this.entityAllocator.isAlive(entity)) {
       this.syncEntityArchetype(entity);
     }
+    this.enqueueObserverCommands(deferred);
     return true;
   }
 
   getRelation(entity: Entity, relation: RelationType): Relation | null {
     return this.relations.get(entity)?.get(relation.id) ?? null;
+  }
+
+  wouldCreateRelationCycle(
+    source: Entity,
+    relation: RelationType,
+    target: Entity
+  ): boolean {
+    const visited = new Set<Entity>();
+    let current: Entity | null = target;
+    while (current !== null) {
+      if (current === source || visited.has(current)) {
+        return true;
+      }
+      visited.add(current);
+      current = this.getRelation(current, relation)?.target ?? null;
+    }
+    return false;
   }
 
   getChildren(parent: Entity): Entity[] {
@@ -268,9 +515,33 @@ export class World {
     visit(root, 0);
   }
 
+  addObserver<TView extends object>(
+    descriptor: ObserverDescriptor<TView>
+  ): ObserverRegistration {
+    return this.observerRegistry.add(descriptor);
+  }
+
   insertResource<T extends object>(resource: T): this {
     if (resource instanceof SchemaRegistry && resource !== this.getSchemaRegistry()) {
       throw new Error('World owns exactly one SchemaRegistry; it cannot be replaced.');
+    }
+    if (
+      resource instanceof CommandBuffer &&
+      resource !== this.resources.get(CommandBuffer)
+    ) {
+      throw new Error('World owns exactly one CommandBuffer; it cannot be replaced.');
+    }
+    if (resource instanceof EventRegistry && resource !== this.resources.get(EventRegistry)) {
+      throw new Error('World owns exactly one EventRegistry; it cannot be replaced.');
+    }
+    if (resource instanceof StateRegistry && resource !== this.resources.get(StateRegistry)) {
+      throw new Error('World owns exactly one StateRegistry; it cannot be replaced.');
+    }
+    if (
+      resource instanceof DiagnosticStore &&
+      resource !== this.resources.get(DiagnosticStore)
+    ) {
+      throw new Error('World owns exactly one DiagnosticStore; it cannot be replaced.');
     }
     this.resources.set(resource.constructor as ResourceType<T>, resource);
     return this;
@@ -288,17 +559,85 @@ export class World {
     if (type === (SchemaRegistry as unknown as ResourceType<T>)) {
       throw new Error('World SchemaRegistry cannot be removed.');
     }
+    if (type === (CommandBuffer as unknown as ResourceType<T>)) {
+      throw new Error('World CommandBuffer cannot be removed.');
+    }
+    if (type === (EventRegistry as unknown as ResourceType<T>)) {
+      throw new Error('World EventRegistry cannot be removed.');
+    }
+    if (type === (StateRegistry as unknown as ResourceType<T>)) {
+      throw new Error('World StateRegistry cannot be removed.');
+    }
+    if (type === (DiagnosticStore as unknown as ResourceType<T>)) {
+      throw new Error('World DiagnosticStore cannot be removed.');
+    }
     const resource = this.getResource(type);
     this.resources.delete(type);
     return resource;
   }
 
   hasChanged(entity: Entity, componentTypes: readonly ComponentType<object>[]): boolean {
-    return this.changeTracker.hasChanged(entity, componentTypes);
+    return this.changeTracker.hasChanged(entity, componentTypes, this.getChangeWindow());
   }
 
   clearTrackers(): void {
-    this.changeTracker.clear();
+    this.changeTracker.advanceDefault();
+  }
+
+  createChangeReader(options: ChangeReaderOptions = {}): ChangeReader {
+    return this.changeTracker.createReader(options);
+  }
+
+  releaseChangeReader(reader: ChangeReader): boolean {
+    return this.changeTracker.releaseReader(reader);
+  }
+
+  withChangeReader<T>(reader: ChangeReader, run: () => T): T {
+    if (this.activeChangeWindow) {
+      throw new Error('Change reader scopes cannot be nested.');
+    }
+    const window = this.changeTracker.windowFor(reader);
+    this.activeChangeWindow = window;
+    try {
+      return run();
+    } finally {
+      this.activeChangeWindow = undefined;
+      this.changeTracker.advanceReader(reader, window.untilInclusive);
+    }
+  }
+
+  runTrackedSystem<T>(systemId: string, run: () => T): T {
+    let reader = this.systemChangeReaders.get(systemId);
+    if (!reader) {
+      reader = this.changeTracker.createSystemReader();
+      this.systemChangeReaders.set(systemId, reader);
+    }
+    return this.withChangeReader(reader, run);
+  }
+
+  async runTrackedSystemAsync<T>(systemId: string, run: () => Promise<T>): Promise<T> {
+    let reader = this.systemChangeReaders.get(systemId);
+    if (!reader) {
+      reader = this.changeTracker.createSystemReader();
+      this.systemChangeReaders.set(systemId, reader);
+    }
+    if (this.activeChangeWindow) {
+      throw new Error('Change reader scopes cannot be nested.');
+    }
+    const window = this.changeTracker.windowFor(reader);
+    this.activeChangeWindow = window;
+    try {
+      return await run();
+    } finally {
+      this.activeChangeWindow = undefined;
+      this.changeTracker.advanceReader(reader, window.untilInclusive);
+    }
+  }
+
+  readRemoved<TView extends object>(
+    component: ComponentType<TView>
+  ): readonly RemovedComponent<TView>[] {
+    return this.changeTracker.readRemoved(component, this.getChangeWindow());
   }
 
   shrinkTablesToFit(): void {
@@ -308,7 +647,7 @@ export class World {
   }
 
   private createView<TView extends object>(
-    schema: ComponentSchema<TView>,
+    schema: PackedComponentSchema<TView>,
     entity: Entity
   ): TView {
     // The closure resolves current storage on every field access so old views remain valid
@@ -340,11 +679,17 @@ export class World {
       }
     }
 
-    if (filter.changed && !this.changeTracker.hasChanged(entity, filter.changed)) {
+    if (
+      filter.changed &&
+      !this.changeTracker.hasChanged(entity, filter.changed, this.getChangeWindow())
+    ) {
       return false;
     }
 
-    if (filter.added && !this.changeTracker.wasAdded(entity, filter.added)) {
+    if (
+      filter.added &&
+      !this.changeTracker.wasAdded(entity, filter.added, this.getChangeWindow())
+    ) {
       return false;
     }
 
@@ -353,7 +698,12 @@ export class World {
 
   private entityHasTerm(entity: Entity, term: QueryFilterTerm, table?: Table): boolean {
     if (!isRelationTerm(term)) {
-      return table?.hasComponent(term.id) ?? this.hasComponent(entity, term);
+      if (!table) {
+        return this.hasComponent(entity, term);
+      }
+      return term.storage === 'packed'
+        ? table.hasComponent(term.id)
+        : table.hasTag(createComponentTag(term.id));
     }
     return this.getRelation(entity, term) !== null;
   }
@@ -370,18 +720,139 @@ export class World {
     }
   }
 
+  private assertStructuralMutationAllowed(): void {
+    if (this.observerDispatchDepth > 0) {
+      throw new Error(
+        'Direct structural mutation is not allowed during observer dispatch; use DeferredWorld.commands.'
+      );
+    }
+    if (this.activeQueryIterations > 0) {
+      throw new Error(
+        'Direct structural mutation is not allowed during query iteration; use CommandBuffer.'
+      );
+    }
+  }
+
+  private dispatchObservers(events: readonly ObserverEvent[]): CommandBuffer | undefined {
+    if (events.length === 0) {
+      return undefined;
+    }
+    this.observerDispatchDepth++;
+    try {
+      return this.observerRegistry.dispatch(events, this);
+    } finally {
+      this.observerDispatchDepth--;
+    }
+  }
+
+  private enqueueObserverCommands(commands: CommandBuffer | undefined): void {
+    if (!commands || commands.length === 0) {
+      return;
+    }
+    const queue = this.resources.get(CommandBuffer) as CommandBuffer;
+    queue.append(commands);
+  }
+
   private getRegisteredComponent<TView extends object>(
     schema: ComponentType<TView>
-  ): ComponentSchema<TView> {
+  ): ComponentType<TView> {
     const registered = this.componentRegistry.get(schema.id);
     if (!registered || registered !== schema) {
       throw new Error(`Component "${schema.id}" has not been registered.`);
     }
-    return registered as ComponentSchema<TView>;
+    return registered as ComponentType<TView>;
+  }
+
+  private insertObjectComponent<TView extends object>(
+    entity: Entity,
+    schema: ObjectComponentSchema<TView>,
+    data: ComponentInput
+  ): void {
+    const value = createObjectComponentValue(schema, data);
+    let storage = this.objectComponents.get(schema.id);
+    if (!storage) {
+      storage = new Map();
+      this.objectComponents.set(schema.id, storage);
+    }
+    const isAdded = !storage.has(entity);
+    const deferred = isAdded
+      ? this.dispatchObservers([
+          { kind: 'component-added', entity, component: schema as ComponentType<object> }
+        ])
+      : undefined;
+    storage.set(entity, value);
+    if (isAdded) {
+      this.syncEntityArchetype(entity);
+      this.changeTracker.markAdded(entity, schema.id);
+      this.enqueueObserverCommands(deferred);
+    } else {
+      this.changeTracker.markChanged(entity, schema.id);
+    }
+  }
+
+  private insertTagComponent(entity: Entity, schema: TagComponentSchema<object>): void {
+    let storage = this.tagComponents.get(schema.id);
+    if (!storage) {
+      storage = new Set();
+      this.tagComponents.set(schema.id, storage);
+    }
+    if (storage.has(entity)) {
+      return;
+    }
+    const deferred = this.dispatchObservers([
+      { kind: 'component-added', entity, component: schema }
+    ]);
+    storage.add(entity);
+    this.syncEntityArchetype(entity);
+    this.changeTracker.markAdded(entity, schema.id);
+    this.enqueueObserverCommands(deferred);
+  }
+
+  private removeObjectComponent<TView extends object>(
+    entity: Entity,
+    schema: ObjectComponentSchema<TView>
+  ): boolean {
+    const storage = this.objectComponents.get(schema.id);
+    if (!storage?.has(entity)) {
+      return false;
+    }
+    const deferred = this.dispatchObservers([
+      { kind: 'component-removed', entity, component: schema as ComponentType<object> }
+    ]);
+    storage.delete(entity);
+    this.syncEntityArchetype(entity);
+    this.changeTracker.markRemoved(entity, [schema.id]);
+    this.enqueueObserverCommands(deferred);
+    return true;
+  }
+
+  private removeTagComponent(entity: Entity, schema: TagComponentSchema<object>): boolean {
+    const storage = this.tagComponents.get(schema.id);
+    if (!storage?.has(entity)) {
+      return false;
+    }
+    const deferred = this.dispatchObservers([
+      { kind: 'component-removed', entity, component: schema }
+    ]);
+    storage.delete(entity);
+    this.syncEntityArchetype(entity);
+    this.changeTracker.markRemoved(entity, [schema.id]);
+    this.enqueueObserverCommands(deferred);
+    return true;
+  }
+
+  private getEntityComponentTypes(entity: Entity): ComponentType<object>[] {
+    const result: ComponentType<object>[] = [];
+    for (const component of this.componentRegistry.values()) {
+      if (this.hasComponent(entity, component)) {
+        result.push(component);
+      }
+    }
+    return result.sort((left, right) => left.id.localeCompare(right.id));
   }
 
   private getOrCreateTable(
-    componentTypes: readonly ComponentSchema<object>[],
+    componentTypes: readonly PackedComponentSchema<object>[],
     tags: Iterable<string> = []
   ): Table {
     // Archetypes are keyed by component set plus relation tags. Tags have no column storage.
@@ -399,7 +870,7 @@ export class World {
   private migrateEntity(
     entity: Entity,
     oldLocation: EntityLocation,
-    newSchema: ComponentSchema<object>,
+    newSchema: PackedComponentSchema<object>,
     newData: ArrayBuffer
   ): void {
     const oldComponents = new Map<string, ArrayBuffer>();
@@ -457,7 +928,7 @@ export class World {
 
   private getComponentStorage<TView extends object>(
     entity: Entity,
-    schema: ComponentSchema<TView>
+    schema: PackedComponentSchema<TView>
   ): { readonly buffer: ArrayBuffer; readonly row: number } {
     const location = this.entityLocations.get(entity);
     if (!location || !location.table.hasComponent(schema.id)) {
@@ -473,12 +944,25 @@ export class World {
     return this.resources.get(SchemaRegistry) as SchemaRegistry;
   }
 
+  private getChangeWindow(): ChangeWindow {
+    return this.activeChangeWindow ?? this.changeTracker.windowFor();
+  }
+
   private getEntityTags(entity: Entity): Set<string> {
     const tags = new Set<string>();
+    for (const [componentId, storage] of this.objectComponents) {
+      if (storage.has(entity)) {
+        tags.add(createComponentTag(componentId));
+      }
+    }
+    for (const [componentId, storage] of this.tagComponents) {
+      if (storage.has(entity)) {
+        tags.add(createComponentTag(componentId));
+      }
+    }
     for (const relation of this.relations.get(entity)?.values() ?? []) {
-      // Store both "has relation type" and "has relation-to-target" tags.
+      // Exact targets remain indexed payloads and never fragment archetypes by target id.
       tags.add(createRelationAnyTag(relation.relation));
-      tags.add(createRelationTargetTag(relation.relation, relation.target));
     }
     return tags;
   }

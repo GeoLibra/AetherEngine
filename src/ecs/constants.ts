@@ -15,6 +15,8 @@ export const FIELD_TYPE_SIZES: Record<ComponentFieldType, number> = {
   vec2: 8,
   vec3: 12,
   vec4: 16,
+  ivec3: 12,
+  mat3: 36,
   mat4: 64,
   entity: 4
 };

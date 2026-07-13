@@ -16,7 +16,8 @@ export const DEFAULT_SCHEDULES: ScheduleLabel[] = [
   'Last',
   'PreRender',
   'Render',
-  'PostRender'
+  'PostRender',
+  'FrameCleanup'
 ];
 
 export const STARTUP_SCHEDULES: ScheduleLabel[] = ['PreStartup', 'Startup', 'PostStartup'];

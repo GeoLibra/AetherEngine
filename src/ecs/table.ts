@@ -2,7 +2,7 @@ import {
   DEFAULT_TABLE_CHUNK_CAPACITY,
   DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY
 } from './constants';
-import type { ComponentSchema, Entity } from './types';
+import type { Entity, PackedComponentSchema } from './types';
 
 export interface TableRemoval {
   readonly removed: Entity;
@@ -30,15 +30,15 @@ interface RowLocation {
 }
 
 interface TableColumn {
-  readonly schema: ComponentSchema<object>;
+  readonly schema: PackedComponentSchema<object>;
   readonly chunks: ArrayBuffer[];
 }
 
 export class Table {
   readonly archetypeId: string;
-  readonly componentTypes: readonly ComponentSchema<object>[];
+  readonly componentTypes: readonly PackedComponentSchema<object>[];
 
-  // Tags are zero-sized archetype members, used for relation pairs such as ChildOf(parent).
+  // Tags are zero-sized archetype members for tag components and relation types.
   readonly tags: ReadonlySet<string>;
 
   private readonly columns = new Map<string, TableColumn>();
@@ -49,7 +49,7 @@ export class Table {
   private count = 0;
 
   constructor(
-    componentTypes: readonly ComponentSchema<object>[],
+    componentTypes: readonly PackedComponentSchema<object>[],
     tags: readonly string[] = [],
     options: TableOptions = {}
   ) {
@@ -135,14 +135,14 @@ export class Table {
     return this.getEntityAt(row);
   }
 
-  readComponent(schema: ComponentSchema<object>, row: number): ArrayBuffer {
+  readComponent(schema: PackedComponentSchema<object>, row: number): ArrayBuffer {
     const data = new ArrayBuffer(schema.size);
     const { buffer, row: rowInChunk } = this.getComponentStorage(schema.id, row);
     new Uint8Array(data).set(new Uint8Array(buffer, rowInChunk * schema.size, schema.size));
     return data;
   }
 
-  writeComponent(schema: ComponentSchema<object>, row: number, data: ArrayBuffer): void {
+  writeComponent(schema: PackedComponentSchema<object>, row: number, data: ArrayBuffer): void {
     if (data.byteLength !== schema.size) {
       throw new Error(
         `Component "${schema.name}" expected ${schema.size} bytes, received ${data.byteLength}.`
@@ -191,7 +191,7 @@ export class Table {
     this.allocatedRows += capacity;
   }
 
-  private copyComponent(schema: ComponentSchema<object>, sourceRow: number, targetRow: number): void {
+  private copyComponent(schema: PackedComponentSchema<object>, sourceRow: number, targetRow: number): void {
     const source = this.getComponentStorage(schema.id, sourceRow);
     const target = this.getComponentStorage(schema.id, targetRow);
     new Uint8Array(target.buffer, target.row * schema.size, schema.size).set(
@@ -274,7 +274,7 @@ function resolveChunkCapacity(value: number | undefined, fallback: number, label
 }
 
 export function createArchetypeId(
-  componentTypes: readonly ComponentSchema<object>[],
+  componentTypes: readonly PackedComponentSchema<object>[],
   tags: Iterable<string> = []
 ): string {
   // Sorting makes archetype identity independent from insertion order.

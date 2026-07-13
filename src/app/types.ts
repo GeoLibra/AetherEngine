@@ -1,6 +1,9 @@
 import type { World } from '../ecs/world';
 import type { ResourceType } from '../ecs/types';
 import type { SchemaMigration, TypeSchema } from '../schema';
+import type { ObserverDescriptor } from '../ecs/observer';
+import type { EventChannel } from '../events/event-channel';
+import type { StateStore } from '../events/state-store';
 // Registry scopes and token types
 export type AppScope = 'main' | 'render' | 'editor' | 'asset-worker' | 'global';
 export type ServiceToken<T> = symbol & { readonly __type?: T };
@@ -70,6 +73,7 @@ export type ScheduleLabel =
   | 'PreRender'
   | 'Render'
   | 'PostRender'
+  | 'FrameCleanup'
   | string;
 
 export type System = (world: World) => void | Promise<void>;
@@ -89,6 +93,14 @@ export interface SystemRegistration {
   readonly id: string;
 }
 
+export interface CommandApplyPointDescriptor {
+  readonly id: string;
+  readonly before?: readonly string[];
+  readonly after?: readonly string[];
+  readonly optionalBefore?: readonly string[];
+  readonly optionalAfter?: readonly string[];
+}
+
 export type AppState =
   | 'created'
   | 'building'
@@ -102,6 +114,10 @@ export type AppState =
 
 export interface AppBuilder {
   addSystem(stage: ScheduleLabel, descriptor: SystemDescriptor): void;
+  addCommandApplyPoint(
+    stage: ScheduleLabel,
+    descriptor: CommandApplyPointDescriptor
+  ): void;
   insertResource<T extends object>(resource: T): void;
   replaceResource<T extends object>(resource: T): void;
   provideService<T>(token: ServiceToken<T>, registration: ServiceRegistration<T>): void;
@@ -109,6 +125,9 @@ export interface AppBuilder {
   addExtension<T>(point: ExtensionPoint<T>, contribution: ExtensionContribution<T>): void;
   registerSchema<T>(schema: TypeSchema<T>): void;
   registerSchemaMigration(migration: SchemaMigration): void;
+  addObserver<TView extends object>(descriptor: ObserverDescriptor<TView>): void;
+  addEventChannel<T>(id: string, channel: EventChannel<T>): void;
+  addStateStore<S>(id: string, store: StateStore<S>): void;
 }
 
 export interface ReadonlyAppContext {

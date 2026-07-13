@@ -110,8 +110,31 @@ function freezeValueType(schemaId: string, type: ValueTypeDefinition): ValueType
       }
       return Object.freeze({ ...type, values: Object.freeze([...type.values]) });
     }
-    case 'array':
-      return Object.freeze({ ...type, element: freezeValueType(schemaId, type.element) });
+    case 'array': {
+      const element = freezeValueType(schemaId, type.element);
+      if (type.elementKey !== undefined) {
+        if (element.kind !== 'struct') {
+          throw new Error(
+            `Schema "${schemaId}" array elementKey requires a struct element type.`
+          );
+        }
+        const keyField = element.fields.find(
+          (field) => String(field.id) === type.elementKey
+        );
+        if (!keyField || !isStableKeyType(keyField.type)) {
+          throw new Error(
+            `Schema "${schemaId}" array elementKey "${type.elementKey}" must name a string, enum, or integer struct field.`
+          );
+        }
+      }
+      return Object.freeze({
+        kind: 'array' as const,
+        element,
+        ...(type.elementKey === undefined
+          ? {}
+          : { elementKey: type.elementKey as FieldId })
+      });
+    }
     case 'map':
       return Object.freeze({ ...type, value: freezeValueType(schemaId, type.value) });
     case 'struct': {
@@ -151,6 +174,14 @@ function isPackedType(type: ValueTypeDefinition): boolean {
   }
 }
 
+function isStableKeyType(type: ValueType): boolean {
+  return (
+    type.kind === 'string' ||
+    type.kind === 'enum' ||
+    (type.kind === 'number' && (type.format === 'i32' || type.format === 'u32'))
+  );
+}
+
 function isValueOfType(value: unknown, type: ValueType): boolean {
   switch (type.kind) {
     case 'boolean':
@@ -162,7 +193,7 @@ function isValueOfType(value: unknown, type: ValueType): boolean {
     case 'enum':
       return typeof value === 'string' && type.values.includes(value);
     case 'vector':
-      return isNumericArray(value, type.length);
+      return isNumericArray(value, type.length, type.format);
     case 'matrix':
       return isNumericArray(value, type.columns * type.rows);
     case 'array':
@@ -196,14 +227,18 @@ function isNumberOfFormat(value: unknown, format: 'f32' | 'f64' | 'i32' | 'u32')
   if (format === 'u32') {
     return Number.isInteger(value) && value >= 0 && value <= 4294967295;
   }
-  return true;
+  return format === 'f64' || Number.isFinite(Math.fround(value));
 }
 
-function isNumericArray(value: unknown, length: number): boolean {
+function isNumericArray(
+  value: unknown,
+  length: number,
+  format: 'f32' | 'i32' | 'u32' = 'f32'
+): boolean {
   return (
     Array.isArray(value) &&
     value.length === length &&
-    value.every((entry) => typeof entry === 'number' && Number.isFinite(entry))
+    value.every((entry) => isNumberOfFormat(entry, format))
   );
 }
 

@@ -14,10 +14,18 @@ import type {
 import { cloneRecord, cloneUnknown, freezeRecord, freezeUnknown } from './migration';
 import { decodeKnownPayload, encodeDecodedPayload, freezePayload } from './payload';
 import { mapSchemaReferences, visitSchemaReferences } from './references';
+import {
+  freezeResolvedEntries,
+  ReferenceResolutionError
+} from './reference-transaction';
 import type {
   DecodedSchemaPayload,
+  ReferenceResolutionIssue,
+  ReferenceResolver,
   ReferenceMapper,
+  ReferenceTransactionEntry,
   ReferenceVisitor,
+  ResolvedReferenceEntry,
   SchemaPayload
 } from './types';
 
@@ -218,6 +226,68 @@ export class SchemaRegistry {
   mapReferences<T>(id: string, version: number, value: T, mapper: ReferenceMapper): T {
     const schema = this.requireSchema<T>(id, version);
     return mapSchemaReferences(schema, value, mapper);
+  }
+
+  resolveReferenceTransaction(
+    entries: readonly ReferenceTransactionEntry[],
+    resolver: ReferenceResolver
+  ): readonly ResolvedReferenceEntry[] {
+    const keys = new Set<string>();
+    const issues: ReferenceResolutionIssue[] = [];
+    const resolved = entries.map((entry): ResolvedReferenceEntry => {
+      if (entry.key.trim() === '' || keys.has(entry.key)) {
+        throw new Error(
+          entry.key.trim() === ''
+            ? 'Reference transaction entry key must not be empty.'
+            : `Reference transaction contains duplicate key "${entry.key}".`
+        );
+      }
+      keys.add(entry.key);
+      const schema = this.requireSchema<unknown>(entry.schema, entry.version);
+      const input = schema.validate(freezeUnknown(cloneUnknown(entry.value)));
+      if (!input.ok) {
+        throw new Error(
+          `Reference transaction entry "${entry.key}" failed schema validation: ${input.issues
+            .map((issue) => issue.message)
+            .join('; ')}`
+        );
+      }
+      const value = mapSchemaReferences(schema, input.value, (visit) => {
+        const mapped = resolver(visit);
+        if (mapped === null && visit.policy === 'required') {
+          issues.push(
+            Object.freeze({
+              key: entry.key,
+              schema: visit.schema,
+              path: visit.path,
+              reference: visit.reference,
+              message: `Required reference "${visit.reference.id}" could not be resolved.`
+            })
+          );
+          // Continue visiting so diagnostics report the complete failed transaction.
+          return visit.reference;
+        }
+        return mapped;
+      });
+      const output = schema.validate(freezeUnknown(cloneUnknown(value)));
+      if (!output.ok) {
+        throw new Error(
+          `Reference transaction entry "${entry.key}" failed mapped schema validation: ${output.issues
+            .map((issue) => issue.message)
+            .join('; ')}`
+        );
+      }
+      return {
+        key: entry.key,
+        schema: entry.schema,
+        version: entry.version,
+        value: output.value
+      };
+    });
+    if (issues.length > 0) {
+      throw new ReferenceResolutionError(Object.freeze(issues));
+    }
+    return freezeResolvedEntries(resolved);
   }
 
   clone<T>(id: string, version: number, value: T): T {

@@ -73,6 +73,33 @@ describe('App runners', () => {
     ]);
   });
 
+  test('runs the explicit FrameCleanup schedule even after a frame system fails', async () => {
+    const events: string[] = [];
+    const app = new App().addPlugin(
+      definePlugin({
+        id: 'frame-cleanup-schedule',
+        build(builder) {
+          builder.addSystem('Update', {
+            id: 'fail-update',
+            run() {
+              events.push('update');
+              throw new Error('frame failed');
+            }
+          });
+          builder.addSystem('FrameCleanup', {
+            id: 'always-cleanup',
+            run: () => void events.push('cleanup')
+          });
+        }
+      })
+    );
+
+    await expect(app.run(new HeadlessRunner({ frames: 1 }))).rejects.toThrow(
+      'frame failed'
+    );
+    expect(events).toEqual(['update', 'cleanup']);
+  });
+
   test('BrowserRunner uses only the injected animation frame host', async () => {
     const callbacks = new Map<number, (timestamp: number) => void>();
     const cancelled: number[] = [];

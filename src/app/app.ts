@@ -1,5 +1,9 @@
 import type { ResourceType } from '../ecs/types';
 import { World } from '../ecs/world';
+import { CommandBuffer } from '../ecs/command-buffer';
+import { EventRegistry } from '../events/event-registry';
+import { StateRegistry } from '../events/state-registry';
+import { DiagnosticStore } from '../diagnostics/store';
 import {
   DEFAULT_SCHEDULES,
   FIXED_SCHEDULES,
@@ -203,8 +207,10 @@ export class App {
         } catch (error) {
           if (committed) {
             for (const cleanupError of removeRegistrations(committed)) {
-              this.diagnostics.push(
-                createLifecycleDiagnostic('contribution-cleanup', cleanupError, plugin.id)
+              this.recordLifecycleDiagnostic(
+                'contribution-cleanup',
+                cleanupError,
+                plugin.id
               );
             }
           } else {
@@ -216,11 +222,12 @@ export class App {
 
       for (const label of STARTUP_SCHEDULES) {
         await this.schedules.get(label)?.run(this.world);
+        this.applyCommands(`after:${label}`);
       }
       this.currentState = 'running';
     } catch (error) {
       this.currentState = 'failed';
-      this.diagnostics.push(createLifecycleDiagnostic('startup', error));
+      this.recordLifecycleDiagnostic('startup', error);
       await this.shutdownBuiltPlugins('startup-failed');
       await this.disposeAndRemoveContributions();
       throw error;
@@ -318,7 +325,7 @@ export class App {
     } catch (error) {
       runner.requestStop('runner-error');
       this.currentState = 'failed';
-      this.diagnostics.push(createLifecycleDiagnostic('runtime', error));
+      this.recordLifecycleDiagnostic('runtime', error);
       throw error;
     } finally {
       if (this.activeRunner === runner) {
@@ -374,7 +381,11 @@ export class App {
           timeRuntime.beginFixedStep(fixedTime, substep, false);
           for (const label of FIXED_SCHEDULES) {
             this.schedules.get(label)?.runSync(this.world, 'frame');
+            if (label === 'FixedPostUpdate') {
+              this.applyCommands('after:FixedPostUpdate');
+            }
           }
+          this.advanceFixedEvents();
         }
         while (
           !timeControl.paused &&
@@ -387,7 +398,11 @@ export class App {
           timeRuntime.beginFixedStep(fixedTime, substep);
           for (const label of FIXED_SCHEDULES) {
             this.schedules.get(label)?.runSync(this.world, 'frame');
+            if (label === 'FixedPostUpdate') {
+              this.applyCommands('after:FixedPostUpdate');
+            }
           }
+          this.advanceFixedEvents();
         }
         timeRuntime.finishFrame(
           frameTime,
@@ -399,11 +414,22 @@ export class App {
 
       for (const label of FRAME_AFTER_FIXED_SCHEDULES) {
         this.schedules.get(label)?.runSync(this.world, 'frame');
+        if (label === 'PostUpdate') {
+          this.applyStateTransitions();
+          this.applyCommands('after:PostUpdate');
+        }
       }
+      this.applyCommands('before:FrameCleanup');
+      this.world.getResource(EventRegistry)?.advanceFrame();
     } catch (error) {
       failed = true;
       primaryError = error;
     } finally {
+      try {
+        this.schedules.get('FrameCleanup')?.runSync(this.world, 'frame');
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
       cleanupErrors.push(...this.services.clearFrameScoped());
       try {
         this.world.clearTrackers();
@@ -411,7 +437,7 @@ export class App {
         cleanupErrors.push(error);
       }
       for (const error of cleanupErrors) {
-        this.diagnostics.push(createLifecycleDiagnostic('frame-cleanup', error));
+        this.recordLifecycleDiagnostic('frame-cleanup', error);
       }
     }
 
@@ -423,6 +449,25 @@ export class App {
     }
     this.frameCount++;
     return Object.freeze({ frame: this.frameCount });
+  }
+
+  private applyCommands(applyPoint: string): void {
+    const commands = this.world.getResource(CommandBuffer);
+    if (commands && commands.length > 0) {
+      commands.apply(this.world, applyPoint);
+    }
+  }
+
+  private applyStateTransitions(): void {
+    const commands = this.world.getResource(CommandBuffer);
+    if (!commands) {
+      return;
+    }
+    this.world.getResource(StateRegistry)?.applyPending(commands);
+  }
+
+  private advanceFixedEvents(): void {
+    this.world.getResource(EventRegistry)?.advanceFixedTick();
   }
 
   private createShutdownContext(pluginId: string, reason: string): ShutdownContext {
@@ -439,7 +484,7 @@ export class App {
       try {
         await plugin.shutdown?.(this.createShutdownContext(plugin.id, reason));
       } catch (error) {
-        this.diagnostics.push(createLifecycleDiagnostic('shutdown', error, plugin.id));
+        this.recordLifecycleDiagnostic('shutdown', error, plugin.id);
       }
     }
     this.builtPlugins.length = 0;
@@ -447,10 +492,10 @@ export class App {
 
   private async disposeAndRemoveContributions(): Promise<void> {
     for (const error of await this.services.disposeAll()) {
-      this.diagnostics.push(createLifecycleDiagnostic('service-disposal', error));
+      this.recordLifecycleDiagnostic('service-disposal', error);
     }
     for (const error of removeRegistrations(this.registrations)) {
-      this.diagnostics.push(createLifecycleDiagnostic('contribution-cleanup', error));
+      this.recordLifecycleDiagnostic('contribution-cleanup', error);
     }
     this.registrations.length = 0;
     this.services.clearRegistrations();
@@ -461,9 +506,7 @@ export class App {
     try {
       transaction.rollback();
     } catch (error) {
-      this.diagnostics.push(
-        createLifecycleDiagnostic('contribution-cleanup', error, pluginId)
-      );
+      this.recordLifecycleDiagnostic('contribution-cleanup', error, pluginId);
     }
   }
 
@@ -471,6 +514,23 @@ export class App {
     if (this.currentState !== 'created') {
       throw new Error(`Cannot ${operation} while App is in state "${this.currentState}".`);
     }
+  }
+
+  private recordLifecycleDiagnostic(
+    phase: LifecycleDiagnostic['phase'],
+    error: unknown,
+    pluginId?: string
+  ): void {
+    const diagnostic = createLifecycleDiagnostic(phase, error, pluginId);
+    this.diagnostics.push(diagnostic);
+    this.world.getResource(DiagnosticStore)?.emit({
+      code: diagnostic.code,
+      severity: 'error',
+      message: error instanceof Error ? error.message : `App ${phase} failed.`,
+      subsystem: 'app',
+      context: pluginId === undefined ? { phase } : { phase, pluginId },
+      cause: error
+    });
   }
 }
 

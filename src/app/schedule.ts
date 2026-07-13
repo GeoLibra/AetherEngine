@@ -66,7 +66,9 @@ export class Schedule {
       if (node.runIf && !node.runIf(world)) {
         continue;
       }
-      await node.run(world);
+      await world.runTrackedSystemAsync(`${this.label}:${node.id}`, async () => {
+        await node.run(world);
+      });
     }
   }
 
@@ -82,7 +84,7 @@ export class Schedule {
         continue;
       }
 
-      const result = node.run(world);
+      const result = world.runTrackedSystem(`${this.label}:${node.id}`, () => node.run(world));
       if (isPromiseLike(result)) {
         throw new Error(
           `Async system "${node.id}" cannot run in ${kind} schedule "${this.label}".`

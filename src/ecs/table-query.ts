@@ -1,27 +1,47 @@
-import { createRelationAnyTag, createRelationTargetTag } from './relation';
+import { createRelationAnyTag } from './relation';
 import type { Table } from './table';
-import type { ComponentSchema, ComponentType, QueryFilter, QueryFilterTerm } from './types';
+import type { ComponentType, QueryFilter, QueryFilterTerm } from './types';
+
+export function createComponentTag(componentId: string): string {
+  return `component:${componentId}`;
+}
 
 export function findMatchingTables(
   tables: Iterable<Table>,
-  componentTypes: readonly ComponentSchema<object>[],
+  componentTypes: readonly ComponentType<object>[],
   filter: QueryFilter,
   isComponentTerm: (term: QueryFilterTerm) => term is ComponentType<object>
 ): Table[] {
   // Compile query filters into table-level component/tag requirements first. Row-level checks
   // still validate per-entity relation payloads and frame-local change state.
-  const requiredComponentIds = new Set(componentTypes.map((componentType) => componentType.id));
+  const requiredComponentIds = new Set(
+    componentTypes
+      .filter((componentType) => componentType.storage === 'packed')
+      .map((componentType) => componentType.id)
+  );
   const excludedComponentIds = new Set<string>();
   const requiredTags = new Set<string>();
   const excludedTags = new Set<string>();
 
+  for (const componentType of componentTypes) {
+    if (componentType.storage !== 'packed') {
+      requiredTags.add(createComponentTag(componentType.id));
+    }
+  }
+
   if (filter.relation) {
-    requiredTags.add(createRelationTargetTag(filter.relation[0], filter.relation[1]));
+    // Exact targets are row payloads. The table signature only contains relation type,
+    // preventing one archetype per target in hierarchies and other high-cardinality graphs.
+    requiredTags.add(createRelationAnyTag(filter.relation[0]));
   }
 
   for (const term of filter.with ?? []) {
     if (isComponentTerm(term)) {
-      requiredComponentIds.add(term.id);
+      if (term.storage === 'packed') {
+        requiredComponentIds.add(term.id);
+      } else {
+        requiredTags.add(createComponentTag(term.id));
+      }
     } else {
       requiredTags.add(createRelationAnyTag(term));
     }
@@ -29,7 +49,11 @@ export function findMatchingTables(
 
   for (const term of filter.without ?? []) {
     if (isComponentTerm(term)) {
-      excludedComponentIds.add(term.id);
+      if (term.storage === 'packed') {
+        excludedComponentIds.add(term.id);
+      } else {
+        excludedTags.add(createComponentTag(term.id));
+      }
     } else {
       excludedTags.add(createRelationAnyTag(term));
     }

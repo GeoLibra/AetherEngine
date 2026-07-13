@@ -2,10 +2,17 @@ import type { ResourceType } from '../ecs/types';
 import type { World } from '../ecs/world';
 import { SchemaRegistry } from '../schema';
 import type { SchemaMigration, TypeSchema } from '../schema';
+import type { ObserverDescriptor } from '../ecs/observer';
+import { CommandBuffer } from '../ecs/command-buffer';
+import { EventRegistry } from '../events/event-registry';
+import type { EventChannel } from '../events/event-channel';
+import { StateRegistry } from '../events/state-registry';
+import type { StateStore } from '../events/state-store';
 import type { ExtensionRegistry, ServiceRegistry } from './registry';
 import type { Schedule } from './schedule';
 import type {
   AppBuilder,
+  CommandApplyPointDescriptor,
   ExtensionContribution,
   ExtensionPoint,
   RegistrationHandle,
@@ -40,6 +47,26 @@ export class RegistrationTransaction implements AppBuilder {
     }
     const registration = schedule.addSystem(descriptor);
     this.handles.push(createHandle(() => schedule.removeSystem(registration)));
+  }
+
+  addCommandApplyPoint(
+    stage: ScheduleLabel,
+    descriptor: CommandApplyPointDescriptor
+  ): void {
+    this.assertOpen();
+    if (descriptor.id.trim() === '') {
+      throw new Error('Command apply point id must not be empty.');
+    }
+    this.addSystem(stage, {
+      ...descriptor,
+      id: `aether.command-apply:${descriptor.id}`,
+      run(world) {
+        const commands = world.getResource(CommandBuffer);
+        if (commands && commands.length > 0) {
+          commands.apply(world, `named:${descriptor.id}`);
+        }
+      }
+    });
   }
 
   insertResource<T extends object>(resource: T): void {
@@ -105,6 +132,29 @@ export class RegistrationTransaction implements AppBuilder {
   registerSchemaMigration(migration: SchemaMigration): void {
     this.assertOpen();
     this.handles.push(this.getSchemaRegistry().registerMigration(migration));
+  }
+
+  addObserver<TView extends object>(descriptor: ObserverDescriptor<TView>): void {
+    this.assertOpen();
+    this.handles.push(this.host.world.addObserver(descriptor));
+  }
+
+  addEventChannel<T>(id: string, channel: EventChannel<T>): void {
+    this.assertOpen();
+    const registry = this.host.world.getResource(EventRegistry);
+    if (!registry) {
+      throw new Error('World EventRegistry is not available.');
+    }
+    this.handles.push(registry.add(id, channel));
+  }
+
+  addStateStore<S>(id: string, store: StateStore<S>): void {
+    this.assertOpen();
+    const registry = this.host.world.getResource(StateRegistry);
+    if (!registry) {
+      throw new Error('World StateRegistry is not available.');
+    }
+    this.handles.push(registry.add(id, store));
   }
 
   commit(): readonly RegistrationHandle[] {

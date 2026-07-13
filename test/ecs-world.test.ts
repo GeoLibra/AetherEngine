@@ -196,6 +196,18 @@ describe('World relationships and queries', () => {
     expect([...world.query([Transform], { relation: [ChildOf, parent] })]).toEqual([]);
     expect([...world.query([Transform])].map(([entity]) => entity)).toContain(child);
   });
+
+  test('does not create one archetype per exact relation target', () => {
+    const world = new World();
+    const Targets = defineRelation('ManyTargets');
+    const targets = Array.from({ length: 200 }, () => world.spawn().build());
+    for (const target of targets) {
+      world.spawn().addRelation(Targets, target).build();
+    }
+
+    expect(world.findMatchingTables([], { with: [Targets] })).toHaveLength(1);
+    expect([...world.query([], { relation: [Targets, targets[73]!] })]).toHaveLength(1);
+  });
 });
 
 describe('World change detection', () => {
