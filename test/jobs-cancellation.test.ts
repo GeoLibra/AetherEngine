@@ -20,6 +20,20 @@ const Job = defineJobType({
 });
 
 describe('job cancellation', () => {
+  test('removes the caller AbortSignal listener after completion', async () => {
+    const executor = new PendingExecutor();
+    const scheduler = new JobScheduler({ workerFactory: { create: () => executor }, workerCount: 1 });
+    const signal = new TrackingAbortSignal();
+    scheduler.register(Job);
+
+    const handle = scheduler.schedule(Job, { ...request(1), signal: signal.asAbortSignal() });
+    expect(signal.listenerCount).toBe(1);
+    executor.succeed();
+    await handle.result;
+
+    expect(signal.listenerCount).toBe(0);
+  });
+
   test('cancels queued work before dispatch', async () => {
     const scheduler = new JobScheduler();
     scheduler.register(Job);
@@ -54,4 +68,24 @@ describe('job cancellation', () => {
 
 function request(input: number) {
   return { input, priority: 0, budgetClass: 'interactive' as const };
+}
+
+class TrackingAbortSignal {
+  readonly aborted = false;
+  readonly reason: unknown = undefined;
+  private listener: EventListenerOrEventListenerObject | undefined;
+
+  get listenerCount(): number { return this.listener === undefined ? 0 : 1; }
+
+  addEventListener(_type: string, listener: EventListenerOrEventListenerObject): void {
+    this.listener = listener;
+  }
+
+  removeEventListener(_type: string, listener: EventListenerOrEventListenerObject): void {
+    if (this.listener === listener) this.listener = undefined;
+  }
+
+  asAbortSignal(): AbortSignal {
+    return this as unknown as AbortSignal;
+  }
 }

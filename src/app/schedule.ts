@@ -1,5 +1,11 @@
 import type { World } from '../ecs/world';
-import type { ScheduleLabel, System, SystemDescriptor, SystemRegistration } from './types';
+import type {
+  AccessToken,
+  ScheduleLabel,
+  System,
+  SystemDescriptor,
+  SystemRegistration
+} from './types';
 import { isPromiseLike } from './utils';
 
 /**
@@ -13,6 +19,8 @@ interface SystemNode {
   after: readonly string[];
   optionalBefore: readonly string[];
   optionalAfter: readonly string[];
+  reads: readonly AccessToken[];
+  writes: readonly AccessToken[];
   runIf?: (world: World) => boolean;
 }
 
@@ -103,7 +111,9 @@ export class Schedule {
       before: descriptor.before ?? [],
       after: descriptor.after ?? [],
       optionalBefore: descriptor.optionalBefore ?? [],
-      optionalAfter: descriptor.optionalAfter ?? []
+      optionalAfter: descriptor.optionalAfter ?? [],
+      reads: Object.freeze([...(descriptor.reads ?? [])]),
+      writes: Object.freeze([...(descriptor.writes ?? [])])
     };
 
     if (descriptor.runIf) {

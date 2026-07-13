@@ -1,5 +1,5 @@
 import { CommandBuffer } from './command-buffer';
-import type { ComponentType, Entity, RelationType } from './types';
+import type { ComponentType, Entity, Relation, RelationType } from './types';
 import type { World } from './world';
 
 export type ObserverEventKind =
@@ -40,6 +40,10 @@ export class DeferredWorld {
     component: ComponentType<TView>
   ): Readonly<TView> | null {
     return this.world.getComponent(entity, component);
+  }
+
+  getRelation(entity: Entity, relation: RelationType): Relation | null {
+    return this.world.getRelation(entity, relation);
   }
 
   isAlive(entity: Entity): boolean {

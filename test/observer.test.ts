@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import {
   App,
   ChildOf,
-  CommandBuffer,
   CommandBufferResource,
   HeadlessRunner,
   World,
@@ -51,6 +50,45 @@ describe('World observers', () => {
     expect([...world.query([Flag])]).toHaveLength(1);
     world.getResource(CommandBufferResource)!.apply(world, 'observer-deferred');
     expect([...world.query([Flag])]).toHaveLength(2);
+  });
+
+  test('makes an added packed component visible during observer dispatch', () => {
+    const world = new World();
+    world.registerComponent(Flag);
+    const entity = world.spawn().build();
+    let observedValue: number | undefined;
+    world.addObserver({
+      id: 'read-added-component',
+      event: 'component-added',
+      component: Flag,
+      run(event, deferred) {
+        observedValue = deferred.getComponent(event.entity, Flag)?.value;
+      }
+    });
+
+    world.insertComponent(entity, Flag, { value: 42 });
+
+    expect(observedValue).toBe(42);
+  });
+
+  test('makes an added relation visible and rolls it back when the observer fails', () => {
+    const world = new World();
+    const parent = world.spawn().build();
+    const child = world.spawn().build();
+    let observedTarget: number | undefined;
+    world.addObserver({
+      id: 'read-added-relation',
+      event: 'relation-added',
+      relation: ChildOf,
+      run(event, deferred) {
+        observedTarget = deferred.getRelation(event.entity, ChildOf)?.target;
+        throw new Error('reject relation');
+      }
+    });
+
+    expect(() => world.addRelation(child, ChildOf, parent)).toThrow('reject relation');
+    expect(observedTarget).toBe(parent);
+    expect(world.getRelation(child, ChildOf)).toBeNull();
   });
 
   test('aborts the mutation and deferred commands when an observer throws', () => {

@@ -65,7 +65,12 @@ describe('App plugin preflight and transactions', () => {
         id: 'failing',
         build(builder) {
           builder.insertResource(CounterResource, new Counter());
-          builder.addSystem('Update', { id: 'failing.system', run: () => undefined });
+          builder.addSystem('Update', {
+            id: 'failing.system',
+            reads: [CounterResource],
+            writes: [CounterResource],
+            run: () => undefined
+          });
           builder.provideService(Token, serviceValue({}));
           builder.addExtension(Point, { id: 'failing.extension', value: 'value' });
           builder.registerSchema(schemaV1);
@@ -92,6 +97,17 @@ describe('App plugin preflight and transactions', () => {
 });
 
 describe('App lifecycle', () => {
+  test('rejects startup and plugin installation as soon as destroy begins', async () => {
+    const app = new App();
+
+    const destroying = app.destroy();
+
+    expect(() => app.addPlugin(definePlugin({ id: 'too-late', build: () => undefined })))
+      .toThrow('being destroyed');
+    await expect(app.startup()).rejects.toThrow('being destroyed');
+    await destroying;
+  });
+
   test('starts and destroys its owned World with the App lifecycle', async () => {
     let mainWorld: World | undefined;
     const app = new App().addPlugin(

@@ -1,5 +1,5 @@
 import type { World } from '../ecs/world';
-import type { ResourceToken } from '../ecs/types';
+import type { ComponentType, RelationType, ResourceToken } from '../ecs/types';
 import type { SchemaMigration, TypeSchema } from '../schema';
 import type { ObserverDescriptor } from '../ecs/observer';
 import type { EventChannel } from '../events/event-channel';
@@ -78,6 +78,11 @@ export type ScheduleLabel =
 
 export type System = (world: World) => void | Promise<void>;
 
+export type AccessToken =
+  | ComponentType<object>
+  | RelationType
+  | ResourceToken<unknown>;
+
 export interface SystemDescriptor {
   readonly id: string;
   readonly run: System;
@@ -85,6 +90,8 @@ export interface SystemDescriptor {
   readonly after?: readonly string[];
   readonly optionalBefore?: readonly string[];
   readonly optionalAfter?: readonly string[];
+  readonly reads?: readonly AccessToken[];
+  readonly writes?: readonly AccessToken[];
   readonly runIf?: (world: World) => boolean;
 }
 

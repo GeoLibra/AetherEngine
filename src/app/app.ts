@@ -107,6 +107,15 @@ export class App {
   }
 
   startup(): Promise<void> {
+    if (this.destroyPromise) {
+      return Promise.reject(
+        new Error(
+          this.currentState === 'destroyed'
+            ? 'Cannot start App while it is in state "destroyed".'
+            : 'Cannot start App while it is being destroyed.'
+        )
+      );
+    }
     if (this.currentState === 'running') {
       return this.startupPromise ?? Promise.resolve();
     }
@@ -513,6 +522,13 @@ export class App {
   }
 
   private assertCreated(operation: string): void {
+    if (this.destroyPromise) {
+      throw new Error(
+        this.currentState === 'destroyed'
+          ? `Cannot ${operation} while App is in state "destroyed".`
+          : `Cannot ${operation} while App is being destroyed.`
+      );
+    }
     if (this.currentState !== 'created') {
       throw new Error(`Cannot ${operation} while App is in state "${this.currentState}".`);
     }

@@ -12,6 +12,7 @@ export type {
   ShutdownContext
 } from './app/types';
 export type {
+  AccessToken,
   AppScope,
   ExtensionContribution,
   ExtensionPoint,

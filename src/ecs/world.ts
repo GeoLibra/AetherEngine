@@ -298,22 +298,19 @@ export class World {
     }
     const serialized = serializeComponent(schema, data);
     const location = this.entityLocations.get(entity);
-    const isAdded = !location?.table.hasComponent(schema.id);
-    const deferred = isAdded
-      ? this.dispatchObservers([
-          {
-            kind: 'component-added',
-            entity,
-            component: schema as ComponentType<object>
-          }
-        ])
-      : undefined;
 
     if (!location) {
       // Empty entities gain a table only once they receive components or relation tags.
       const table = this.getOrCreateTable([schema], this.getEntityTags(entity));
       const row = table.insert(entity, new Map([[schema.id, serialized]]));
       this.entityLocations.set(entity, { table, row });
+      let deferred: CommandBuffer | undefined;
+      try {
+        deferred = this.dispatchComponentAdded(entity, schema);
+      } catch (error) {
+        this.removeFromTable(entity, { table, row });
+        throw error;
+      }
       this.changeTracker.markAdded(entity, schema.id);
       this.enqueueObserverCommands(deferred);
       return this;
@@ -325,7 +322,15 @@ export class World {
       return this;
     }
 
+    const previousComponents = this.readTableComponents(location);
     this.migrateEntity(entity, location, schema, serialized);
+    let deferred: CommandBuffer | undefined;
+    try {
+      deferred = this.dispatchComponentAdded(entity, schema);
+    } catch (error) {
+      this.restoreTableEntity(entity, location.table, previousComponents);
+      throw error;
+    }
     this.changeTracker.markAdded(entity, schema.id);
     this.enqueueObserverCommands(deferred);
     return this;
@@ -616,19 +621,14 @@ export class World {
     if (previous?.target === target) {
       return this;
     }
-    const deferred = this.dispatchObservers([
-      ...(previous
-        ? ([
-            {
-              kind: 'relation-removed',
-              entity,
-              relation,
-              target: previous.target
-            }
-          ] as const)
-        : []),
-      { kind: 'relation-added', entity, relation, target }
-    ]);
+    const removedDeferred = previous
+      ? this.dispatchObservers([{
+          kind: 'relation-removed',
+          entity,
+          relation,
+          target: previous.target
+        }])
+      : undefined;
 
     if (previous) {
       this.childOfIndex.remove(entity, previous);
@@ -639,7 +639,23 @@ export class World {
     this.relationIndex.set(entity, value);
     this.childOfIndex.add(entity, value);
     this.syncEntityArchetype(entity);
-    this.enqueueObserverCommands(deferred);
+    let addedDeferred: CommandBuffer | undefined;
+    try {
+      addedDeferred = this.dispatchObservers([
+        { kind: 'relation-added', entity, relation, target }
+      ]);
+    } catch (error) {
+      this.relationIndex.remove(entity, relation);
+      this.childOfIndex.remove(entity, value);
+      if (previous) {
+        this.relationIndex.set(entity, previous);
+        this.childOfIndex.add(entity, previous);
+      }
+      this.syncEntityArchetype(entity);
+      throw error;
+    }
+    this.enqueueObserverCommands(removedDeferred);
+    this.enqueueObserverCommands(addedDeferred);
     return this;
   }
 
@@ -998,14 +1014,17 @@ export class World {
       this.objectComponents.set(schema.id, storage);
     }
     const isAdded = !storage.has(entity);
-    const deferred = isAdded
-      ? this.dispatchObservers([
-          { kind: 'component-added', entity, component: schema as ComponentType<object> }
-        ])
-      : undefined;
     storage.set(entity, value);
     if (isAdded) {
       this.syncEntityArchetype(entity);
+      let deferred: CommandBuffer | undefined;
+      try {
+        deferred = this.dispatchComponentAdded(entity, schema);
+      } catch (error) {
+        storage.delete(entity);
+        this.syncEntityArchetype(entity);
+        throw error;
+      }
       this.changeTracker.markAdded(entity, schema.id);
       this.enqueueObserverCommands(deferred);
     } else {
@@ -1022,11 +1041,16 @@ export class World {
     if (storage.has(entity)) {
       return;
     }
-    const deferred = this.dispatchObservers([
-      { kind: 'component-added', entity, component: schema }
-    ]);
     storage.add(entity);
     this.syncEntityArchetype(entity);
+    let deferred: CommandBuffer | undefined;
+    try {
+      deferred = this.dispatchComponentAdded(entity, schema);
+    } catch (error) {
+      storage.delete(entity);
+      this.syncEntityArchetype(entity);
+      throw error;
+    }
     this.changeTracker.markAdded(entity, schema.id);
     this.enqueueObserverCommands(deferred);
   }
@@ -1080,6 +1104,35 @@ export class World {
   ): Table {
     // Archetypes are keyed by component set plus relation tags. Tags have no column storage.
     return this.archetypes.getOrCreate(componentTypes, tags);
+  }
+
+  private dispatchComponentAdded(
+    entity: Entity,
+    component: ComponentType<object>
+  ): CommandBuffer | undefined {
+    return this.dispatchObservers([{ kind: 'component-added', entity, component }]);
+  }
+
+  private readTableComponents(location: EntityLocation): Map<string, ArrayBuffer> {
+    const components = new Map<string, ArrayBuffer>();
+    for (const component of location.table.componentTypes) {
+      components.set(
+        component.id,
+        location.table.readComponent(component, location.row)
+      );
+    }
+    return components;
+  }
+
+  private restoreTableEntity(
+    entity: Entity,
+    table: Table,
+    components: ReadonlyMap<string, ArrayBuffer>
+  ): void {
+    const current = this.entityLocations.get(entity);
+    if (current) this.removeFromTable(entity, current);
+    const row = table.insert(entity, components);
+    this.entityLocations.set(entity, { table, row });
   }
 
   private migrateEntity(

@@ -29,7 +29,7 @@ export class CommitQueue {
     assertNonNegative(entry.estimatedCost, 'estimatedCost');
     assertNonNegative(entry.outputBytes, 'outputBytes');
     this.entries.push({
-      entry: Object.freeze({ ...entry }) as JobCommitEntry<unknown>,
+      entry: snapshotEntry(entry) as JobCommitEntry<unknown>,
       sequence: this.nextSequence++,
       enqueuedAt: this.clock.now()
     });
@@ -39,7 +39,7 @@ export class CommitQueue {
     assertNonNegative(budget.maxCost, 'maxCost');
     const ordered = [...this.entries].sort(
       (left, right) =>
-        left.entry.requestKey.localeCompare(right.entry.requestKey) ||
+        compareRequestKeys(left.entry.requestKey, right.entry.requestKey) ||
         left.sequence - right.sequence
     );
     let committed = 0;
@@ -47,11 +47,12 @@ export class CommitQueue {
     let cost = 0;
     let outputBytes = 0;
     let processed = 0;
+    const removed = new Set<StoredCommit>();
     for (const stored of ordered) {
       if (!stored.entry.isCurrent()) {
         stale++;
         processed++;
-        this.remove(stored);
+        removed.add(stored);
         continue;
       }
       if (cost + stored.entry.estimatedCost > budget.maxCost) break;
@@ -61,8 +62,9 @@ export class CommitQueue {
       cost += stored.entry.estimatedCost;
       outputBytes += stored.entry.outputBytes;
       this.drainedLatency += Math.max(0, this.clock.now() - stored.enqueuedAt);
-      this.remove(stored);
+      removed.add(stored);
     }
+    this.removeAll(removed);
     return Object.freeze({
       committed,
       stale,
@@ -78,9 +80,30 @@ export class CommitQueue {
     return value;
   }
 
-  private remove(stored: StoredCommit): void {
-    this.entries.splice(this.entries.indexOf(stored), 1);
+  private removeAll(removed: ReadonlySet<StoredCommit>): void {
+    let writeIndex = 0;
+    for (const stored of this.entries) {
+      if (!removed.has(stored)) {
+        this.entries[writeIndex++] = stored;
+      }
+    }
+    this.entries.length = writeIndex;
   }
+}
+
+function snapshotEntry<T>(entry: JobCommitEntry<T>): JobCommitEntry<T> {
+  return Object.freeze({
+    requestKey: entry.requestKey,
+    output: entry.output,
+    estimatedCost: entry.estimatedCost,
+    outputBytes: entry.outputBytes,
+    isCurrent: entry.isCurrent.bind(entry),
+    commit: entry.commit.bind(entry)
+  });
+}
+
+function compareRequestKeys(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function assertNonNegative(value: number, label: string): void {

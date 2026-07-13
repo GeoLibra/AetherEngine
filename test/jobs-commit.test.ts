@@ -14,7 +14,43 @@ describe('job commit queue', () => {
     });
     expect(committed).toEqual(['b']);
   });
+
+  test('preserves prototype methods on class-based commit entries', () => {
+    const committed: string[] = [];
+    const queue = new CommitQueue();
+    queue.enqueue(new ClassCommitEntry('class-entry', committed));
+
+    expect(queue.drain({ maxCost: 1 })).toMatchObject({ committed: 1 });
+    expect(committed).toEqual(['class-entry']);
+  });
+
+  test('orders request keys by locale-independent UTF-16 code units', () => {
+    const committed: string[] = [];
+    const queue = new CommitQueue();
+    queue.enqueue(entry('a', 1, true, committed));
+    queue.enqueue(entry('B', 1, true, committed));
+
+    queue.drain({ maxCost: 2 });
+
+    expect(committed).toEqual(['B', 'a']);
+  });
 });
+
+class ClassCommitEntry {
+  readonly output: string;
+  readonly estimatedCost = 1;
+  readonly outputBytes = 1;
+
+  constructor(
+    readonly requestKey: string,
+    private readonly committed: string[]
+  ) {
+    this.output = requestKey;
+  }
+
+  isCurrent(): boolean { return true; }
+  commit(output: string): void { this.committed.push(output); }
+}
 
 function entry(key: string, cost: number, current: boolean, committed: string[]) {
   return {

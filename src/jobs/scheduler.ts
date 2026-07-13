@@ -22,6 +22,8 @@ interface JobRecord extends QueuedJobOrder {
   attempt: number;
   terminal: boolean;
   startedAt?: number;
+  abortSignal?: AbortSignal;
+  abortListener?: () => void;
 }
 
 const UNLIMITED: BudgetClassLimits = Object.freeze({
@@ -152,7 +154,15 @@ export class JobScheduler {
     const cancel = (reason = 'cancelled'): void => this.cancel(record, reason);
     if (request.signal) {
       if (request.signal.aborted) cancel(String(request.signal.reason ?? 'cancelled'));
-      else request.signal.addEventListener('abort', () => cancel(String(request.signal?.reason ?? 'cancelled')), { once: true });
+      else {
+        const abortSignal = request.signal;
+        const abortListener = (): void => {
+          cancel(String(abortSignal.reason ?? 'cancelled'));
+        };
+        record.abortSignal = abortSignal;
+        record.abortListener = abortListener;
+        abortSignal.addEventListener('abort', abortListener, { once: true });
+      }
     }
     this.pump();
     return Object.freeze({ id, result, cancel });
@@ -261,6 +271,11 @@ export class JobScheduler {
     if (record.terminal) return;
     record.terminal = true;
     record.state = 'terminal';
+    if (record.abortSignal && record.abortListener) {
+      record.abortSignal.removeEventListener('abort', record.abortListener);
+      delete record.abortSignal;
+      delete record.abortListener;
+    }
     this.records.delete(record.id);
     this.addUsage(record.budgetClass, record.encoded, -1);
     this.metricValues.inFlightBytes -=
