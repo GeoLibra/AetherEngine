@@ -18,6 +18,7 @@ import { EntityBuilder } from './entity-builder';
 import { QueryBuilder } from './query';
 import { QueryState } from './query-state';
 import type { QueryCandidateSource } from './query-types';
+import { RelationIndex } from './relation-index';
 import { ObserverRegistry } from './observer';
 import type {
   ObserverDescriptor,
@@ -77,8 +78,8 @@ export class World {
   private readonly systemChangeReaders = new Map<string, ChangeReader>();
   private activeChangeWindow: ChangeWindow | undefined;
 
-  // Relation payloads and exact targets live here; tables contain relation-type tags only.
-  private readonly relations = new Map<Entity, Map<symbol, Relation>>();
+  // Relation payloads and exact targets are indexed separately from archetype type tags.
+  private readonly relationIndex = new RelationIndex();
   private readonly childOfIndex = new ChildOfIndex();
   private readonly observerRegistry = new ObserverRegistry();
   private activeQueryIterations = 0;
@@ -151,7 +152,7 @@ export class World {
     this.objectComponents.clear();
     this.tagComponents.clear();
     this.tagViews.clear();
-    this.relations.clear();
+    this.relationIndex.clear();
     this.childOfIndex.clear();
     this.changeTracker.clear();
     this.systemChangeReaders.clear();
@@ -181,18 +182,10 @@ export class World {
     }
 
     const entityComponentTypes = this.getEntityComponentTypes(entity);
-    const outgoingRelations = [...(this.relations.get(entity)?.values() ?? [])];
-    const incomingRelations: Array<{ readonly source: Entity; readonly value: Relation }> = [];
-    for (const [source, entityRelations] of this.relations) {
-      if (source === entity) {
-        continue;
-      }
-      for (const value of entityRelations.values()) {
-        if (value.target === entity) {
-          incomingRelations.push({ source, value });
-        }
-      }
-    }
+    const outgoingRelations = this.relationIndex.outgoing(entity);
+    const incomingRelations = this.relationIndex
+      .incomingTo(entity)
+      .filter(({ source }) => source !== entity);
     const deferred = this.dispatchObservers([
       ...entityComponentTypes.map(
         (component): ObserverEvent => ({
@@ -210,11 +203,11 @@ export class World {
         })
       ),
       ...incomingRelations.map(
-        ({ source, value }): ObserverEvent => ({
+        ({ source, relation }): ObserverEvent => ({
           kind: 'relation-removed',
           entity: source,
-          relation: value.relation,
-          target: value.target
+          relation: relation.relation,
+          target: relation.target
         })
       ),
       { kind: 'entity-despawned', entity }
@@ -225,7 +218,7 @@ export class World {
       this.childOfIndex.remove(entity, relation);
     }
 
-    this.relations.delete(entity);
+    this.relationIndex.removeSource(entity);
     for (const storage of this.objectComponents.values()) {
       storage.delete(entity);
     }
@@ -235,13 +228,9 @@ export class World {
 
     // Observer validation already succeeded for the full despawn mutation. Remove incoming
     // edges without redispatching so one failing observer cannot leave a half-detached graph.
-    for (const { source, value } of incomingRelations) {
-      const sourceRelations = this.relations.get(source);
-      sourceRelations?.delete(value.relation.id);
-      if (sourceRelations?.size === 0) {
-        this.relations.delete(source);
-      }
-      this.childOfIndex.remove(source, value);
+    for (const { source, relation } of incomingRelations) {
+      this.relationIndex.remove(source, relation.relation);
+      this.childOfIndex.remove(source, relation);
       this.syncEntityArchetype(source);
     }
 
@@ -525,6 +514,23 @@ export class World {
       const schemas = componentTypes.map((componentType) =>
         this.getRegisteredComponent(componentType)
       );
+      if (candidateSource === 'relation-target' && filter.relation) {
+        const [relation, target] = filter.relation;
+        const matchingTableIds = new Set(matchingTables.map((table) => table.id));
+        for (const entity of this.relationIndex.incoming(relation, target)) {
+          const location = this.entityLocations.get(entity);
+          if (!location || !matchingTableIds.has(location.table.id)) {
+            continue;
+          }
+          recordRowFilter();
+          if (!this.entityMatchesFilter(entity, filter, location.table)) {
+            continue;
+          }
+          const views = schemas.map((schema) => this.getComponent(entity, schema));
+          yield [entity, ...views] as unknown as QueryItem<TComponents>;
+        }
+        return;
+      }
       if (candidateSource === 'object-component') {
         const matchingTableIds = new Set(matchingTables.map((table) => table.id));
         for (const entity of this.getObjectQueryCandidates(componentTypes, filter)) {
@@ -566,8 +572,7 @@ export class World {
         `Relation "${relation.name}" would create a cycle from "${entity}" to "${target}".`
       );
     }
-    let entityRelations = this.relations.get(entity);
-    const previous = entityRelations?.get(relation.id);
+    const previous = this.relationIndex.get(entity, relation);
     if (previous?.target === target) {
       return this;
     }
@@ -585,18 +590,14 @@ export class World {
       { kind: 'relation-added', entity, relation, target }
     ]);
 
-    if (!entityRelations) {
-      entityRelations = new Map<symbol, Relation>();
-      this.relations.set(entity, entityRelations);
-    }
-
     if (previous) {
       this.childOfIndex.remove(entity, previous);
     }
 
     // A relation is both metadata and an archetype tag. Updating it may move the entity table.
-    entityRelations.set(relation.id, { relation, target });
-    this.childOfIndex.add(entity, { relation, target });
+    const value = { relation, target };
+    this.relationIndex.set(entity, value);
+    this.childOfIndex.add(entity, value);
     this.syncEntityArchetype(entity);
     this.enqueueObserverCommands(deferred);
     return this;
@@ -605,9 +606,8 @@ export class World {
   removeRelation(entity: Entity, relation: RelationType): boolean {
     this.assertStructuralMutationAllowed();
     this.assertOwned(entity);
-    const entityRelations = this.relations.get(entity);
-    const existing = entityRelations?.get(relation.id);
-    if (!entityRelations || !existing) {
+    const existing = this.relationIndex.get(entity, relation);
+    if (!existing) {
       return false;
     }
     const deferred = this.dispatchObservers([
@@ -619,11 +619,7 @@ export class World {
       }
     ]);
 
-    entityRelations.delete(relation.id);
-    if (entityRelations.size === 0) {
-      this.relations.delete(entity);
-    }
-
+    this.relationIndex.remove(entity, relation);
     this.childOfIndex.remove(entity, existing);
     if (this.entityAllocator.isAlive(entity)) {
       this.syncEntityArchetype(entity);
@@ -634,7 +630,7 @@ export class World {
 
   getRelation(entity: Entity, relation: RelationType): Relation | null {
     this.assertOwned(entity);
-    return this.relations.get(entity)?.get(relation.id) ?? null;
+    return this.relationIndex.get(entity, relation);
   }
 
   wouldCreateRelationCycle(
@@ -1148,7 +1144,7 @@ export class World {
         tags.add(createComponentTag(componentId));
       }
     }
-    for (const relation of this.relations.get(entity)?.values() ?? []) {
+    for (const relation of this.relationIndex.outgoing(entity)) {
       // Exact targets remain indexed payloads and never fragment archetypes by target id.
       tags.add(createRelationAnyTag(relation.relation));
     }
@@ -1165,6 +1161,9 @@ export class World {
     componentTypes: readonly ComponentType<object>[],
     filter: QueryFilter
   ): QueryCandidateSource {
+    if (filter.relation) {
+      return 'relation-target';
+    }
     if (
       componentTypes.length === 0 &&
       filter.relation === undefined &&
