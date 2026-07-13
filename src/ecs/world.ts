@@ -16,6 +16,8 @@ import { createWorldId, decodeEntity, EntityAllocator } from './entity';
 import { ResourceStore } from './resource';
 import { EntityBuilder } from './entity-builder';
 import { QueryBuilder } from './query';
+import { QueryState } from './query-state';
+import type { QueryCandidateSource } from './query-types';
 import { ObserverRegistry } from './observer';
 import type {
   ObserverDescriptor,
@@ -80,6 +82,7 @@ export class World {
   private readonly childOfIndex = new ChildOfIndex();
   private readonly observerRegistry = new ObserverRegistry();
   private activeQueryIterations = 0;
+  private nextQueryId = 0;
   private observerDispatchDepth = 0;
   private currentState: WorldState = 'created';
 
@@ -156,6 +159,7 @@ export class World {
     this.resources.clear();
     this.activeChangeWindow = undefined;
     this.activeQueryIterations = 0;
+    this.nextQueryId = 0;
     this.observerDispatchDepth = 0;
     this.currentState = 'destroyed';
 
@@ -448,40 +452,40 @@ export class World {
     return new QueryBuilder(this, componentTypes).withFilter(filter);
   }
 
-  *iterateQuery<const TComponents extends readonly ComponentType<object>[]>(
+  createQueryState<const TComponents extends readonly ComponentType<object>[]>(
+    componentTypes: TComponents,
+    filter: QueryFilter = {}
+  ): QueryState<TComponents> {
+    this.assertUsable();
+    this.assertOwnedFilter(filter);
+    const candidateSource = this.selectQueryCandidateSource(componentTypes, filter);
+    return new QueryState(this.nextQueryId++, componentTypes, filter, candidateSource, {
+      refresh: (types, compiledFilter, sinceVersion) => {
+        const candidates = this.archetypes.tablesSince(sinceVersion);
+        return {
+          version: this.archetypes.version,
+          examined: candidates.length,
+          matching: findTablesMatchingQuery(candidates, types, compiledFilter, (term) =>
+            this.isComponentTerm(term)
+          )
+        };
+      },
+      iterate: (types, compiledFilter, matchingTables, recordRowFilter) =>
+        this.iterateMatchedQuery(
+          types,
+          compiledFilter,
+          matchingTables,
+          candidateSource,
+          recordRowFilter
+        )
+    });
+  }
+
+  iterateQuery<const TComponents extends readonly ComponentType<object>[]>(
     componentTypes: TComponents,
     filter: QueryFilter
   ): Iterator<QueryItem<TComponents>> {
-    this.assertUsable();
-    this.activeQueryIterations++;
-    try {
-      if (componentTypes.length === 0 && !this.shouldUseTablesForEmptyQuery(filter)) {
-        // Unfiltered entity-only queries must include totally empty entities, which have no table.
-        for (const entity of this.entityAllocator.aliveEntities()) {
-          if (this.entityMatchesFilter(entity, filter)) {
-            yield [entity] as unknown as QueryItem<TComponents>;
-          }
-        }
-        return;
-      }
-
-      const schemas = componentTypes.map((componentType) =>
-        this.getRegisteredComponent(componentType)
-      );
-      for (const table of this.findMatchingTables(schemas, filter)) {
-        for (let row = 0; row < table.length; row++) {
-          const entity = table.getEntity(row);
-          if (!this.entityMatchesFilter(entity, filter, table)) {
-            continue;
-          }
-
-          const views = schemas.map((schema) => this.getComponent(entity, schema));
-          yield [entity, ...views] as unknown as QueryItem<TComponents>;
-        }
-      }
-    } finally {
-      this.activeQueryIterations--;
-    }
+    return this.createQueryState(componentTypes, filter)[Symbol.iterator]();
   }
 
   findMatchingTables(
@@ -494,6 +498,63 @@ export class World {
     return findTablesMatchingQuery(this.archetypes.values(), componentTypes, filter, (term) =>
       this.isComponentTerm(term)
     );
+  }
+
+  private *iterateMatchedQuery<
+    const TComponents extends readonly ComponentType<object>[]
+  >(
+    componentTypes: TComponents,
+    filter: QueryFilter,
+    matchingTables: readonly Table[],
+    candidateSource: QueryCandidateSource,
+    recordRowFilter: () => void
+  ): Iterator<QueryItem<TComponents>> {
+    this.assertUsable();
+    this.activeQueryIterations++;
+    try {
+      if (componentTypes.length === 0 && !this.shouldUseTablesForEmptyQuery(filter)) {
+        for (const entity of this.entityAllocator.aliveEntities()) {
+          recordRowFilter();
+          if (this.entityMatchesFilter(entity, filter)) {
+            yield [entity] as unknown as QueryItem<TComponents>;
+          }
+        }
+        return;
+      }
+
+      const schemas = componentTypes.map((componentType) =>
+        this.getRegisteredComponent(componentType)
+      );
+      if (candidateSource === 'object-component') {
+        const matchingTableIds = new Set(matchingTables.map((table) => table.id));
+        for (const entity of this.getObjectQueryCandidates(componentTypes, filter)) {
+          const location = this.entityLocations.get(entity);
+          if (!location || !matchingTableIds.has(location.table.id)) {
+            continue;
+          }
+          recordRowFilter();
+          if (!this.entityMatchesFilter(entity, filter, location.table)) {
+            continue;
+          }
+          const views = schemas.map((schema) => this.getComponent(entity, schema));
+          yield [entity, ...views] as unknown as QueryItem<TComponents>;
+        }
+        return;
+      }
+      for (const table of matchingTables) {
+        for (let row = 0; row < table.length; row++) {
+          const entity = table.getEntity(row);
+          recordRowFilter();
+          if (!this.entityMatchesFilter(entity, filter, table)) {
+            continue;
+          }
+          const views = schemas.map((schema) => this.getComponent(entity, schema));
+          yield [entity, ...views] as unknown as QueryItem<TComponents>;
+        }
+      }
+    } finally {
+      this.activeQueryIterations--;
+    }
   }
 
   addRelation(entity: Entity, relation: RelationType, target: Entity): this {
@@ -1098,6 +1159,52 @@ export class World {
     // Relation filters are encoded in tables, so even an entity-only relation query should
     // iterate matching tables instead of every alive entity.
     return Boolean(filter.relation || (filter.with?.length ?? 0) > 0);
+  }
+
+  private selectQueryCandidateSource(
+    componentTypes: readonly ComponentType<object>[],
+    filter: QueryFilter
+  ): QueryCandidateSource {
+    if (
+      componentTypes.length === 0 &&
+      filter.relation === undefined &&
+      (filter.with?.length ?? 0) === 0
+    ) {
+      return 'entities';
+    }
+    return this.getRequiredObjectComponents(componentTypes, filter).length > 0
+      ? 'object-component'
+      : 'tables';
+  }
+
+  private getObjectQueryCandidates(
+    componentTypes: readonly ComponentType<object>[],
+    filter: QueryFilter
+  ): Iterable<Entity> {
+    const objectComponents = this.getRequiredObjectComponents(componentTypes, filter);
+    let smallest: Map<Entity, object> | undefined;
+    for (const component of objectComponents) {
+      const storage = this.objectComponents.get(component.id) ?? new Map<Entity, object>();
+      if (!smallest || storage.size < smallest.size) {
+        smallest = storage;
+      }
+    }
+    return smallest?.keys() ?? [];
+  }
+
+  private getRequiredObjectComponents(
+    componentTypes: readonly ComponentType<object>[],
+    filter: QueryFilter
+  ): ObjectComponentSchema<object>[] {
+    const result = componentTypes.filter(
+      (component): component is ObjectComponentSchema<object> => component.storage === 'object'
+    );
+    for (const term of filter.with ?? []) {
+      if (!isRelationTerm(term) && term.storage === 'object' && !result.includes(term)) {
+        result.push(term);
+      }
+    }
+    return result;
   }
 
   private removeFromTable(entity: Entity, location: EntityLocation): void {
