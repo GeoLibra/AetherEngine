@@ -19,6 +19,14 @@ export class WorkerPool {
     }));
   }
 
+  get size(): number {
+    return this.slots.length;
+  }
+
+  get busyCount(): number {
+    return this.slots.filter((slot) => slot.busy).length;
+  }
+
   acquire(): WorkerExecutor | undefined {
     const slot = this.slots.find((candidate) => !candidate.busy);
     if (!slot) return undefined;

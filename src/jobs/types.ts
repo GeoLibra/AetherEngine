@@ -107,3 +107,40 @@ export interface WorkerExecutor {
 }
 
 export interface WorkerFactory { create(workerId: number): WorkerExecutor; }
+
+export interface JobCommitEntry<T> {
+  readonly requestKey: string;
+  readonly output: T;
+  readonly estimatedCost: number;
+  readonly outputBytes: number;
+  readonly isCurrent: () => boolean;
+  readonly commit: (output: T) => void;
+}
+
+export interface CommitBudget { readonly maxCost: number; }
+
+export interface CommitDrainResult {
+  readonly committed: number;
+  readonly stale: number;
+  readonly deferred: number;
+  readonly cost: number;
+  readonly outputBytes: number;
+}
+
+export interface JobSchedulerMetrics {
+  readonly queuedJobs: number;
+  readonly activeJobs: number;
+  readonly completed: number;
+  readonly failures: number;
+  readonly cancellations: number;
+  readonly retries: number;
+  readonly queueLatencyMs: number;
+  readonly executionTimeMs: number;
+  readonly commitLatencyMs: number;
+  readonly workerUtilization: number;
+  readonly inFlightBytes: number;
+  readonly transferBytes: number;
+  readonly copyBytes: number;
+  readonly committedOutputBytes: number;
+  readonly failuresByType: Readonly<Record<string, number>>;
+}

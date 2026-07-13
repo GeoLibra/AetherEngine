@@ -1,8 +1,11 @@
 import { sortQueuedJobs, type QueuedJobOrder } from './queue';
 import { WorkerPool } from './worker-pool';
+import { CommitQueue } from './commit-queue';
+import { JobMetricsCollector } from './metrics';
 import type {
-  BudgetClassLimits, EncodedJobInput, JobBudgetClass, JobClock, JobDiagnostic,
-  JobHandle, JobRequest, JobResult, JobSchedulerOptions, JobType, WorkerExecutor,
+  BudgetClassLimits, CommitBudget, CommitDrainResult, EncodedJobInput,
+  JobBudgetClass, JobClock, JobCommitEntry, JobDiagnostic, JobHandle, JobRequest,
+  JobResult, JobSchedulerMetrics, JobSchedulerOptions, JobType, WorkerExecutor,
   WorkerOutcome
 } from './types';
 
@@ -35,6 +38,8 @@ export class JobScheduler {
   private readonly budgets: Partial<Record<JobBudgetClass, BudgetClassLimits>>;
   private readonly capabilities: { readonly sharedMemory: boolean };
   private readonly pool: WorkerPool;
+  private readonly commits: CommitQueue;
+  private readonly metricValues = new JobMetricsCollector();
   private nextId = 0;
   private nextSequence = 0;
 
@@ -46,9 +51,30 @@ export class JobScheduler {
       options.workerFactory,
       options.workerCount ?? (options.workerFactory ? 1 : 0)
     );
+    this.commits = new CommitQueue(this.clock);
   }
 
   get queuedCount(): number { return this.queue.length; }
+
+  metrics(): JobSchedulerMetrics {
+    return this.metricValues.snapshot(
+      this.queue.length,
+      this.pool.busyCount,
+      this.pool.busyCount,
+      this.pool.size
+    );
+  }
+
+  enqueueCommit<T>(entry: JobCommitEntry<T>): void {
+    this.commits.enqueue(entry);
+  }
+
+  drainCommits(budget: CommitBudget): CommitDrainResult {
+    const result = this.commits.drain(budget);
+    this.metricValues.commitLatencyMs += this.commits.takeDrainedLatency();
+    this.metricValues.committedOutputBytes += result.outputBytes;
+    return result;
+  }
 
   register<I, O>(type: JobType<I, O>): this {
     if (this.registrations.has(type.id)) {
@@ -66,10 +92,15 @@ export class JobScheduler {
     const summary = type.summarize(request.input);
     let encoded: EncodedJobInput;
     try { encoded = type.encode(request.input); }
-    catch (error) {
-      return failedHandle(id, diagnostic('job-encode-failed', type.id, summary, String(error)));
+    catch {
+      this.metricValues.recordFailure(type.id);
+      return failedHandle(
+        id,
+        diagnostic('job-encode-failed', type.id, summary, 'Job input encoding failed.')
+      );
     }
     if (encoded.usesSharedMemory && (!this.capabilities.sharedMemory || !type.allowSharedMemory)) {
+      this.metricValues.recordFailure(type.id);
       return failedHandle(
         id,
         diagnostic('job-shared-memory-unsupported', type.id, summary, 'Shared memory is not enabled.')
@@ -80,6 +111,7 @@ export class JobScheduler {
     if (usage.jobs + 1 > limits.maxInFlightJobs ||
         usage.inputBytes + encoded.inputBytes > limits.maxInputBytes ||
         usage.decodeBytes + encoded.decodeBytes > limits.maxDecodeBytes) {
+      this.metricValues.recordFailure(type.id);
       return failedHandle(id, diagnostic('job-budget-exceeded', type.id, summary, 'Job budget exceeded.'));
     }
 
@@ -98,6 +130,7 @@ export class JobScheduler {
     };
     this.queue.push(record);
     this.addUsage(record.budgetClass, encoded, 1);
+    this.metricValues.inFlightBytes += encoded.inputBytes + encoded.decodeBytes;
     const cancel = (reason = 'cancelled'): void => this.cancel(record, reason);
     if (request.signal) {
       if (request.signal.aborted) cancel(String(request.signal.reason ?? 'cancelled'));
@@ -115,6 +148,7 @@ export class JobScheduler {
       this.queue.splice(this.queue.indexOf(record), 1);
       record.state = 'active';
       record.startedAt = this.clock.now();
+      this.metricValues.queueLatencyMs += record.startedAt - record.submittedAt;
       record.attempt++;
       void this.execute(record, worker);
     }
@@ -147,13 +181,20 @@ export class JobScheduler {
               copyBytes: Math.max(0, record.encoded.inputBytes - record.transferBytes)
             })
           }));
-        } catch (error) {
-          this.fail(record, 'job-decode-failed', String(error), worker.id);
+          this.metricValues.completed++;
+          this.metricValues.executionTimeMs +=
+            this.clock.now() - (record.startedAt ?? this.clock.now());
+          this.metricValues.transferBytes += record.transferBytes;
+          this.metricValues.copyBytes +=
+            Math.max(0, record.encoded.inputBytes - record.transferBytes);
+        } catch {
+          this.fail(record, 'job-decode-failed', 'Worker output validation failed.', worker.id);
         }
       } else if (outcome.status === 'crashed') {
         this.pool.replace(worker);
         workerReplaced = true;
         if (record.type.idempotent && record.attempt <= record.type.retryLimit) {
+          this.metricValues.retries++;
           record.state = 'queued';
           record.controller = new AbortController();
           this.queue.push(record);
@@ -161,7 +202,7 @@ export class JobScheduler {
           this.fail(record, 'job-worker-crashed', 'Worker crashed.', worker.id);
         }
       } else {
-        this.fail(record, 'job-worker-failed', String(outcome.error), worker.id);
+        this.fail(record, 'job-worker-failed', 'Worker handler failed.', worker.id);
       }
     }
     if (!workerReplaced) this.pool.release(worker);
@@ -172,10 +213,12 @@ export class JobScheduler {
     if (record.terminal) return;
     if (record.state === 'queued') this.queue.splice(this.queue.indexOf(record), 1);
     if (record.state === 'active') record.controller.abort(reason);
+    this.metricValues.cancellations++;
     this.finish(record, Object.freeze({ status: 'cancelled', reason }));
   }
 
   private fail(record: JobRecord, code: string, message: string, workerId?: string): void {
+    this.metricValues.recordFailure(record.type.id);
     this.finish(record, Object.freeze({
       status: 'failed', diagnostic: diagnostic(code, record.type.id, record.summary, message, record.attempt, workerId)
     }));
@@ -186,6 +229,8 @@ export class JobScheduler {
     record.terminal = true;
     record.state = 'terminal';
     this.addUsage(record.budgetClass, record.encoded, -1);
+    this.metricValues.inFlightBytes -=
+      record.encoded.inputBytes + record.encoded.decodeBytes;
     record.resolve(result);
   }
 
