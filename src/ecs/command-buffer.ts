@@ -1,4 +1,5 @@
 import { cloneUnknown } from '../schema/migration';
+import { defineResource } from './resource';
 import { validateComponentInput } from './component';
 import type {
   CommandApplyResult,
@@ -433,3 +434,5 @@ function createApplyResult(
     }
   });
 }
+
+export const CommandBufferResource = defineResource<CommandBuffer>('aether.command-buffer');

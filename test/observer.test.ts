@@ -3,6 +3,7 @@ import {
   App,
   ChildOf,
   CommandBuffer,
+  CommandBufferResource,
   HeadlessRunner,
   World,
   defineComponent,
@@ -48,7 +49,7 @@ describe('World observers', () => {
 
     expect(events).toEqual(['high', 'low']);
     expect([...world.query([Flag])]).toHaveLength(1);
-    world.getResource(CommandBuffer)!.apply(world, 'observer-deferred');
+    world.getResource(CommandBufferResource)!.apply(world, 'observer-deferred');
     expect([...world.query([Flag])]).toHaveLength(2);
   });
 
@@ -70,7 +71,7 @@ describe('World observers', () => {
       'observer rejected'
     );
     expect(world.hasComponent(entity, Flag)).toBe(false);
-    expect(world.getResource(CommandBuffer)?.length).toBe(0);
+    expect(world.getResource(CommandBufferResource)?.length).toBe(0);
   });
 
   test('rejects captured-World structural reentrancy during observer dispatch', () => {

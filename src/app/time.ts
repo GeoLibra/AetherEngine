@@ -1,4 +1,5 @@
 import type { FixedOverrunPolicy, TimePolicyOptions } from './time-types';
+import { defineResource } from '../ecs/resource';
 
 const DEFAULT_FIXED_STEP = 1 / 60;
 const DEFAULT_MAX_SUBSTEPS = 5;
@@ -188,3 +189,10 @@ function assertPositiveFinite(value: number, name: string): void {
 function fixedStepEpsilon(step: number): number {
   return Math.max(Number.EPSILON * 16, step * 1e-12);
 }
+
+export const FrameTimeResource = defineResource<FrameTime>('aether.time.frame');
+export const FixedTimeResource = defineResource<FixedTime>('aether.time.fixed');
+export const TimePolicyResource = defineResource<TimePolicy>('aether.time.policy');
+export const TimeControlResource = defineResource<TimeControl>('aether.time.control');
+export const TimeDiagnosticsResource = defineResource<TimeDiagnostics>('aether.time.diagnostics');
+export const TimeRuntimeResource = defineResource<TimeRuntime>('aether.time.runtime');

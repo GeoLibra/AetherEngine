@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   App,
-  FrameTime,
+  FrameTimeResource,
   HeadlessRunner,
   MinimalPlugins,
   Schedule,
@@ -104,7 +104,7 @@ describe('V2 public App surface', () => {
     const exit = await app.run(new HeadlessRunner({ frames: 1 }));
 
     expect(app.hasPlugin('aether.time')).toBe(true);
-    expect(app.getResource(FrameTime)?.frame).toBe(1);
+    expect(app.getResource(FrameTimeResource)?.frame).toBe(1);
     expect(exit.frames).toBe(1);
   });
 });

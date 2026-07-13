@@ -4,6 +4,7 @@ import {
   World,
   defineComponent,
   defineRelation,
+  defineResource,
   type Entity,
   type RelationType
 } from '../src';
@@ -163,14 +164,25 @@ describe('World entities and components', () => {
     }
 
     const world = new World();
-    const counter = new Counter();
+    const PrimaryCounter = defineResource<Counter>('test.primary-counter');
+    const SecondaryCounter = defineResource<Counter>('test.secondary-counter');
+    const primary = new Counter();
+    const secondary = new Counter();
 
-    world.insertResource(counter);
+    world.insertResource(PrimaryCounter, primary);
+    world.insertResource(SecondaryCounter, secondary);
 
-    expect(world.getResource(Counter)).toBe(counter);
-    expect(world.hasResource(Counter)).toBe(true);
-    expect(world.removeResource(Counter)).toBe(counter);
-    expect(world.hasResource(Counter)).toBe(false);
+    expect(world.getResource(PrimaryCounter)).toBe(primary);
+    expect(world.getResource(SecondaryCounter)).toBe(secondary);
+    expect(world.hasResource(PrimaryCounter)).toBe(true);
+    expect(world.removeResource(PrimaryCounter)).toBe(primary);
+    expect(world.hasResource(PrimaryCounter)).toBe(false);
+    expect(world.getResource(SecondaryCounter)).toBe(secondary);
+
+    if (false) {
+      // @ts-expect-error Resource insertion requires an explicit typed token.
+      world.insertResource(new Counter());
+    }
   });
 });
 

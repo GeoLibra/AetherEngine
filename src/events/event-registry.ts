@@ -1,8 +1,11 @@
 import type { EventChannel } from './event-channel';
+import { defineResource } from '../ecs/resource';
 
 export interface EventChannelRegistration {
   remove(): boolean;
 }
+
+export const EventRegistryResource = defineResource<EventRegistry>('aether.event-registry');
 
 export class EventRegistry {
   private readonly channels = new Map<string, EventChannel<unknown>>();

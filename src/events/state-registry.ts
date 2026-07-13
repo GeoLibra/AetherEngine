@@ -1,9 +1,12 @@
 import { CommandBuffer } from '../ecs/command-buffer';
+import { defineResource } from '../ecs/resource';
 import type { StateStore, StateTransition } from './state-store';
 
 export interface StateStoreRegistration {
   remove(): boolean;
 }
+
+export const StateRegistryResource = defineResource<StateRegistry>('aether.state-registry');
 
 interface RegisteredStateStore {
   readonly pending: number;

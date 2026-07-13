@@ -1,4 +1,5 @@
 import { cloneUnknown, freezeUnknown } from '../schema/migration';
+import { defineResource } from '../ecs/resource';
 import type { Diagnostic, DiagnosticQuery } from './types';
 
 const DEFAULT_DIAGNOSTIC_CAPACITY = 1_024;
@@ -41,6 +42,8 @@ export class DiagnosticStore {
     this.records.length = 0;
   }
 }
+
+export const DiagnosticStoreResource = defineResource<DiagnosticStore>('aether.diagnostic-store');
 
 function snapshotDiagnostic(diagnostic: Diagnostic): Diagnostic {
   return Object.freeze({

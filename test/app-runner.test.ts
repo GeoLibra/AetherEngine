@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   App,
   BrowserRunner,
-  FrameTime,
+  FrameTimeResource,
   HeadlessRunner,
   createTimePlugin,
   createServiceToken,
@@ -190,8 +190,8 @@ describe('App runners', () => {
     app.stop('test');
     await running;
 
-    expect(app.getResource(FrameTime)?.frame).toBe(2);
-    expect(app.getResource(FrameTime)?.rawDelta).toBeCloseTo(0.016);
+    expect(app.getResource(FrameTimeResource)?.frame).toBe(2);
+    expect(app.getResource(FrameTimeResource)?.rawDelta).toBeCloseTo(0.016);
   });
 
   test('rejects concurrent runners', async () => {

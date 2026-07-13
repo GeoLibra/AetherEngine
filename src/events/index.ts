@@ -1,8 +1,8 @@
 export { EventChannel, EventReader } from './event-channel';
-export { EventRegistry } from './event-registry';
+export { EventRegistry, EventRegistryResource } from './event-registry';
 export type { EventChannelRegistration } from './event-registry';
 export { StateStore } from './state-store';
-export { StateRegistry } from './state-registry';
+export { StateRegistry, StateRegistryResource } from './state-registry';
 export type { StateStoreRegistration } from './state-registry';
 export type {
   StateHooks,

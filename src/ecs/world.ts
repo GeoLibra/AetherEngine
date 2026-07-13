@@ -1,9 +1,9 @@
 import { ChangeReader, ChangeTracker } from './change-tracker';
-import { CommandBuffer } from './command-buffer';
-import { EventRegistry } from '../events/event-registry';
-import { StateRegistry } from '../events/state-registry';
-import { DiagnosticStore } from '../diagnostics/store';
-import { SchemaRegistry } from '../schema';
+import { CommandBuffer, CommandBufferResource } from './command-buffer';
+import { EventRegistry, EventRegistryResource } from '../events/event-registry';
+import { StateRegistry, StateRegistryResource } from '../events/state-registry';
+import { DiagnosticStore, DiagnosticStoreResource } from '../diagnostics/store';
+import { SchemaRegistry, SchemaRegistryResource } from '../schema';
 import {
   ChildOf,
   createComponentView,
@@ -12,6 +12,7 @@ import {
   validateComponentInput
 } from './component';
 import { createWorldId, decodeEntity, EntityAllocator } from './entity';
+import { ResourceStore } from './resource';
 import { EntityBuilder } from './entity-builder';
 import { QueryBuilder } from './query';
 import { ObserverRegistry } from './observer';
@@ -40,7 +41,7 @@ import type {
   QueryItem,
   Relation,
   RelationType,
-  ResourceType,
+  ResourceToken,
   ChangeReaderOptions,
   RemovedComponent,
   ChangeWindow,
@@ -67,7 +68,7 @@ export class World {
   private readonly objectComponents = new Map<string, Map<Entity, object>>();
   private readonly tagComponents = new Map<string, Set<Entity>>();
   private readonly tagViews = new Map<string, object>();
-  private readonly resources = new Map<ResourceType<unknown>, unknown>();
+  private readonly resources = new ResourceStore();
   private readonly changeTracker = new ChangeTracker();
   private readonly systemChangeReaders = new Map<string, ChangeReader>();
   private activeChangeWindow: ChangeWindow | undefined;
@@ -82,11 +83,11 @@ export class World {
   constructor(schemaRegistry: SchemaRegistry = new SchemaRegistry()) {
     this.id = createWorldId();
     this.entityAllocator = new EntityAllocator(this.id);
-    this.resources.set(SchemaRegistry, schemaRegistry);
-    this.resources.set(CommandBuffer, new CommandBuffer());
-    this.resources.set(EventRegistry, new EventRegistry());
-    this.resources.set(StateRegistry, new StateRegistry());
-    this.resources.set(DiagnosticStore, new DiagnosticStore());
+    this.resources.insert(SchemaRegistryResource, schemaRegistry, true);
+    this.resources.insert(CommandBufferResource, new CommandBuffer(), true);
+    this.resources.insert(EventRegistryResource, new EventRegistry(), true);
+    this.resources.insert(StateRegistryResource, new StateRegistry(), true);
+    this.resources.insert(DiagnosticStoreResource, new DiagnosticStore(), true);
   }
 
   spawn(): EntityBuilder {
@@ -539,59 +540,25 @@ export class World {
     return this.observerRegistry.add(descriptor);
   }
 
-  insertResource<T extends object>(resource: T): this {
-    if (resource instanceof SchemaRegistry && resource !== this.getSchemaRegistry()) {
-      throw new Error('World owns exactly one SchemaRegistry; it cannot be replaced.');
-    }
-    if (
-      resource instanceof CommandBuffer &&
-      resource !== this.resources.get(CommandBuffer)
-    ) {
-      throw new Error('World owns exactly one CommandBuffer; it cannot be replaced.');
-    }
-    if (resource instanceof EventRegistry && resource !== this.resources.get(EventRegistry)) {
-      throw new Error('World owns exactly one EventRegistry; it cannot be replaced.');
-    }
-    if (resource instanceof StateRegistry && resource !== this.resources.get(StateRegistry)) {
-      throw new Error('World owns exactly one StateRegistry; it cannot be replaced.');
-    }
-    if (
-      resource instanceof DiagnosticStore &&
-      resource !== this.resources.get(DiagnosticStore)
-    ) {
-      throw new Error('World owns exactly one DiagnosticStore; it cannot be replaced.');
-    }
-    this.resources.set(resource.constructor as ResourceType<T>, resource);
+  insertResource<T>(token: ResourceToken<T>, resource: T): this {
+    this.resources.insert(token, resource);
     return this;
   }
 
-  getResource<T>(type: ResourceType<T>): T | undefined {
-    return this.resources.get(type) as T | undefined;
+  replaceResource<T>(token: ResourceToken<T>, resource: T): T {
+    return this.resources.replace(token, resource);
   }
 
-  hasResource<T>(type: ResourceType<T>): boolean {
-    return this.resources.has(type);
+  getResource<T>(token: ResourceToken<T>): T | undefined {
+    return this.resources.get(token);
   }
 
-  removeResource<T>(type: ResourceType<T>): T | undefined {
-    if (type === (SchemaRegistry as unknown as ResourceType<T>)) {
-      throw new Error('World SchemaRegistry cannot be removed.');
-    }
-    if (type === (CommandBuffer as unknown as ResourceType<T>)) {
-      throw new Error('World CommandBuffer cannot be removed.');
-    }
-    if (type === (EventRegistry as unknown as ResourceType<T>)) {
-      throw new Error('World EventRegistry cannot be removed.');
-    }
-    if (type === (StateRegistry as unknown as ResourceType<T>)) {
-      throw new Error('World StateRegistry cannot be removed.');
-    }
-    if (type === (DiagnosticStore as unknown as ResourceType<T>)) {
-      throw new Error('World DiagnosticStore cannot be removed.');
-    }
-    const resource = this.getResource(type);
-    this.resources.delete(type);
-    return resource;
+  hasResource<T>(token: ResourceToken<T>): boolean {
+    return this.resources.has(token);
+  }
+
+  removeResource<T>(token: ResourceToken<T>): T | undefined {
+    return this.resources.remove(token);
   }
 
   hasChanged(entity: Entity, componentTypes: readonly ComponentType<object>[]): boolean {
@@ -801,7 +768,7 @@ export class World {
     if (!commands || commands.length === 0) {
       return;
     }
-    const queue = this.resources.get(CommandBuffer) as CommandBuffer;
+    const queue = this.resources.get(CommandBufferResource)!;
     queue.append(commands);
   }
 
@@ -993,7 +960,7 @@ export class World {
   }
 
   private getSchemaRegistry(): SchemaRegistry {
-    return this.resources.get(SchemaRegistry) as SchemaRegistry;
+    return this.resources.get(SchemaRegistryResource)!;
   }
 
   private getChangeWindow(): ChangeWindow {

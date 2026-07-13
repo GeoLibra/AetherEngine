@@ -9,8 +9,11 @@ import type {
   ValueType
 } from '../schema';
 
-// Resource constructors are identity tokens only; World never invokes them.
-export type ResourceType<T> = abstract new (...args: never[]) => T;
+export interface ResourceToken<T> {
+  readonly id: symbol;
+  readonly debugName: string;
+  readonly __resourceType?: T;
+}
 
 export type WorldId = number & { readonly __worldId: unique symbol };
 export type Entity = number & { readonly __entity: unique symbol };

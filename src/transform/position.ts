@@ -1,4 +1,5 @@
 import type { Vec3 } from '../math';
+import { defineResource } from '../ecs/resource';
 import type { WorldPosition } from './types';
 
 const DEFAULT_CELL_SIZE = 1_000;
@@ -91,3 +92,5 @@ function assertFiniteVector(vector: Vec3, label: string): void {
     throw new Error(`${label} must contain only finite numbers.`);
   }
 }
+
+export const WorldOriginResource = defineResource<WorldOrigin>('aether.transform.world-origin');

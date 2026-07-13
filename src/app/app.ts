@@ -1,9 +1,9 @@
-import type { ResourceType } from '../ecs/types';
+import type { ResourceToken } from '../ecs/types';
 import { World } from '../ecs/world';
-import { CommandBuffer } from '../ecs/command-buffer';
-import { EventRegistry } from '../events/event-registry';
-import { StateRegistry } from '../events/state-registry';
-import { DiagnosticStore } from '../diagnostics/store';
+import { CommandBufferResource } from '../ecs/command-buffer';
+import { EventRegistryResource } from '../events/event-registry';
+import { StateRegistryResource } from '../events/state-registry';
+import { DiagnosticStoreResource } from '../diagnostics/store';
 import {
   DEFAULT_SCHEDULES,
   FIXED_SCHEDULES,
@@ -18,12 +18,12 @@ import type { AppExit, FrameOutcome, Runner, RunnerContext } from './runner';
 import { Schedule } from './schedule';
 import { RegistrationTransaction, removeRegistrations } from './transaction';
 import {
-  FixedTime,
-  FrameTime,
-  TimeControl,
-  TimeDiagnostics,
-  TimePolicy,
-  TimeRuntime,
+  FixedTimeResource,
+  FrameTimeResource,
+  TimeControlResource,
+  TimeDiagnosticsResource,
+  TimePolicyResource,
+  TimeRuntimeResource,
   consumeSingleStep
 } from './time';
 import type {
@@ -94,8 +94,8 @@ export class App {
     return this.pendingPlugins.some((plugin) => plugin.id === id);
   }
 
-  getResource<T extends object>(type: ResourceType<T>): T | undefined {
-    return this.world.getResource(type);
+  getResource<T>(token: ResourceToken<T>): T | undefined {
+    return this.world.getResource(token);
   }
 
   getService<T>(token: ServiceToken<T>, scope?: AppScope): T {
@@ -275,8 +275,8 @@ export class App {
       get state(): AppState {
         return app.state;
       },
-      getResource<T extends object>(type: ResourceType<T>): T | undefined {
-        return app.getResource(type);
+      getResource<T>(token: ResourceToken<T>): T | undefined {
+        return app.getResource(token);
       },
       getService<T>(token: ServiceToken<T>, scope?: AppScope): T {
         return app.getService(token, scope);
@@ -339,12 +339,12 @@ export class App {
     let failed = false;
     const cleanupErrors: unknown[] = [];
     try {
-      const frameTime = this.world.getResource(FrameTime);
-      const fixedTime = this.world.getResource(FixedTime);
-      const timePolicy = this.world.getResource(TimePolicy);
-      const timeRuntime = this.world.getResource(TimeRuntime);
-      const timeControl = this.world.getResource(TimeControl);
-      const timeDiagnostics = this.world.getResource(TimeDiagnostics);
+      const frameTime = this.world.getResource(FrameTimeResource);
+      const fixedTime = this.world.getResource(FixedTimeResource);
+      const timePolicy = this.world.getResource(TimePolicyResource);
+      const timeRuntime = this.world.getResource(TimeRuntimeResource);
+      const timeControl = this.world.getResource(TimeControlResource);
+      const timeDiagnostics = this.world.getResource(TimeDiagnosticsResource);
       if (
         frameTime &&
         fixedTime &&
@@ -420,7 +420,7 @@ export class App {
         }
       }
       this.applyCommands('before:FrameCleanup');
-      this.world.getResource(EventRegistry)?.advanceFrame();
+      this.world.getResource(EventRegistryResource)?.advanceFrame();
     } catch (error) {
       failed = true;
       primaryError = error;
@@ -452,22 +452,22 @@ export class App {
   }
 
   private applyCommands(applyPoint: string): void {
-    const commands = this.world.getResource(CommandBuffer);
+    const commands = this.world.getResource(CommandBufferResource);
     if (commands && commands.length > 0) {
       commands.apply(this.world, applyPoint);
     }
   }
 
   private applyStateTransitions(): void {
-    const commands = this.world.getResource(CommandBuffer);
+    const commands = this.world.getResource(CommandBufferResource);
     if (!commands) {
       return;
     }
-    this.world.getResource(StateRegistry)?.applyPending(commands);
+    this.world.getResource(StateRegistryResource)?.applyPending(commands);
   }
 
   private advanceFixedEvents(): void {
-    this.world.getResource(EventRegistry)?.advanceFixedTick();
+    this.world.getResource(EventRegistryResource)?.advanceFixedTick();
   }
 
   private createShutdownContext(pluginId: string, reason: string): ShutdownContext {
@@ -523,7 +523,7 @@ export class App {
   ): void {
     const diagnostic = createLifecycleDiagnostic(phase, error, pluginId);
     this.diagnostics.push(diagnostic);
-    this.world.getResource(DiagnosticStore)?.emit({
+    this.world.getResource(DiagnosticStoreResource)?.emit({
       code: diagnostic.code,
       severity: 'error',
       message: error instanceof Error ? error.message : `App ${phase} failed.`,

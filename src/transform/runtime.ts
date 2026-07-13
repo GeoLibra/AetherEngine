@@ -1,14 +1,20 @@
 import { ChildOf } from '../ecs/component';
+import { defineResource } from '../ecs/resource';
 import type { Entity } from '../ecs/types';
 import type { World } from '../ecs/world';
 import { Mat4, Quat } from '../math';
 import type { Quaternion, Vec3 } from '../math';
 import { LocalTransform, WorldTransform } from './components';
-import { markTransformHistory, TransformHistory } from './history';
+import {
+  markTransformHistory,
+  TransformHistory,
+  TransformHistoryResource
+} from './history';
 import {
   updateWorldOrigin,
   worldPositionRelativeToOrigin,
-  WorldOrigin
+  WorldOrigin,
+  WorldOriginResource
 } from './position';
 import type {
   HistoryResetReason,
@@ -72,15 +78,21 @@ export class TransformRuntime {
     if (!world.isComponentRegistered(WorldTransform)) {
       world.registerComponent(WorldTransform);
     }
-    const origin = world.getResource(WorldOrigin) ?? new WorldOrigin(options.cellSize);
+    let origin = world.getResource(WorldOriginResource);
+    if (!origin) {
+      origin = new WorldOrigin(options.cellSize);
+      world.insertResource(WorldOriginResource, origin);
+    }
     if (options.cellSize !== undefined && origin.cellSize !== options.cellSize) {
       throw new Error('Existing WorldOrigin uses a different cellSize.');
     }
-    const history = world.getResource(TransformHistory) ?? new TransformHistory();
-    world.insertResource(origin);
-    world.insertResource(history);
+    let history = world.getResource(TransformHistoryResource);
+    if (!history) {
+      history = new TransformHistory();
+      world.insertResource(TransformHistoryResource, history);
+    }
     const runtime = new TransformRuntime(world, origin, history);
-    world.insertResource(runtime);
+    world.insertResource(TransformRuntimeResource, runtime);
     installed.set(world, runtime);
     return runtime;
   }
@@ -473,3 +485,7 @@ function tuple3(value: ArrayLike<number>): Vec3 {
 function tuple4(value: ArrayLike<number>): Quaternion {
   return [value[0]!, value[1]!, value[2]!, value[3]!];
 }
+
+export const TransformRuntimeResource = defineResource<TransformRuntime>(
+  'aether.transform.runtime'
+);

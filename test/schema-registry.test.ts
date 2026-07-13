@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   SchemaRegistry,
+  SchemaRegistryResource,
   SchemaValidationError,
   World,
   defineComponent,
@@ -59,7 +60,7 @@ describe('SchemaRegistry', () => {
 
     world.registerComponent(component);
 
-    const registry = world.getResource(SchemaRegistry);
+    const registry = world.getResource(SchemaRegistryResource);
     expect(registry).toBeInstanceOf(SchemaRegistry);
     expect(registry?.get('test.ecs-position', 1)).toBe(component);
     expect(component.fields[0]).toMatchObject({
@@ -68,8 +69,13 @@ describe('SchemaRegistry', () => {
       type: { kind: 'number', format: 'f32' },
       packedType: 'f32'
     });
-    expect(() => world.insertResource(new SchemaRegistry())).toThrow('exactly one');
-    expect(() => world.removeResource(SchemaRegistry)).toThrow('cannot be removed');
+    expect(() => world.insertResource(SchemaRegistryResource, new SchemaRegistry())).toThrow(
+      'already registered'
+    );
+    expect(() => world.replaceResource(SchemaRegistryResource, new SchemaRegistry())).toThrow(
+      'cannot be replaced'
+    );
+    expect(() => world.removeResource(SchemaRegistryResource)).toThrow('cannot be removed');
   });
 
   test('registers typed schemas with stable runtime type and field indexes', () => {

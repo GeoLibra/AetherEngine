@@ -1,11 +1,17 @@
 import { definePlugin } from '../app/plugin';
 import {
   FixedTime,
+  FixedTimeResource,
   FrameTime,
+  FrameTimeResource,
   TimeControl,
+  TimeControlResource,
   TimeDiagnostics,
+  TimeDiagnosticsResource,
   TimePolicy,
-  TimeRuntime
+  TimePolicyResource,
+  TimeRuntime,
+  TimeRuntimeResource
 } from '../app/time';
 import type { TimePolicyOptions } from '../app/time-types';
 
@@ -15,12 +21,15 @@ export function createTimePlugin(options: TimePolicyOptions = {}) {
     id: 'aether.time',
     build(builder) {
       const policy = new TimePolicy(policyOptions);
-      builder.insertResource(policy);
-      builder.insertResource(new FrameTime());
-      builder.insertResource(new FixedTime(policy.fixedStep, policy.maxSubsteps));
-      builder.insertResource(new TimeControl());
-      builder.insertResource(new TimeDiagnostics());
-      builder.insertResource(new TimeRuntime());
+      builder.insertResource(TimePolicyResource, policy);
+      builder.insertResource(FrameTimeResource, new FrameTime());
+      builder.insertResource(
+        FixedTimeResource,
+        new FixedTime(policy.fixedStep, policy.maxSubsteps)
+      );
+      builder.insertResource(TimeControlResource, new TimeControl());
+      builder.insertResource(TimeDiagnosticsResource, new TimeDiagnostics());
+      builder.insertResource(TimeRuntimeResource, new TimeRuntime());
     }
   });
 }

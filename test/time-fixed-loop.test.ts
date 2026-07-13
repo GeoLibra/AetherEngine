@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import {
   App,
-  FixedTime,
-  FrameTime,
+  FixedTimeResource,
+  FrameTimeResource,
   HeadlessRunner,
   TimeControl,
-  TimeDiagnostics,
+  TimeControlResource,
+  TimeDiagnosticsResource,
   TimePolicy,
+  TimePolicyResource,
   createTimePlugin,
   createServiceToken,
   definePlugin,
@@ -47,7 +49,7 @@ describe('Time and fixed schedules', () => {
             builder.addSystem('FixedUpdate', {
               id: 'record-fixed-tick',
               run(world) {
-                fixedTicks.push(world.getResource(FixedTime)?.tick ?? -1);
+                fixedTicks.push(world.getResource(FixedTimeResource)?.tick ?? -1);
               }
             });
           }
@@ -57,14 +59,14 @@ describe('Time and fixed schedules', () => {
     await app.run(new TimestampRunner([0, 0.01, 0.03]));
 
     expect(fixedTicks).toEqual([1]);
-    const frameTime = app.getResource(FrameTime);
+    const frameTime = app.getResource(FrameTimeResource);
     expect(frameTime?.frame).toBe(3);
     expect(frameTime?.rawDelta).toBeCloseTo(0.02);
     expect(frameTime?.delta).toBeCloseTo(0.02);
     expect(frameTime?.elapsed).toBeCloseTo(0.03);
     expect(frameTime?.interpolationAlpha).toBeCloseTo(0.5);
 
-    const fixedTime = app.getResource(FixedTime);
+    const fixedTime = app.getResource(FixedTimeResource);
     expect(fixedTime?.tick).toBe(1);
     expect(fixedTime?.step).toBeCloseTo(0.02);
     expect(fixedTime?.elapsed).toBeCloseTo(0.02);
@@ -78,13 +80,13 @@ describe('Time and fixed schedules', () => {
 
     await app.run(new TimestampRunner([0, 1]));
 
-    const frameTime = app.getResource(FrameTime);
+    const frameTime = app.getResource(FrameTimeResource);
     expect(frameTime?.rawDelta).toBe(1);
     expect(frameTime?.delta).toBe(0.1);
     expect(frameTime?.interpolationAlpha).toBeCloseTo(0);
-    expect(app.getResource(FixedTime)?.tick).toBe(2);
+    expect(app.getResource(FixedTimeResource)?.tick).toBe(2);
 
-    const diagnostics = app.getResource(TimeDiagnostics);
+    const diagnostics = app.getResource(TimeDiagnosticsResource);
     expect(diagnostics?.clampedFrames).toBe(1);
     expect(diagnostics?.clampedSeconds).toBeCloseTo(0.9);
     expect(diagnostics?.overrunFrames).toBe(1);
@@ -94,14 +96,14 @@ describe('Time and fixed schedules', () => {
   test('applies time scale before accumulating fixed time', async () => {
     const app = new App().addPlugin(createTimePlugin({ fixedStep: 0.02 }));
     await app.startup();
-    app.getResource(TimeControl)?.setTimeScale(0.5);
+    app.getResource(TimeControlResource)?.setTimeScale(0.5);
 
     await app.run(new TimestampRunner([0, 0.04]));
 
-    expect(app.getResource(FrameTime)?.rawDelta).toBeCloseTo(0.04);
-    expect(app.getResource(FrameTime)?.delta).toBeCloseTo(0.02);
-    expect(app.getResource(FrameTime)?.elapsed).toBeCloseTo(0.02);
-    expect(app.getResource(FixedTime)?.tick).toBe(1);
+    expect(app.getResource(FrameTimeResource)?.rawDelta).toBeCloseTo(0.04);
+    expect(app.getResource(FrameTimeResource)?.delta).toBeCloseTo(0.02);
+    expect(app.getResource(FrameTimeResource)?.elapsed).toBeCloseTo(0.02);
+    expect(app.getResource(FixedTimeResource)?.tick).toBe(1);
   });
 
   test('pause freezes simulation time while variable schedules continue', async () => {
@@ -120,29 +122,29 @@ describe('Time and fixed schedules', () => {
         })
       );
     await app.startup();
-    app.getResource(TimeControl)?.pause();
+    app.getResource(TimeControlResource)?.pause();
 
     await app.run(new TimestampRunner([0, 0.1]));
 
     expect(updates).toBe(2);
-    expect(app.getResource(FrameTime)?.rawDelta).toBeCloseTo(0.1);
-    expect(app.getResource(FrameTime)?.delta).toBe(0);
-    expect(app.getResource(FrameTime)?.elapsed).toBe(0);
-    expect(app.getResource(FixedTime)?.tick).toBe(0);
+    expect(app.getResource(FrameTimeResource)?.rawDelta).toBeCloseTo(0.1);
+    expect(app.getResource(FrameTimeResource)?.delta).toBe(0);
+    expect(app.getResource(FrameTimeResource)?.elapsed).toBe(0);
+    expect(app.getResource(FixedTimeResource)?.tick).toBe(0);
   });
 
   test('single-step runs exactly one fixed tick while paused', async () => {
     const app = new App().addPlugin(createTimePlugin({ fixedStep: 0.02 }));
     await app.startup();
-    const control = app.getResource(TimeControl);
+    const control = app.getResource(TimeControlResource);
     control?.pause();
     control?.requestSingleStep();
 
     await app.run(new TimestampRunner([0, 0.1]));
 
-    expect(app.getResource(FixedTime)?.tick).toBe(1);
-    expect(app.getResource(FixedTime)?.elapsed).toBeCloseTo(0.02);
-    expect(app.getResource(FrameTime)?.delta).toBe(0);
+    expect(app.getResource(FixedTimeResource)?.tick).toBe(1);
+    expect(app.getResource(FixedTimeResource)?.elapsed).toBeCloseTo(0.02);
+    expect(app.getResource(FrameTimeResource)?.delta).toBe(0);
   });
 
   test('runs fixed schedules between PreUpdate and Update', async () => {
@@ -172,7 +174,7 @@ describe('Time and fixed schedules', () => {
               builder.addSystem(schedule, {
                 id: `record-${schedule}`,
                 run(world) {
-                  if (world.getResource(FrameTime)?.frame === 2) {
+                  if (world.getResource(FrameTimeResource)?.frame === 2) {
                     order.push(schedule);
                   }
                 }
@@ -192,7 +194,7 @@ describe('Time and fixed schedules', () => {
       createTimePlugin({ fixedStep: 0.02, maxSubsteps: 1, overrun: 'retain' })
     );
     await app.startup();
-    const control = app.getResource(TimeControl);
+    const control = app.getResource(TimeControlResource);
     const runner: Runner = {
       async run(context) {
         context.frame(0);
@@ -207,9 +209,9 @@ describe('Time and fixed schedules', () => {
 
     await app.run(runner);
 
-    expect(app.getResource(FixedTime)?.tick).toBe(2);
-    expect(app.getResource(FrameTime)?.interpolationAlpha).toBe(1);
-    expect(app.getResource(TimeDiagnostics)?.overrunFrames).toBe(1);
+    expect(app.getResource(FixedTimeResource)?.tick).toBe(2);
+    expect(app.getResource(FrameTimeResource)?.interpolationAlpha).toBe(1);
+    expect(app.getResource(TimeDiagnosticsResource)?.overrunFrames).toBe(1);
   });
 
   test('zero time scale freezes retained fixed-step backlog', async () => {
@@ -217,7 +219,7 @@ describe('Time and fixed schedules', () => {
       createTimePlugin({ fixedStep: 0.02, maxSubsteps: 1, overrun: 'retain' })
     );
     await app.startup();
-    const control = app.getResource(TimeControl);
+    const control = app.getResource(TimeControlResource);
     const runner: Runner = {
       async run(context) {
         context.frame(0);
@@ -231,8 +233,8 @@ describe('Time and fixed schedules', () => {
 
     await app.run(runner);
 
-    expect(app.getResource(FixedTime)?.tick).toBe(1);
-    expect(app.getResource(FrameTime)?.interpolationAlpha).toBe(1);
+    expect(app.getResource(FixedTimeResource)?.tick).toBe(1);
+    expect(app.getResource(FrameTimeResource)?.interpolationAlpha).toBe(1);
   });
 
   test('snapshots plugin policy options when the plugin is created', async () => {
@@ -243,8 +245,8 @@ describe('Time and fixed schedules', () => {
 
     await app.run(new TimestampRunner([0, 0.02]));
 
-    expect(app.getResource(TimePolicy)?.fixedStep).toBeCloseTo(0.02);
-    expect(app.getResource(FixedTime)?.tick).toBe(1);
+    expect(app.getResource(TimePolicyResource)?.fixedStep).toBeCloseTo(0.02);
+    expect(app.getResource(FixedTimeResource)?.tick).toBe(1);
   });
 
   test('HeadlessRunner advances a deterministic timestamp sequence', async () => {
@@ -252,8 +254,8 @@ describe('Time and fixed schedules', () => {
 
     await app.run(new HeadlessRunner({ frames: 3, frameDelta: 0.02, startTime: 10 }));
 
-    expect(app.getResource(FrameTime)?.elapsed).toBeCloseTo(0.04);
-    expect(app.getResource(FixedTime)?.tick).toBe(2);
+    expect(app.getResource(FrameTimeResource)?.elapsed).toBeCloseTo(0.04);
+    expect(app.getResource(FixedTimeResource)?.tick).toBe(2);
   });
 
   test('non-monotonic timestamps fail the frame and still release frame services', async () => {

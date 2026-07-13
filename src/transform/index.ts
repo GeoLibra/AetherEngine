@@ -1,11 +1,12 @@
 export { LocalTransform, WorldTransform } from './components';
-export { TransformHistory } from './history';
+export { TransformHistory, TransformHistoryResource } from './history';
 export {
   normalizeWorldPosition,
   worldPositionRelativeToOrigin,
-  WorldOrigin
+  WorldOrigin,
+  WorldOriginResource
 } from './position';
-export { TransformRuntime } from './runtime';
+export { TransformRuntime, TransformRuntimeResource } from './runtime';
 export type {
   HistoryResetReason,
   LocalTransformInput,

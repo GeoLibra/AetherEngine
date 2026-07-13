@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   App,
   DiagnosticStore,
+  DiagnosticStoreResource,
   HeadlessRunner,
   definePlugin
 } from '../src';
@@ -61,10 +62,10 @@ describe('DiagnosticStore', () => {
       'runtime failure'
     );
 
-    expect(app.getResource(DiagnosticStore)?.list({ code: 'APP_RUNTIME_FAILED' }))
+    expect(app.getResource(DiagnosticStoreResource)?.list({ code: 'APP_RUNTIME_FAILED' }))
       .toHaveLength(1);
     expect(
-      app.getResource(DiagnosticStore)?.list()[0]?.cause
+      app.getResource(DiagnosticStoreResource)?.list()[0]?.cause
     ).toEqual({ name: 'Error', message: 'runtime failure' });
   });
 });

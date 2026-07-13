@@ -7,6 +7,7 @@ import {
   TransformRuntime,
   World,
   WorldOrigin,
+  WorldOriginResource,
   WorldTransform,
   type Entity
 } from '../src';
@@ -185,7 +186,7 @@ describe('TransformRuntime', () => {
 
     expect(transforms.rebase([1, 0, 0])).toBe(true);
 
-    expectVector(world.getResource(WorldOrigin)!.cell, [1, 0, 0]);
+    expectVector(world.getResource(WorldOriginResource)!.cell, [1, 0, 0]);
     expectVector(world.getComponent(root, LocalTransform)!.translation, [25, 0, 0]);
     expectVector(world.getComponent(child, LocalTransform)!.translation, [5, 0, 0]);
     expectVector(

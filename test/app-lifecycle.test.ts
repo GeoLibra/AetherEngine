@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
   App,
-  SchemaRegistry,
+  SchemaRegistryResource,
   createExtensionPoint,
   createServiceToken,
   definePlugin,
+  defineResource,
   defineSchema,
   serviceValue
 } from '../src';
@@ -41,6 +42,7 @@ describe('App plugin preflight and transactions', () => {
 
   test('rolls back every contribution from a failing build', async () => {
     class Counter {}
+    const CounterResource = defineResource<Counter>('test.rollback-counter');
     const Token = createServiceToken<object>('rollback.service');
     const Point = createExtensionPoint<string>('rollback.extension');
     const schemaV1 = defineSchema<Record<string, unknown>>({
@@ -61,7 +63,7 @@ describe('App plugin preflight and transactions', () => {
       definePlugin({
         id: 'failing',
         build(builder) {
-          builder.insertResource(new Counter());
+          builder.insertResource(CounterResource, new Counter());
           builder.addSystem('Update', { id: 'failing.system', run: () => undefined });
           builder.provideService(Token, serviceValue({}));
           builder.addExtension(Point, { id: 'failing.extension', value: 'value' });
@@ -80,11 +82,11 @@ describe('App plugin preflight and transactions', () => {
 
     await expect(app.startup()).rejects.toThrow('build failed');
     expect(app.state).toBe('failed');
-    expect(app.getResource(Counter)).toBeUndefined();
+    expect(app.getResource(CounterResource)).toBeUndefined();
     expect(() => app.getService(Token)).toThrow('not registered');
     expect(app.listExtensions(Point)).toEqual([]);
-    expect(app.getResource(SchemaRegistry)?.get('test.rollback-schema', 1)).toBeUndefined();
-    expect(app.getResource(SchemaRegistry)?.get('test.rollback-schema', 2)).toBeUndefined();
+    expect(app.getResource(SchemaRegistryResource)?.get('test.rollback-schema', 1)).toBeUndefined();
+    expect(app.getResource(SchemaRegistryResource)?.get('test.rollback-schema', 2)).toBeUndefined();
   });
 });
 
@@ -126,6 +128,7 @@ describe('App lifecycle', () => {
 
   test('rolls back a rejected finish and shuts down every built plugin', async () => {
     class FinishedResource {}
+    const FinishedResourceToken = defineResource<FinishedResource>('test.finished-resource');
     const events: string[] = [];
     const app = new App().addPlugins([
       definePlugin({
@@ -138,7 +141,7 @@ describe('App lifecycle', () => {
         dependencies: ['core'],
         build: () => undefined,
         async finish(builder) {
-          builder.insertResource(new FinishedResource());
+          builder.insertResource(FinishedResourceToken, new FinishedResource());
           await Promise.resolve();
           throw new Error('finish failed');
         },
@@ -148,13 +151,14 @@ describe('App lifecycle', () => {
 
     await expect(app.startup()).rejects.toThrow('finish failed');
 
-    expect(app.getResource(FinishedResource)).toBeUndefined();
+    expect(app.getResource(FinishedResourceToken)).toBeUndefined();
     expect(events).toEqual(['shutdown feature', 'shutdown core']);
     expect(app.state).toBe('failed');
   });
 
   test('closes structural mutation as soon as finish returns', async () => {
     class LateResource {}
+    const LateResourceToken = defineResource<LateResource>('test.late-resource');
     let lateError: unknown;
     const app = new App().addPlugin(
       definePlugin({
@@ -163,7 +167,7 @@ describe('App lifecycle', () => {
         async finish(builder) {
           await Promise.resolve();
           try {
-            builder.insertResource(new LateResource());
+            builder.insertResource(LateResourceToken, new LateResource());
           } catch (error) {
             lateError = error;
           }
@@ -175,7 +179,7 @@ describe('App lifecycle', () => {
 
     expect(lateError).toBeInstanceOf(Error);
     expect((lateError as Error).message).toContain('is closed');
-    expect(app.getResource(LateResource)).toBeUndefined();
+    expect(app.getResource(LateResourceToken)).toBeUndefined();
   });
 
   test('treats false readiness as failure and rejects asynchronous build hooks', async () => {

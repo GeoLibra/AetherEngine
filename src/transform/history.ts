@@ -1,4 +1,5 @@
 import type { HistoryResetReason } from './types';
+import { defineResource } from '../ecs/resource';
 
 interface HistoryState {
   reason?: HistoryResetReason;
@@ -42,3 +43,7 @@ function requireHistory(history: TransformHistory): HistoryState {
   }
   return state;
 }
+
+export const TransformHistoryResource = defineResource<TransformHistory>(
+  'aether.transform.history'
+);

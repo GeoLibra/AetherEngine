@@ -54,8 +54,9 @@ export {
   defineTagComponent
 } from './ecs/component';
 export { World } from './ecs/world';
+export { defineResource } from './ecs/resource';
 export { ChangeReader } from './ecs/change-tracker';
-export { CommandBuffer } from './ecs/command-buffer';
+export { CommandBuffer, CommandBufferResource } from './ecs/command-buffer';
 export { SpawnTicket } from './ecs/command-types';
 export { DeferredWorld, ObserverRegistry } from './ecs/observer';
 export type {
@@ -79,7 +80,7 @@ export type {
   Relation,
   RelationOptions,
   RelationType,
-  ResourceType,
+  ResourceToken,
   TagComponentDefinition,
   TagComponentSchema
 } from './ecs/types';
@@ -101,7 +102,19 @@ export * from './diagnostics';
 export * from './math';
 export * from './transform';
 export { DefaultPlugins, MinimalPlugins } from './plugins/default-plugins';
-export { FixedTime, FrameTime, TimeControl, TimeDiagnostics, TimePolicy } from './app/time';
+export {
+  FixedTime,
+  FixedTimeResource,
+  FrameTime,
+  FrameTimeResource,
+  TimeControl,
+  TimeControlResource,
+  TimeDiagnostics,
+  TimeDiagnosticsResource,
+  TimePolicy,
+  TimePolicyResource,
+  TimeRuntimeResource
+} from './app/time';
 export type { FixedOverrunPolicy, TimePolicyOptions } from './app/time-types';
 export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
 export * from './schema';

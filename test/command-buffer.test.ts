@@ -3,6 +3,7 @@ import {
   App,
   ChildOf,
   CommandBuffer,
+  CommandBufferResource,
   HeadlessRunner,
   World,
   defineComponent,
@@ -127,7 +128,7 @@ describe('CommandBuffer', () => {
           builder.addSystem('Update', {
             id: 'queue-spawn',
             run(world) {
-              world.getResource(CommandBuffer)!.spawn([
+              world.getResource(CommandBufferResource)!.spawn([
                 { component: Position, data: { x: 9 } }
               ]);
             }
@@ -166,7 +167,7 @@ describe('CommandBuffer', () => {
           builder.addSystem('Update', {
             id: 'queue-position',
             run(world) {
-              world.getResource(CommandBuffer)!.spawn([
+              world.getResource(CommandBufferResource)!.spawn([
                 { component: Position, data: { x: 7 } }
               ]);
             }

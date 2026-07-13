@@ -1,5 +1,5 @@
 import type { World } from '../ecs/world';
-import type { ResourceType } from '../ecs/types';
+import type { ResourceToken } from '../ecs/types';
 import type { SchemaMigration, TypeSchema } from '../schema';
 import type { ObserverDescriptor } from '../ecs/observer';
 import type { EventChannel } from '../events/event-channel';
@@ -118,8 +118,8 @@ export interface AppBuilder {
     stage: ScheduleLabel,
     descriptor: CommandApplyPointDescriptor
   ): void;
-  insertResource<T extends object>(resource: T): void;
-  replaceResource<T extends object>(resource: T): void;
+  insertResource<T>(token: ResourceToken<T>, resource: T): void;
+  replaceResource<T>(token: ResourceToken<T>, resource: T): void;
   provideService<T>(token: ServiceToken<T>, registration: ServiceRegistration<T>): void;
   replaceService<T>(token: ServiceToken<T>, registration: ServiceRegistration<T>): void;
   addExtension<T>(point: ExtensionPoint<T>, contribution: ExtensionContribution<T>): void;
@@ -132,7 +132,7 @@ export interface AppBuilder {
 
 export interface ReadonlyAppContext {
   readonly state: AppState;
-  getResource<T extends object>(type: ResourceType<T>): T | undefined;
+  getResource<T>(token: ResourceToken<T>): T | undefined;
   getService<T>(token: ServiceToken<T>, scope?: AppScope): T;
   listExtensions<T>(point: ExtensionPoint<T>): readonly ExtensionSnapshot<T>[];
 }

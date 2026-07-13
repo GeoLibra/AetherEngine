@@ -11,6 +11,7 @@ import type {
   SchemaMigration,
   TypeSchema
 } from './types';
+import { defineResource } from '../ecs/resource';
 import { cloneRecord, cloneUnknown, freezeRecord, freezeUnknown } from './migration';
 import { decodeKnownPayload, encodeDecodedPayload, freezePayload } from './payload';
 import { mapSchemaReferences, visitSchemaReferences } from './references';
@@ -389,3 +390,5 @@ export class SchemaRegistry {
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+export const SchemaRegistryResource = defineResource<SchemaRegistry>('aether.schema-registry');

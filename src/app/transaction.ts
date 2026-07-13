@@ -1,12 +1,12 @@
-import type { ResourceType } from '../ecs/types';
+import type { ResourceToken } from '../ecs/types';
 import type { World } from '../ecs/world';
-import { SchemaRegistry } from '../schema';
+import { SchemaRegistry, SchemaRegistryResource } from '../schema';
 import type { SchemaMigration, TypeSchema } from '../schema';
 import type { ObserverDescriptor } from '../ecs/observer';
-import { CommandBuffer } from '../ecs/command-buffer';
-import { EventRegistry } from '../events/event-registry';
+import { CommandBufferResource } from '../ecs/command-buffer';
+import { EventRegistryResource } from '../events/event-registry';
 import type { EventChannel } from '../events/event-channel';
-import { StateRegistry } from '../events/state-registry';
+import { StateRegistryResource } from '../events/state-registry';
 import type { StateStore } from '../events/state-store';
 import type { ExtensionRegistry, ServiceRegistry } from './registry';
 import type { Schedule } from './schedule';
@@ -61,7 +61,7 @@ export class RegistrationTransaction implements AppBuilder {
       ...descriptor,
       id: `aether.command-apply:${descriptor.id}`,
       run(world) {
-        const commands = world.getResource(CommandBuffer);
+        const commands = world.getResource(CommandBufferResource);
         if (commands && commands.length > 0) {
           commands.apply(world, `named:${descriptor.id}`);
         }
@@ -69,38 +69,32 @@ export class RegistrationTransaction implements AppBuilder {
     });
   }
 
-  insertResource<T extends object>(resource: T): void {
+  insertResource<T>(token: ResourceToken<T>, resource: T): void {
     this.assertOpen();
-    const type = resource.constructor as ResourceType<T>;
-    if (this.host.world.hasResource(type)) {
-      throw new Error(`Resource "${type.name}" is already registered.`);
+    if (this.host.world.hasResource(token)) {
+      throw new Error(`Resource "${token.debugName}" is already registered.`);
     }
-    this.host.world.insertResource(resource);
+    this.host.world.insertResource(token, resource);
     this.handles.push(
       createHandle(() => {
-        if (this.host.world.getResource(type) !== resource) {
+        if (this.host.world.getResource(token) !== resource) {
           return false;
         }
-        this.host.world.removeResource(type);
+        this.host.world.removeResource(token);
         return true;
       })
     );
   }
 
-  replaceResource<T extends object>(resource: T): void {
+  replaceResource<T>(token: ResourceToken<T>, resource: T): void {
     this.assertOpen();
-    const type = resource.constructor as ResourceType<T>;
-    const previous = this.host.world.getResource(type);
-    if (!previous) {
-      throw new Error(`Resource "${type.name}" is not registered.`);
-    }
-    this.host.world.insertResource(resource);
+    const previous = this.host.world.replaceResource(token, resource);
     this.handles.push(
       createHandle(() => {
-        if (this.host.world.getResource(type) !== resource) {
+        if (this.host.world.getResource(token) !== resource) {
           return false;
         }
-        this.host.world.insertResource(previous);
+        this.host.world.replaceResource(token, previous);
         return true;
       })
     );
@@ -141,7 +135,7 @@ export class RegistrationTransaction implements AppBuilder {
 
   addEventChannel<T>(id: string, channel: EventChannel<T>): void {
     this.assertOpen();
-    const registry = this.host.world.getResource(EventRegistry);
+    const registry = this.host.world.getResource(EventRegistryResource);
     if (!registry) {
       throw new Error('World EventRegistry is not available.');
     }
@@ -150,7 +144,7 @@ export class RegistrationTransaction implements AppBuilder {
 
   addStateStore<S>(id: string, store: StateStore<S>): void {
     this.assertOpen();
-    const registry = this.host.world.getResource(StateRegistry);
+    const registry = this.host.world.getResource(StateRegistryResource);
     if (!registry) {
       throw new Error('World StateRegistry is not available.');
     }
@@ -179,7 +173,7 @@ export class RegistrationTransaction implements AppBuilder {
   }
 
   private getSchemaRegistry(): SchemaRegistry {
-    const registry = this.host.world.getResource(SchemaRegistry);
+    const registry = this.host.world.getResource(SchemaRegistryResource);
     if (!registry) {
       throw new Error('World SchemaRegistry is not available.');
     }

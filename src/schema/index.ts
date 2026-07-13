@@ -3,7 +3,7 @@ export { SchemaValidationError } from './payload';
 export { applyPrefabOverride, createPrefabOverridePath } from './prefab-path';
 export { ReferenceResolutionError } from './reference-transaction';
 export { mapSchemaReferences, visitSchemaReferences } from './references';
-export { SchemaRegistry } from './registry';
+export { SchemaRegistry, SchemaRegistryResource } from './registry';
 export type {
   EditorHint,
   DecodedSchemaPayload,

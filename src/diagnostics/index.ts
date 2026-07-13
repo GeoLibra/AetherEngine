@@ -1,4 +1,4 @@
-export { DiagnosticStore } from './store';
+export { DiagnosticStore, DiagnosticStoreResource } from './store';
 export type {
   Diagnostic,
   DiagnosticQuery,
