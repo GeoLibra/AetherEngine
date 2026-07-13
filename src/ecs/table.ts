@@ -15,6 +15,7 @@ export interface ComponentStorage {
 }
 
 export interface TableOptions {
+  readonly id?: number;
   readonly initialChunkCapacity?: number;
   readonly chunkCapacity?: number;
 }
@@ -35,6 +36,7 @@ interface TableColumn {
 }
 
 export class Table {
+  readonly id: number;
   readonly archetypeId: string;
   readonly componentTypes: readonly PackedComponentSchema<object>[];
 
@@ -53,6 +55,7 @@ export class Table {
     tags: readonly string[] = [],
     options: TableOptions = {}
   ) {
+    this.id = resolveTableId(options.id);
     this.componentTypes = [...componentTypes].sort((left, right) => left.id.localeCompare(right.id));
     this.tags = new Set([...tags].sort());
     this.archetypeId = createArchetypeId(this.componentTypes, this.tags);
@@ -263,6 +266,14 @@ export class Table {
     }
     return 1 + Math.ceil((length - this.initialChunkCapacity) / this.chunkCapacity);
   }
+}
+
+function resolveTableId(value: number | undefined): number {
+  const id = value ?? 0;
+  if (!Number.isSafeInteger(id) || id < 0) {
+    throw new Error('Table id must be a non-negative safe integer.');
+  }
+  return id;
 }
 
 function resolveChunkCapacity(value: number | undefined, fallback: number, label: string): number {

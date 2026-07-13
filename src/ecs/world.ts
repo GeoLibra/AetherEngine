@@ -1,4 +1,5 @@
 import { ChangeReader, ChangeTracker } from './change-tracker';
+import { ArchetypeCatalog } from './archetype-catalog';
 import { CommandBuffer, CommandBufferResource } from './command-buffer';
 import { EventRegistry, EventRegistryResource } from '../events/event-registry';
 import { StateRegistry, StateRegistryResource } from '../events/state-registry';
@@ -26,7 +27,7 @@ import {
   createRelationAnyTag,
   sameStringSet
 } from './relation';
-import { createArchetypeId, Table } from './table';
+import { Table } from './table';
 import {
   createComponentTag,
   findMatchingTables as findTablesMatchingQuery
@@ -63,7 +64,7 @@ interface EntityLocation {
 export class World {
   readonly id: WorldId;
   private readonly entityAllocator: EntityAllocator;
-  private readonly tables = new Map<string, Table>();
+  private readonly archetypes = new ArchetypeCatalog();
   private readonly entityLocations = new Map<Entity, EntityLocation>();
   private readonly componentRegistry = new Map<string, ComponentType<object>>();
   private readonly objectComponents = new Map<string, Map<Entity, object>>();
@@ -141,7 +142,7 @@ export class World {
     }
 
     this.entityAllocator.clear();
-    this.tables.clear();
+    this.archetypes.clear();
     this.entityLocations.clear();
     this.componentRegistry.clear();
     this.objectComponents.clear();
@@ -407,7 +408,12 @@ export class World {
     const tags = location.table.tags;
     this.removeFromTable(entity, location);
     if (remainingTypes.length > 0 || tags.size > 0) {
-      const table = this.getOrCreateTable(remainingTypes, tags);
+      const table = this.archetypes.transition(
+        location.table,
+        `remove:component:${schema.id}`,
+        remainingTypes,
+        tags
+      );
       const row = table.insert(entity, remainingData);
       this.entityLocations.set(entity, { table, row });
     }
@@ -485,7 +491,7 @@ export class World {
     this.assertUsable();
     this.assertOwnedFilter(filter);
     // Kept public for tests and future query planning; the pure matcher owns the tag logic.
-    return findTablesMatchingQuery(this.tables.values(), componentTypes, filter, (term) =>
+    return findTablesMatchingQuery(this.archetypes.values(), componentTypes, filter, (term) =>
       this.isComponentTerm(term)
     );
   }
@@ -718,7 +724,7 @@ export class World {
 
   shrinkTablesToFit(): void {
     this.assertUsable();
-    for (const table of this.tables.values()) {
+    for (const table of this.archetypes.values()) {
       table.shrinkToFit();
     }
   }
@@ -974,15 +980,7 @@ export class World {
     tags: Iterable<string> = []
   ): Table {
     // Archetypes are keyed by component set plus relation tags. Tags have no column storage.
-    const sorted = [...componentTypes].sort((left, right) => left.id.localeCompare(right.id));
-    const tagList = [...tags].sort();
-    const archetypeId = createArchetypeId(sorted, tagList);
-    let table = this.tables.get(archetypeId);
-    if (!table) {
-      table = new Table(sorted, tagList);
-      this.tables.set(archetypeId, table);
-    }
-    return table;
+    return this.archetypes.getOrCreate(componentTypes, tags);
   }
 
   private migrateEntity(
@@ -1002,7 +1000,12 @@ export class World {
     // Component insertion preserves existing relation tags while moving to a wider table.
     this.removeFromTable(entity, oldLocation);
 
-    const newTable = this.getOrCreateTable([...oldTypes, newSchema], oldTags);
+    const newTable = this.archetypes.transition(
+      oldLocation.table,
+      `add:component:${newSchema.id}`,
+      [...oldTypes, newSchema],
+      oldTags
+    );
     const row = newTable.insert(entity, oldComponents);
     this.entityLocations.set(entity, { table: newTable, row });
   }
@@ -1039,7 +1042,13 @@ export class World {
       return;
     }
 
-    const table = this.getOrCreateTable(componentTypes, tags);
+    const operation = getTagTransitionOperation(location.table.tags, tags);
+    const table = this.archetypes.transition(
+      location.table,
+      operation,
+      componentTypes,
+      tags
+    );
     const row = table.insert(entity, components);
     this.entityLocations.set(entity, { table, row });
   }
@@ -1100,6 +1109,23 @@ export class World {
       this.entityLocations.set(removal.moved, { table: location.table, row: location.row });
     }
   }
+}
+
+function getTagTransitionOperation(
+  previous: ReadonlySet<string>,
+  next: ReadonlySet<string>
+): `add:${string}` | `remove:${string}` {
+  for (const tag of next) {
+    if (!previous.has(tag)) {
+      return `add:${tag}`;
+    }
+  }
+  for (const tag of previous) {
+    if (!next.has(tag)) {
+      return `remove:${tag}`;
+    }
+  }
+  throw new Error('Archetype tag transition requires a changed tag.');
 }
 
 function isRelationTerm(term: QueryFilterTerm): term is RelationType {
