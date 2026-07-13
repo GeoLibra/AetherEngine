@@ -1,3 +1,4 @@
+export { degreesToRadians, radiansToDegrees } from './angle';
 export { Color } from './color';
 export { REVERSE_DEPTH, STANDARD_DEPTH } from './depth';
 export { Frustum } from './frustum';
@@ -7,6 +8,7 @@ export { Quat } from './quaternion';
 export type {
   ColorRgba,
   DepthConvention,
+  EulerYXZ,
   Plane,
   Quaternion,
   Vec3,

@@ -5,7 +5,9 @@ import {
   Mat4,
   Quat,
   REVERSE_DEPTH,
+  degreesToRadians,
   projectPoint,
+  radiansToDegrees,
   unprojectPoint
 } from '../src';
 
@@ -33,6 +35,13 @@ describe('Foundation math conventions', () => {
 
     expectVector(Mat4.transformDirection(matrix, [0, 0, -1]), [-1, 0, 0]);
     expect(() => Quat.normalize([0, 0, 0, 0])).toThrow('near-zero');
+  });
+
+  test('converts finite authoring angles at the degrees boundary', () => {
+    expect(degreesToRadians(180)).toBeCloseTo(Math.PI);
+    expect(radiansToDegrees(Math.PI / 2)).toBeCloseTo(90);
+    expect(() => degreesToRadians(Number.NaN)).toThrow('finite');
+    expect(() => radiansToDegrees(Number.POSITIVE_INFINITY)).toThrow('finite');
   });
 
   test('uses WebGPU zero-to-one depth and the z >= 0 near frustum plane', () => {

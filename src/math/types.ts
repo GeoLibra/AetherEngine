@@ -1,6 +1,11 @@
 export type Vec3 = readonly [number, number, number];
 export type Vec4 = readonly [number, number, number, number];
 export type Quaternion = readonly [number, number, number, number];
+export type EulerYXZ = readonly [
+  xRadians: number,
+  yRadians: number,
+  zRadians: number
+];
 export type ColorRgba = readonly [number, number, number, number];
 
 export interface ViewportRect {
