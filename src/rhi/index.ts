@@ -1,6 +1,8 @@
 export { NullDevice } from './null-device';
+export { NullAdapter } from './null-adapter';
+export type { NullAdapterOptions } from './null-adapter';
 export { NullRenderTarget } from './render-target';
-export { RHIUnsupportedOperationError } from './errors';
+export { RHIDeviceRequestError, RHIUnsupportedOperationError } from './errors';
 export type {
   AdapterCapabilities,
   DeviceCapabilities,
@@ -15,7 +17,12 @@ export type {
   RHIQueueRole,
   SupportStatus
 } from './capability-types';
-export type { AdapterInfo, DeviceRequest, RHIAdapter } from './adapter-types';
+export type {
+  AdapterInfo,
+  DeviceRequest,
+  DeviceRequestDifference,
+  RHIAdapter
+} from './adapter-types';
 export type { DeviceLostInfo, RHIDeviceState, RHIResourceState } from './lifecycle-types';
 export type { RHISubmission, RHISubmissionStatus, SubmissionResult } from './submission-types';
 export type {

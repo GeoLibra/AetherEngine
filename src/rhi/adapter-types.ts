@@ -25,3 +25,12 @@ export interface RHIAdapter {
   readonly capabilities: AdapterCapabilities;
   requestDevice(request: DeviceRequest): Promise<RHIDevice>;
 }
+
+export type DeviceRequestDifference =
+  | { readonly kind: 'feature'; readonly feature: RHIFeature }
+  | {
+      readonly kind: 'limit';
+      readonly limit: string;
+      readonly minimum: number;
+      readonly actual: number | undefined;
+    };

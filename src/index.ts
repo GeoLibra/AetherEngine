@@ -126,15 +126,23 @@ export * from './platform';
 export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
 export { HostService, createHostPlugin } from './plugins/host-plugin';
 export * from './schema';
-export { NullDevice, NullRenderTarget, RHIUnsupportedOperationError } from './rhi';
+export {
+  NullAdapter,
+  NullDevice,
+  NullRenderTarget,
+  RHIDeviceRequestError,
+  RHIUnsupportedOperationError
+} from './rhi';
 export type {
   AdapterCapabilities,
   AdapterInfo,
   DeviceCapabilities,
   DeviceLostInfo,
   DeviceRequest,
+  DeviceRequestDifference,
   FeatureSupport,
   FormatCapabilities,
+  NullAdapterOptions,
   QueueCapability,
   RHIAdapter,
   RHIBackend,
