@@ -164,6 +164,7 @@ export function releaseWebGL2Native(
   if (resource.kind === 'buffer') native.deleteBuffer?.(handle);
   if (resource.kind === 'texture') native.deleteTexture?.(handle);
   if (resource.kind === 'sampler') native.deleteSampler?.(handle);
+  if (resource.kind === 'render-pipeline') native.deleteProgram?.(handle);
 }
 
 export function normalizeExtent(size: GPUExtent3D) {
