@@ -130,6 +130,7 @@ export {
   NullAdapter,
   NullDevice,
   NullRenderTarget,
+  NullSurface,
   RHIDeviceRequestError,
   RHIUnsupportedOperationError
 } from './rhi';
