@@ -35,10 +35,12 @@ export type {
 } from './surface-types';
 export type {
   RHIBindGroupLayoutDescriptor,
+  RHIBindGroupDescriptor,
   RHIBufferDescriptor,
   RHICommandBufferDescriptor,
   RHICommandEncoderDescriptor,
   RHIComputePassDescriptor,
+  RHIPipelineLayoutDescriptor,
   RHISamplerDescriptor,
   RHIShaderModuleDescriptor,
   RHITextureDescriptor,

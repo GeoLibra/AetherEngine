@@ -15,6 +15,7 @@ import type {
   RHIRenderPipeline
 } from '../types';
 import type { NullDeviceOwner } from '../resource';
+import { assertRHIFeature } from '../capability-validation';
 
 export type NullPassEncoder = NullRenderPassEncoder | NullComputePassEncoder;
 
@@ -153,6 +154,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
 
   drawIndirect(indirectBuffer: RHIBuffer, indirectOffset: number): void {
     this.ensureActive();
+    assertRHIFeature(this.encoder.ownerToken, 'indirect-draw', 'draw-indirect');
     this.requirePipeline();
     this.validateBoundGroups(this.pipeline?.layout, true);
     this.validateBoundBuffers();
@@ -282,6 +284,7 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
 
   dispatchWorkgroupsIndirect(indirectBuffer: RHIBuffer, indirectOffset: number): void {
     this.ensureActive();
+    assertRHIFeature(this.encoder.ownerToken, 'indirect-draw', 'draw-indirect');
     this.requirePipeline();
     this.validateBoundGroups(this.pipeline?.layout, true);
     assertResourceOwnedBy(indirectBuffer, this.encoderOwner);

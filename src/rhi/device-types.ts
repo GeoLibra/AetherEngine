@@ -1,20 +1,12 @@
 import type {
   BufferWriteRange,
-  GPUBindGroupLayoutDescriptor,
-  GPUBufferDescriptor,
-  GPUCommandEncoderDescriptor,
   GPUImageDataLayout,
-  GPUSamplerDescriptor,
-  GPUShaderModuleDescriptor,
   GPUSupportedLimits,
-  GPUTextureDescriptor,
   GPUExtent3D,
   RHIUploadData
 } from './webgpu-types';
 import type {
-  GPUBindGroupDescriptor,
   GPUImageCopyTexture,
-  GPUPipelineLayoutDescriptor,
   RHIBindGroup,
   RHIBindGroupLayout,
   RHIBuffer,
@@ -31,6 +23,16 @@ import type { RHICommandEncoder, RHICommandBuffer } from './command-types';
 import type { RHIRenderTarget, RenderTargetDescriptor } from './render-target-types';
 import type { DeviceCapabilities } from './capability-types';
 import type { DeviceLostInfo, RHIDeviceState } from './lifecycle-types';
+import type {
+  RHIBindGroupDescriptor,
+  RHIBindGroupLayoutDescriptor,
+  RHIBufferDescriptor,
+  RHICommandEncoderDescriptor,
+  RHIPipelineLayoutDescriptor,
+  RHISamplerDescriptor,
+  RHIShaderModuleDescriptor,
+  RHITextureDescriptor
+} from './descriptor-types';
 
 export interface RHIQueue {
   submit(commandBuffers: readonly RHICommandBuffer[]): void;
@@ -52,16 +54,16 @@ export interface RHIDevice {
   readonly queue: RHIQueue;
   readonly features: ReadonlySet<string>;
   readonly limits: GPUSupportedLimits;
-  createBuffer(descriptor: GPUBufferDescriptor): RHIBuffer;
-  createTexture(descriptor: GPUTextureDescriptor): RHITexture;
-  createSampler(descriptor?: GPUSamplerDescriptor): RHISampler;
-  createShaderModule(descriptor: GPUShaderModuleDescriptor): RHIShaderModule;
-  createBindGroupLayout(descriptor: GPUBindGroupLayoutDescriptor): RHIBindGroupLayout;
-  createPipelineLayout(descriptor: GPUPipelineLayoutDescriptor): RHIPipelineLayout;
-  createBindGroup(descriptor: GPUBindGroupDescriptor): RHIBindGroup;
+  createBuffer(descriptor: RHIBufferDescriptor): RHIBuffer;
+  createTexture(descriptor: RHITextureDescriptor): RHITexture;
+  createSampler(descriptor?: RHISamplerDescriptor): RHISampler;
+  createShaderModule(descriptor: RHIShaderModuleDescriptor): RHIShaderModule;
+  createBindGroupLayout(descriptor: RHIBindGroupLayoutDescriptor): RHIBindGroupLayout;
+  createPipelineLayout(descriptor: RHIPipelineLayoutDescriptor): RHIPipelineLayout;
+  createBindGroup(descriptor: RHIBindGroupDescriptor): RHIBindGroup;
   createRenderPipeline(descriptor: RHIRenderPipelineDescriptor): RHIRenderPipeline;
   createComputePipeline(descriptor?: RHIComputePipelineDescriptor): RHIComputePipeline;
   createRenderTarget(descriptor: RenderTargetDescriptor): RHIRenderTarget;
-  createCommandEncoder(descriptor?: GPUCommandEncoderDescriptor): RHICommandEncoder;
+  createCommandEncoder(descriptor?: RHICommandEncoderDescriptor): RHICommandEncoder;
   destroy(): void;
 }

@@ -1,21 +1,23 @@
 import type {
-  GPUBindGroupLayoutDescriptor,
   GPUBindGroupLayoutEntry,
-  GPUBufferDescriptor,
   GPUBufferUsageFlags,
   GPUIndexFormat,
   GPUMapModeFlags,
   GPUOrigin3D,
   GPUPrimitiveTopology,
-  GPUSamplerDescriptor,
-  GPUShaderModuleDescriptor,
   GPUTextureAspect,
-  GPUTextureDescriptor,
   GPUTextureFormat,
-  GPUTextureUsageFlags,
-  GPUTextureViewDescriptor
+  GPUTextureUsageFlags
 } from './webgpu-types';
 import type { RHIResourceState } from './lifecycle-types';
+import type {
+  RHIBindGroupLayoutDescriptor,
+  RHIBufferDescriptor,
+  RHISamplerDescriptor,
+  RHIShaderModuleDescriptor,
+  RHITextureDescriptor,
+  RHITextureViewDescriptor
+} from './descriptor-types';
 
 export type RHIResourceKind =
   | 'buffer'
@@ -42,7 +44,7 @@ export interface RHIResource {
 
 export interface RHIBuffer extends RHIResource {
   readonly kind: 'buffer';
-  readonly descriptor: Readonly<GPUBufferDescriptor>;
+  readonly descriptor: Readonly<RHIBufferDescriptor>;
   readonly size: number;
   readonly usage: GPUBufferUsageFlags;
   mapAsync(mode: GPUMapModeFlags, offset?: number, size?: number): Promise<void>;
@@ -52,19 +54,19 @@ export interface RHIBuffer extends RHIResource {
 
 export interface RHITexture extends RHIResource {
   readonly kind: 'texture';
-  readonly descriptor: Readonly<GPUTextureDescriptor>;
+  readonly descriptor: Readonly<RHITextureDescriptor>;
   readonly width: number;
   readonly height: number;
   readonly depthOrArrayLayers: number;
   readonly format: GPUTextureFormat;
   readonly usage: GPUTextureUsageFlags;
-  createView(descriptor?: GPUTextureViewDescriptor): RHITextureView;
+  createView(descriptor?: RHITextureViewDescriptor): RHITextureView;
 }
 
 export interface RHITextureView extends RHIResource {
   readonly kind: 'texture-view';
   readonly texture: RHITexture;
-  readonly descriptor: Readonly<GPUTextureViewDescriptor>;
+  readonly descriptor: Readonly<RHITextureViewDescriptor>;
   readonly width: number;
   readonly height: number;
   readonly depthOrArrayLayers: number;
@@ -73,17 +75,17 @@ export interface RHITextureView extends RHIResource {
 
 export interface RHISampler extends RHIResource {
   readonly kind: 'sampler';
-  readonly descriptor: Readonly<GPUSamplerDescriptor>;
+  readonly descriptor: Readonly<RHISamplerDescriptor>;
 }
 
 export interface RHIShaderModule extends RHIResource {
   readonly kind: 'shader-module';
-  readonly descriptor: Readonly<GPUShaderModuleDescriptor>;
+  readonly descriptor: Readonly<RHIShaderModuleDescriptor>;
 }
 
 export interface RHIBindGroupLayout extends RHIResource {
   readonly kind: 'bind-group-layout';
-  readonly descriptor: Readonly<GPUBindGroupLayoutDescriptor>;
+  readonly descriptor: Readonly<RHIBindGroupLayoutDescriptor>;
   readonly dynamicBindingCount: number;
   getEntry(binding: number): GPUBindGroupLayoutEntry | undefined;
 }

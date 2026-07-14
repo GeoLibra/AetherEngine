@@ -3,6 +3,7 @@ import { NullComputePassEncoder, NullPassEncoder, NullRenderPassEncoder } from '
 import { normalizeAndValidateExtent, validateTextureCopyView } from './texture';
 import { assertResourceLive, assertResourceOwnedBy, NullResourceBase, toResourceRef } from '../resource';
 import type { NullDeviceOwner } from '../resource';
+import { assertRHIFeature } from '../capability-validation';
 import {
   cloneCommandStats,
   createCommandStats,
@@ -89,6 +90,7 @@ export class NullCommandEncoder implements RHICommandEncoder {
 
   beginComputePass(descriptor: GPUComputePassDescriptor = {}): RHIComputePassEncoder {
     this.ensureCanBeginPass('compute');
+    assertRHIFeature(this.owner, 'compute', 'begin-compute-pass');
     this.stats.computePasses += 1;
     this.record(withOptionalLabel({ kind: 'beginComputePass' }, descriptor.label));
     const pass = new NullComputePassEncoder(this, descriptor.label);
