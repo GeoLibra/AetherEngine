@@ -6,6 +6,7 @@ import type {
   RHIFeature,
   RHILimits
 } from './capability-types';
+import type { RHIBackend } from './capability-types';
 
 export const RHI_FEATURES: readonly RHIFeature[] = Object.freeze([
   'compute',
@@ -22,6 +23,14 @@ export interface NullCapabilityProfile {
   readonly queues?: readonly QueueCapability[];
 }
 
+export interface CapabilitySnapshotInput {
+  readonly backend: RHIBackend;
+  readonly features: ReadonlyMap<RHIFeature, FeatureSupport>;
+  readonly limits: RHILimits;
+  readonly formats: ReadonlyMap<string, FormatCapabilities>;
+  readonly queues: readonly QueueCapability[];
+}
+
 export function createNullCapabilities(
   profile: NullCapabilityProfile = {}
 ): DeviceCapabilities {
@@ -30,24 +39,35 @@ export function createNullCapabilities(
         status: 'unsupported',
         reason: 'Not configured by the NullAdapter profile.'
       };
-    return [feature, Object.freeze(support)] as const;
+    return [feature, support] as const;
   });
-  const formats = [...(profile.formats ?? new Map()).entries()].map(
-    ([format, capabilities]) => [
-      format,
-      Object.freeze({
-        ...capabilities,
-        sampleCounts: Object.freeze([...capabilities.sampleCounts])
-      })
-    ] as const
-  );
   const queues = profile.queues ?? [{ role: 'graphics', status: 'native' } as const];
-  return Object.freeze({
+  return createCapabilitySnapshot({
     backend: 'null',
+    features: new Map(features),
+    limits: profile.limits ?? {},
+    formats: profile.formats ?? new Map(),
+    queues
+  });
+}
+
+export function createCapabilitySnapshot(input: CapabilitySnapshotInput): DeviceCapabilities {
+  const features = [...input.features].map(
+    ([feature, support]) => [feature, Object.freeze({ ...support })] as const
+  );
+  const formats = [...input.formats].map(([format, capabilities]) => [
+    format,
+    Object.freeze({
+      ...capabilities,
+      sampleCounts: Object.freeze([...capabilities.sampleCounts])
+    })
+  ] as const);
+  return Object.freeze({
+    backend: input.backend,
     features: new ReadonlyMapSnapshot(features),
-    limits: Object.freeze({ ...(profile.limits ?? {}) }),
+    limits: Object.freeze({ ...input.limits }),
     formats: new ReadonlyMapSnapshot(formats),
-    queues: Object.freeze(queues.map((queue) => Object.freeze({ ...queue })))
+    queues: Object.freeze(input.queues.map((queue) => Object.freeze({ ...queue })))
   });
 }
 

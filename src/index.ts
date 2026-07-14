@@ -133,6 +133,8 @@ export {
   NullSurface,
   RHIDeviceRequestError,
   RHIUnsupportedOperationError,
+  WebGPUAdapter,
+  WebGPUNativeDeviceRequestError,
   webgpuCompat
 } from './rhi';
 export type {
@@ -147,6 +149,11 @@ export type {
   NullAdapterOptions,
   NullDeviceOptions,
   NullSubmissionMode,
+  WebGPUNativeAdapterInfo,
+  WebGPUNativeAdapterPort,
+  WebGPUNativeDeviceLostInfo,
+  WebGPUNativeDevicePort,
+  WebGPUNativeDeviceRequest,
   QueueCapability,
   RHIAdapter,
   RHIBackend,
