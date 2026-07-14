@@ -3,6 +3,7 @@ export type { NullDeviceOptions, NullSubmissionMode } from './null-device';
 export { NullAdapter } from './null-adapter';
 export type { NullAdapterOptions } from './null-adapter';
 export { NullRenderTarget } from './render-target';
+export { NullSurface } from './null/surface';
 export { RHIDeviceRequestError, RHIUnsupportedOperationError } from './errors';
 export type {
   AdapterCapabilities,
