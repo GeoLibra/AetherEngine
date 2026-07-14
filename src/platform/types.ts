@@ -46,7 +46,7 @@ export interface HostWindow {
   readonly generation: number;
   readonly state: WindowState;
   readonly renderable: boolean;
-  readonly surfaceTarget?: SurfaceTarget;
+  readonly surfaceTarget: SurfaceTarget | undefined;
   queueMetrics(update: WindowMetricsUpdate): void;
   commitFrameBoundary(): boolean;
   close(): void;
