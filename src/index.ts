@@ -124,6 +124,7 @@ export type { FixedOverrunPolicy, TimePolicyOptions } from './app/time-types';
 export * from './jobs';
 export * from './platform';
 export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
+export { HostService, createHostPlugin } from './plugins/host-plugin';
 export * from './schema';
 export { NullDevice, NullRenderTarget } from './rhi';
 export type {
