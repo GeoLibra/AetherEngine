@@ -14,6 +14,8 @@ export interface WebGL2NativeContextLostInfo {
   readonly message?: string;
 }
 
+export type WebGL2NativeObject = object;
+
 export interface WebGL2NativeContextPort {
   readonly info: WebGL2NativeContextInfo;
   readonly extensions: ReadonlySet<string>;
@@ -21,6 +23,19 @@ export interface WebGL2NativeContextPort {
   readonly formats: ReadonlyMap<GPUTextureFormat, FormatCapabilities>;
   readonly precision: Readonly<Record<string, number>>;
   readonly lost: Promise<WebGL2NativeContextLostInfo>;
+  createBuffer?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
+  createTexture?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
+  createSampler?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
+  deleteBuffer?(handle: WebGL2NativeObject): void;
+  deleteTexture?(handle: WebGL2NativeObject): void;
+  deleteSampler?(handle: WebGL2NativeObject): void;
+  writeBuffer?(handle: WebGL2NativeObject, offset: number, data: ArrayBufferView): void;
+  writeTexture?(
+    destination: Readonly<Record<string, unknown>>,
+    data: ArrayBufferView,
+    dataLayout: Readonly<Record<string, number | undefined>>,
+    size: Readonly<Record<string, number>>
+  ): void;
   destroy?(): void;
 }
 
