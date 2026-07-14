@@ -54,6 +54,7 @@ export class WebGL2Device implements RHIDevice {
   private resolveLost!: (info: DeviceLostInfo) => void;
   private nativeDestroyed = false;
   private nextResourceId = 1;
+  private readonly releaseListeners = new Set<(resource: import('./resource').WebGL2ResourceBase) => void>();
 
   constructor(
     readonly capabilities: DeviceCapabilities,
@@ -67,7 +68,14 @@ export class WebGL2Device implements RHIDevice {
       native,
       state: 'live',
       allocateId: () => this.allocateId(),
-      releaseResource: (resource, handle, owned) => this.queue.disposeResource(resource, handle, owned)
+      subscribeResourceRelease: (listener) => {
+        this.releaseListeners.add(listener);
+        return () => { this.releaseListeners.delete(listener); };
+      },
+      releaseResource: (resource, handle, owned) => {
+        for (const listener of this.releaseListeners) listener(resource);
+        this.queue.disposeResource(resource, handle, owned);
+      }
     };
     this.queue = new WebGL2Queue(this.owner, native);
     this.lost = new Promise((resolve) => { this.resolveLost = resolve; });

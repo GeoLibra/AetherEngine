@@ -14,6 +14,8 @@ export class WebGL2StateVM {
   private program: WebGL2NativeObject | typeof UNKNOWN = UNKNOWN;
   private rasterKey: object | typeof UNKNOWN = UNKNOWN;
   private depthStencilKey: object | typeof UNKNOWN = UNKNOWN;
+  private framebuffer: WebGL2NativeObject | typeof UNKNOWN = UNKNOWN;
+  private vertexArray: WebGL2NativeObject | typeof UNKNOWN = UNKNOWN;
   private viewport: readonly number[] | typeof UNKNOWN = UNKNOWN;
   private scissor: readonly number[] | typeof UNKNOWN = UNKNOWN;
   private indexBuffer: (BufferState & { readonly format: GPUIndexFormat }) | typeof UNKNOWN = UNKNOWN;
@@ -31,6 +33,8 @@ export class WebGL2StateVM {
     this.program = UNKNOWN;
     this.rasterKey = UNKNOWN;
     this.depthStencilKey = UNKNOWN;
+    this.framebuffer = UNKNOWN;
+    this.vertexArray = UNKNOWN;
     this.viewport = UNKNOWN;
     this.scissor = UNKNOWN;
     this.indexBuffer = UNKNOWN;
@@ -60,6 +64,18 @@ export class WebGL2StateVM {
     if (this.depthStencilKey === key) return this.skip();
     this.call('setDepthStencilState', state);
     this.depthStencilKey = key;
+  }
+
+  applyFramebuffer(handle: WebGL2NativeObject): void {
+    if (this.framebuffer === handle) return this.skip();
+    this.call('bindFramebuffer', handle);
+    this.framebuffer = handle;
+  }
+
+  applyVertexArray(handle: WebGL2NativeObject): void {
+    if (this.vertexArray === handle) return this.skip();
+    this.call('bindVertexArray', handle);
+    this.vertexArray = handle;
   }
 
   applyViewport(values: readonly [number, number, number, number, number, number]): void {

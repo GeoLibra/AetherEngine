@@ -17,6 +17,11 @@ export interface WebGL2NativeContextLostInfo {
 
 export type WebGL2NativeObject = object;
 
+export interface WebGL2FramebufferStatus {
+  readonly complete: boolean;
+  readonly status?: string;
+}
+
 export interface WebGL2NativeContextPort {
   readonly info: WebGL2NativeContextInfo;
   readonly extensions: ReadonlySet<string>;
@@ -66,6 +71,16 @@ export interface WebGL2NativeContextPort {
   pushDebugGroup?(label: string): void;
   popDebugGroup?(): void;
   createSubmissionFence?(): Promise<void>;
+  createFramebuffer?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
+  checkFramebufferStatus?(framebuffer: WebGL2NativeObject): WebGL2FramebufferStatus;
+  bindFramebuffer?(framebuffer: WebGL2NativeObject): void;
+  deleteFramebuffer?(framebuffer: WebGL2NativeObject): void;
+  applyRenderPassLoadOperations?(descriptor: Readonly<Record<string, unknown>>): void;
+  applyRenderPassStoreOperations?(descriptor: Readonly<Record<string, unknown>>): void;
+  resolveRenderPass?(descriptor: Readonly<Record<string, unknown>>): void;
+  createVertexArray?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
+  bindVertexArray?(vertexArray: WebGL2NativeObject): void;
+  deleteVertexArray?(vertexArray: WebGL2NativeObject): void;
   destroy?(): void;
 }
 

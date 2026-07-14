@@ -10,5 +10,6 @@ export interface WebGL2DeviceOwner {
   readonly native: WebGL2NativeContextPort;
   state: RHIDeviceState;
   allocateId(): number;
+  subscribeResourceRelease(listener: (resource: WebGL2ResourceBase) => void): () => void;
   releaseResource(resource: WebGL2ResourceBase, handle: WebGL2NativeObject, owned: boolean): void;
 }
