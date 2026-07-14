@@ -1,20 +1,16 @@
-import type { RHICommandBuffer } from '../command-types';
-import type { RHIQueue } from '../device-types';
 import type { GPUImageCopyTexture, RHIBuffer } from '../resource-types';
-import type { RHIQueueMetrics, RHISubmission } from '../submission-types';
 import type { BufferWriteRange, GPUExtent3D, GPUImageDataLayout, RHIUploadData } from '../webgpu-types';
 import { WebGL2Buffer, WebGL2Texture, assertWebGL2Resource, getWebGL2Handle, normalizeExtent } from './resource';
 import type { WebGL2DeviceOwner } from './resource-types';
 import type { WebGL2NativeContextPort } from './native-types';
+import type { WebGL2Metrics } from './metrics';
 
-export class WebGL2Queue implements RHIQueue {
+export class WebGL2UploadQueue {
   constructor(
-    private readonly owner: WebGL2DeviceOwner,
-    private readonly native: WebGL2NativeContextPort
+    protected readonly owner: WebGL2DeviceOwner,
+    protected readonly native: WebGL2NativeContextPort,
+    protected readonly webgl2Metrics: WebGL2Metrics
   ) {}
-
-  submit(_commandBuffers: readonly RHICommandBuffer[]): RHISubmission { return pending('queue.submit'); }
-  metrics(): RHIQueueMetrics { return pending('queue.metrics'); }
 
   writeBuffer(buffer: RHIBuffer, offset: number, data: RHIUploadData): void {
     const target = this.validateBuffer(buffer);
@@ -23,6 +19,8 @@ export class WebGL2Queue implements RHIQueue {
     const write = this.native.writeBuffer;
     if (write === undefined) throw new Error('Native WebGL2 context does not support buffer uploads.');
     write.call(this.native, getWebGL2Handle(target, this.owner), offset, bytes);
+    this.webgl2Metrics.recordUpload(bytes.byteLength);
+    this.webgl2Metrics.recordGLCall();
   }
 
   writeBufferRanges(buffer: RHIBuffer, ranges: readonly BufferWriteRange[]): void {
@@ -35,7 +33,11 @@ export class WebGL2Queue implements RHIQueue {
     const write = this.native.writeBuffer;
     if (write === undefined) throw new Error('Native WebGL2 context does not support buffer uploads.');
     const handle = getWebGL2Handle(target, this.owner);
-    for (const entry of writes) write.call(this.native, handle, entry.offset, entry.bytes);
+    for (const entry of writes) {
+      write.call(this.native, handle, entry.offset, entry.bytes);
+      this.webgl2Metrics.recordUpload(entry.bytes.byteLength);
+      this.webgl2Metrics.recordGLCall();
+    }
   }
 
   writeTexture(
@@ -53,6 +55,8 @@ export class WebGL2Queue implements RHIQueue {
     const write = this.native.writeTexture;
     if (write === undefined) throw new Error('Native WebGL2 context does not support texture uploads.');
     write.call(this.native, lowered, bytes, Object.freeze({ ...dataLayout }), copySize);
+    this.webgl2Metrics.recordUpload(bytes.byteLength);
+    this.webgl2Metrics.recordGLCall();
   }
 
   private validateBuffer(buffer: RHIBuffer): WebGL2Buffer {
@@ -139,8 +143,4 @@ function validateOptionalInteger(value: number | undefined, label: string): void
   if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
     throw new Error(`${label} ${value} must be a non-negative integer.`);
   }
-}
-
-function pending<T>(operation: string): T {
-  throw new Error(`WebGL2 backend operation ${operation} is not implemented yet.`);
 }

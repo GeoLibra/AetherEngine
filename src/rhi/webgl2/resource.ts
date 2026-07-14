@@ -101,7 +101,7 @@ export class WebGL2Texture extends WebGL2ResourceBase implements RHITexture {
   }
 }
 
-class WebGL2TextureView extends WebGL2ResourceBase implements RHITextureView {
+export class WebGL2TextureView extends WebGL2ResourceBase implements RHITextureView {
   readonly kind = 'texture-view';
   readonly descriptor: Readonly<RHITextureViewDescriptor>;
   readonly width: number;

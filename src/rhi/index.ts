@@ -29,6 +29,7 @@ export type {
   WebGL2ShaderTranslationPort,
   WebGL2TranslatedShader
 } from './webgl2/shader-types';
+export type { WebGL2MetricsSnapshot } from './webgl2/metrics';
 export type {
   WebGPUNativeAdapterInfo,
   WebGPUNativeAdapterPort,
