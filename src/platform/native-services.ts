@@ -85,6 +85,7 @@ export function createNativeFilesystemService(port: NativeFilesystemPort): Nativ
           ? new Uint8Array(result)
           : new Uint8Array(result.slice(0));
       } catch {
+        // Port errors may contain user paths or URI queries and must not cross the service boundary.
         throw new Error('Native filesystem read failed.');
       }
     }

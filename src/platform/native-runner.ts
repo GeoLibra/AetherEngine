@@ -2,6 +2,7 @@ import type { AppExit, Runner, RunnerContext } from '../app/runner';
 import type { NativeFramePort } from './native-host-types';
 
 export interface NativeRunnerBoundary {
+  dispatchFrame(run: () => void): Promise<void>;
   beforeFrame(timestampSeconds: number): void;
   afterFrame(timestampSeconds: number): void;
 }
@@ -45,19 +46,26 @@ export class NativeRunner implements Runner {
   }
 
   private schedule(context: RunnerContext): void {
+    // Exactly one platform callback is pending; native cadence never falls back to a busy loop.
     this.pendingFrame = this.frames.request((timestampSeconds) => {
       this.pendingFrame = undefined;
-      if (this.stopReason || context.stopRequested) {
-        this.finish(this.stopReason ?? 'requested');
-        return;
-      }
-      if (!Number.isFinite(timestampSeconds) || timestampSeconds < this.lastTimestamp) {
-        this.fail(new Error('Native frame timestamps must be finite and monotonic.'));
-        return;
-      }
-      this.lastTimestamp = timestampSeconds;
-      this.executeFrame(context, timestampSeconds);
+      void this.boundary.dispatchFrame(() => this.acceptFrame(context, timestampSeconds)).catch(
+        (error: unknown) => this.fail(error)
+      );
     });
+  }
+
+  private acceptFrame(context: RunnerContext, timestampSeconds: number): void {
+    if (this.stopReason || context.stopRequested) {
+      this.finish(this.stopReason ?? 'requested');
+      return;
+    }
+    if (!Number.isFinite(timestampSeconds) || timestampSeconds < this.lastTimestamp) {
+      this.fail(new Error('Native frame timestamps must be finite and monotonic.'));
+      return;
+    }
+    this.lastTimestamp = timestampSeconds;
+    this.executeFrame(context, timestampSeconds);
   }
 
   private executeFrame(context: RunnerContext, timestampSeconds: number): void {

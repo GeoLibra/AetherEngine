@@ -6,7 +6,7 @@ export { HostBoundaryRunner } from './host-runner';
 export { HeadlessHost, ManualClock } from './headless-host';
 export type { HeadlessHostOptions } from './headless-host';
 export { PlatformWindow } from './window';
-export { NativeHost } from './native-host';
+export { NativeHost, NativeHostDestroyError } from './native-host';
 export { NativeRunner } from './native-runner';
 export type { NativeRunnerBoundary } from './native-runner';
 export type { NativeFramePort, NativePlatformPort, NativeWindowPort } from './native-host-types';

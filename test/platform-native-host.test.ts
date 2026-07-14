@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import {
   NativeHost,
+  NativeHostDestroyError,
   NativeRuntimeController,
   type JsRuntimePort,
   type NativeFramePort,
@@ -18,17 +19,27 @@ import {
 class Threads implements NativeThreadPort {
   readonly jsThread = 'js';
   current = 'native';
+  readonly queued: Array<() => void> = [];
   currentThread(): string { return this.current; }
-  dispatchToJs(operation: () => void): void { operation(); }
+  dispatchToJs(operation: () => void): void { this.queued.push(operation); }
+  drain(): void {
+    this.current = this.jsThread;
+    for (const operation of this.queued.splice(0)) operation();
+  }
 }
 
 class Runtime implements JsRuntimePort {
   readonly id = 'native-runtime';
   checkpoints = 0;
   destroys = 0;
+  throwOnDestroy = false;
   constructor(private readonly events: string[]) {}
   checkpointMicrotasks(): void { this.checkpoints += 1; }
-  destroy(): void { this.destroys += 1; this.events.push('runtime.destroy'); }
+  destroy(): void {
+    this.destroys += 1;
+    this.events.push('runtime.destroy');
+    if (this.throwOnDestroy) throw new Error('runtime cleanup');
+  }
 }
 
 class Frames implements NativeFramePort {
@@ -53,6 +64,7 @@ class WindowPort implements NativeWindowPort {
   private surfaceListener: (surface: SurfaceTarget | undefined) => void = () => undefined;
   private closeListener: () => void = () => undefined;
   closes = 0;
+  throwOnClose = false;
 
   constructor(readonly surfaceTarget: SurfaceTarget | undefined, private readonly events: string[]) {}
   onMetrics(listener: (update: WindowMetricsUpdate) => void): () => void {
@@ -70,7 +82,11 @@ class WindowPort implements NativeWindowPort {
   emitMetrics(update: WindowMetricsUpdate): void { this.metricsListener(update); }
   emitSurface(surface: SurfaceTarget | undefined): void { this.surfaceListener(surface); }
   emitClose(): void { this.closeListener(); }
-  close(): void { this.closes += 1; this.events.push('window.close'); }
+  close(): void {
+    this.closes += 1;
+    this.events.push('window.close');
+    if (this.throwOnClose) throw new Error('window cleanup');
+  }
 }
 
 class Platform implements NativePlatformPort {
@@ -78,6 +94,7 @@ class Platform implements NativePlatformPort {
   readonly windows: WindowPort[] = [];
   readonly pendingEvents: Array<() => void> = [];
   destroys = 0;
+  throwOnDestroy = false;
   readonly clock = { now: () => 0 };
 
   constructor(private readonly events: string[]) {}
@@ -89,7 +106,11 @@ class Platform implements NativePlatformPort {
   pollEvents(): void {
     for (const event of this.pendingEvents.splice(0)) event();
   }
-  destroy(): void { this.destroys += 1; this.events.push('platform.destroy'); }
+  destroy(): void {
+    this.destroys += 1;
+    this.events.push('platform.destroy');
+    if (this.throwOnDestroy) throw new Error('platform cleanup');
+  }
 }
 
 const surface = (label: string): SurfaceTarget => Object.freeze({
@@ -109,6 +130,25 @@ async function setup() {
 }
 
 describe('NativeHost', () => {
+  test('marshals platform frame callbacks to the JS owner before entering App code', async () => {
+    const { host, platform, threads } = await setup();
+    const calls: number[] = [];
+    const runner = host.createRunner({ kind: 'native' });
+    const run = runner.run({
+      stopRequested: false,
+      frame(time) { calls.push(time); return { frame: calls.length }; }
+    });
+
+    platform.frames.fire(0.5);
+    expect(calls).toEqual([]);
+    expect(threads.queued).toHaveLength(1);
+    threads.drain();
+    await Promise.resolve();
+    expect(calls).toEqual([0.5]);
+    runner.requestStop('done');
+    await run;
+  });
+
   test('publishes coalesced platform state before callback-driven App frames', async () => {
     const { host, platform, runtimePort, threads } = await setup();
     const first = await host.createWindow({ logicalSize: [100, 50], surfaceTarget: surface('first') });
@@ -200,5 +240,21 @@ describe('NativeHost', () => {
     expect(platform.destroys).toBe(1);
     expect(runtimePort.destroys).toBe(1);
     expect(events).toEqual(['window.close', 'platform.destroy', 'runtime.destroy']);
+  });
+
+  test('aggregates cleanup failures without skipping later native layers', async () => {
+    const { events, host, platform, runtimePort } = await setup();
+    await host.createWindow({ logicalSize: [10, 10], surfaceTarget: surface('failing') });
+    platform.windows[0]!.throwOnClose = true;
+    platform.throwOnDestroy = true;
+    runtimePort.throwOnDestroy = true;
+
+    let error: unknown;
+    try { host.destroy(); } catch (caught) { error = caught; }
+
+    expect(error).toBeInstanceOf(NativeHostDestroyError);
+    expect((error as NativeHostDestroyError).errors).toHaveLength(3);
+    expect(events).toEqual(['window.close', 'platform.destroy', 'runtime.destroy']);
+    expect(() => host.destroy()).not.toThrow();
   });
 });

@@ -22,6 +22,7 @@ export class NativeEventPump {
 
   drain(): number {
     return this.runtime.enterJsThread('native.event-pump.drain', () => {
+      // Snapshot the boundary so callbacks enqueued reentrantly wait for the next host tick.
       const boundary = this.queue.splice(0);
       const errors: unknown[] = [];
       for (const callback of boundary) {

@@ -34,6 +34,7 @@ export class NativeLifecycleCoordinator {
 
   registerEvictor(evictor: NativeMemoryEvictor): void {
     this.assertActive();
+    if (!/^[a-z][a-z0-9.-]*$/i.test(evictor.name)) throw new Error('Native memory evictor name is invalid.');
     if (!Number.isFinite(evictor.priority)) throw new Error('Native memory evictor priority must be finite.');
     if (this.evictors.some(({ name }) => name === evictor.name)) throw new Error('Duplicate native memory evictor.');
     this.evictors.push(evictor);
@@ -54,6 +55,7 @@ export class NativeLifecycleCoordinator {
     validatePressure(event);
     let evictedBytes = 0;
     let callbacks = 0;
+    const failedEvictors: string[] = [];
     const ordered = [...this.evictors].sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
     for (const evictor of ordered) {
       if (evictedBytes >= event.targetBytes || callbacks >= event.maxCallbacks) break;
@@ -64,13 +66,15 @@ export class NativeLifecycleCoordinator {
         if (Number.isFinite(evicted) && evicted > 0) evictedBytes += Math.min(remaining, evicted);
       } catch {
         // A failed pool must not prevent lower-priority pools from honoring pressure.
+        failedEvictors.push(evictor.name);
       }
     }
     return Object.freeze({
       requestedBytes: event.targetBytes,
       evictedBytes,
       sufficient: evictedBytes >= event.targetBytes,
-      callbacks
+      callbacks,
+      failedEvictors: Object.freeze(failedEvictors)
     });
   }
 

@@ -12,6 +12,15 @@ interface NativeWindowLifecycle {
   unsubscribeClose: () => void;
 }
 
+export class NativeHostDestroyError extends Error {
+  readonly errors: readonly unknown[];
+  constructor(errors: readonly unknown[]) {
+    super(`NativeHost cleanup failed (${errors.length}).`);
+    this.name = 'NativeHostDestroyError';
+    this.errors = Object.freeze([...errors]);
+  }
+}
+
 export class NativeHost implements Host {
   readonly kind = 'native' as const;
   readonly clock;
@@ -71,6 +80,13 @@ export class NativeHost implements Host {
     this.assertActive('create a runner');
     if (options.kind !== 'native') throw new Error('NativeHost only supports native runners.');
     const runner = new NativeRunner(this.port.frames, {
+      dispatchFrame: (run) => {
+        if (this.runtime.isOnJsThread()) {
+          this.runtime.enterJsThread('native.frame', run);
+          return Promise.resolve();
+        }
+        return this.runtime.runOnJsThread('native.frame', run).then(() => undefined);
+      },
       beforeFrame: () => {
         this.assertActive('run a frame');
         this.port.pollEvents();
@@ -88,10 +104,13 @@ export class NativeHost implements Host {
   destroy(): void {
     if (this.currentState === 'destroyed') return;
     this.currentState = 'destroyed';
-    for (const runner of this.runners) runner.requestStop('host-destroyed');
-    for (const window of this.ownedWindows) window.close();
-    this.port.destroy();
-    this.runtime.destroy();
+    const errors: unknown[] = [];
+    // Teardown is best-effort across every owned layer; one faulty port must not strand the runtime.
+    for (const runner of this.runners) captureCleanup(errors, () => runner.requestStop('host-destroyed'));
+    for (const window of this.ownedWindows) captureCleanup(errors, () => window.close());
+    captureCleanup(errors, () => this.port.destroy());
+    captureCleanup(errors, () => this.runtime.destroy());
+    if (errors.length > 0) throw new NativeHostDestroyError(errors);
   }
 
   private assertActive(operation: string): void {
@@ -99,4 +118,8 @@ export class NativeHost implements Host {
       throw new Error(`Cannot ${operation} on a destroyed NativeHost.`);
     }
   }
+}
+
+function captureCleanup(errors: unknown[], cleanup: () => void): void {
+  try { cleanup(); } catch (error) { errors.push(error); }
 }

@@ -38,6 +38,7 @@ function sanitizeValue(value: unknown, maxLength: number, seen: WeakSet<object>)
   }
   const output: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value).slice(0, DEFAULT_COLLECTION_LIMIT)) {
+    // Sensitive structured fields are dropped before string-level path/query redaction.
     output[key] = SENSITIVE_KEY.test(key) ? '[REDACTED]' : sanitizeValue(item, maxLength, seen);
   }
   return Object.freeze(output);
