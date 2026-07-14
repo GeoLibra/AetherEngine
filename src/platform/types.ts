@@ -59,7 +59,8 @@ export type RunnerOptions =
       readonly frameDelta?: number;
       readonly startTime?: number;
     }
-  | { readonly kind: 'browser' };
+  | { readonly kind: 'browser' }
+  | { readonly kind: 'native' };
 
 export interface PlatformServiceToken<T> {
   readonly key: symbol;

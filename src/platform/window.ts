@@ -16,7 +16,9 @@ import {
 
 export class PlatformWindow implements HostWindow {
   readonly title: string;
-  readonly surfaceTarget: SurfaceTarget | undefined;
+  private currentSurfaceTarget: SurfaceTarget | undefined;
+  private pendingSurfaceTarget: SurfaceTarget | undefined;
+  private hasPendingSurface = false;
   private currentMetrics: WindowMetrics;
   private pendingMetrics: WindowMetrics | undefined;
   private currentGeneration = 0;
@@ -25,10 +27,11 @@ export class PlatformWindow implements HostWindow {
   constructor(
     readonly id: WindowId,
     options: WindowOptions,
-    private readonly onClose?: () => void
+    private readonly onClose?: () => void,
+    private readonly requiresSurfaceTarget = false
   ) {
     this.title = options.title ?? DEFAULT_WINDOW_TITLE;
-    this.surfaceTarget = options.surfaceTarget;
+    this.currentSurfaceTarget = options.surfaceTarget;
     this.currentMetrics = createWindowMetrics(options);
   }
 
@@ -40,6 +43,8 @@ export class PlatformWindow implements HostWindow {
     return this.currentGeneration;
   }
 
+  get surfaceTarget(): SurfaceTarget | undefined { return this.currentSurfaceTarget; }
+
   get state(): WindowState {
     return this.currentState;
   }
@@ -47,10 +52,19 @@ export class PlatformWindow implements HostWindow {
   get renderable(): boolean {
     return (
       this.currentState === 'open' &&
+      (!this.requiresSurfaceTarget || this.currentSurfaceTarget !== undefined) &&
       this.currentMetrics.visible &&
       this.currentMetrics.physicalSize[0] > 0 &&
       this.currentMetrics.physicalSize[1] > 0
     );
+  }
+
+  queueSurfaceTarget(target: SurfaceTarget | undefined): void {
+    if (this.currentState === 'closed') {
+      throw new Error(`Cannot update closed window ${this.id}.`);
+    }
+    this.pendingSurfaceTarget = target;
+    this.hasPendingSurface = true;
   }
 
   queueMetrics(update: WindowMetricsUpdate): void {
@@ -66,11 +80,14 @@ export class PlatformWindow implements HostWindow {
   commitFrameBoundary(): boolean {
     const pending = this.pendingMetrics;
     this.pendingMetrics = undefined;
-    if (pending === undefined || equalWindowMetrics(this.currentMetrics, pending)) {
-      return false;
-    }
+    const metricsChanged = pending !== undefined && !equalWindowMetrics(this.currentMetrics, pending);
+    const surfaceChanged = this.hasPendingSurface && this.pendingSurfaceTarget !== this.currentSurfaceTarget;
+    if (metricsChanged) this.currentMetrics = pending;
+    if (surfaceChanged) this.currentSurfaceTarget = this.pendingSurfaceTarget;
+    this.pendingSurfaceTarget = undefined;
+    this.hasPendingSurface = false;
+    if (!metricsChanged && !surfaceChanged) return false;
     // A resize/event burst becomes one observable version at the runner boundary.
-    this.currentMetrics = pending;
     this.currentGeneration++;
     return true;
   }
@@ -81,6 +98,8 @@ export class PlatformWindow implements HostWindow {
     }
     this.currentState = 'closed';
     this.pendingMetrics = undefined;
+    this.pendingSurfaceTarget = undefined;
+    this.hasPendingSurface = false;
     this.onClose?.();
   }
 }
