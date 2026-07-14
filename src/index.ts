@@ -129,6 +129,8 @@ export { HostService, createHostPlugin } from './plugins/host-plugin';
 export * from './schema';
 export {
   NullAdapter,
+  NativeDawnAdapter,
+  NativeDawnDeviceRequestError,
   NullDevice,
   NullRenderTarget,
   NullSurface,
@@ -153,6 +155,10 @@ export type {
   FeatureSupport,
   FormatCapabilities,
   NullAdapterOptions,
+  NativeDawnAdapterFacts,
+  NativeDawnAdapterPort,
+  NativeDawnBackend,
+  NativeDawnFactsPort,
   NullDeviceOptions,
   NullSubmissionMode,
   WebGL2AdapterFacts,
