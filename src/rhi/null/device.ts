@@ -34,15 +34,32 @@ import type {
   RenderTargetDescriptor,
   GPUShaderModuleDescriptor
 } from '../types';
+import { createNullCapabilities } from '../capabilities';
+import type { DeviceCapabilities } from '../capability-types';
+
+export interface NullDeviceOptions {
+  readonly capabilities?: DeviceCapabilities;
+}
 
 export class NullDevice implements RHIDevice {
   private readonly owner = Symbol('NullDevice');
 
   readonly queue = new NullQueue(this.owner);
-  readonly features = new Set<string>();
-  readonly limits = {} as GPUSupportedLimits;
+  readonly capabilities: DeviceCapabilities;
+  readonly features: ReadonlySet<string>;
+  readonly limits: GPUSupportedLimits;
 
   private nextResourceId = 1;
+
+  constructor(options: NullDeviceOptions = {}) {
+    this.capabilities = options.capabilities ?? createNullCapabilities();
+    this.features = new Set(
+      [...this.capabilities.features]
+        .filter(([, support]) => support.status !== 'unsupported')
+        .map(([feature]) => feature)
+    );
+    this.limits = this.capabilities.limits;
+  }
 
   createBuffer(descriptor: GPUBufferDescriptor): RHIBuffer {
     return new NullBuffer(this.allocateId(), this.owner, descriptor);

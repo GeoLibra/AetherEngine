@@ -30,6 +30,7 @@ import type {
 } from './resource-types';
 import type { RHICommandEncoder, RHICommandBuffer } from './command-types';
 import type { RHIRenderTarget, RenderTargetDescriptor } from './render-target-types';
+import type { DeviceCapabilities } from './capability-types';
 
 export interface RHIQueue {
   submit(commandBuffers: readonly RHICommandBuffer[]): void;
@@ -44,6 +45,7 @@ export interface RHIQueue {
 }
 
 export interface RHIDevice {
+  readonly capabilities: DeviceCapabilities;
   readonly queue: RHIQueue;
   readonly features: ReadonlySet<string>;
   readonly limits: GPUSupportedLimits;
