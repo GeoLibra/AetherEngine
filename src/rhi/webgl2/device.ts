@@ -42,6 +42,9 @@ import { createWebGL2RenderPipeline } from './pipeline';
 import type { WebGL2ShaderTranslationPort } from './shader-types';
 import { throwWebGL2Unsupported } from './unsupported';
 import { WebGL2CommandEncoder } from './command';
+import { createWebGL2ContextControl } from './context-control';
+import { createWebGL2LossDiagnostic } from './diagnostics';
+import { WebGL2ContextControlExtension, type WebGL2ContextControl } from './extension-types';
 
 let nextWebGL2Generation = 1;
 
@@ -55,6 +58,7 @@ export class WebGL2Device implements RHIDevice {
   private nativeDestroyed = false;
   private nextResourceId = 1;
   private readonly releaseListeners = new Set<(resource: import('./resource').WebGL2ResourceBase) => void>();
+  private readonly contextControl: WebGL2ContextControl;
 
   constructor(
     readonly capabilities: DeviceCapabilities,
@@ -78,12 +82,16 @@ export class WebGL2Device implements RHIDevice {
       }
     };
     this.queue = new WebGL2Queue(this.owner, native);
+    this.contextControl = createWebGL2ContextControl(() => this.queue.invalidateExternalState());
     this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
     void native.lost.then((info) => this.handleNativeLoss(info));
   }
 
   get state(): RHIDeviceState { return this.currentState; }
-  getExtension<T>(_token: RHIExtensionToken<T>): T | undefined { return undefined; }
+  getExtension<T>(token: RHIExtensionToken<T>): T | undefined {
+    if (token.id !== WebGL2ContextControlExtension.id) return undefined;
+    return this.contextControl as T;
+  }
   createBuffer(descriptor: RHIBufferDescriptor): RHIBuffer {
     if ((descriptor.usage & (1 << 7)) !== 0) {
       return throwWebGL2Unsupported(this.capabilities, 'storage-buffer', 'create-storage-buffer');
@@ -168,7 +176,7 @@ export class WebGL2Device implements RHIDevice {
     const wasLive = this.currentState === 'live';
     this.currentState = 'destroyed';
     this.owner.state = 'destroyed';
-    this.queue.handleDeviceLoss();
+    this.queue.handleDeviceLoss('destroyed');
     this.destroyNativeOnce();
     if (wasLive) {
       this.resolveLost(Object.freeze({
@@ -181,12 +189,8 @@ export class WebGL2Device implements RHIDevice {
     if (this.currentState !== 'live') return;
     this.currentState = 'lost';
     this.owner.state = 'lost';
-    this.queue.handleDeviceLoss();
-    this.resolveLost(Object.freeze({
-      reason: info.reason === 'out-of-memory' ? 'out-of-memory' : 'context-lost',
-      message: info.message ?? 'WebGL2 context was lost.',
-      generation: this.generation
-    }));
+    this.queue.handleDeviceLoss('context-lost');
+    this.resolveLost(createWebGL2LossDiagnostic(this.generation, info));
   }
 
   private destroyNativeOnce(): void {

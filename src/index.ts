@@ -186,6 +186,7 @@ export type {
   WebGPUPipelineCreationResult,
   WebGPUFastPathMetrics,
   WebGPUInterop,
+  WebGL2ContextControl,
   WebGPUInteropScope,
   WebGPUInteropSubmissionPolicy,
   WebGPUNativeImportKind,
@@ -227,6 +228,7 @@ export type {
   SubmissionResult,
   SupportStatus
 } from './rhi';
+export { WebGL2ContextControlExtension } from './rhi';
 export type {
   ColorAttachmentDescriptor,
   BufferWriteRange,
