@@ -1,4 +1,5 @@
 import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
+import type { NullDeviceOwner } from './resource';
 import type {
   ColorAttachmentDescriptor,
   DepthStencilAttachmentDescriptor,
@@ -16,7 +17,7 @@ export class NullRenderTarget extends NullResourceBase implements RHIRenderTarge
 
   constructor(
     id: number,
-    owner: symbol,
+    owner: NullDeviceOwner,
     descriptor: RenderTargetDescriptor
   ) {
     super(id, owner, descriptor.label);
@@ -91,7 +92,7 @@ function createDepthStencilAttachment(
   return passAttachment;
 }
 
-function validateRenderTargetDescriptor(descriptor: RenderTargetDescriptor, owner: symbol): void {
+function validateRenderTargetDescriptor(descriptor: RenderTargetDescriptor, owner: NullDeviceOwner): void {
   assertPositiveInteger(descriptor.width, 'Render target width');
   assertPositiveInteger(descriptor.height, 'Render target height');
 

@@ -1,37 +1,49 @@
 import type { RHIResource, RHIResourceKind, RHIResourceRef } from './types';
+import type { RHIDeviceState, RHIResourceState } from './lifecycle-types';
+
+export interface NullDeviceOwner {
+  readonly token: symbol;
+  readonly generation: number;
+  state: RHIDeviceState;
+}
 
 export abstract class NullResourceBase implements RHIResource {
-  protected isReleased = false;
+  protected isDisposed = false;
   abstract readonly kind: RHIResourceKind;
   readonly label: string | undefined;
 
   constructor(
     readonly id: number,
-    readonly owner: symbol,
+    readonly owner: NullDeviceOwner,
     label?: string
   ) {
     this.label = label;
   }
 
-  get released(): boolean {
-    return this.isReleased;
+  get generation(): number {
+    return this.owner.generation;
   }
 
-  release(): void {
-    if (this.isReleased) {
-      throw new Error(`Resource "${this.label ?? this.kind}" has already been released.`);
-    }
-    this.isReleased = true;
+  get state(): RHIResourceState {
+    if (this.owner.state !== 'live') return 'device-lost';
+    return this.isDisposed ? 'disposed' : 'live';
+  }
+
+  dispose(): void {
+    this.isDisposed = true;
   }
 }
 
 export function assertResourceLive(resource: RHIResource): void {
-  if (resource.released) {
-    throw new Error(`Resource "${resource.label ?? resource.kind}" has been released.`);
+  if (resource.state === 'disposed') {
+    throw new Error(`Resource "${resource.label ?? resource.kind}" has been disposed.`);
+  }
+  if (resource.state === 'device-lost') {
+    throw new Error(`Resource "${resource.label ?? resource.kind}" belongs to a lost device.`);
   }
 }
 
-export function assertResourceOwnedBy(resource: RHIResource, owner: symbol): void {
+export function assertResourceOwnedBy(resource: RHIResource, owner: NullDeviceOwner): void {
   if (!(resource instanceof NullResourceBase)) {
     const label =
       typeof resource === 'object' && resource !== null && 'label' in resource

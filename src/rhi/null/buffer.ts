@@ -1,4 +1,5 @@
 import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from '../resource';
+import type { NullDeviceOwner } from '../resource';
 import type { GPUBufferDescriptor, GPUBufferUsageFlags, GPUMapModeFlags, RHIBuffer, RHIUploadData } from '../types';
 
 export class NullBuffer extends NullResourceBase implements RHIBuffer {
@@ -12,7 +13,7 @@ export class NullBuffer extends NullResourceBase implements RHIBuffer {
   private mappedSize = 0;
   private readonly mappedViews: Array<{ offset: number; data: ArrayBuffer }> = [];
 
-  constructor(id: number, owner: symbol, descriptor: GPUBufferDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, descriptor: GPUBufferDescriptor) {
     super(id, owner, descriptor.label);
     this.descriptor = { ...descriptor };
     this.size = descriptor.size;
@@ -78,9 +79,7 @@ export class NullBuffer extends NullResourceBase implements RHIBuffer {
   }
 
   private ensureLive(): void {
-    if (this.released) {
-      throw new Error(`Buffer "${this.label ?? this.id}" has been released.`);
-    }
+    assertResourceLive(this);
   }
 
   private flushMappedViews(): void {
@@ -109,7 +108,7 @@ export function toByteCopy(data: RHIUploadData): Uint8Array {
   return new Uint8Array(data.slice(0));
 }
 
-export function validateBufferForQueueWrite(buffer: RHIBuffer, owner: symbol): NullBuffer {
+export function validateBufferForQueueWrite(buffer: RHIBuffer, owner: NullDeviceOwner): NullBuffer {
   assertResourceOwnedBy(buffer, owner);
   assertResourceLive(buffer);
   assertBufferUnmapped(buffer);
@@ -125,7 +124,7 @@ export function validateBufferCopy(
   destination: RHIBuffer,
   destinationOffset: number,
   size: number,
-  owner: symbol
+  owner: NullDeviceOwner
 ): void {
   assertResourceOwnedBy(source, owner);
   assertResourceLive(source);

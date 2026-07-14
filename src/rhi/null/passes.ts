@@ -14,11 +14,12 @@ import type {
   RHIRenderPassEncoder,
   RHIRenderPipeline
 } from '../types';
+import type { NullDeviceOwner } from '../resource';
 
 export type NullPassEncoder = NullRenderPassEncoder | NullComputePassEncoder;
 
 export interface NullPassController {
-  readonly ownerToken: symbol;
+  readonly ownerToken: NullDeviceOwner;
   record(record: RHICommandRecord): void;
   recordDraw(vertexCount: number, instanceCount: number, topology: GPUPrimitiveTopology | undefined): void;
   recordIndexedDraw(indexCount: number, instanceCount: number, topology: GPUPrimitiveTopology | undefined): void;
@@ -175,6 +176,9 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
   }
 
   private ensureActive(): void {
+    if (this.encoder.ownerToken.state !== 'live') {
+      throw new Error(`Render pass "${this.descriptor.label ?? 'anonymous'}" belongs to a lost device.`);
+    }
     if (this.ended) {
       throw new Error(`Render pass "${this.descriptor.label ?? 'anonymous'}" has already ended.`);
     }
@@ -215,7 +219,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     }
   }
 
-  private get encoderOwner(): symbol {
+  private get encoderOwner(): NullDeviceOwner {
     return this.encoder.ownerToken;
   }
 }
@@ -300,6 +304,9 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
   }
 
   private ensureActive(): void {
+    if (this.encoder.ownerToken.state !== 'live') {
+      throw new Error(`Compute pass "${this.label ?? 'anonymous'}" belongs to a lost device.`);
+    }
     if (this.ended) {
       throw new Error(`Compute pass "${this.label ?? 'anonymous'}" has already ended.`);
     }
@@ -327,7 +334,7 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
     }
   }
 
-  private get encoderOwner(): symbol {
+  private get encoderOwner(): NullDeviceOwner {
     return this.encoder.ownerToken;
   }
 }

@@ -15,6 +15,7 @@ import type {
   GPUTextureUsageFlags,
   GPUTextureViewDescriptor
 } from './webgpu-types';
+import type { RHIResourceState } from './lifecycle-types';
 
 export type RHIResourceKind =
   | 'buffer'
@@ -34,7 +35,9 @@ export interface RHIResource {
   readonly id: number;
   readonly kind: RHIResourceKind;
   readonly label: string | undefined;
-  readonly released: boolean;
+  readonly generation: number;
+  readonly state: RHIResourceState;
+  dispose(): void;
 }
 
 export interface RHIBuffer extends RHIResource {

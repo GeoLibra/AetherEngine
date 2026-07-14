@@ -21,7 +21,6 @@ import type {
   RHIComputePipeline,
   RHIComputePipelineDescriptor,
   RHIPipelineLayout,
-  RHIResource,
   RHIRenderPipeline,
   RHIRenderPipelineDescriptor,
   RHISampler,
@@ -31,6 +30,7 @@ import type {
 import type { RHICommandEncoder, RHICommandBuffer } from './command-types';
 import type { RHIRenderTarget, RenderTargetDescriptor } from './render-target-types';
 import type { DeviceCapabilities } from './capability-types';
+import type { DeviceLostInfo, RHIDeviceState } from './lifecycle-types';
 
 export interface RHIQueue {
   submit(commandBuffers: readonly RHICommandBuffer[]): void;
@@ -46,6 +46,9 @@ export interface RHIQueue {
 
 export interface RHIDevice {
   readonly capabilities: DeviceCapabilities;
+  readonly generation: number;
+  readonly state: RHIDeviceState;
+  readonly lost: Promise<DeviceLostInfo>;
   readonly queue: RHIQueue;
   readonly features: ReadonlySet<string>;
   readonly limits: GPUSupportedLimits;
@@ -60,5 +63,5 @@ export interface RHIDevice {
   createComputePipeline(descriptor?: RHIComputePipelineDescriptor): RHIComputePipeline;
   createRenderTarget(descriptor: RenderTargetDescriptor): RHIRenderTarget;
   createCommandEncoder(descriptor?: GPUCommandEncoderDescriptor): RHICommandEncoder;
-  destroy(resource: RHIResource): void;
+  destroy(): void;
 }

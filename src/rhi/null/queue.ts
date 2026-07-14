@@ -1,6 +1,7 @@
 import { toByteCopy, validateBufferForQueueWrite, validateBufferRange } from './buffer';
 import { normalizeAndValidateExtent, validateImageDataLayout, validateTextureCopyView } from './texture';
 import { assertResourceLive, assertResourceOwnedBy } from '../resource';
+import type { NullDeviceOwner } from '../resource';
 import type {
   BufferWriteRange,
   GPUImageCopyTexture,
@@ -15,7 +16,7 @@ import type {
 export class NullQueue implements RHIQueue {
   private readonly submitted: RHICommandBuffer[] = [];
 
-  constructor(private readonly owner: symbol) {}
+  constructor(private readonly owner: NullDeviceOwner) {}
 
   submit(commandBuffers: readonly RHICommandBuffer[]): void {
     for (const commandBuffer of commandBuffers) {

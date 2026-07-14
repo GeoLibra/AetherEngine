@@ -6,7 +6,7 @@ import { validateComputePipelineDescriptor, validateRenderPipelineDescriptor } f
 import { NullQueue } from './queue';
 import { NullSampler, NullTexture } from './texture';
 import { NullRenderTarget } from '../render-target';
-import { assertResourceOwnedBy, NullResourceBase } from '../resource';
+import type { NullDeviceOwner } from '../resource';
 import type {
   GPUBindGroupDescriptor,
   GPUBindGroupLayoutDescriptor,
@@ -27,7 +27,6 @@ import type {
   RHIRenderPipeline,
   RHIRenderPipelineDescriptor,
   RHIRenderTarget,
-  RHIResource,
   RHISampler,
   RHIShaderModule,
   RHITexture,
@@ -36,22 +35,36 @@ import type {
 } from '../types';
 import { createNullCapabilities } from '../capabilities';
 import type { DeviceCapabilities } from '../capability-types';
+import type { DeviceLostInfo, RHIDeviceState } from '../lifecycle-types';
+
+let nextDeviceGeneration = 1;
 
 export interface NullDeviceOptions {
   readonly capabilities?: DeviceCapabilities;
 }
 
 export class NullDevice implements RHIDevice {
-  private readonly owner = Symbol('NullDevice');
+  private readonly owner: NullDeviceOwner;
 
-  readonly queue = new NullQueue(this.owner);
+  readonly queue: NullQueue;
   readonly capabilities: DeviceCapabilities;
+  readonly generation = nextDeviceGeneration++;
+  readonly lost: Promise<DeviceLostInfo>;
   readonly features: ReadonlySet<string>;
   readonly limits: GPUSupportedLimits;
 
   private nextResourceId = 1;
+  private currentState: RHIDeviceState = 'live';
+  private resolveLost!: (info: DeviceLostInfo) => void;
 
   constructor(options: NullDeviceOptions = {}) {
+    this.owner = {
+      token: Symbol('NullDevice'),
+      generation: this.generation,
+      state: 'live'
+    };
+    this.queue = new NullQueue(this.owner);
+    this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
     this.capabilities = options.capabilities ?? createNullCapabilities();
     this.features = new Set(
       [...this.capabilities.features]
@@ -59,6 +72,31 @@ export class NullDevice implements RHIDevice {
         .map(([feature]) => feature)
     );
     this.limits = this.capabilities.limits;
+  }
+
+  get state(): RHIDeviceState { return this.currentState; }
+
+  loseForTesting(reason: DeviceLostInfo['reason'], message: string): void {
+    if (this.currentState !== 'live') return;
+    this.currentState = 'lost';
+    this.owner.state = 'lost';
+    this.resolveLost(Object.freeze({ reason, message, generation: this.generation }));
+  }
+
+  destroy(): void {
+    if (this.currentState === 'destroyed') return;
+    if (this.currentState === 'live') {
+      this.currentState = 'destroyed';
+      this.owner.state = 'destroyed';
+      this.resolveLost(Object.freeze({
+        reason: 'destroyed',
+        message: 'NullDevice was destroyed.',
+        generation: this.generation
+      }));
+      return;
+    }
+    this.currentState = 'destroyed';
+    this.owner.state = 'destroyed';
   }
 
   createBuffer(descriptor: GPUBufferDescriptor): RHIBuffer {
@@ -111,20 +149,8 @@ export class NullDevice implements RHIDevice {
     return new NullCommandEncoder(this.allocateId(), this.owner, descriptor);
   }
 
-  destroy(resource: RHIResource): void {
-    // ADR-001: Public resources are released through the owning device.
-    if (!(resource instanceof NullResourceBase)) {
-      const label =
-        typeof resource === 'object' && resource !== null && 'label' in resource
-          ? String(resource.label)
-          : 'unknown';
-      throw new Error(`Resource "${label}" was not created by NullDevice.`);
-    }
-    assertResourceOwnedBy(resource, this.owner);
-    resource.release();
-  }
-
   private allocateId(): number {
+    if (this.currentState !== 'live') throw new Error('NullDevice is lost.');
     const id = this.nextResourceId;
     this.nextResourceId += 1;
     return id;
