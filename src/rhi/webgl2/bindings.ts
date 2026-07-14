@@ -5,7 +5,8 @@ import type {
   GPUPipelineLayoutDescriptor,
   RHIBindGroup,
   RHIBindGroupLayout,
-  RHIPipelineLayout
+  RHIPipelineLayout,
+  RHIResource
 } from '../resource-types';
 import type { GPUBindGroupLayoutDescriptor, GPUBindGroupLayoutEntry } from '../webgpu-types';
 import { WebGL2ResourceBase, assertWebGL2Resource } from './resource';
@@ -33,6 +34,56 @@ export class WebGL2BindGroupLayout extends WebGL2ResourceBase implements RHIBind
     this.dynamicBindingCount = snapshot.filter((entry) => entry.buffer?.hasDynamicOffset === true).length;
   }
   getEntry(binding: number): GPUBindGroupLayoutEntry | undefined { return this.entries.get(binding); }
+}
+
+export function getWebGL2BindGroupResources(bindGroup: RHIBindGroup): readonly RHIResource[] {
+  return bindGroup.descriptor.entries.map((entry) => {
+    const resource = entry.resource;
+    return 'buffer' in resource ? resource.buffer : resource;
+  });
+}
+
+export function validateWebGL2BindGroupSlot(
+  index: number,
+  bindGroup: RHIBindGroup,
+  dynamicOffsets: readonly number[],
+  owner: WebGL2DeviceOwner,
+  pipelineLayout?: RHIPipelineLayout
+): void {
+  if (!Number.isInteger(index) || index < 0) throw new Error(`Bind group index ${index} must be non-negative.`);
+  assertWebGL2Resource(bindGroup, owner);
+  if (dynamicOffsets.length !== bindGroup.dynamicBindingCount) {
+    throw new Error(`Bind group slot ${index} requires ${bindGroup.dynamicBindingCount} dynamic offsets, received ${dynamicOffsets.length}.`);
+  }
+  const alignment = owner.native.limits.uniformBufferOffsetAlignment ?? 1;
+  dynamicOffsets.forEach((offset) => {
+    if (!Number.isInteger(offset) || offset < 0 || offset % alignment !== 0) {
+      throw new Error(`Dynamic uniform buffer offset ${offset} is not aligned to ${alignment}.`);
+    }
+  });
+  if (pipelineLayout !== undefined) {
+    assertWebGL2Resource(pipelineLayout, owner);
+    const expected = pipelineLayout.bindGroupLayouts[index];
+    if (expected === undefined) throw new Error(`Pipeline layout does not declare bind group slot ${index}.`);
+    if (bindGroup.layout !== expected) throw new Error(`Bind group slot ${index} is incompatible with the current pipeline layout.`);
+  }
+  validateDynamicBufferRanges(bindGroup, dynamicOffsets);
+}
+
+function validateDynamicBufferRanges(bindGroup: RHIBindGroup, dynamicOffsets: readonly number[]): void {
+  let dynamicIndex = 0;
+  for (const layoutEntry of bindGroup.layout.descriptor.entries) {
+    if (layoutEntry.buffer?.hasDynamicOffset !== true) continue;
+    const entry = bindGroup.descriptor.entries.find((candidate) => candidate.binding === layoutEntry.binding);
+    const resource = entry?.resource;
+    if (resource === undefined || !('buffer' in resource)) continue;
+    const dynamicOffset = dynamicOffsets[dynamicIndex++] ?? 0;
+    const baseOffset = resource.offset ?? 0;
+    const size = resource.size ?? resource.buffer.size - baseOffset;
+    if (baseOffset + dynamicOffset + size > resource.buffer.size) {
+      throw new Error(`Dynamic buffer range exceeds buffer size ${resource.buffer.size}.`);
+    }
+  }
 }
 
 export class WebGL2PipelineLayout extends WebGL2ResourceBase implements RHIPipelineLayout {

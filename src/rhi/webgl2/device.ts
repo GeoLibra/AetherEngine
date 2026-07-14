@@ -42,6 +42,7 @@ import { WebGL2BindGroup, WebGL2BindGroupLayout, WebGL2PipelineLayout } from './
 import { createWebGL2RenderPipeline } from './pipeline';
 import type { WebGL2ShaderTranslationPort } from './shader-types';
 import { throwWebGL2Unsupported } from './unsupported';
+import { WebGL2CommandEncoder } from './command';
 
 let nextWebGL2Generation = 1;
 
@@ -63,6 +64,7 @@ export class WebGL2Device implements RHIDevice {
     this.owner = {
       token: Symbol('WebGL2Device'),
       generation: this.generation,
+      capabilities,
       native,
       state: 'live',
       allocateId: () => this.allocateId(),
@@ -150,7 +152,9 @@ export class WebGL2Device implements RHIDevice {
   createComputePipeline(_descriptor: RHIComputePipelineDescriptor = {}): RHIComputePipeline {
     return throwWebGL2Unsupported(this.capabilities, 'compute', 'create-compute-pipeline');
   }
-  createCommandEncoder(_descriptor: RHICommandEncoderDescriptor = {}): RHICommandEncoder { return pending('createCommandEncoder'); }
+  createCommandEncoder(descriptor: RHICommandEncoderDescriptor = {}): RHICommandEncoder {
+    return new WebGL2CommandEncoder(this.allocateId(), this.owner, descriptor);
+  }
 
   destroy(): void {
     if (this.currentState === 'destroyed') return;
