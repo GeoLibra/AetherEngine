@@ -158,6 +158,7 @@ describe('WebGPU submission epochs', () => {
       native.encoders[0]?.commandBuffer,
       native.encoders[1]?.commandBuffer
     ]]);
+    expect(device.fastPathMetrics().nativeQueueSubmits).toBe(1);
     expect(submission.status).toBe('pending');
     expect(device.queue.metrics()).toEqual({
       submitted: 1,

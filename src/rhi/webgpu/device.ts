@@ -61,6 +61,7 @@ import {
   normalizeWebGPUNativeError
 } from './diagnostics';
 import { WebGPUInteropController, WebGPUInteropExtension } from './interop';
+import { WebGPUFastPathCounter, type WebGPUFastPathMetrics } from './metrics';
 
 let nextWebGPUGeneration = 1;
 
@@ -75,6 +76,7 @@ export class WebGPUDevice implements RHIDevice {
   private nextResourceId = 1;
   private readonly owner: WebGPUDeviceOwner;
   private readonly removeUncapturedErrorHandler: (() => void) | undefined;
+  private readonly fastPath = new WebGPUFastPathCounter();
 
   constructor(
     readonly capabilities: DeviceCapabilities,
@@ -88,7 +90,7 @@ export class WebGPUDevice implements RHIDevice {
       allocateId: () => this.allocateId(),
       disposeResource: (resource, nativeResource) => this.queue.disposeResource(resource, nativeResource)
     };
-    this.queue = new WebGPUQueue(this.owner, native.queue);
+    this.queue = new WebGPUQueue(this.owner, native.queue, this.fastPath);
     this.interop = new WebGPUInteropController(this.generation, this.owner, native);
     this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
     this.removeUncapturedErrorHandler = native.setUncapturedErrorHandler?.(
@@ -100,6 +102,8 @@ export class WebGPUDevice implements RHIDevice {
   get state(): RHIDeviceState {
     return this.currentState;
   }
+
+  fastPathMetrics(): WebGPUFastPathMetrics { return this.fastPath.snapshot(); }
 
   getExtension<T>(token: RHIExtensionToken<T>): T | undefined {
     if (token.id !== WebGPUInteropExtension.id) return undefined;
@@ -195,11 +199,14 @@ export class WebGPUDevice implements RHIDevice {
     const create = this.native.createCommandEncoder;
     if (create === undefined) return pending('createCommandEncoder');
     const id = this.allocateId();
+    const nativeEncoder = create.call(this.native, Object.freeze({ ...descriptor }));
+    this.fastPath.recordEncoder();
     return new WebGPUCommandEncoder(
       id,
       this.owner,
-      create.call(this.native, Object.freeze({ ...descriptor })),
-      descriptor.label
+      nativeEncoder,
+      descriptor.label,
+      this.fastPath
     );
   }
 

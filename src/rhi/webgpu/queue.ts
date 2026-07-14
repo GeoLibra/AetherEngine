@@ -6,13 +6,23 @@ import type { BufferWriteRange, GPUExtent3D, GPUImageDataLayout, RHIUploadData }
 import { WebGPUCommandBuffer } from './command';
 import type { WebGPUNativeQueuePort, WebGPUNativeResourcePort } from './native-types';
 import {
+  WebGPUBuffer,
   WebGPUResourceBase,
+  WebGPUTexture,
   assertWebGPUResource,
   getWebGPUNativeHandle,
   releaseWebGPUNativeHandle,
   type WebGPUDeviceOwner
 } from './resource';
 import { WebGPUSubmission } from './submission';
+import type { WebGPUFastPathCounter } from './metrics';
+import {
+  copyUploadBytes,
+  lowerAndValidateTextureDestination,
+  normalizeUploadExtent,
+  validateUploadBufferRange,
+  validateUploadDataLayout
+} from './upload-validation';
 
 interface PendingEpoch {
   readonly submission: WebGPUSubmission;
@@ -33,7 +43,8 @@ export class WebGPUQueue implements RHIQueue {
 
   constructor(
     private readonly owner: WebGPUDeviceOwner,
-    private readonly native: WebGPUNativeQueuePort
+    private readonly native: WebGPUNativeQueuePort,
+    private readonly fastPath: WebGPUFastPathCounter
   ) {}
 
   submit(commandBuffers: readonly RHICommandBuffer[]): RHISubmission {
@@ -70,6 +81,7 @@ export class WebGPUQueue implements RHIQueue {
     try {
       // A logical submission is deliberately never split into multiple native queue submissions.
       this.native.submit(nativeCommands);
+      this.fastPath.recordSubmit();
       void this.native.onSubmittedWorkDone().then(
         () => this.settle(epoch, 'completed'),
         (error: unknown) => this.settle(epoch, 'failed', error)
@@ -93,21 +105,55 @@ export class WebGPUQueue implements RHIQueue {
     });
   }
 
-  writeBuffer(_buffer: RHIBuffer, _offset: number, _data: RHIUploadData): void {
-    return pending('queue.writeBuffer');
+  writeBuffer(buffer: RHIBuffer, offset: number, data: RHIUploadData): void {
+    const target = this.validateUploadBuffer(buffer);
+    const bytes = copyUploadBytes(data);
+    validateUploadBufferRange(offset, bytes.byteLength, buffer.size);
+    const write = this.native.writeBuffer;
+    if (write === undefined) throw new Error('Native WebGPU queue does not support writeBuffer.');
+    write.call(this.native, getWebGPUNativeHandle(target, this.owner), offset, bytes);
+    this.fastPath.recordUpload(bytes.byteLength);
   }
 
-  writeBufferRanges(_buffer: RHIBuffer, _ranges: readonly BufferWriteRange[]): void {
-    return pending('queue.writeBufferRanges');
+  writeBufferRanges(buffer: RHIBuffer, ranges: readonly BufferWriteRange[]): void {
+    const target = this.validateUploadBuffer(buffer);
+    const writes = ranges.map((range) => {
+      const bytes = copyUploadBytes(range.data);
+      validateUploadBufferRange(range.offset, bytes.byteLength, buffer.size);
+      return { offset: range.offset, bytes };
+    });
+    const write = this.native.writeBuffer;
+    if (write === undefined) throw new Error('Native WebGPU queue does not support writeBuffer.');
+    const native = getWebGPUNativeHandle(target, this.owner);
+    for (const entry of writes) {
+      write.call(this.native, native, entry.offset, entry.bytes);
+      this.fastPath.recordUpload(entry.bytes.byteLength);
+    }
   }
 
   writeTexture(
-    _destination: GPUImageCopyTexture,
-    _data: RHIUploadData,
-    _dataLayout: GPUImageDataLayout,
-    _size: GPUExtent3D
+    destination: GPUImageCopyTexture,
+    data: RHIUploadData,
+    dataLayout: GPUImageDataLayout,
+    size: GPUExtent3D
   ): void {
-    return pending('queue.writeTexture');
+    validateUploadDataLayout(dataLayout);
+    const copySize = normalizeUploadExtent(size);
+    const resource = assertWebGPUResource(destination.texture, this.owner);
+    if (!(resource instanceof WebGPUTexture)) {
+      throw new Error('WebGPUQueue only accepts textures created by WebGPUDevice.');
+    }
+    const lowered = lowerAndValidateTextureDestination(
+      destination,
+      destination.texture,
+      getWebGPUNativeHandle(resource, this.owner),
+      copySize
+    );
+    const bytes = copyUploadBytes(data);
+    const write = this.native.writeTexture;
+    if (write === undefined) throw new Error('Native WebGPU queue does not support writeTexture.');
+    write.call(this.native, lowered, bytes, Object.freeze({ ...dataLayout }), copySize);
+    this.fastPath.recordUpload(bytes.byteLength);
   }
 
   disposeResource(resource: WebGPUResourceBase, native: WebGPUNativeResourcePort): void {
@@ -124,6 +170,15 @@ export class WebGPUQueue implements RHIQueue {
 
   private retain(resource: WebGPUResourceBase): void {
     this.leaseCounts.set(resource, (this.leaseCounts.get(resource) ?? 0) + 1);
+  }
+
+  private validateUploadBuffer(buffer: RHIBuffer): WebGPUBuffer {
+    const resource = assertWebGPUResource(buffer, this.owner);
+    if (!(resource instanceof WebGPUBuffer)) {
+      throw new Error('WebGPUQueue only accepts buffers created by WebGPUDevice.');
+    }
+    if (resource.isMapped) throw new Error(`Buffer "${buffer.label ?? buffer.id}" is currently mapped.`);
+    return resource;
   }
 
   private release(resource: WebGPUResourceBase): void {
@@ -158,8 +213,4 @@ function assertWebGPUCommandBuffer(
     throw new Error('WebGPUQueue only accepts command buffers created by WebGPUDevice.');
   }
   return commandBuffer;
-}
-
-function pending<T>(operation: string): T {
-  throw new Error(`WebGPU backend operation ${operation} is not implemented yet.`);
 }

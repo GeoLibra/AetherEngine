@@ -103,6 +103,13 @@ export interface WebGPUNativeCommandEncoderPort {
 export interface WebGPUNativeQueuePort {
   submit(commandBuffers: readonly WebGPUNativeResourcePort[]): void;
   onSubmittedWorkDone(): Promise<void>;
+  writeBuffer?(buffer: WebGPUNativeResourcePort, offset: number, data: ArrayBufferView): void;
+  writeTexture?(
+    destination: Readonly<Record<string, unknown>>,
+    data: ArrayBufferView,
+    dataLayout: Readonly<Record<string, number | undefined>>,
+    size: Readonly<Record<string, number>>
+  ): void;
 }
 
 export type WebGPUNativeSurfaceAcquireResult =

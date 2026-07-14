@@ -99,6 +99,12 @@ describe('WebGPU direct command recording', () => {
     const commands = encoder.finish({ label: 'commands' });
     expect(native.encoders[0]?.calls).toEqual(['encoder.copyBufferToBuffer', 'encoder.finish']);
     expect(commands.getCommandStream()).toEqual([]);
+    expect(device.fastPathMetrics()).toMatchObject({
+      nativeEncoders: 1,
+      nativeCommandBuffers: 1,
+      commandWrapperAllocations: 2,
+      commandReplayRecordAllocations: 0
+    });
   });
 
   test('forwards render pass operations without a replay command stream', async () => {
@@ -134,6 +140,24 @@ describe('WebGPU direct command recording', () => {
     expect(() => pass.draw(3)).toThrow('WebGPU render pass has already ended.');
     encoder.finish();
     expect(() => encoder.pushDebugGroup('late')).toThrow('WebGPU command encoder has already finished.');
+  });
+
+  test('validates buffer and texture copy bounds before native forwarding', async () => {
+    const { device, native } = await createDevice();
+    const source = device.createBuffer({ label: 'source', size: 16, usage: 1 });
+    const destination = device.createBuffer({ label: 'destination', size: 16, usage: 1 });
+    const texture = device.createTexture({
+      label: 'texture', size: [8, 8], mipLevelCount: 2, format: 'rgba8unorm', usage: 1
+    });
+    const encoder = device.createCommandEncoder();
+
+    expect(() => encoder.copyBufferToBuffer(source, 12, destination, 0, 8)).toThrow(
+      'Buffer range 12..20 is outside buffer size 16.'
+    );
+    expect(() => encoder.copyTextureToTexture(
+      { texture, mipLevel: 1 }, { texture, mipLevel: 1 }, [8, 8]
+    )).toThrow('Texture copy range exceeds texture "texture" mip level 1 bounds 4x4x1.');
+    expect(native.encoders[0]?.calls).toEqual([]);
   });
 
   test('requires a compute pipeline and then forwards dispatch directly', async () => {
