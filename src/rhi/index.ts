@@ -9,10 +9,13 @@ export { RHIDeviceRequestError, RHIUnsupportedOperationError, WebGPUNativeDevice
 export type {
   WebGPUNativeAdapterInfo,
   WebGPUNativeAdapterPort,
+  WebGPUNativeCommandEncoderPort,
+  WebGPUNativeComputePassPort,
   WebGPUNativeDeviceLostInfo,
   WebGPUNativeDevicePort,
   WebGPUNativeDeviceRequest,
   WebGPUNativeResourcePort,
+  WebGPUNativeRenderPassPort,
   WebGPUNativeTexturePort
 } from './webgpu/native-types';
 export { webgpuCompat } from './webgpu-compat';

@@ -29,6 +29,51 @@ export interface WebGPUNativeTexturePort extends WebGPUNativeResourcePort {
   createView(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
 }
 
+export interface WebGPUNativeRenderPassPort {
+  pushDebugGroup(label: string): void;
+  popDebugGroup(): void;
+  setPipeline(pipeline: WebGPUNativeResourcePort): void;
+  setBindGroup(index: number, bindGroup: WebGPUNativeResourcePort, dynamicOffsets: readonly number[]): void;
+  setVertexBuffer(slot: number, buffer: WebGPUNativeResourcePort, offset: number, size?: number): void;
+  setIndexBuffer(buffer: WebGPUNativeResourcePort, format: string, offset: number, size?: number): void;
+  setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void;
+  setScissorRect(x: number, y: number, width: number, height: number): void;
+  draw(vertexCount: number, instanceCount: number, firstVertex: number, firstInstance: number): void;
+  drawIndexed(indexCount: number, instanceCount: number, firstIndex: number, baseVertex: number, firstInstance: number): void;
+  drawIndirect(buffer: WebGPUNativeResourcePort, offset: number): void;
+  end(): void;
+}
+
+export interface WebGPUNativeComputePassPort {
+  pushDebugGroup(label: string): void;
+  popDebugGroup(): void;
+  setPipeline(pipeline: WebGPUNativeResourcePort): void;
+  setBindGroup(index: number, bindGroup: WebGPUNativeResourcePort, dynamicOffsets: readonly number[]): void;
+  dispatchWorkgroups(x: number, y: number, z: number): void;
+  dispatchWorkgroupsIndirect(buffer: WebGPUNativeResourcePort, offset: number): void;
+  end(): void;
+}
+
+export interface WebGPUNativeCommandEncoderPort {
+  pushDebugGroup(label: string): void;
+  popDebugGroup(): void;
+  beginRenderPass(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeRenderPassPort;
+  beginComputePass(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeComputePassPort;
+  copyBufferToBuffer(
+    source: WebGPUNativeResourcePort,
+    sourceOffset: number,
+    destination: WebGPUNativeResourcePort,
+    destinationOffset: number,
+    size: number
+  ): void;
+  copyTextureToTexture(
+    source: Readonly<Record<string, unknown>>,
+    destination: Readonly<Record<string, unknown>>,
+    copySize: Readonly<Record<string, number>>
+  ): void;
+  finish(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+}
+
 export interface WebGPUNativeDevicePort {
   readonly lost: Promise<WebGPUNativeDeviceLostInfo>;
   destroy?(): void;
@@ -41,6 +86,7 @@ export interface WebGPUNativeDevicePort {
   createBindGroup?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
   createRenderPipeline?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
   createComputePipeline?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+  createCommandEncoder?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeCommandEncoderPort;
 }
 
 export interface WebGPUNativeAdapterPort {
