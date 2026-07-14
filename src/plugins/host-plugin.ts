@@ -5,6 +5,11 @@ import type { Host } from '../platform/types';
 export const HostService: ServiceToken<Host> = createServiceToken<Host>('host');
 
 export function createHostPlugin(host: Host): Plugin {
+  let destroyPromise: Promise<void> | undefined;
+  const destroyHost = (): Promise<void> => {
+    destroyPromise ??= Promise.resolve().then(() => host.destroy());
+    return destroyPromise;
+  };
   return definePlugin({
     id: 'aether.host',
     build(builder) {
@@ -13,14 +18,13 @@ export function createHostPlugin(host: Host): Plugin {
         serviceValue(host, {
           scope: 'main',
           lifecycle: 'singleton',
-          dispose: (ownedHost) => ownedHost.destroy()
+          dispose: () => destroyHost()
         })
       );
     },
-    ready(app) {
-      // Resolve the owned value eagerly so disposal never depends on a consumer lookup.
-      app.getService(HostService);
-      return true;
+    shutdown() {
+      // Plugin shutdown also covers startup failure before the service is resolved.
+      return destroyHost();
     }
   });
 }
