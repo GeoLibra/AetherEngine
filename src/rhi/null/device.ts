@@ -9,7 +9,6 @@ import { NullSampler, NullTexture } from './texture';
 import { NullRenderTarget } from '../render-target';
 import type { NullDeviceOwner } from '../resource';
 import type {
-  GPUSupportedLimits,
   RHIBindGroup,
   RHIBindGroupLayout,
   RHIBuffer,
@@ -55,8 +54,6 @@ export class NullDevice implements RHIDevice {
   readonly capabilities: DeviceCapabilities;
   readonly generation = nextDeviceGeneration++;
   readonly lost: Promise<DeviceLostInfo>;
-  readonly features: ReadonlySet<string>;
-  readonly limits: GPUSupportedLimits;
 
   private nextResourceId = 1;
   private currentState: RHIDeviceState = 'live';
@@ -72,12 +69,6 @@ export class NullDevice implements RHIDevice {
     };
     this.queue = new NullQueue(this.owner, options.submissionMode);
     this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
-    this.features = new Set(
-      [...this.capabilities.features]
-        .filter(([, support]) => support.status !== 'unsupported')
-        .map(([feature]) => feature)
-    );
-    this.limits = this.capabilities.limits;
   }
 
   get state(): RHIDeviceState { return this.currentState; }
