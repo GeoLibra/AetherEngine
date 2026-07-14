@@ -154,6 +154,8 @@ export type {
   WebGPUNativeDeviceLostInfo,
   WebGPUNativeDevicePort,
   WebGPUNativeDeviceRequest,
+  WebGPUNativeResourcePort,
+  WebGPUNativeTexturePort,
   QueueCapability,
   RHIAdapter,
   RHIBackend,
