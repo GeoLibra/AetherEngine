@@ -5,6 +5,19 @@ export { NativeRuntimeController, NativeRuntimeOperationError } from './runtime'
 export { NativeThreadContractError, assertNativeJsThread } from './thread';
 export { NativeHandleContractError, NativeHandleRegistry } from './handles';
 export { NativeTransferCapabilityError, createNativeTransfer } from './transfer';
+export { NativeBridgeDispatcher, NativeBridgeError } from './bridge';
+export { NativeCancellationSource } from './cancellation';
+export { NativeEventPump, NativeEventPumpError } from './event-pump';
+export type {
+  NativeBridgeDispatcherOptions,
+  NativeBridgeErrorCode,
+  NativeBridgeInvocation,
+  NativeBridgePort,
+  NativeBridgeRequest,
+  NativeBridgeResponse,
+  NativeCancellationToken,
+  NativeMethodDescriptor
+} from './bridge-types';
 export type {
   NativeHandle,
   NativeHandleLease,
