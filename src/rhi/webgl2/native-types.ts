@@ -40,6 +40,32 @@ export interface WebGL2NativeContextPort {
     dataLayout: Readonly<Record<string, number | undefined>>,
     size: Readonly<Record<string, number>>
   ): void;
+  useProgram?(program: WebGL2NativeObject): void;
+  beginRenderPass?(descriptor: Readonly<Record<string, unknown>>): void;
+  endRenderPass?(): void;
+  setRasterState?(state: Readonly<Record<string, unknown>>): void;
+  setDepthStencilState?(state: Readonly<Record<string, unknown>>): void;
+  setViewport?(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void;
+  setScissorRect?(x: number, y: number, width: number, height: number): void;
+  bindVertexBuffer?(slot: number, buffer: WebGL2NativeObject, offset: number, size?: number): void;
+  bindIndexBuffer?(buffer: WebGL2NativeObject, indexFormat: string, offset: number, size?: number): void;
+  bindUniformBuffer?(binding: number, buffer: WebGL2NativeObject, offset: number, size: number): void;
+  bindTexture?(unit: number, texture: WebGL2NativeObject): void;
+  bindSampler?(unit: number, sampler: WebGL2NativeObject): void;
+  draw?(vertexCount: number, instanceCount: number, firstVertex: number, firstInstance: number): void;
+  drawIndexed?(indexCount: number, instanceCount: number, firstIndex: number, baseVertex: number, firstInstance: number): void;
+  copyBufferToBuffer?(
+    source: WebGL2NativeObject, sourceOffset: number,
+    destination: WebGL2NativeObject, destinationOffset: number, size: number
+  ): void;
+  copyTextureToTexture?(
+    source: Readonly<Record<string, unknown>>,
+    destination: Readonly<Record<string, unknown>>,
+    size: Readonly<Record<string, number>>
+  ): void;
+  pushDebugGroup?(label: string): void;
+  popDebugGroup?(): void;
+  createSubmissionFence?(): Promise<void>;
   destroy?(): void;
 }
 

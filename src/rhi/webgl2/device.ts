@@ -33,10 +33,9 @@ import {
   WebGL2Sampler,
   WebGL2Texture,
   assertWebGL2Resource,
-  normalizeExtent,
-  releaseWebGL2Native
+  normalizeExtent
 } from './resource';
-import { WebGL2Queue } from './upload';
+import { WebGL2Queue } from './queue';
 import { WebGL2ShaderModule } from './shader';
 import { WebGL2BindGroup, WebGL2BindGroupLayout, WebGL2PipelineLayout } from './bindings';
 import { createWebGL2RenderPipeline } from './pipeline';
@@ -68,7 +67,7 @@ export class WebGL2Device implements RHIDevice {
       native,
       state: 'live',
       allocateId: () => this.allocateId(),
-      releaseResource: (resource, handle, owned) => releaseWebGL2Native(native, resource, handle, owned)
+      releaseResource: (resource, handle, owned) => this.queue.disposeResource(resource, handle, owned)
     };
     this.queue = new WebGL2Queue(this.owner, native);
     this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
@@ -161,6 +160,7 @@ export class WebGL2Device implements RHIDevice {
     const wasLive = this.currentState === 'live';
     this.currentState = 'destroyed';
     this.owner.state = 'destroyed';
+    this.queue.handleDeviceLoss();
     this.destroyNativeOnce();
     if (wasLive) {
       this.resolveLost(Object.freeze({
@@ -173,6 +173,7 @@ export class WebGL2Device implements RHIDevice {
     if (this.currentState !== 'live') return;
     this.currentState = 'lost';
     this.owner.state = 'lost';
+    this.queue.handleDeviceLoss();
     this.resolveLost(Object.freeze({
       reason: info.reason === 'out-of-memory' ? 'out-of-memory' : 'context-lost',
       message: info.message ?? 'WebGL2 context was lost.',

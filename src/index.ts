@@ -159,6 +159,7 @@ export type {
   WebGL2NativeContextLostInfo,
   WebGL2NativeContextPort,
   WebGL2NativeLimits,
+  WebGL2MetricsSnapshot,
   WebGL2BindingKind,
   WebGL2BindingManifestEntry,
   WebGL2ShaderStage,
