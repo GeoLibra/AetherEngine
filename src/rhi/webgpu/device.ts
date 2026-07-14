@@ -1,4 +1,5 @@
 import type { DeviceCapabilities } from '../capability-types';
+import { DiagnosticStore } from '../../diagnostics';
 import type { RHICommandEncoder } from '../command-types';
 import type {
   RHIBindGroupDescriptor,
@@ -12,6 +13,7 @@ import type {
 } from '../descriptor-types';
 import type { RHIDevice } from '../device-types';
 import type { DeviceLostInfo, RHIDeviceState } from '../lifecycle-types';
+import type { RHISurfaceConfiguration } from '../surface-types';
 import type {
   RHIBindGroup,
   RHIBindGroupLayout,
@@ -25,7 +27,13 @@ import type {
   RHIShaderModule,
   RHITexture
 } from '../resource-types';
-import type { WebGPUNativeDeviceLostInfo, WebGPUNativeDevicePort } from './native-types';
+import { WebGPUNativeOperationError } from '../errors';
+import type {
+  WebGPUNativeCanvasContextPort,
+  WebGPUNativeDeviceLostInfo,
+  WebGPUNativeDevicePort,
+  WebGPUNativeErrorPort
+} from './native-types';
 import type { WebGPUNativeResourcePort, WebGPUNativeTexturePort } from './native-types';
 import {
   WebGPUBindGroup,
@@ -44,6 +52,13 @@ import {
 } from './resource';
 import { WebGPUCommandEncoder } from './command';
 import { WebGPUQueue } from './queue';
+import type { WebGPUPipelineCreationResult } from './pipeline-types';
+import { createWebGPUNativePipeline } from './pipeline-async';
+import {
+  createWebGPUPipelineDiagnostic,
+  createWebGPUUncapturedDiagnostic,
+  normalizeWebGPUNativeError
+} from './diagnostics';
 
 let nextWebGPUGeneration = 1;
 
@@ -56,10 +71,12 @@ export class WebGPUDevice implements RHIDevice {
   private resolveLost!: (info: DeviceLostInfo) => void;
   private nextResourceId = 1;
   private readonly owner: WebGPUDeviceOwner;
+  private readonly removeUncapturedErrorHandler: (() => void) | undefined;
 
   constructor(
     readonly capabilities: DeviceCapabilities,
-    private readonly native: WebGPUNativeDevicePort
+    private readonly native: WebGPUNativeDevicePort,
+    readonly diagnostics = new DiagnosticStore()
   ) {
     this.owner = {
       token: Symbol('WebGPUDevice'),
@@ -70,6 +87,9 @@ export class WebGPUDevice implements RHIDevice {
     };
     this.queue = new WebGPUQueue(this.owner, native.queue);
     this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
+    this.removeUncapturedErrorHandler = native.setUncapturedErrorHandler?.(
+      (error) => this.handleUncapturedError(error)
+    ) ?? undefined;
     void native.lost.then((info) => this.handleNativeLoss(info));
   }
 
@@ -124,6 +144,44 @@ export class WebGPUDevice implements RHIDevice {
     const snapshot = lowerComputePipeline(descriptor, this.owner);
     return new WebGPUComputePipeline(this.allocateId(), this.owner, this.createNative('createComputePipeline', snapshot), descriptor);
   }
+
+  async createRenderPipelineAsync(
+    descriptor: RHIRenderPipelineDescriptor
+  ): Promise<WebGPUPipelineCreationResult<RHIRenderPipeline>> {
+    const operation = 'createRenderPipelineAsync';
+    const create = this.native.createRenderPipelineAsync;
+    if (create === undefined) return this.unsupportedAsyncPipeline(operation, descriptor.label);
+    try {
+      const lowered = lowerRenderPipeline(descriptor, this.owner);
+      const result = await createWebGPUNativePipeline(this.native, () => create.call(this.native, lowered));
+      if (result.status === 'failed') return this.failedAsyncPipeline(operation, descriptor.label, result.error);
+      return Object.freeze({
+        status: 'success',
+        pipeline: new WebGPURenderPipeline(this.allocateId(), this.owner, result.native, descriptor)
+      });
+    } catch (cause) {
+      return this.failedAsyncPipeline(operation, descriptor.label, normalizeWebGPUNativeError(cause));
+    }
+  }
+
+  async createComputePipelineAsync(
+    descriptor: RHIComputePipelineDescriptor = {}
+  ): Promise<WebGPUPipelineCreationResult<RHIComputePipeline>> {
+    const operation = 'createComputePipelineAsync';
+    const create = this.native.createComputePipelineAsync;
+    if (create === undefined) return this.unsupportedAsyncPipeline(operation, descriptor.label);
+    try {
+      const lowered = lowerComputePipeline(descriptor, this.owner);
+      const result = await createWebGPUNativePipeline(this.native, () => create.call(this.native, lowered));
+      if (result.status === 'failed') return this.failedAsyncPipeline(operation, descriptor.label, result.error);
+      return Object.freeze({
+        status: 'success',
+        pipeline: new WebGPUComputePipeline(this.allocateId(), this.owner, result.native, descriptor)
+      });
+    } catch (cause) {
+      return this.failedAsyncPipeline(operation, descriptor.label, normalizeWebGPUNativeError(cause));
+    }
+  }
   createCommandEncoder(descriptor: RHICommandEncoderDescriptor = {}): RHICommandEncoder {
     const create = this.native.createCommandEncoder;
     if (create === undefined) return pending('createCommandEncoder');
@@ -136,11 +194,37 @@ export class WebGPUDevice implements RHIDevice {
     );
   }
 
+  configureSurface(
+    context: WebGPUNativeCanvasContextPort,
+    configuration: RHISurfaceConfiguration
+  ): void {
+    if (this.currentState !== 'live') throw new Error('Cannot configure a surface with a lost WebGPUDevice.');
+    context.configure(Object.freeze({ ...configuration, device: this.native }));
+  }
+
+  createSurfaceTexture(
+    native: WebGPUNativeTexturePort,
+    configuration: RHISurfaceConfiguration,
+    label: string
+  ): WebGPUTexture {
+    return new WebGPUTexture(this.allocateId(), this.owner, native, {
+      label,
+      size: {
+        width: configuration.width,
+        height: configuration.height,
+        depthOrArrayLayers: 1
+      },
+      format: configuration.format,
+      usage: 1 << 4
+    }, false);
+  }
+
   destroy(): void {
     if (this.currentState === 'destroyed') return;
     this.currentState = 'destroyed';
     this.owner.state = 'destroyed';
     this.queue.handleDeviceLoss();
+    this.removeUncapturedErrorHandler?.();
     this.native.destroy?.();
     this.resolveLost(Object.freeze({
       reason: 'destroyed',
@@ -154,6 +238,7 @@ export class WebGPUDevice implements RHIDevice {
     this.currentState = 'lost';
     this.owner.state = 'lost';
     this.queue.handleDeviceLoss();
+    this.removeUncapturedErrorHandler?.();
     this.resolveLost(Object.freeze({
       reason: normalizeLossReason(info.reason),
       message: info.message ?? 'WebGPU device was lost.',
@@ -167,12 +252,45 @@ export class WebGPUDevice implements RHIDevice {
   }
 
   private createNative(
-    operation: Exclude<keyof WebGPUNativeDevicePort, 'lost' | 'queue' | 'destroy' | 'createTexture' | 'createCommandEncoder'>,
+    operation: 'createBuffer' | 'createSampler' | 'createShaderModule' | 'createBindGroupLayout' |
+      'createPipelineLayout' | 'createBindGroup' | 'createRenderPipeline' | 'createComputePipeline',
     descriptor: Readonly<Record<string, unknown>>
   ): WebGPUNativeResourcePort {
     const method = this.native[operation];
     if (method === undefined) return pending(operation);
-    return method.call(this.native, descriptor);
+    try {
+      return method.call(this.native, descriptor);
+    } catch (cause) {
+      throw new WebGPUNativeOperationError(
+        operation,
+        typeof descriptor.label === 'string' ? descriptor.label : undefined,
+        cause
+      );
+    }
+  }
+
+  private unsupportedAsyncPipeline(
+    operation: string,
+    label: string | undefined
+  ): WebGPUPipelineCreationResult<never> {
+    return this.failedAsyncPipeline(operation, label, {
+      type: 'unknown',
+      message: `Native WebGPU device does not support ${operation}.`
+    });
+  }
+
+  private failedAsyncPipeline(
+    operation: string,
+    label: string | undefined,
+    error: WebGPUNativeErrorPort
+  ): WebGPUPipelineCreationResult<never> {
+    const diagnostic = createWebGPUPipelineDiagnostic(this.generation, operation, label, error);
+    this.diagnostics.emit(diagnostic);
+    return Object.freeze({ status: 'failed', diagnostic });
+  }
+
+  private handleUncapturedError(error: WebGPUNativeErrorPort): void {
+    this.diagnostics.emit(createWebGPUUncapturedDiagnostic(this.generation, error));
   }
 }
 

@@ -39,3 +39,16 @@ export class WebGPUNativeDeviceRequestError extends Error {
     this.name = 'WebGPUNativeDeviceRequestError';
   }
 }
+
+export class WebGPUNativeOperationError extends Error {
+  readonly code = 'rhi/webgpu-native-operation-failed' as const;
+
+  constructor(
+    readonly operation: string,
+    readonly resourceLabel: string | undefined,
+    override readonly cause: unknown
+  ) {
+    super(`WebGPU operation ${operation} failed for "${resourceLabel ?? 'unlabeled'}".`);
+    this.name = 'WebGPUNativeOperationError';
+  }
+}

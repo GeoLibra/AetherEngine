@@ -1,4 +1,5 @@
 import type { AdapterInfo, DeviceRequest, RHIAdapter } from '../adapter-types';
+import { DiagnosticStore } from '../../diagnostics';
 import { collectDeviceRequestDifferences } from '../adapter-validation';
 import { createCapabilitySnapshot, RHI_FEATURES } from '../capabilities';
 import type { AdapterCapabilities, FeatureSupport, RHIFeature } from '../capability-types';
@@ -20,7 +21,10 @@ export class WebGPUAdapter implements RHIAdapter {
   readonly info: AdapterInfo;
   readonly capabilities: AdapterCapabilities;
 
-  constructor(private readonly native: WebGPUNativeAdapterPort) {
+  constructor(
+    private readonly native: WebGPUNativeAdapterPort,
+    readonly diagnostics = new DiagnosticStore()
+  ) {
     this.info = createAdapterInfo(native);
     this.capabilities = createWebGPUCapabilities(native, new Set(['timestamp-query']));
   }
@@ -38,7 +42,11 @@ export class WebGPUAdapter implements RHIAdapter {
     const nativeRequest = createNativeRequest(request, selectedExtensions);
     try {
       const nativeDevice = await this.native.requestDevice(nativeRequest);
-      return new WebGPUDevice(createWebGPUCapabilities(this.native, selectedExtensions), nativeDevice);
+      return new WebGPUDevice(
+        createWebGPUCapabilities(this.native, selectedExtensions),
+        nativeDevice,
+        this.diagnostics
+      );
     } catch (cause) {
       throw new WebGPUNativeDeviceRequestError(this.info.name, request.label, cause);
     }

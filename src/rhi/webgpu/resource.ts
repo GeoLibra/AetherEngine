@@ -47,7 +47,8 @@ export abstract class WebGPUResourceBase implements RHIResource {
     readonly id: number,
     readonly owner: WebGPUDeviceOwner,
     nativeHandle: WebGPUNativeResourcePort,
-    readonly label: string | undefined
+    readonly label: string | undefined,
+    readonly destroysNativeOnRelease = true
   ) { nativeHandles.set(this, nativeHandle); }
 
   get generation(): number { return this.owner.generation; }
@@ -103,8 +104,14 @@ export class WebGPUTexture extends WebGPUResourceBase implements RHITexture {
   readonly depthOrArrayLayers: number;
   readonly format: string;
   readonly usage: number;
-  constructor(id: number, owner: WebGPUDeviceOwner, native: WebGPUNativeTexturePort, descriptor: RHITextureDescriptor) {
-    super(id, owner, native, descriptor.label);
+  constructor(
+    id: number,
+    owner: WebGPUDeviceOwner,
+    native: WebGPUNativeTexturePort,
+    descriptor: RHITextureDescriptor,
+    destroysNativeOnRelease = true
+  ) {
+    super(id, owner, native, descriptor.label, destroysNativeOnRelease);
     const size = normalizeExtent(descriptor.size);
     this.descriptor = freezeWithLabel({
       size, format: descriptor.format, usage: descriptor.usage,
@@ -253,7 +260,10 @@ export function releaseWebGPUNativeHandle(
   native: WebGPUNativeResourcePort
 ): void {
   nativeHandles.delete(resource);
-  if (resource.kind === 'buffer' || resource.kind === 'texture') native.destroy?.();
+  if (
+    resource.destroysNativeOnRelease &&
+    (resource.kind === 'buffer' || resource.kind === 'texture')
+  ) native.destroy?.();
 }
 
 export function lowerBindingResource(resource: GPUBindGroupDescriptor['entries'][number]['resource'], owner: WebGPUDeviceOwner): unknown {

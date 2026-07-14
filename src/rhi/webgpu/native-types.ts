@@ -1,4 +1,6 @@
 import type { FormatCapabilities, RHIFeature, RHILimits } from '../capability-types';
+import type { DiagnosticSource } from '../../diagnostics';
+import type { RHISurfaceConfiguration } from '../surface-types';
 import type { GPUTextureFormat } from '../webgpu-types';
 
 export interface WebGPUNativeAdapterInfo {
@@ -16,6 +18,14 @@ export interface WebGPUNativeDeviceRequest {
 export interface WebGPUNativeDeviceLostInfo {
   readonly reason?: string;
   readonly message?: string;
+}
+
+export type WebGPUNativeErrorType = 'validation' | 'out-of-memory' | 'internal' | 'unknown';
+
+export interface WebGPUNativeErrorPort {
+  readonly type: WebGPUNativeErrorType;
+  readonly message: string;
+  readonly source?: DiagnosticSource;
 }
 
 export interface WebGPUNativeResourcePort {
@@ -79,6 +89,21 @@ export interface WebGPUNativeQueuePort {
   onSubmittedWorkDone(): Promise<void>;
 }
 
+export type WebGPUNativeSurfaceAcquireResult =
+  | { readonly status: 'success'; readonly texture: WebGPUNativeTexturePort }
+  | { readonly status: 'outdated' | 'timeout' | 'lost' | 'out-of-memory' };
+
+export interface WebGPUNativeSurfaceConfiguration extends RHISurfaceConfiguration {
+  readonly device: WebGPUNativeDevicePort;
+}
+
+export interface WebGPUNativeCanvasContextPort {
+  configure(configuration: WebGPUNativeSurfaceConfiguration): void;
+  getCurrentTexture(): WebGPUNativeSurfaceAcquireResult;
+  present?(): void;
+  unconfigure?(): void;
+}
+
 export interface WebGPUNativeDevicePort {
   readonly lost: Promise<WebGPUNativeDeviceLostInfo>;
   readonly queue: WebGPUNativeQueuePort;
@@ -92,7 +117,12 @@ export interface WebGPUNativeDevicePort {
   createBindGroup?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
   createRenderPipeline?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
   createComputePipeline?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+  createRenderPipelineAsync?(descriptor: Readonly<Record<string, unknown>>): Promise<WebGPUNativeResourcePort>;
+  createComputePipelineAsync?(descriptor: Readonly<Record<string, unknown>>): Promise<WebGPUNativeResourcePort>;
   createCommandEncoder?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeCommandEncoderPort;
+  pushErrorScope?(filter: 'validation' | 'out-of-memory' | 'internal'): void;
+  popErrorScope?(): Promise<WebGPUNativeErrorPort | null>;
+  setUncapturedErrorHandler?(handler: (error: WebGPUNativeErrorPort) => void): void | (() => void);
 }
 
 export interface WebGPUNativeAdapterPort {
