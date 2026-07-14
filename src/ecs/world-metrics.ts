@@ -1,4 +1,6 @@
-export interface MonotonicClock { now(): number; }
+import type { MonotonicClock } from '../core/clock';
+
+export type { MonotonicClock } from '../core/clock';
 
 export interface WorldOptions { readonly clock?: MonotonicClock; }
 

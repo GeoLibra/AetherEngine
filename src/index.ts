@@ -122,6 +122,7 @@ export {
 } from './app/time';
 export type { FixedOverrunPolicy, TimePolicyOptions } from './app/time-types';
 export * from './jobs';
+export * from './platform';
 export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
 export * from './schema';
 export { NullDevice, NullRenderTarget } from './rhi';
