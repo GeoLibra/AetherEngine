@@ -56,9 +56,9 @@ export class HeadlessHost implements Host {
     if (this.currentState === 'destroyed') {
       throw new Error('Cannot create a window on a destroyed HeadlessHost.');
     }
-    const window = new PlatformWindow(this.nextWindowId++ as WindowId, options);
-    this.ownedWindows.push(window);
-    return window;
+    const hostWindow = new PlatformWindow(this.nextWindowId++ as WindowId, options);
+    this.ownedWindows.push(hostWindow);
+    return hostWindow;
   }
 
   createRunner(options: RunnerOptions): HostBoundaryRunner {
@@ -88,14 +88,14 @@ export class HeadlessHost implements Host {
       return;
     }
     this.currentState = 'destroyed';
-    for (const window of this.ownedWindows) {
-      window.close();
+    for (const hostWindow of this.ownedWindows) {
+      hostWindow.close();
     }
   }
 
   private commitWindowFrameBoundary(): void {
-    for (const window of this.ownedWindows) {
-      window.commitFrameBoundary();
+    for (const hostWindow of this.ownedWindows) {
+      hostWindow.commitFrameBoundary();
     }
   }
 }
