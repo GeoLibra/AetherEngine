@@ -22,7 +22,11 @@ export class PlatformWindow implements HostWindow {
   private currentGeneration = 0;
   private currentState: WindowState = 'open';
 
-  constructor(readonly id: WindowId, options: WindowOptions) {
+  constructor(
+    readonly id: WindowId,
+    options: WindowOptions,
+    private readonly onClose?: () => void
+  ) {
     this.title = options.title ?? DEFAULT_WINDOW_TITLE;
     this.surfaceTarget = options.surfaceTarget;
     this.currentMetrics = createWindowMetrics(options);
@@ -77,5 +81,6 @@ export class PlatformWindow implements HostWindow {
     }
     this.currentState = 'closed';
     this.pendingMetrics = undefined;
+    this.onClose?.();
   }
 }
