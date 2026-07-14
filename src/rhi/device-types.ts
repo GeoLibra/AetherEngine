@@ -1,7 +1,6 @@
 import type {
   BufferWriteRange,
   GPUImageDataLayout,
-  GPUSupportedLimits,
   GPUExtent3D,
   RHIUploadData
 } from './webgpu-types';
@@ -20,7 +19,6 @@ import type {
   RHITexture
 } from './resource-types';
 import type { RHICommandEncoder, RHICommandBuffer } from './command-types';
-import type { RHIRenderTarget, RenderTargetDescriptor } from './render-target-types';
 import type { DeviceCapabilities } from './capability-types';
 import type { DeviceLostInfo, RHIDeviceState } from './lifecycle-types';
 import type {
@@ -54,8 +52,6 @@ export interface RHIDevice {
   readonly state: RHIDeviceState;
   readonly lost: Promise<DeviceLostInfo>;
   readonly queue: RHIQueue;
-  readonly features: ReadonlySet<string>;
-  readonly limits: GPUSupportedLimits;
   createBuffer(descriptor: RHIBufferDescriptor): RHIBuffer;
   createTexture(descriptor: RHITextureDescriptor): RHITexture;
   createSampler(descriptor?: RHISamplerDescriptor): RHISampler;
@@ -65,7 +61,6 @@ export interface RHIDevice {
   createBindGroup(descriptor: RHIBindGroupDescriptor): RHIBindGroup;
   createRenderPipeline(descriptor: RHIRenderPipelineDescriptor): RHIRenderPipeline;
   createComputePipeline(descriptor?: RHIComputePipelineDescriptor): RHIComputePipeline;
-  createRenderTarget(descriptor: RenderTargetDescriptor): RHIRenderTarget;
   createCommandEncoder(descriptor?: RHICommandEncoderDescriptor): RHICommandEncoder;
   destroy(): void;
 }

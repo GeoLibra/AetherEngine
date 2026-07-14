@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  NullDevice,
   RHIUnsupportedOperationError,
   type AdapterCapabilities,
   type AdapterInfo,
@@ -79,6 +80,13 @@ describe('Portable RHI public contracts', () => {
 
     expect(buffer.size).toBe(64);
     expect(texture.format).toBe('rgba8unorm');
+  });
+
+  test('keeps capability facts on the canonical capabilities snapshot only', () => {
+    const device = new NullDevice();
+
+    expect('features' in device).toBe(false);
+    expect('limits' in device).toBe(false);
   });
 
   test('return a stable typed unsupported-operation diagnostic', () => {
