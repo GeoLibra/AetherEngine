@@ -1,4 +1,5 @@
 export { NullDevice } from './null-device';
+export type { NullDeviceOptions, NullSubmissionMode } from './null-device';
 export { NullAdapter } from './null-adapter';
 export type { NullAdapterOptions } from './null-adapter';
 export { NullRenderTarget } from './render-target';
@@ -24,7 +25,7 @@ export type {
   RHIAdapter
 } from './adapter-types';
 export type { DeviceLostInfo, RHIDeviceState, RHIResourceState } from './lifecycle-types';
-export type { RHISubmission, RHISubmissionStatus, SubmissionResult } from './submission-types';
+export type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus, SubmissionResult } from './submission-types';
 export type {
   RHISurface,
   RHISurfaceAcquireResult,

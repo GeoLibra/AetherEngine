@@ -4,6 +4,7 @@ import { NullCommandEncoder } from './command';
 import { NullComputePipeline, NullRenderPipeline } from './pipelines';
 import { validateComputePipelineDescriptor, validateRenderPipelineDescriptor } from './pipeline-validation';
 import { NullQueue } from './queue';
+import type { NullSubmissionMode } from './queue';
 import { NullSampler, NullTexture } from './texture';
 import { NullRenderTarget } from '../render-target';
 import type { NullDeviceOwner } from '../resource';
@@ -44,6 +45,7 @@ let nextDeviceGeneration = 1;
 
 export interface NullDeviceOptions {
   readonly capabilities?: DeviceCapabilities;
+  readonly submissionMode?: NullSubmissionMode;
 }
 
 export class NullDevice implements RHIDevice {
@@ -68,7 +70,7 @@ export class NullDevice implements RHIDevice {
       capabilities: this.capabilities,
       state: 'live'
     };
-    this.queue = new NullQueue(this.owner);
+    this.queue = new NullQueue(this.owner, options.submissionMode);
     this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
     this.features = new Set(
       [...this.capabilities.features]
@@ -84,6 +86,7 @@ export class NullDevice implements RHIDevice {
     if (this.currentState !== 'live') return;
     this.currentState = 'lost';
     this.owner.state = 'lost';
+    this.queue.handleDeviceLoss();
     this.resolveLost(Object.freeze({ reason, message, generation: this.generation }));
   }
 
@@ -92,6 +95,7 @@ export class NullDevice implements RHIDevice {
     if (this.currentState === 'live') {
       this.currentState = 'destroyed';
       this.owner.state = 'destroyed';
+      this.queue.handleDeviceLoss();
       this.resolveLost(Object.freeze({
         reason: 'destroyed',
         message: 'NullDevice was destroyed.',

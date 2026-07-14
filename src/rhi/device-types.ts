@@ -33,9 +33,11 @@ import type {
   RHIShaderModuleDescriptor,
   RHITextureDescriptor
 } from './descriptor-types';
+import type { RHIQueueMetrics, RHISubmission } from './submission-types';
 
 export interface RHIQueue {
-  submit(commandBuffers: readonly RHICommandBuffer[]): void;
+  submit(commandBuffers: readonly RHICommandBuffer[]): RHISubmission;
+  metrics(): RHIQueueMetrics;
   writeBuffer(buffer: RHIBuffer, offset: number, data: RHIUploadData): void;
   writeBufferRanges(buffer: RHIBuffer, ranges: readonly BufferWriteRange[]): void;
   writeTexture(

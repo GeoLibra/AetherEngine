@@ -1,4 +1,4 @@
-import { validateBindGroupSlot, validatePipelineLayout } from './bindings';
+import { getBindGroupResources, validateBindGroupSlot, validatePipelineLayout } from './bindings';
 import { assertBufferUnmapped } from './buffer';
 import { assertResourceLive, assertResourceOwnedBy, toResourceRef } from '../resource';
 import type {
@@ -10,6 +10,7 @@ import type {
   RHIBindGroup,
   RHIBuffer,
   RHIPipelineLayout,
+  RHIResource,
   RHIRenderPassDescriptor,
   RHIRenderPassEncoder,
   RHIRenderPipeline
@@ -22,6 +23,7 @@ export type NullPassEncoder = NullRenderPassEncoder | NullComputePassEncoder;
 export interface NullPassController {
   readonly ownerToken: NullDeviceOwner;
   record(record: RHICommandRecord): void;
+  lease(resource: RHIResource): void;
   recordDraw(vertexCount: number, instanceCount: number, topology: GPUPrimitiveTopology | undefined): void;
   recordIndexedDraw(indexCount: number, instanceCount: number, topology: GPUPrimitiveTopology | undefined): void;
   recordIndirectDraw(): void;
@@ -67,6 +69,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     assertResourceLive(pipeline);
     this.validateBoundGroups(pipeline.layout, false);
     this.pipeline = pipeline;
+    this.encoder.lease(pipeline);
     this.encoder.record({ kind: 'setRenderPipeline', pipeline: toResourceRef(pipeline) });
   }
 
@@ -74,6 +77,8 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     this.ensureActive();
     validateBindGroupSlot(index, bindGroup, dynamicOffsets, this.encoderOwner, this.pipeline?.layout);
     this.bindGroups.set(index, { bindGroup, dynamicOffsets: [...dynamicOffsets] });
+    this.encoder.lease(bindGroup);
+    for (const resource of getBindGroupResources(bindGroup)) this.encoder.lease(resource);
     this.encoder.record({
       kind: 'setBindGroup',
       scope: 'render-pass',
@@ -89,6 +94,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     assertResourceLive(buffer);
     assertBufferUnmapped(buffer);
     this.vertexBuffers.set(slot, buffer);
+    this.encoder.lease(buffer);
     this.encoder.record(withOptionalSize({ kind: 'setVertexBuffer', slot, buffer: toResourceRef(buffer), offset }, size));
   }
 
@@ -98,6 +104,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     assertResourceLive(buffer);
     assertBufferUnmapped(buffer);
     this.indexBuffer = buffer;
+    this.encoder.lease(buffer);
     this.encoder.record(
       withOptionalSize({ kind: 'setIndexBuffer', buffer: toResourceRef(buffer), indexFormat, offset }, size)
     );
@@ -161,6 +168,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     assertResourceOwnedBy(indirectBuffer, this.encoderOwner);
     assertResourceLive(indirectBuffer);
     assertBufferUnmapped(indirectBuffer);
+    this.encoder.lease(indirectBuffer);
     this.encoder.record({ kind: 'drawIndirect', buffer: toResourceRef(indirectBuffer), indirectOffset });
     this.encoder.recordIndirectDraw();
   }
@@ -258,6 +266,7 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
     assertResourceLive(pipeline);
     this.validateBoundGroups(pipeline.layout, false);
     this.pipeline = pipeline;
+    this.encoder.lease(pipeline);
     this.encoder.record({ kind: 'setComputePipeline', pipeline: toResourceRef(pipeline) });
   }
 
@@ -265,6 +274,8 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
     this.ensureActive();
     validateBindGroupSlot(index, bindGroup, dynamicOffsets, this.encoderOwner, this.pipeline?.layout);
     this.bindGroups.set(index, { bindGroup, dynamicOffsets: [...dynamicOffsets] });
+    this.encoder.lease(bindGroup);
+    for (const resource of getBindGroupResources(bindGroup)) this.encoder.lease(resource);
     this.encoder.record({
       kind: 'setBindGroup',
       scope: 'compute-pass',
@@ -290,6 +301,7 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
     assertResourceOwnedBy(indirectBuffer, this.encoderOwner);
     assertResourceLive(indirectBuffer);
     assertBufferUnmapped(indirectBuffer);
+    this.encoder.lease(indirectBuffer);
     this.encoder.record({ kind: 'dispatchWorkgroupsIndirect', buffer: toResourceRef(indirectBuffer), indirectOffset });
     this.encoder.recordDispatchWorkgroupsIndirect();
   }
