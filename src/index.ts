@@ -126,7 +126,45 @@ export * from './platform';
 export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
 export { HostService, createHostPlugin } from './plugins/host-plugin';
 export * from './schema';
-export { NullDevice, NullRenderTarget } from './rhi';
+export { NullDevice, NullRenderTarget, RHIUnsupportedOperationError } from './rhi';
+export type {
+  AdapterCapabilities,
+  AdapterInfo,
+  DeviceCapabilities,
+  DeviceLostInfo,
+  DeviceRequest,
+  FeatureSupport,
+  FormatCapabilities,
+  QueueCapability,
+  RHIAdapter,
+  RHIBackend,
+  RHIBindGroupLayoutDescriptor,
+  RHIBufferDescriptor,
+  RHICapabilityRequirement,
+  RHICommandBufferDescriptor,
+  RHICommandEncoderDescriptor,
+  RHIComputePassDescriptor,
+  RHIDeviceState,
+  RHIFeature,
+  RHILimits,
+  RHIOperation,
+  RHIQueueRole,
+  RHIResourceState,
+  RHISamplerDescriptor,
+  RHIShaderModuleDescriptor,
+  RHISubmission,
+  RHISubmissionStatus,
+  RHISurface,
+  RHISurfaceAcquireResult,
+  RHISurfaceConfiguration,
+  RHISurfaceFrame,
+  RHISurfaceFrameState,
+  RHISurfaceState,
+  RHITextureDescriptor,
+  RHITextureViewDescriptor,
+  SubmissionResult,
+  SupportStatus
+} from './rhi';
 export type {
   ColorAttachmentDescriptor,
   BufferWriteRange,
