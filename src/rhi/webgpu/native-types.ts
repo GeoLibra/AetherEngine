@@ -35,8 +35,24 @@ export interface WebGPUNativeResourcePort {
   unmap?(): void;
 }
 
+export interface WebGPUNativeBufferPort extends WebGPUNativeResourcePort {
+  readonly size: number;
+  readonly usage: number;
+}
+
 export interface WebGPUNativeTexturePort extends WebGPUNativeResourcePort {
   createView(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+}
+
+export interface WebGPUNativeImportTexturePort extends WebGPUNativeTexturePort {
+  readonly width: number;
+  readonly height: number;
+  readonly depthOrArrayLayers: number;
+  readonly format: string;
+  readonly usage: number;
+  readonly dimension: string;
+  readonly mipLevelCount: number;
+  readonly sampleCount: number;
 }
 
 export interface WebGPUNativeRenderPassPort {

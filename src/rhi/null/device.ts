@@ -39,6 +39,7 @@ import type {
   RHIShaderModuleDescriptor,
   RHITextureDescriptor
 } from '../descriptor-types';
+import type { RHIExtensionToken } from '../extension-types';
 
 let nextDeviceGeneration = 1;
 
@@ -72,6 +73,8 @@ export class NullDevice implements RHIDevice {
   }
 
   get state(): RHIDeviceState { return this.currentState; }
+
+  getExtension<T>(_token: RHIExtensionToken<T>): T | undefined { return undefined; }
 
   loseForTesting(reason: DeviceLostInfo['reason'], message: string): void {
     if (this.currentState !== 'live') return;
