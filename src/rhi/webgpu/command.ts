@@ -13,6 +13,14 @@ import { cloneCommandStats, createCommandStats, recordDraw, recordIndexedDraw, r
 import type { WebGPUNativeCommandEncoderPort, WebGPUNativeComputePassPort, WebGPUNativeRenderPassPort, WebGPUNativeResourcePort } from './native-types';
 import { WebGPUResourceBase, getWebGPUNativeHandle, normalizeExtent, type WebGPUDeviceOwner } from './resource';
 
+interface EncoderInteropState {
+  readonly owner: WebGPUDeviceOwner;
+  readonly native: WebGPUNativeCommandEncoderPort;
+  readonly assertAvailable: () => void;
+}
+
+const encoderInteropState = new WeakMap<WebGPUCommandEncoder, EncoderInteropState>();
+
 export class WebGPUCommandBuffer extends WebGPUResourceBase implements RHICommandBuffer {
   readonly kind = 'command-buffer';
   private submitted = false;
@@ -45,7 +53,13 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     private readonly owner: WebGPUDeviceOwner,
     private readonly native: WebGPUNativeCommandEncoderPort,
     private readonly label: string | undefined
-  ) {}
+  ) {
+    encoderInteropState.set(this, {
+      owner,
+      native,
+      assertAvailable: () => this.ensureIdle()
+    });
+  }
 
   beginRenderPass(descriptor: RHIRenderPassDescriptor): RHIRenderPassEncoder {
     this.beginPass();
@@ -127,6 +141,20 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     if (this.owner.state !== 'live') throw new Error('WebGPU command encoder belongs to a lost device.');
   }
   private ensureIdle(): void { this.ensureOpen(); if (this.activePass) throw new Error('WebGPU command encoder has an active pass.'); }
+}
+
+export function getWebGPUNativeCommandEncoder(
+  encoder: RHICommandEncoder,
+  owner: WebGPUDeviceOwner
+): WebGPUNativeCommandEncoderPort {
+  if (!(encoder instanceof WebGPUCommandEncoder)) {
+    throw new Error('Command encoder was not created by WebGPUDevice.');
+  }
+  const state = encoderInteropState.get(encoder);
+  if (state === undefined) throw new Error('WebGPU command encoder has no native handle.');
+  if (state.owner !== owner) throw new Error('Command encoder belongs to a different WebGPUDevice.');
+  state.assertAvailable();
+  return state.native;
 }
 
 class WebGPURenderPass implements RHIRenderPassEncoder {

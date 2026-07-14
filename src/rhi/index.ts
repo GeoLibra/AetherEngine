@@ -3,6 +3,7 @@ export type { NullDeviceOptions, NullSubmissionMode } from './null-device';
 export { NullAdapter } from './null-adapter';
 export { WebGPUAdapter } from './webgpu/adapter';
 export { WebGPUSurface } from './webgpu/surface';
+export { WebGPUInteropExtension } from './webgpu/interop';
 export type { NullAdapterOptions } from './null-adapter';
 export { NullRenderTarget } from './render-target';
 export { NullSurface } from './null/surface';
@@ -15,6 +16,7 @@ export {
 export type {
   WebGPUNativeAdapterInfo,
   WebGPUNativeAdapterPort,
+  WebGPUNativeBufferPort,
   WebGPUNativeCanvasContextPort,
   WebGPUNativeCommandEncoderPort,
   WebGPUNativeComputePassPort,
@@ -23,6 +25,7 @@ export type {
   WebGPUNativeDeviceRequest,
   WebGPUNativeErrorPort,
   WebGPUNativeErrorType,
+  WebGPUNativeImportTexturePort,
   WebGPUNativeQueuePort,
   WebGPUNativeResourcePort,
   WebGPUNativeRenderPassPort,
@@ -30,6 +33,17 @@ export type {
   WebGPUNativeSurfaceConfiguration,
   WebGPUNativeTexturePort
 } from './webgpu/native-types';
+export type {
+  NativeImportDescriptorMap,
+  RHINativeResourceMap,
+  WebGPUInterop,
+  WebGPUInteropScope,
+  WebGPUInteropSubmissionPolicy,
+  WebGPUNativeImportKind,
+  WebGPUNativeKind,
+  WebGPUNativeResourceMap
+} from './webgpu/interop-types';
+export type { RHIExtensionToken } from './extension-types';
 export type { WebGPUPipelineCreationResult } from './webgpu/pipeline-types';
 export { webgpuCompat } from './webgpu-compat';
 export type {

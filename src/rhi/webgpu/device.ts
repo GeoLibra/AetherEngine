@@ -12,6 +12,7 @@ import type {
   RHITextureDescriptor
 } from '../descriptor-types';
 import type { RHIDevice } from '../device-types';
+import type { RHIExtensionToken } from '../extension-types';
 import type { DeviceLostInfo, RHIDeviceState } from '../lifecycle-types';
 import type { RHISurfaceConfiguration } from '../surface-types';
 import type {
@@ -59,12 +60,14 @@ import {
   createWebGPUUncapturedDiagnostic,
   normalizeWebGPUNativeError
 } from './diagnostics';
+import { WebGPUInteropController, WebGPUInteropExtension } from './interop';
 
 let nextWebGPUGeneration = 1;
 
 export class WebGPUDevice implements RHIDevice {
   readonly generation = nextWebGPUGeneration++;
   readonly queue: WebGPUQueue;
+  private readonly interop: WebGPUInteropController;
   readonly lost: Promise<DeviceLostInfo>;
 
   private currentState: RHIDeviceState = 'live';
@@ -86,6 +89,7 @@ export class WebGPUDevice implements RHIDevice {
       disposeResource: (resource, nativeResource) => this.queue.disposeResource(resource, nativeResource)
     };
     this.queue = new WebGPUQueue(this.owner, native.queue);
+    this.interop = new WebGPUInteropController(this.generation, this.owner, native);
     this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
     this.removeUncapturedErrorHandler = native.setUncapturedErrorHandler?.(
       (error) => this.handleUncapturedError(error)
@@ -95,6 +99,11 @@ export class WebGPUDevice implements RHIDevice {
 
   get state(): RHIDeviceState {
     return this.currentState;
+  }
+
+  getExtension<T>(token: RHIExtensionToken<T>): T | undefined {
+    if (token.id !== WebGPUInteropExtension.id) return undefined;
+    return this.interop as T;
   }
 
   createBuffer(descriptor: RHIBufferDescriptor): RHIBuffer {

@@ -32,6 +32,7 @@ import type {
   RHITextureDescriptor
 } from './descriptor-types';
 import type { RHIQueueMetrics, RHISubmission } from './submission-types';
+import type { RHIExtensionToken } from './extension-types';
 
 export interface RHIQueue {
   submit(commandBuffers: readonly RHICommandBuffer[]): RHISubmission;
@@ -52,6 +53,7 @@ export interface RHIDevice {
   readonly state: RHIDeviceState;
   readonly lost: Promise<DeviceLostInfo>;
   readonly queue: RHIQueue;
+  getExtension<T>(token: RHIExtensionToken<T>): T | undefined;
   createBuffer(descriptor: RHIBufferDescriptor): RHIBuffer;
   createTexture(descriptor: RHITextureDescriptor): RHITexture;
   createSampler(descriptor?: RHISamplerDescriptor): RHISampler;

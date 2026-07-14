@@ -30,6 +30,7 @@ import type { GPUExtent3D, GPUMapModeFlags } from '../webgpu-types';
 import type { WebGPUNativeResourcePort, WebGPUNativeTexturePort } from './native-types';
 
 const nativeHandles = new WeakMap<WebGPUResourceBase, WebGPUNativeResourcePort>();
+const nativeReleaseCallbacks = new WeakMap<WebGPUResourceBase, Set<() => void>>();
 
 export interface WebGPUDeviceOwner {
   readonly token: symbol;
@@ -69,8 +70,14 @@ export class WebGPUBuffer extends WebGPUResourceBase implements RHIBuffer {
   readonly descriptor: Readonly<RHIBufferDescriptor>;
   readonly size: number;
   readonly usage: number;
-  constructor(id: number, owner: WebGPUDeviceOwner, native: WebGPUNativeResourcePort, descriptor: RHIBufferDescriptor) {
-    super(id, owner, native, descriptor.label);
+  constructor(
+    id: number,
+    owner: WebGPUDeviceOwner,
+    native: WebGPUNativeResourcePort,
+    descriptor: RHIBufferDescriptor,
+    destroysNativeOnRelease = true
+  ) {
+    super(id, owner, native, descriptor.label, destroysNativeOnRelease);
     this.descriptor = freezeWithLabel({ size: descriptor.size, usage: descriptor.usage, mappedAtCreation: descriptor.mappedAtCreation ?? false }, descriptor.label);
     this.size = descriptor.size;
     this.usage = descriptor.usage;
@@ -260,10 +267,28 @@ export function releaseWebGPUNativeHandle(
   native: WebGPUNativeResourcePort
 ): void {
   nativeHandles.delete(resource);
-  if (
-    resource.destroysNativeOnRelease &&
-    (resource.kind === 'buffer' || resource.kind === 'texture')
-  ) native.destroy?.();
+  try {
+    if (
+      resource.destroysNativeOnRelease &&
+      (resource.kind === 'buffer' || resource.kind === 'texture')
+    ) native.destroy?.();
+  } finally {
+    const callbacks = nativeReleaseCallbacks.get(resource);
+    nativeReleaseCallbacks.delete(resource);
+    for (const callback of callbacks ?? []) callback();
+  }
+}
+
+export function onWebGPUNativeHandleReleased(
+  resource: WebGPUResourceBase,
+  callback: () => void
+): void {
+  let callbacks = nativeReleaseCallbacks.get(resource);
+  if (callbacks === undefined) {
+    callbacks = new Set();
+    nativeReleaseCallbacks.set(resource, callbacks);
+  }
+  callbacks.add(callback);
 }
 
 export function lowerBindingResource(resource: GPUBindGroupDescriptor['entries'][number]['resource'], owner: WebGPUDeviceOwner): unknown {
