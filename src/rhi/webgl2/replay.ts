@@ -1,11 +1,14 @@
 import type { GPUBindingResource, RHIBindGroup } from '../resource-types';
+import type { WebGL2IndexBufferState, WebGL2VertexBufferState } from './cache-key';
+import { WebGL2FramebufferCache } from './framebuffer-cache';
 import { WebGL2RenderPipeline } from './pipeline';
-import { getWebGL2Handle } from './resource';
+import { WebGL2Buffer, getWebGL2Handle } from './resource';
 import type { WebGL2DeviceOwner } from './resource-types';
 import type { WebGL2ImageCopyTexture, WebGL2ReplayCommand } from './command-types';
 import type { WebGL2Metrics } from './metrics';
 import type { WebGL2NativeContextPort } from './native-types';
 import { WebGL2StateVM } from './state';
+import { WebGL2VertexArrayCache } from './vertex-array-cache';
 
 interface BoundGroup {
   readonly group: RHIBindGroup;
@@ -16,12 +19,22 @@ export class WebGL2ReplayExecutor {
   readonly state: WebGL2StateVM;
   private pipeline: WebGL2RenderPipeline | undefined;
   private readonly groups = new Map<number, BoundGroup>();
+  private readonly vertexBuffers = new Map<number, WebGL2VertexBufferState>();
+  private indexBuffer: WebGL2IndexBufferState | undefined;
+  private activePass: Readonly<Record<string, unknown>> | undefined;
+  private activePassHasResolve = false;
+  private readonly framebuffers: WebGL2FramebufferCache;
+  private readonly vertexArrays: WebGL2VertexArrayCache;
 
   constructor(
     private readonly owner: WebGL2DeviceOwner,
     private readonly native: WebGL2NativeContextPort,
     private readonly metrics: WebGL2Metrics
-  ) { this.state = new WebGL2StateVM(native, metrics); }
+  ) {
+    this.state = new WebGL2StateVM(native, metrics);
+    this.framebuffers = new WebGL2FramebufferCache(owner, native, metrics);
+    this.vertexArrays = new WebGL2VertexArrayCache(owner, native, metrics);
+  }
 
   execute(commands: readonly WebGL2ReplayCommand[]): void {
     for (const command of commands) this.executeCommand(command);
@@ -34,8 +47,27 @@ export class WebGL2ReplayExecutor {
       case 'begin-render-pass':
         this.pipeline = undefined;
         this.groups.clear();
-        return this.call('beginRenderPass', lowerRenderPass(command.descriptor, this.owner));
-      case 'end-render-pass': return this.call('endRenderPass');
+        this.vertexBuffers.clear();
+        this.indexBuffer = undefined;
+        this.activePass = this.framebuffers.lowerDescriptor(command.descriptor);
+        this.activePassHasResolve = command.descriptor.colorAttachments.some(
+          (attachment) => attachment.resolveTarget !== undefined
+        );
+        if (this.native.createFramebuffer !== undefined) {
+          this.state.applyFramebuffer(this.framebuffers.getOrCreate(command.descriptor));
+        }
+        this.call('beginRenderPass', this.activePass);
+        this.callOptional('applyRenderPassLoadOperations', this.activePass);
+        return;
+      case 'end-render-pass':
+        if (this.activePass !== undefined) {
+          this.callOptional('applyRenderPassStoreOperations', this.activePass);
+          if (this.activePassHasResolve) this.callOptional('resolveRenderPass', this.activePass);
+        }
+        this.call('endRenderPass');
+        this.activePass = undefined;
+        this.activePassHasResolve = false;
+        return;
       case 'set-pipeline': return this.applyPipeline(command.pipeline as WebGL2RenderPipeline);
       case 'set-bind-group': {
         const bound = { group: command.group, dynamicOffsets: command.dynamicOffsets };
@@ -44,10 +76,21 @@ export class WebGL2ReplayExecutor {
         return;
       }
       case 'set-vertex-buffer':
+        this.vertexBuffers.set(command.slot, {
+          buffer: command.buffer as WebGL2Buffer,
+          offset: command.offset,
+          ...(command.size === undefined ? {} : { size: command.size })
+        });
         return this.state.applyVertexBuffer(
           command.slot, getWebGL2Handle(command.buffer, this.owner), command.offset, command.size
         );
       case 'set-index-buffer':
+        this.indexBuffer = {
+          buffer: command.buffer as WebGL2Buffer,
+          format: command.indexFormat,
+          offset: command.offset,
+          ...(command.size === undefined ? {} : { size: command.size })
+        };
         return this.state.applyIndexBuffer(
           getWebGL2Handle(command.buffer, this.owner), command.indexFormat, command.offset, command.size
         );
@@ -58,11 +101,13 @@ export class WebGL2ReplayExecutor {
       case 'set-scissor':
         return this.state.applyScissor([command.x, command.y, command.width, command.height]);
       case 'draw':
+        this.applyVertexArray();
         this.metrics.recordLogicalDraw();
         this.call('draw', command.vertexCount, command.instanceCount, command.firstVertex, command.firstInstance);
         this.metrics.recordPhysicalDraw();
         return;
       case 'draw-indexed':
+        this.applyVertexArray();
         this.metrics.recordLogicalDraw();
         this.call(
           'drawIndexed', command.indexCount, command.instanceCount,
@@ -103,6 +148,13 @@ export class WebGL2ReplayExecutor {
     for (const [index, group] of this.groups) this.applyGroup(index, group, pipeline);
   }
 
+  private applyVertexArray(): void {
+    if (this.native.createVertexArray === undefined) return;
+    if (this.pipeline === undefined) throw new Error('WebGL2 draw requires a current pipeline.');
+    const vertexArray = this.vertexArrays.getOrCreate(this.pipeline, this.vertexBuffers, this.indexBuffer);
+    this.state.applyVertexArray(vertexArray);
+  }
+
   private applyGroup(index: number, bound: BoundGroup, pipeline: WebGL2RenderPipeline): void {
     const dynamicOffsets = dynamicOffsetMap(bound.group, bound.dynamicOffsets);
     for (const entry of bound.group.descriptor.entries) {
@@ -133,6 +185,13 @@ export class WebGL2ReplayExecutor {
     (operation as (...values: unknown[]) => void).call(this.native, ...args);
     this.metrics.recordGLCall();
   }
+
+  private callOptional(name: keyof WebGL2NativeContextPort, ...args: unknown[]): void {
+    const operation = this.native[name];
+    if (typeof operation !== 'function') return;
+    (operation as (...values: unknown[]) => void).call(this.native, ...args);
+    this.metrics.recordGLCall();
+  }
 }
 
 function dynamicOffsetMap(group: RHIBindGroup, offsets: readonly number[]): ReadonlyMap<number, number> {
@@ -142,28 +201,6 @@ function dynamicOffsetMap(group: RHIBindGroup, offsets: readonly number[]): Read
     if (entry.buffer?.hasDynamicOffset === true) result.set(entry.binding, offsets[index++] ?? 0);
   }
   return result;
-}
-
-function lowerRenderPass(
-  descriptor: Extract<WebGL2ReplayCommand, { kind: 'begin-render-pass' }>['descriptor'],
-  owner: WebGL2DeviceOwner
-): Readonly<Record<string, unknown>> {
-  return Object.freeze({
-    ...(descriptor.label === undefined ? {} : { label: descriptor.label }),
-    colorAttachments: Object.freeze(descriptor.colorAttachments.map((attachment) => Object.freeze({
-      ...attachment,
-      view: getWebGL2Handle(attachment.view, owner),
-      ...(attachment.resolveTarget === undefined ? {} : {
-        resolveTarget: getWebGL2Handle(attachment.resolveTarget, owner)
-      })
-    }))),
-    ...(descriptor.depthStencilAttachment === undefined ? {} : {
-      depthStencilAttachment: Object.freeze({
-        ...descriptor.depthStencilAttachment,
-        view: getWebGL2Handle(descriptor.depthStencilAttachment.view, owner)
-      })
-    })
-  });
 }
 
 function lowerTextureCopy(copy: WebGL2ImageCopyTexture, owner: WebGL2DeviceOwner): Readonly<Record<string, unknown>> {

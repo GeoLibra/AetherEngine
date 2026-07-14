@@ -27,6 +27,10 @@ export class WebGL2Metrics {
   programCacheHits = 0;
   programCacheMisses = 0;
   contextLosses = 0;
+  framebufferCacheHits = 0;
+  framebufferCacheMisses = 0;
+  vertexArrayCacheHits = 0;
+  vertexArrayCacheMisses = 0;
 
   recordLogicalDraw(): void { this.logicalDraws += 1; }
   recordPhysicalDraw(): void { this.physicalDraws += 1; }
@@ -36,4 +40,8 @@ export class WebGL2Metrics {
   recordProgramCacheHit(): void { this.programCacheHits += 1; }
   recordProgramCacheMiss(): void { this.programCacheMisses += 1; }
   recordContextLoss(): void { this.contextLosses += 1; }
+  recordFramebufferCacheHit(): void { this.framebufferCacheHits += 1; }
+  recordFramebufferCacheMiss(): void { this.framebufferCacheMisses += 1; }
+  recordVertexArrayCacheHit(): void { this.vertexArrayCacheHits += 1; }
+  recordVertexArrayCacheMiss(): void { this.vertexArrayCacheMisses += 1; }
 }
