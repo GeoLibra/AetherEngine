@@ -2,6 +2,7 @@ export { NullDevice } from './null-device';
 export type { NullDeviceOptions, NullSubmissionMode } from './null-device';
 export { NullAdapter } from './null-adapter';
 export { WebGPUAdapter } from './webgpu/adapter';
+export { WebGL2Adapter } from './webgl2/adapter';
 export { WebGPUSurface } from './webgpu/surface';
 export { WebGPUInteropExtension } from './webgpu/interop';
 export type { NullAdapterOptions } from './null-adapter';
@@ -13,6 +14,13 @@ export {
   WebGPUNativeDeviceRequestError,
   WebGPUNativeOperationError
 } from './errors';
+export type {
+  WebGL2AdapterFacts,
+  WebGL2NativeContextInfo,
+  WebGL2NativeContextLostInfo,
+  WebGL2NativeContextPort,
+  WebGL2NativeLimits
+} from './webgl2/native-types';
 export type {
   WebGPUNativeAdapterInfo,
   WebGPUNativeAdapterPort,
