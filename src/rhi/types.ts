@@ -105,3 +105,4 @@ export type {
   RHIResourceRef
 } from './command-types';
 export type { RHIDevice, RHIQueue } from './device-types';
+export type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus, SubmissionResult } from './submission-types';

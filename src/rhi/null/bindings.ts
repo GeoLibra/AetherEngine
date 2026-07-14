@@ -13,6 +13,7 @@ import type {
   RHIBindGroup,
   RHIBindGroupLayout,
   RHIPipelineLayout,
+  RHIResource,
   RHIShaderModule
 } from '../types';
 
@@ -147,6 +148,13 @@ export function validateBindGroupSlot(
     }
   }
   validateDynamicOffsetRanges(bindGroup, dynamicOffsets);
+}
+
+export function getBindGroupResources(bindGroup: RHIBindGroup): readonly RHIResource[] {
+  return bindGroup.descriptor.entries.map((entry) => {
+    const resource = entry.resource;
+    return isBufferBinding(resource) ? resource.buffer : resource;
+  });
 }
 
 function validateBindGroupLayoutDescriptor(descriptor: GPUBindGroupLayoutDescriptor): void {

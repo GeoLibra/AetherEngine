@@ -24,6 +24,7 @@ import type {
   RHICommandStats,
   RHIComputePassEncoder,
   RHIBuffer,
+  RHIResource,
   RHIRenderPassDescriptor,
   RHIRenderPassEncoder
 } from '../types';
@@ -36,9 +37,27 @@ export class NullCommandBuffer extends NullResourceBase implements RHICommandBuf
     owner: NullDeviceOwner,
     label: string | undefined,
     private readonly records: readonly RHICommandRecord[],
-    private readonly stats: RHICommandStats
+    private readonly stats: RHICommandStats,
+    private readonly leasedResources: readonly RHIResource[]
   ) {
     super(id, owner, label);
+  }
+
+  private submitted = false;
+
+  getLeasedResources(): readonly RHIResource[] {
+    return this.leasedResources;
+  }
+
+  assertReadyForSubmit(): void {
+    if (this.submitted) {
+      throw new Error(`Command buffer "${this.label ?? 'command-buffer'}" has already been submitted.`);
+    }
+  }
+
+  markSubmitted(): void {
+    this.assertReadyForSubmit();
+    this.submitted = true;
   }
 
   getStats(): RHICommandStats {
@@ -59,6 +78,7 @@ export class NullCommandBuffer extends NullResourceBase implements RHICommandBuf
 export class NullCommandEncoder implements RHICommandEncoder {
   private readonly records: RHICommandRecord[] = [];
   private readonly stats = createCommandStats();
+  private readonly leasedResources = new Set<RHIResource>();
   private readonly label?: string;
   private activePass: NullPassEncoder | undefined;
   private finished = false;
@@ -81,6 +101,11 @@ export class NullCommandEncoder implements RHICommandEncoder {
   beginRenderPass(descriptor: RHIRenderPassDescriptor): RHIRenderPassEncoder {
     this.ensureCanBeginPass('render');
     validateRenderPassDescriptorResources(descriptor, this.owner);
+    for (const attachment of descriptor.colorAttachments) {
+      this.lease(attachment.view);
+      if (attachment.resolveTarget !== undefined) this.lease(attachment.resolveTarget);
+    }
+    if (descriptor.depthStencilAttachment !== undefined) this.lease(descriptor.depthStencilAttachment.view);
     const pass = new NullRenderPassEncoder(this, descriptor);
     this.stats.renderPasses += 1;
     this.record(withOptionalLabel({ kind: 'beginRenderPass', colorAttachmentCount: descriptor.colorAttachments.length }, descriptor.label));
@@ -125,6 +150,8 @@ export class NullCommandEncoder implements RHICommandEncoder {
     this.ensureCanRecord();
     this.ensureNoActivePass('copy buffers');
     validateBufferCopy(source, sourceOffset, destination, destinationOffset, size, this.owner);
+    this.lease(source);
+    this.lease(destination);
     this.stats.copy.copyBufferToBuffer += 1;
     this.record({
       kind: 'copyBufferToBuffer',
@@ -146,6 +173,8 @@ export class NullCommandEncoder implements RHICommandEncoder {
     const normalizedSize = normalizeAndValidateExtent(copySize);
     const normalizedSource = validateTextureCopyView(source, this.owner, normalizedSize);
     const normalizedDestination = validateTextureCopyView(destination, this.owner, normalizedSize);
+    this.lease(source.texture);
+    this.lease(destination.texture);
     this.stats.copy.copyTextureToTexture += 1;
     this.record({
       kind: 'copyTextureToTexture',
@@ -169,7 +198,8 @@ export class NullCommandEncoder implements RHICommandEncoder {
       this.owner,
       descriptor.label,
       this.records.map(cloneCommandRecord),
-      cloneCommandStats(this.stats)
+      cloneCommandStats(this.stats),
+      [...this.leasedResources]
     );
   }
 
@@ -179,6 +209,10 @@ export class NullCommandEncoder implements RHICommandEncoder {
 
   record(record: RHICommandRecord): void {
     this.records.push(record);
+  }
+
+  lease(resource: RHIResource): void {
+    this.leasedResources.add(resource);
   }
 
   recordDraw(vertexCount: number, instanceCount: number, topology: GPUPrimitiveTopology | undefined): void {

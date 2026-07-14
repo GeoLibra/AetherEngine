@@ -10,3 +10,12 @@ export interface RHISubmission {
   readonly status: RHISubmissionStatus;
   readonly done: Promise<SubmissionResult>;
 }
+
+export interface RHIQueueMetrics {
+  readonly submitted: number;
+  readonly pending: number;
+  readonly completed: number;
+  readonly failed: number;
+  readonly deviceLost: number;
+  readonly leasedResources: number;
+}
