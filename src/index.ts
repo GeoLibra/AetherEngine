@@ -132,7 +132,8 @@ export {
   NullRenderTarget,
   NullSurface,
   RHIDeviceRequestError,
-  RHIUnsupportedOperationError
+  RHIUnsupportedOperationError,
+  webgpuCompat
 } from './rhi';
 export type {
   AdapterCapabilities,

@@ -5,6 +5,7 @@ export type { NullAdapterOptions } from './null-adapter';
 export { NullRenderTarget } from './render-target';
 export { NullSurface } from './null/surface';
 export { RHIDeviceRequestError, RHIUnsupportedOperationError } from './errors';
+export { webgpuCompat } from './webgpu-compat';
 export type {
   AdapterCapabilities,
   DeviceCapabilities,

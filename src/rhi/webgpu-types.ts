@@ -67,6 +67,16 @@ export interface GPUTextureViewDescriptor {
 
 export interface GPUSamplerDescriptor {
   label?: string;
+  addressModeU?: 'clamp-to-edge' | 'repeat' | 'mirror-repeat';
+  addressModeV?: 'clamp-to-edge' | 'repeat' | 'mirror-repeat';
+  addressModeW?: 'clamp-to-edge' | 'repeat' | 'mirror-repeat';
+  magFilter?: 'nearest' | 'linear';
+  minFilter?: 'nearest' | 'linear';
+  mipmapFilter?: 'nearest' | 'linear';
+  lodMinClamp?: number;
+  lodMaxClamp?: number;
+  compare?: 'never' | 'less' | 'equal' | 'less-equal' | 'greater' | 'not-equal' | 'greater-equal' | 'always';
+  maxAnisotropy?: number;
 }
 
 export type GPUShaderStageFlags = number;
