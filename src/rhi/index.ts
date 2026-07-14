@@ -3,6 +3,17 @@ export type { NullDeviceOptions, NullSubmissionMode } from './null-device';
 export { NullAdapter } from './null-adapter';
 export { WebGPUAdapter } from './webgpu/adapter';
 export { WebGL2Adapter } from './webgl2/adapter';
+export {
+  NativeDawnAdapter,
+  NativeDawnDeviceRequestError,
+  createNativeDawnCapabilities
+} from './native';
+export type {
+  NativeDawnAdapterFacts,
+  NativeDawnAdapterPort,
+  NativeDawnBackend,
+  NativeDawnFactsPort
+} from './native';
 export { WebGL2ContextControlExtension } from './webgl2/extension-types';
 export { WebGL2ProgramCreationError } from './webgl2/errors';
 export { WebGPUSurface } from './webgpu/surface';
