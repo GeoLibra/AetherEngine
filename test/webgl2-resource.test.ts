@@ -99,4 +99,19 @@ describe('WebGL2 resources', () => {
     })).toThrow('WebGL2 buffer "mapped-at-creation" does not support mappedAtCreation.');
     expect(native.created).toHaveLength(1);
   });
+
+  test('reports a missing native creation capability as unsupported by the port', async () => {
+    const device = await new WebGL2Adapter({
+      info: { name: 'Missing creation WebGL2' },
+      extensions: new Set(),
+      limits: {},
+      formats: new Map(),
+      precision: {},
+      lost: new Promise<WebGL2NativeContextLostInfo>(() => {})
+    }).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+
+    expect(() => device.createBuffer({ size: 4, usage: 1 })).toThrow(
+      'Native WebGL2 context does not support createBuffer.'
+    );
+  });
 });

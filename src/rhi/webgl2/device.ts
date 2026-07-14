@@ -100,7 +100,7 @@ export class WebGL2Device implements RHIDevice {
       throw new Error(`WebGL2 buffer "${descriptor.label ?? 'unlabeled'}" does not support mappedAtCreation.`);
     }
     const create = this.native.createBuffer;
-    if (create === undefined) return pending('createBuffer');
+    if (create === undefined) return missingNativeOperation('createBuffer');
     const snapshot = Object.freeze({ ...descriptor });
     return new WebGL2Buffer(this.allocateId(), this.owner, create.call(this.native, snapshot), descriptor);
   }
@@ -109,13 +109,13 @@ export class WebGL2Device implements RHIDevice {
       return throwWebGL2Unsupported(this.capabilities, 'storage-texture', 'create-storage-texture');
     }
     const create = this.native.createTexture;
-    if (create === undefined) return pending('createTexture');
+    if (create === undefined) return missingNativeOperation('createTexture');
     const snapshot = Object.freeze({ ...descriptor, size: normalizeExtent(descriptor.size) });
     return new WebGL2Texture(this.allocateId(), this.owner, create.call(this.native, snapshot), descriptor);
   }
   createSampler(descriptor: RHISamplerDescriptor = {}): RHISampler {
     const create = this.native.createSampler;
-    if (create === undefined) return pending('createSampler');
+    if (create === undefined) return missingNativeOperation('createSampler');
     const snapshot = Object.freeze({ ...descriptor });
     return new WebGL2Sampler(this.allocateId(), this.owner, create.call(this.native, snapshot), descriptor);
   }
@@ -205,6 +205,6 @@ export class WebGL2Device implements RHIDevice {
   }
 }
 
-function pending<T>(operation: string): T {
-  throw new Error(`WebGL2 backend operation ${operation} is not implemented yet.`);
+function missingNativeOperation<T>(operation: string): T {
+  throw new Error(`Native WebGL2 context does not support ${operation}.`);
 }
