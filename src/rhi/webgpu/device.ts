@@ -45,6 +45,7 @@ import {
   normalizeExtent,
   type WebGPUDeviceOwner
 } from './resource';
+import { WebGPUCommandEncoder } from './command';
 
 let nextWebGPUGeneration = 1;
 
@@ -123,7 +124,17 @@ export class WebGPUDevice implements RHIDevice {
     const snapshot = lowerComputePipeline(descriptor, this.owner);
     return new WebGPUComputePipeline(this.allocateId(), this.owner, this.createNative('createComputePipeline', snapshot), descriptor);
   }
-  createCommandEncoder(_descriptor: RHICommandEncoderDescriptor = {}): RHICommandEncoder { return pending('createCommandEncoder'); }
+  createCommandEncoder(descriptor: RHICommandEncoderDescriptor = {}): RHICommandEncoder {
+    const create = this.native.createCommandEncoder;
+    if (create === undefined) return pending('createCommandEncoder');
+    const id = this.allocateId();
+    return new WebGPUCommandEncoder(
+      id,
+      this.owner,
+      create.call(this.native, Object.freeze({ ...descriptor })),
+      descriptor.label
+    );
+  }
 
   destroy(): void {
     if (this.currentState === 'destroyed') return;
@@ -154,7 +165,7 @@ export class WebGPUDevice implements RHIDevice {
   }
 
   private createNative(
-    operation: Exclude<keyof WebGPUNativeDevicePort, 'lost' | 'destroy' | 'createTexture'>,
+    operation: Exclude<keyof WebGPUNativeDevicePort, 'lost' | 'destroy' | 'createTexture' | 'createCommandEncoder'>,
     descriptor: Readonly<Record<string, unknown>>
   ): WebGPUNativeResourcePort {
     const method = this.native[operation];
