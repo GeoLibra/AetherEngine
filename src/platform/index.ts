@@ -1,5 +1,11 @@
 export { DEFAULT_DEVICE_PIXEL_RATIO, DEFAULT_WINDOW_TITLE } from './constants';
 export { MutablePlatformServiceRegistry, createPlatformServiceToken } from './services';
+export { PlatformWindow } from './window';
+export {
+  createWindowMetrics,
+  equalWindowMetrics,
+  updateWindowMetrics
+} from './window-metrics';
 export type {
   Host,
   HostKind,
