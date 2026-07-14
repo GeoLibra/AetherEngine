@@ -11,6 +11,33 @@ export { NativeRunner } from './native-runner';
 export type { NativeRunnerBoundary } from './native-runner';
 export type { NativeFramePort, NativePlatformPort, NativeWindowPort } from './native-host-types';
 export {
+  NativeAudioServiceToken,
+  NativeClipboardServiceToken,
+  NativeFilesystemServiceToken,
+  NativeNetworkServiceToken,
+  NativePermissionsServiceToken,
+  NativeSensorsServiceToken,
+  NativeXrServiceToken,
+  createNativeFilesystemService,
+  createNativeSensorService,
+  defineNativeServiceModule,
+  normalizeNativeMountUri,
+  registerNativeServiceModules
+} from './native-services';
+export type {
+  NativeAudioService,
+  NativeClipboardService,
+  NativeFilesystemPort,
+  NativeFilesystemService,
+  NativeNetworkService,
+  NativePermissionsService,
+  NativeSensorEvent,
+  NativeSensorKind,
+  NativeSensorPort,
+  NativeSensorsService,
+  NativeXrService
+} from './native-service-types';
+export {
   createWindowMetrics,
   equalWindowMetrics,
   updateWindowMetrics
