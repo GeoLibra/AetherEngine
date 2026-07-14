@@ -18,9 +18,29 @@ export interface WebGPUNativeDeviceLostInfo {
   readonly message?: string;
 }
 
+export interface WebGPUNativeResourcePort {
+  destroy?(): void;
+  mapAsync?(mode: number, offset: number, size: number): Promise<void>;
+  getMappedRange?(offset: number, size: number): ArrayBuffer;
+  unmap?(): void;
+}
+
+export interface WebGPUNativeTexturePort extends WebGPUNativeResourcePort {
+  createView(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+}
+
 export interface WebGPUNativeDevicePort {
   readonly lost: Promise<WebGPUNativeDeviceLostInfo>;
   destroy?(): void;
+  createBuffer?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+  createTexture?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeTexturePort;
+  createSampler?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+  createShaderModule?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+  createBindGroupLayout?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+  createPipelineLayout?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+  createBindGroup?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+  createRenderPipeline?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
+  createComputePipeline?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
 }
 
 export interface WebGPUNativeAdapterPort {

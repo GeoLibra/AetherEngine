@@ -11,7 +11,9 @@ export type {
   WebGPUNativeAdapterPort,
   WebGPUNativeDeviceLostInfo,
   WebGPUNativeDevicePort,
-  WebGPUNativeDeviceRequest
+  WebGPUNativeDeviceRequest,
+  WebGPUNativeResourcePort,
+  WebGPUNativeTexturePort
 } from './webgpu/native-types';
 export { webgpuCompat } from './webgpu-compat';
 export type {
