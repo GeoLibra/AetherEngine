@@ -26,3 +26,16 @@ export class RHIUnsupportedOperationError extends Error {
     this.name = 'RHIUnsupportedOperationError';
   }
 }
+
+export class WebGPUNativeDeviceRequestError extends Error {
+  readonly code = 'rhi/webgpu-device-request-failed' as const;
+
+  constructor(
+    readonly adapterName: string,
+    readonly deviceLabel: string | undefined,
+    override readonly cause: unknown
+  ) {
+    super(`WebGPU adapter "${adapterName}" failed to create device "${deviceLabel ?? 'unlabeled'}".`);
+    this.name = 'WebGPUNativeDeviceRequestError';
+  }
+}

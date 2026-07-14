@@ -1,10 +1,18 @@
 export { NullDevice } from './null-device';
 export type { NullDeviceOptions, NullSubmissionMode } from './null-device';
 export { NullAdapter } from './null-adapter';
+export { WebGPUAdapter } from './webgpu/adapter';
 export type { NullAdapterOptions } from './null-adapter';
 export { NullRenderTarget } from './render-target';
 export { NullSurface } from './null/surface';
-export { RHIDeviceRequestError, RHIUnsupportedOperationError } from './errors';
+export { RHIDeviceRequestError, RHIUnsupportedOperationError, WebGPUNativeDeviceRequestError } from './errors';
+export type {
+  WebGPUNativeAdapterInfo,
+  WebGPUNativeAdapterPort,
+  WebGPUNativeDeviceLostInfo,
+  WebGPUNativeDevicePort,
+  WebGPUNativeDeviceRequest
+} from './webgpu/native-types';
 export { webgpuCompat } from './webgpu-compat';
 export type {
   AdapterCapabilities,

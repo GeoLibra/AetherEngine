@@ -1,9 +1,4 @@
-import type {
-  AdapterInfo,
-  DeviceRequest,
-  DeviceRequestDifference,
-  RHIAdapter
-} from './adapter-types';
+import type { AdapterInfo, DeviceRequest, RHIAdapter } from './adapter-types';
 import {
   createNullCapabilities,
   type NullCapabilityProfile
@@ -11,6 +6,7 @@ import {
 import type { AdapterCapabilities } from './capability-types';
 import { RHIDeviceRequestError } from './errors';
 import { NullDevice } from './null/device';
+import { collectDeviceRequestDifferences } from './adapter-validation';
 
 export interface NullAdapterOptions extends NullCapabilityProfile {
   readonly name?: string;
@@ -26,19 +22,7 @@ export class NullAdapter implements RHIAdapter {
   }
 
   async requestDevice(request: DeviceRequest): Promise<NullDevice> {
-    const missing: DeviceRequestDifference[] = [];
-    for (const feature of request.requiredFeatures) {
-      if (this.capabilities.features.get(feature)?.status === 'unsupported') {
-        missing.push({ kind: 'feature', feature });
-      }
-    }
-    for (const [limit, minimum] of Object.entries(request.requiredLimits ?? {})) {
-      if (minimum === undefined) continue;
-      const actual = this.capabilities.limits[limit];
-      if (actual === undefined || actual < minimum) {
-        missing.push({ kind: 'limit', limit, minimum, actual });
-      }
-    }
+    const missing = collectDeviceRequestDifferences(this.capabilities, request);
     if (missing.length > 0) {
       throw new RHIDeviceRequestError(Object.freeze(missing));
     }
