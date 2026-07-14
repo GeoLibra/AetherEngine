@@ -3,6 +3,19 @@ export { negotiateNativeHandshake } from './abi';
 export { NativeHandshakeError } from './errors';
 export { NativeRuntimeController, NativeRuntimeOperationError } from './runtime';
 export { NativeThreadContractError, assertNativeJsThread } from './thread';
+export { NativeHandleContractError, NativeHandleRegistry } from './handles';
+export { NativeTransferCapabilityError, createNativeTransfer } from './transfer';
+export type {
+  NativeHandle,
+  NativeHandleLease,
+  NativeHandleRegistryOptions,
+  NativeTransferLease,
+  NativeTransferMode,
+  NativeTransferPort,
+  NativeTransferReleaseReason,
+  NativeTransferState,
+  NativeTransferView
+} from './handle-types';
 export type {
   NativeHandshake,
   NativeHandshakeDifference,
