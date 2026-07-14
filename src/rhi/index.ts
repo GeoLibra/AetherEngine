@@ -45,6 +45,7 @@ export type {
 } from './webgpu/interop-types';
 export type { RHIExtensionToken } from './extension-types';
 export type { WebGPUPipelineCreationResult } from './webgpu/pipeline-types';
+export type { WebGPUFastPathMetrics } from './webgpu/metrics';
 export { webgpuCompat } from './webgpu-compat';
 export type {
   AdapterCapabilities,

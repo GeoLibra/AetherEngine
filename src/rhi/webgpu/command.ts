@@ -11,7 +11,18 @@ import type { RHIRenderPassDescriptor } from '../render-target-types';
 import type { GPUCommandBufferDescriptor, GPUCommandEncoderDescriptor, GPUComputePassDescriptor, GPUExtent3D, GPUIndexFormat } from '../webgpu-types';
 import { cloneCommandStats, createCommandStats, recordDraw, recordIndexedDraw, recordIndirectDraw } from '../stats';
 import type { WebGPUNativeCommandEncoderPort, WebGPUNativeComputePassPort, WebGPUNativeRenderPassPort, WebGPUNativeResourcePort } from './native-types';
-import { WebGPUResourceBase, getWebGPUNativeHandle, normalizeExtent, type WebGPUDeviceOwner } from './resource';
+import {
+  WebGPUBuffer,
+  WebGPUResourceBase,
+  getWebGPUNativeHandle,
+  type WebGPUDeviceOwner
+} from './resource';
+import type { WebGPUFastPathCounter } from './metrics';
+import {
+  lowerAndValidateTextureDestination,
+  normalizeUploadExtent,
+  validateUploadBufferRange
+} from './upload-validation';
 
 interface EncoderInteropState {
   readonly owner: WebGPUDeviceOwner;
@@ -52,7 +63,8 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     private readonly id: number,
     private readonly owner: WebGPUDeviceOwner,
     private readonly native: WebGPUNativeCommandEncoderPort,
-    private readonly label: string | undefined
+    private readonly label: string | undefined,
+    private readonly fastPath: WebGPUFastPathCounter
   ) {
     encoderInteropState.set(this, {
       owner,
@@ -82,13 +94,17 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
       });
     }
     this.stats.renderPasses += 1;
-    return new WebGPURenderPass(this, this.native.beginRenderPass(Object.freeze(lowered)));
+    const nativePass = this.native.beginRenderPass(Object.freeze(lowered));
+    this.fastPath.recordPassWrapper();
+    return new WebGPURenderPass(this, nativePass);
   }
 
   beginComputePass(descriptor: GPUComputePassDescriptor = {}): RHIComputePassEncoder {
     this.beginPass();
     this.stats.computePasses += 1;
-    return new WebGPUComputePass(this, this.native.beginComputePass(Object.freeze({ ...descriptor })));
+    const nativePass = this.native.beginComputePass(Object.freeze({ ...descriptor }));
+    this.fastPath.recordPassWrapper();
+    return new WebGPUComputePass(this, nativePass);
   }
   pushDebugGroup(label: string): void { this.ensureOpen(); this.debugDepth += 1; this.native.pushDebugGroup(label); }
   popDebugGroup(): void {
@@ -98,7 +114,10 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     this.native.popDebugGroup();
   }
   copyBufferToBuffer(source: RHIBuffer, sourceOffset: number, destination: RHIBuffer, destinationOffset: number, size: number): void {
-    this.ensureIdle(); this.lease(source); this.lease(destination);
+    this.ensureIdle();
+    this.validateCopyBuffer(source, sourceOffset, size);
+    this.validateCopyBuffer(destination, destinationOffset, size);
+    this.lease(source); this.lease(destination);
     this.native.copyBufferToBuffer(
       getWebGPUNativeHandle(source, this.owner), sourceOffset,
       getWebGPUNativeHandle(destination, this.owner), destinationOffset, size
@@ -106,11 +125,19 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     this.stats.copy.copyBufferToBuffer += 1;
   }
   copyTextureToTexture(source: GPUImageCopyTexture, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void {
-    this.ensureIdle(); this.lease(source.texture); this.lease(destination.texture);
+    this.ensureIdle();
+    const extent = normalizeUploadExtent(copySize);
+    const nativeSource = getWebGPUNativeHandle(source.texture, this.owner);
+    const nativeDestination = getWebGPUNativeHandle(destination.texture, this.owner);
+    const loweredSource = lowerAndValidateTextureDestination(source, source.texture, nativeSource, extent);
+    const loweredDestination = lowerAndValidateTextureDestination(
+      destination, destination.texture, nativeDestination, extent
+    );
+    this.lease(source.texture); this.lease(destination.texture);
     this.native.copyTextureToTexture(
-      Object.freeze({ ...source, texture: getWebGPUNativeHandle(source.texture, this.owner) }),
-      Object.freeze({ ...destination, texture: getWebGPUNativeHandle(destination.texture, this.owner) }),
-      normalizeExtent(copySize)
+      loweredSource,
+      loweredDestination,
+      extent
     );
     this.stats.copy.copyTextureToTexture += 1;
   }
@@ -118,8 +145,10 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     this.ensureIdle();
     if (this.debugDepth > 0) throw new Error('WebGPU command encoder has unclosed debug groups.');
     this.finished = true;
+    const nativeCommandBuffer = this.native.finish(Object.freeze({ ...descriptor }));
+    this.fastPath.recordCommandBuffer();
     return new WebGPUCommandBuffer(
-      this.id, this.owner, this.native.finish(Object.freeze({ ...descriptor })), descriptor.label,
+      this.id, this.owner, nativeCommandBuffer, descriptor.label,
       cloneCommandStats(this.stats), Object.freeze([...this.leases])
     );
   }
@@ -141,6 +170,14 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     if (this.owner.state !== 'live') throw new Error('WebGPU command encoder belongs to a lost device.');
   }
   private ensureIdle(): void { this.ensureOpen(); if (this.activePass) throw new Error('WebGPU command encoder has an active pass.'); }
+  private validateCopyBuffer(buffer: RHIBuffer, offset: number, size: number): void {
+    getWebGPUNativeHandle(buffer, this.owner);
+    if (!(buffer instanceof WebGPUBuffer)) {
+      throw new Error('WebGPU command encoder only accepts buffers created by WebGPUDevice.');
+    }
+    if (buffer.isMapped) throw new Error(`Buffer "${buffer.label ?? buffer.id}" is currently mapped.`);
+    validateUploadBufferRange(offset, size, buffer.size);
+  }
 }
 
 export function getWebGPUNativeCommandEncoder(

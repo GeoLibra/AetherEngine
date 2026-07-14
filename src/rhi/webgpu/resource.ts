@@ -70,6 +70,7 @@ export class WebGPUBuffer extends WebGPUResourceBase implements RHIBuffer {
   readonly descriptor: Readonly<RHIBufferDescriptor>;
   readonly size: number;
   readonly usage: number;
+  private mapped: boolean;
   constructor(
     id: number,
     owner: WebGPUDeviceOwner,
@@ -81,13 +82,17 @@ export class WebGPUBuffer extends WebGPUResourceBase implements RHIBuffer {
     this.descriptor = freezeWithLabel({ size: descriptor.size, usage: descriptor.usage, mappedAtCreation: descriptor.mappedAtCreation ?? false }, descriptor.label);
     this.size = descriptor.size;
     this.usage = descriptor.usage;
+    this.mapped = descriptor.mappedAtCreation === true;
   }
+  get isMapped(): boolean { return this.mapped; }
   async mapAsync(mode: GPUMapModeFlags, offset = 0, size = this.size - offset): Promise<void> {
     assertWebGPUResource(this, this.owner);
+    if (this.mapped) throw new Error(`Buffer "${this.label ?? this.id}" is already mapped.`);
     const native = getWebGPUNativeHandle(this, this.owner);
     if (native.mapAsync === undefined) throw new Error('Native WebGPU buffer does not support mapAsync.');
     await native.mapAsync(mode, offset, size);
     assertWebGPUResource(this, this.owner);
+    this.mapped = true;
   }
   getMappedRange(offset = 0, size = this.size - offset): ArrayBuffer {
     assertWebGPUResource(this, this.owner);
@@ -100,6 +105,7 @@ export class WebGPUBuffer extends WebGPUResourceBase implements RHIBuffer {
     const native = getWebGPUNativeHandle(this, this.owner);
     if (native.unmap === undefined) throw new Error('Native WebGPU buffer does not support unmap.');
     native.unmap();
+    this.mapped = false;
   }
 }
 

@@ -171,6 +171,7 @@ export type {
   WebGPUNativeSurfaceConfiguration,
   WebGPUNativeTexturePort,
   WebGPUPipelineCreationResult,
+  WebGPUFastPathMetrics,
   WebGPUInterop,
   WebGPUInteropScope,
   WebGPUInteropSubmissionPolicy,
