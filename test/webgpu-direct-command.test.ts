@@ -56,6 +56,7 @@ class NativeEncoder implements WebGPUNativeCommandEncoderPort {
 
 class NativeDevice implements WebGPUNativeDevicePort {
   readonly lost = new Promise<never>(() => undefined);
+  readonly queue = { submit(): void {}, onSubmittedWorkDone: async () => undefined };
   readonly encoders: NativeEncoder[] = [];
   createBuffer(): WebGPUNativeResourcePort { return new Handle(); }
   createTexture(): WebGPUNativeTexturePort { return new TextureHandle(); }
