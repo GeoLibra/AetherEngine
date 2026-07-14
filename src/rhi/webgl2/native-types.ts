@@ -1,5 +1,6 @@
 import type { FormatCapabilities, RHILimits } from '../capability-types';
 import type { GPUTextureFormat } from '../webgpu-types';
+import type { WebGL2BindingManifestEntry } from './shader-types';
 
 export type WebGL2NativeLimits = RHILimits;
 
@@ -26,9 +27,12 @@ export interface WebGL2NativeContextPort {
   createBuffer?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
   createTexture?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
   createSampler?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
+  createProgram?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
+  getProgramReflection?(program: WebGL2NativeObject): readonly WebGL2BindingManifestEntry[];
   deleteBuffer?(handle: WebGL2NativeObject): void;
   deleteTexture?(handle: WebGL2NativeObject): void;
   deleteSampler?(handle: WebGL2NativeObject): void;
+  deleteProgram?(handle: WebGL2NativeObject): void;
   writeBuffer?(handle: WebGL2NativeObject, offset: number, data: ArrayBufferView): void;
   writeTexture?(
     destination: Readonly<Record<string, unknown>>,
