@@ -8,6 +8,19 @@ export { NativeTransferCapabilityError, createNativeTransfer } from './transfer'
 export { NativeBridgeDispatcher, NativeBridgeError } from './bridge';
 export { NativeCancellationSource } from './cancellation';
 export { NativeEventPump, NativeEventPumpError } from './event-pump';
+export { NativeLifecycleCoordinator, NativeLifecycleTerminationError } from './lifecycle';
+export { createNativeCrashReport } from './diagnostics';
+export type {
+  NativeBackgroundDomainPolicy,
+  NativeBackgroundPolicy,
+  NativeCrashReport,
+  NativeCrashReportInput,
+  NativeCrashReportOptions,
+  NativeLifecycleSnapshot,
+  NativeMemoryEvictor,
+  NativeMemoryPressureEvent,
+  NativeMemoryPressureResult
+} from './lifecycle-types';
 export type {
   NativeServiceModule,
   NativeServiceToken,
