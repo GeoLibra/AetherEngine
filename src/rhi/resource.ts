@@ -1,9 +1,11 @@
 import type { RHIResource, RHIResourceKind, RHIResourceRef } from './types';
 import type { RHIDeviceState, RHIResourceState } from './lifecycle-types';
+import type { DeviceCapabilities } from './capability-types';
 
 export interface NullDeviceOwner {
   readonly token: symbol;
   readonly generation: number;
+  readonly capabilities: DeviceCapabilities;
   state: RHIDeviceState;
 }
 

@@ -8,14 +8,7 @@ import { NullSampler, NullTexture } from './texture';
 import { NullRenderTarget } from '../render-target';
 import type { NullDeviceOwner } from '../resource';
 import type {
-  GPUBindGroupDescriptor,
-  GPUBindGroupLayoutDescriptor,
-  GPUBufferDescriptor,
-  GPUCommandEncoderDescriptor,
-  GPUPipelineLayoutDescriptor,
-  GPUSamplerDescriptor,
   GPUSupportedLimits,
-  GPUTextureDescriptor,
   RHIBindGroup,
   RHIBindGroupLayout,
   RHIBuffer,
@@ -31,11 +24,21 @@ import type {
   RHIShaderModule,
   RHITexture,
   RenderTargetDescriptor,
-  GPUShaderModuleDescriptor
 } from '../types';
-import { createNullCapabilities } from '../capabilities';
+import { createNullConformanceCapabilities } from '../capabilities';
 import type { DeviceCapabilities } from '../capability-types';
 import type { DeviceLostInfo, RHIDeviceState } from '../lifecycle-types';
+import { assertRHIFeature } from '../capability-validation';
+import type {
+  RHIBindGroupDescriptor,
+  RHIBindGroupLayoutDescriptor,
+  RHIBufferDescriptor,
+  RHICommandEncoderDescriptor,
+  RHIPipelineLayoutDescriptor,
+  RHISamplerDescriptor,
+  RHIShaderModuleDescriptor,
+  RHITextureDescriptor
+} from '../descriptor-types';
 
 let nextDeviceGeneration = 1;
 
@@ -58,14 +61,15 @@ export class NullDevice implements RHIDevice {
   private resolveLost!: (info: DeviceLostInfo) => void;
 
   constructor(options: NullDeviceOptions = {}) {
+    this.capabilities = options.capabilities ?? createNullConformanceCapabilities();
     this.owner = {
       token: Symbol('NullDevice'),
       generation: this.generation,
+      capabilities: this.capabilities,
       state: 'live'
     };
     this.queue = new NullQueue(this.owner);
     this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
-    this.capabilities = options.capabilities ?? createNullCapabilities();
     this.features = new Set(
       [...this.capabilities.features]
         .filter(([, support]) => support.status !== 'unsupported')
@@ -99,31 +103,39 @@ export class NullDevice implements RHIDevice {
     this.owner.state = 'destroyed';
   }
 
-  createBuffer(descriptor: GPUBufferDescriptor): RHIBuffer {
+  createBuffer(descriptor: RHIBufferDescriptor): RHIBuffer {
     return new NullBuffer(this.allocateId(), this.owner, descriptor);
   }
 
-  createTexture(descriptor: GPUTextureDescriptor): RHITexture {
+  createTexture(descriptor: RHITextureDescriptor): RHITexture {
     return new NullTexture(this.allocateId(), this.owner, descriptor, () => this.allocateId());
   }
 
-  createSampler(descriptor: GPUSamplerDescriptor = {}): RHISampler {
+  createSampler(descriptor: RHISamplerDescriptor = {}): RHISampler {
     return new NullSampler(this.allocateId(), this.owner, descriptor);
   }
 
-  createShaderModule(descriptor: GPUShaderModuleDescriptor): RHIShaderModule {
+  createShaderModule(descriptor: RHIShaderModuleDescriptor): RHIShaderModule {
     return new NullShaderModule(this.allocateId(), this.owner, descriptor);
   }
 
-  createBindGroupLayout(descriptor: GPUBindGroupLayoutDescriptor): RHIBindGroupLayout {
+  createBindGroupLayout(descriptor: RHIBindGroupLayoutDescriptor): RHIBindGroupLayout {
+    for (const entry of descriptor.entries) {
+      if (entry.buffer?.type === 'storage' || entry.buffer?.type === 'read-only-storage') {
+        assertRHIFeature(this.owner, 'storage-buffer', 'create-storage-buffer');
+      }
+      if (entry.storageTexture !== undefined) {
+        assertRHIFeature(this.owner, 'storage-texture', 'create-storage-texture');
+      }
+    }
     return new NullBindGroupLayout(this.allocateId(), this.owner, descriptor);
   }
 
-  createPipelineLayout(descriptor: GPUPipelineLayoutDescriptor): RHIPipelineLayout {
+  createPipelineLayout(descriptor: RHIPipelineLayoutDescriptor): RHIPipelineLayout {
     return new NullPipelineLayout(this.allocateId(), this.owner, descriptor);
   }
 
-  createBindGroup(descriptor: GPUBindGroupDescriptor): RHIBindGroup {
+  createBindGroup(descriptor: RHIBindGroupDescriptor): RHIBindGroup {
     return new NullBindGroup(this.allocateId(), this.owner, descriptor);
   }
 
@@ -135,6 +147,7 @@ export class NullDevice implements RHIDevice {
   }
 
   createComputePipeline(descriptor: RHIComputePipelineDescriptor = {}): RHIComputePipeline {
+    assertRHIFeature(this.owner, 'compute', 'create-compute-pipeline');
     validatePipelineDescriptorObject(descriptor, 'Compute');
     validatePipelineLayout(descriptor.layout, this.owner);
     validateComputePipelineDescriptor(descriptor, this.owner);
@@ -145,7 +158,7 @@ export class NullDevice implements RHIDevice {
     return new NullRenderTarget(this.allocateId(), this.owner, descriptor);
   }
 
-  createCommandEncoder(descriptor: GPUCommandEncoderDescriptor = {}): RHICommandEncoder {
+  createCommandEncoder(descriptor: RHICommandEncoderDescriptor = {}): RHICommandEncoder {
     return new NullCommandEncoder(this.allocateId(), this.owner, descriptor);
   }
 
