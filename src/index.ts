@@ -156,6 +156,7 @@ export type {
   WebGPUNativeDeviceLostInfo,
   WebGPUNativeDevicePort,
   WebGPUNativeDeviceRequest,
+  WebGPUNativeQueuePort,
   WebGPUNativeResourcePort,
   WebGPUNativeRenderPassPort,
   WebGPUNativeTexturePort,

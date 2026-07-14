@@ -74,8 +74,14 @@ export interface WebGPUNativeCommandEncoderPort {
   finish(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
 }
 
+export interface WebGPUNativeQueuePort {
+  submit(commandBuffers: readonly WebGPUNativeResourcePort[]): void;
+  onSubmittedWorkDone(): Promise<void>;
+}
+
 export interface WebGPUNativeDevicePort {
   readonly lost: Promise<WebGPUNativeDeviceLostInfo>;
+  readonly queue: WebGPUNativeQueuePort;
   destroy?(): void;
   createBuffer?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
   createTexture?(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeTexturePort;

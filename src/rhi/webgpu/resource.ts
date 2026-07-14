@@ -36,6 +36,7 @@ export interface WebGPUDeviceOwner {
   readonly generation: number;
   state: RHIDeviceState;
   allocateId(): number;
+  disposeResource(resource: WebGPUResourceBase, native: WebGPUNativeResourcePort): void;
 }
 
 export abstract class WebGPUResourceBase implements RHIResource {
@@ -57,7 +58,8 @@ export abstract class WebGPUResourceBase implements RHIResource {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    nativeHandles.get(this)?.destroy?.();
+    const native = nativeHandles.get(this);
+    if (native !== undefined) this.owner.disposeResource(this, native);
   }
 }
 
@@ -244,6 +246,14 @@ export function getWebGPUNativeHandle(resource: RHIResource, owner: WebGPUDevice
   const native = nativeHandles.get(wrapper);
   if (native === undefined) throw new Error(`Resource "${resource.label ?? resource.kind}" has no native WebGPU handle.`);
   return native;
+}
+
+export function releaseWebGPUNativeHandle(
+  resource: WebGPUResourceBase,
+  native: WebGPUNativeResourcePort
+): void {
+  nativeHandles.delete(resource);
+  if (resource.kind === 'buffer' || resource.kind === 'texture') native.destroy?.();
 }
 
 export function lowerBindingResource(resource: GPUBindGroupDescriptor['entries'][number]['resource'], owner: WebGPUDeviceOwner): unknown {

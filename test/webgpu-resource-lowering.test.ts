@@ -23,6 +23,7 @@ class NativeTexture extends NativeResource implements WebGPUNativeTexturePort {
 
 class NativeDevice implements WebGPUNativeDevicePort {
   readonly lost = new Promise<never>(() => undefined);
+  readonly queue = { submit(): void {}, onSubmittedWorkDone: async () => undefined };
   readonly calls: { operation: string; descriptor: Readonly<Record<string, unknown>> }[] = [];
 
   createBuffer(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort {

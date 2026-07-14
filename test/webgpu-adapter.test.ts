@@ -34,7 +34,10 @@ class TestNativeAdapter implements WebGPUNativeAdapterPort {
   async requestDevice(request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> {
     this.requests.push(request);
     if (this.failure !== undefined) throw this.failure;
-    return { lost: new Promise(() => undefined) };
+    return {
+      lost: new Promise(() => undefined),
+      queue: { submit(): void {}, onSubmittedWorkDone: async () => undefined }
+    };
   }
 }
 
