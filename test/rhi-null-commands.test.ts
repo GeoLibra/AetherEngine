@@ -52,29 +52,29 @@ describe('NullDevice command encoding', () => {
     );
   });
 
-  test('rejects encoder debug groups and released resources in invalid states', () => {
+  test('rejects encoder debug groups and disposed resources in invalid states', () => {
     const device = new NullDevice();
     const encoder = device.createCommandEncoder({ label: 'frame' });
     const pass = encoder.beginRenderPass(createRenderTarget(device).createRenderPassDescriptor());
-    const vertex = device.createBuffer({ label: 'released-vertex', size: 16, usage: BUFFER_USAGE_VERTEX });
+    const vertex = device.createBuffer({ label: 'disposed-vertex', size: 16, usage: BUFFER_USAGE_VERTEX });
 
     expect(() => encoder.pushDebugGroup('bad')).toThrow(
       'Cannot push an encoder debug group while a pass is active.'
     );
 
-    device.destroy(vertex);
+    vertex.dispose();
 
     expect(() => pass.setVertexBuffer(0, vertex)).toThrow(
-      'Resource "released-vertex" has been released.'
+      'Resource "disposed-vertex" has been disposed.'
     );
 
     pass.end();
 
-    const commandBuffer = encoder.finish({ label: 'released-commands' });
-    device.destroy(commandBuffer);
+    const commandBuffer = encoder.finish({ label: 'disposed-commands' });
+    commandBuffer.dispose();
 
     expect(() => device.queue.submit([commandBuffer])).toThrow(
-      'Resource "released-commands" has been released.'
+      'Resource "disposed-commands" has been disposed.'
     );
   });
 

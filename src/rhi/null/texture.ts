@@ -1,4 +1,5 @@
 import { assertResourceLive, assertResourceOwnedBy, NullResourceBase, toResourceRef } from '../resource';
+import type { NullDeviceOwner } from '../resource';
 import type {
   GPUExtent3D,
   GPUImageCopyTexture,
@@ -27,7 +28,7 @@ export class NullTexture extends NullResourceBase implements RHITexture {
 
   constructor(
     id: number,
-    owner: symbol,
+    owner: NullDeviceOwner,
     descriptor: GPUTextureDescriptor,
     private readonly allocateViewId: () => number
   ) {
@@ -42,9 +43,7 @@ export class NullTexture extends NullResourceBase implements RHITexture {
   }
 
   createView(descriptor: GPUTextureViewDescriptor = {}): RHITextureView {
-    if (this.released) {
-      throw new Error(`Texture "${this.label ?? this.id}" has been released.`);
-    }
+    assertResourceLive(this);
     return new NullTextureView(this.allocateViewId(), this.owner, this, descriptor);
   }
 }
@@ -57,7 +56,7 @@ export class NullTextureView extends NullResourceBase implements RHITextureView 
   readonly depthOrArrayLayers: number;
   readonly format: GPUTextureFormat;
 
-  constructor(id: number, owner: symbol, readonly texture: RHITexture, descriptor: GPUTextureViewDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, readonly texture: RHITexture, descriptor: GPUTextureViewDescriptor) {
     super(id, owner, descriptor.label ?? texture.label);
     this.descriptor = { ...descriptor };
     this.width = texture.width;
@@ -66,8 +65,9 @@ export class NullTextureView extends NullResourceBase implements RHITextureView 
     this.format = descriptor.format ?? texture.format;
   }
 
-  override get released(): boolean {
-    return this.isReleased || this.texture.released;
+  override get state() {
+    if (this.owner.state !== 'live') return 'device-lost' as const;
+    return this.isDisposed ? 'disposed' as const : this.texture.state;
   }
 }
 
@@ -75,7 +75,7 @@ export class NullSampler extends NullResourceBase implements RHISampler {
   readonly kind = 'sampler';
   readonly descriptor: Readonly<GPUSamplerDescriptor>;
 
-  constructor(id: number, owner: symbol, descriptor: GPUSamplerDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, descriptor: GPUSamplerDescriptor) {
     super(id, owner, descriptor.label);
     this.descriptor = { ...descriptor };
   }
@@ -125,7 +125,7 @@ export function normalizeAndValidateExtent(size: GPUExtent3D): RHINormalizedExte
 
 export function validateTextureCopyView(
   view: GPUImageCopyTexture,
-  owner: symbol,
+  owner: NullDeviceOwner,
   copySize: RHINormalizedExtent3D
 ): RHINormalizedImageCopyTexture {
   assertResourceOwnedBy(view.texture, owner);

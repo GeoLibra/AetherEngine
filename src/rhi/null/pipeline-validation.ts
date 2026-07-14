@@ -1,4 +1,5 @@
 import { assertResourceLive, assertResourceOwnedBy } from '../resource';
+import type { NullDeviceOwner } from '../resource';
 import type {
   GPUBlendComponent,
   GPUColorTargetState,
@@ -16,7 +17,7 @@ import type {
 
 type PipelineStageName = 'Vertex' | 'Fragment' | 'Compute';
 
-export function validateRenderPipelineDescriptor(descriptor: RHIRenderPipelineDescriptor, owner: symbol): void {
+export function validateRenderPipelineDescriptor(descriptor: RHIRenderPipelineDescriptor, owner: NullDeviceOwner): void {
   if (descriptor.fragment !== undefined && descriptor.vertex === undefined) {
     throw new Error('Vertex stage must be provided if fragment stage is present.');
   }
@@ -28,14 +29,14 @@ export function validateRenderPipelineDescriptor(descriptor: RHIRenderPipelineDe
   validateMultisampleState(descriptor.multisample);
 }
 
-export function validateComputePipelineDescriptor(descriptor: RHIComputePipelineDescriptor, owner: symbol): void {
+export function validateComputePipelineDescriptor(descriptor: RHIComputePipelineDescriptor, owner: NullDeviceOwner): void {
   validatePipelineStage(descriptor.compute, 'Compute', owner);
 }
 
 function validatePipelineStage(
   stage: GPUProgrammableStage | undefined,
   name: PipelineStageName,
-  owner: symbol
+  owner: NullDeviceOwner
 ): void {
   if (stage === undefined) {
     return;

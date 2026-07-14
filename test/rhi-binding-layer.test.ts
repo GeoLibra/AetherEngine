@@ -117,13 +117,13 @@ describe('RHI binding layer resources', () => {
       })
     ).toThrow('Resource "foreign-buffer" belongs to a different NullDevice.');
 
-    secondDevice.destroy(localLayout);
+    localLayout.dispose();
 
     expect(() =>
       secondDevice.createBindGroup({
         layout: localLayout,
         entries: [{ binding: 0, resource: { buffer: foreignBuffer } }]
       })
-    ).toThrow('Resource "bind-group-layout" has been released.');
+    ).toThrow('Resource "bind-group-layout" has been disposed.');
   });
 });

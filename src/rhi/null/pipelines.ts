@@ -1,4 +1,5 @@
 import { NullResourceBase } from '../resource';
+import type { NullDeviceOwner } from '../resource';
 import type {
   GPUBlendComponent,
   GPUBlendState,
@@ -24,7 +25,7 @@ export class NullRenderPipeline extends NullResourceBase implements RHIRenderPip
   readonly descriptor: Readonly<RHIRenderPipelineDescriptor>;
   readonly layout: RHIPipelineLayout | undefined;
 
-  constructor(id: number, owner: symbol, descriptor: RHIRenderPipelineDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, descriptor: RHIRenderPipelineDescriptor) {
     super(id, owner, descriptor.label);
     const clone: RHIRenderPipelineDescriptor = {};
     if (descriptor.label !== undefined) {
@@ -62,7 +63,7 @@ export class NullComputePipeline extends NullResourceBase implements RHIComputeP
   readonly descriptor: Readonly<RHIComputePipelineDescriptor>;
   readonly layout: RHIPipelineLayout | undefined;
 
-  constructor(id: number, owner: symbol, descriptor: RHIComputePipelineDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, descriptor: RHIComputePipelineDescriptor) {
     super(id, owner, descriptor.label);
     const clone: RHIComputePipelineDescriptor = {};
     if (descriptor.label !== undefined) {

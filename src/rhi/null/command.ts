@@ -2,6 +2,7 @@ import { validateBufferCopy } from './buffer';
 import { NullComputePassEncoder, NullPassEncoder, NullRenderPassEncoder } from './passes';
 import { normalizeAndValidateExtent, validateTextureCopyView } from './texture';
 import { assertResourceLive, assertResourceOwnedBy, NullResourceBase, toResourceRef } from '../resource';
+import type { NullDeviceOwner } from '../resource';
 import {
   cloneCommandStats,
   createCommandStats,
@@ -31,7 +32,7 @@ export class NullCommandBuffer extends NullResourceBase implements RHICommandBuf
 
   constructor(
     id: number,
-    owner: symbol,
+    owner: NullDeviceOwner,
     label: string | undefined,
     private readonly records: readonly RHICommandRecord[],
     private readonly stats: RHICommandStats
@@ -64,7 +65,7 @@ export class NullCommandEncoder implements RHICommandEncoder {
 
   constructor(
     private readonly id: number,
-    private readonly owner: symbol,
+    private readonly owner: NullDeviceOwner,
     descriptor: GPUCommandEncoderDescriptor
   ) {
     if (descriptor.label !== undefined) {
@@ -72,7 +73,7 @@ export class NullCommandEncoder implements RHICommandEncoder {
     }
   }
 
-  get ownerToken(): symbol {
+  get ownerToken(): NullDeviceOwner {
     return this.owner;
   }
 
@@ -213,6 +214,9 @@ export class NullCommandEncoder implements RHICommandEncoder {
   }
 
   private ensureCanRecord(): void {
+    if (this.owner.state !== 'live') {
+      throw new Error(`Command encoder "${this.label ?? this.id}" belongs to a lost device.`);
+    }
     if (this.finished) {
       throw new Error(`Command encoder "${this.label ?? this.id}" has already finished.`);
     }
@@ -236,7 +240,7 @@ function cloneCommandRecord(record: RHICommandRecord): RHICommandRecord {
   return JSON.parse(JSON.stringify(record)) as RHICommandRecord;
 }
 
-function validateRenderPassDescriptorResources(descriptor: RHIRenderPassDescriptor, owner: symbol): void {
+function validateRenderPassDescriptorResources(descriptor: RHIRenderPassDescriptor, owner: NullDeviceOwner): void {
   for (const attachment of descriptor.colorAttachments) {
     assertResourceOwnedBy(attachment.view, owner);
     assertResourceLive(attachment.view);

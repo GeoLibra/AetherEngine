@@ -77,10 +77,10 @@ describe('RHI queue uploads', () => {
     );
 
     buffer.unmap();
-    device.destroy(buffer);
+    buffer.dispose();
 
     expect(() => device.queue.writeBuffer(buffer, 0, new Uint8Array([1]))).toThrow(
-      'Resource "upload-target" has been released.'
+      'Resource "upload-target" has been disposed.'
     );
   });
 

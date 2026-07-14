@@ -143,14 +143,14 @@ describe('RHI pass bind group commands', () => {
     const { pass } = createPass(device);
 
     pass.setPipeline(pipeline);
-    device.destroy(buffer);
+    buffer.dispose();
 
     expect(() => pass.setBindGroup(0, bindGroup)).toThrow(
-      'Resource "late-release" has been released.'
+      'Resource "late-release" has been disposed.'
     );
   });
 
-  test('rejects foreign and released bind groups and pipelines on pass encoders', () => {
+  test('rejects foreign and disposed bind groups and pipelines on pass encoders', () => {
     const firstDevice = new NullDevice();
     const secondDevice = new NullDevice();
     const layout = firstDevice.createBindGroupLayout({
@@ -177,20 +177,20 @@ describe('RHI pass bind group commands', () => {
     });
     const localBuffer = secondDevice.createBuffer({ size: 64, usage: BUFFER_USAGE_UNIFORM });
     const localBindGroup = secondDevice.createBindGroup({
-      label: 'released-bind-group',
+      label: 'disposed-bind-group',
       layout: localLayout,
       entries: [{ binding: 0, resource: { buffer: localBuffer } }]
     });
-    const localPipeline = secondDevice.createRenderPipeline({ label: 'released-pipeline' });
+    const localPipeline = secondDevice.createRenderPipeline({ label: 'disposed-pipeline' });
 
-    secondDevice.destroy(localBindGroup);
-    secondDevice.destroy(localPipeline);
+    localBindGroup.dispose();
+    localPipeline.dispose();
 
     expect(() => pass.setBindGroup(0, localBindGroup)).toThrow(
-      'Resource "released-bind-group" has been released.'
+      'Resource "disposed-bind-group" has been disposed.'
     );
     expect(() => pass.setPipeline(localPipeline)).toThrow(
-      'Resource "released-pipeline" has been released.'
+      'Resource "disposed-pipeline" has been disposed.'
     );
   });
 
@@ -301,11 +301,11 @@ describe('RHI pass bind group commands', () => {
 
     expect(() => pass.draw(3)).toThrow('requires a render pipeline before drawing.');
 
-    const pipeline = device.createRenderPipeline({ label: 'released-pipeline' });
+    const pipeline = device.createRenderPipeline({ label: 'disposed-pipeline' });
     pass.setPipeline(pipeline);
-    device.destroy(pipeline);
+    pipeline.dispose();
 
-    expect(() => pass.draw(3)).toThrow('Resource "released-pipeline" has been released.');
+    expect(() => pass.draw(3)).toThrow('Resource "disposed-pipeline" has been disposed.');
 
     const encoder = device.createCommandEncoder();
     const computePass = encoder.beginComputePass({ label: 'compute-pass' });

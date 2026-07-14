@@ -29,7 +29,7 @@ function createRenderTarget(device: NullDevice) {
 }
 
 describe('NullDevice resources', () => {
-  test('records immutable resource descriptors and releases through the device', () => {
+  test('records immutable resource descriptors and disposes through the resource', () => {
     const device = new NullDevice();
     const descriptor = { label: 'vertices', size: 64, usage: BUFFER_USAGE_VERTEX };
     const buffer = device.createBuffer(descriptor);
@@ -38,20 +38,16 @@ describe('NullDevice resources', () => {
 
     expect(buffer.size).toBe(64);
     expect(buffer.descriptor).toEqual({ label: 'vertices', size: 64, usage: BUFFER_USAGE_VERTEX });
-    expect(buffer.released).toBe(false);
+    expect(buffer.state).toBe('live');
 
-    device.destroy(buffer);
+    buffer.dispose();
+    buffer.dispose();
 
-    expect(buffer.released).toBe(true);
-    expect(() => device.destroy(buffer)).toThrow('Resource "vertices" has already been released.');
-    expect(() => device.destroy(null as never)).toThrow(
-      'Resource "unknown" was not created by NullDevice.'
-    );
+    expect(buffer.state).toBe('disposed');
   });
 
-  test('tracks ownership and release state for render targets and texture views', () => {
+  test('tracks ownership and disposal state for render targets and texture views', () => {
     const firstDevice = new NullDevice();
-    const secondDevice = new NullDevice();
     const texture = firstDevice.createTexture({
       label: 'owned-color',
       size: { width: 4, height: 4 },
@@ -76,15 +72,11 @@ describe('NullDevice resources', () => {
     });
 
     expect(firstView.id).not.toBe(secondView.id);
-    expect(() => secondDevice.destroy(target)).toThrow(
-      'Resource "owned-target" belongs to a different NullDevice.'
-    );
+    target.dispose();
 
-    firstDevice.destroy(target);
-
-    expect(target.released).toBe(true);
+    expect(target.state).toBe('disposed');
     expect(() => target.createRenderPassDescriptor()).toThrow(
-      'Resource "owned-target" has been released.'
+      'Resource "owned-target" has been disposed.'
     );
   });
 
@@ -201,7 +193,7 @@ describe('NullDevice resources', () => {
     });
     const view = texture.createView({ label: 'parent-view' });
 
-    firstDevice.destroy(texture);
+    texture.dispose();
 
     expect(() =>
       firstDevice
@@ -219,7 +211,7 @@ describe('NullDevice resources', () => {
           ]
         })
         .createRenderPassDescriptor()
-    ).toThrow('Resource "parent-texture" has been released.');
+    ).toThrow('Resource "parent-texture" has been disposed.');
 
     const foreignTexture = firstDevice.createTexture({
       label: 'foreign-color',

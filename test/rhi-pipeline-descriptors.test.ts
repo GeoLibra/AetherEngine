@@ -109,11 +109,11 @@ describe('RHI pipeline descriptors', () => {
     expect(computePipeline.descriptor.compute).toBeUndefined();
   });
 
-  test('rejects foreign and released shader modules in pipeline stages', () => {
+  test('rejects foreign and disposed shader modules in pipeline stages', () => {
     const firstDevice = new NullDevice();
     const secondDevice = new NullDevice();
     const foreignModule = firstDevice.createShaderModule({ label: 'foreign-module', code: '@vertex fn main() {}' });
-    const localModule = secondDevice.createShaderModule({ label: 'released-module', code: '@vertex fn main() {}' });
+    const localModule = secondDevice.createShaderModule({ label: 'disposed-module', code: '@vertex fn main() {}' });
 
     expect(() =>
       secondDevice.createRenderPipeline({
@@ -121,13 +121,13 @@ describe('RHI pipeline descriptors', () => {
       })
     ).toThrow('Resource "foreign-module" belongs to a different NullDevice.');
 
-    secondDevice.destroy(localModule);
+    localModule.dispose();
 
     expect(() =>
       secondDevice.createComputePipeline({
         compute: { module: localModule }
       })
-    ).toThrow('Resource "released-module" has been released.');
+    ).toThrow('Resource "disposed-module" has been disposed.');
   });
 
   test('rejects incomplete stage descriptors from untyped callers', () => {
