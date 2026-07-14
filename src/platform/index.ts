@@ -1,5 +1,8 @@
 export { DEFAULT_DEVICE_PIXEL_RATIO, DEFAULT_WINDOW_TITLE } from './constants';
 export { MutablePlatformServiceRegistry, createPlatformServiceToken } from './services';
+export { HostBoundaryRunner } from './host-runner';
+export { HeadlessHost, ManualClock } from './headless-host';
+export type { HeadlessHostOptions } from './headless-host';
 export { PlatformWindow } from './window';
 export {
   createWindowMetrics,
