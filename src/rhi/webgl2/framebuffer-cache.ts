@@ -68,6 +68,10 @@ export class WebGL2FramebufferCache {
     this.entries.clear();
   }
 
+  abandon(): void {
+    this.entries.clear();
+  }
+
   private evictResource(resourceId: number): void {
     for (const [key, entry] of [...this.entries]) {
       if (!entry.dependencies.has(resourceId)) continue;

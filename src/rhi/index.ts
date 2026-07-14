@@ -3,6 +3,7 @@ export type { NullDeviceOptions, NullSubmissionMode } from './null-device';
 export { NullAdapter } from './null-adapter';
 export { WebGPUAdapter } from './webgpu/adapter';
 export { WebGL2Adapter } from './webgl2/adapter';
+export { WebGL2ContextControlExtension } from './webgl2/extension-types';
 export { WebGL2ProgramCreationError } from './webgl2/errors';
 export { WebGPUSurface } from './webgpu/surface';
 export { WebGPUInteropExtension } from './webgpu/interop';
@@ -30,6 +31,7 @@ export type {
   WebGL2TranslatedShader
 } from './webgl2/shader-types';
 export type { WebGL2MetricsSnapshot } from './webgl2/metrics';
+export type { WebGL2ContextControl } from './webgl2/extension-types';
 export type {
   WebGPUNativeAdapterInfo,
   WebGPUNativeAdapterPort,

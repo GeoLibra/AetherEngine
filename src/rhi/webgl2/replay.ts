@@ -40,6 +40,23 @@ export class WebGL2ReplayExecutor {
     for (const command of commands) this.executeCommand(command);
   }
 
+  invalidateExternalState(): void {
+    this.state.invalidate();
+  }
+
+  handleContextLoss(): void {
+    this.state.invalidate();
+    // A lost context invalidates these objects; issuing delete calls against it is neither useful nor safe.
+    this.framebuffers.abandon();
+    this.vertexArrays.abandon();
+    this.pipeline = undefined;
+    this.groups.clear();
+    this.vertexBuffers.clear();
+    this.indexBuffer = undefined;
+    this.activePass = undefined;
+    this.activePassHasResolve = false;
+  }
+
   private executeCommand(command: WebGL2ReplayCommand): void {
     switch (command.kind) {
       case 'push-debug': return this.call('pushDebugGroup', command.label);

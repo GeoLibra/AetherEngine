@@ -118,14 +118,19 @@ export class WebGL2Queue extends WebGL2UploadQueue implements RHIQueue {
       this.deferredReleases.set(resource, { handle, owned });
       return;
     }
-    releaseWebGL2Native(this.native, resource, handle, owned);
+    if (this.owner.state === 'live') releaseWebGL2Native(this.native, resource, handle, owned);
   }
 
-  handleDeviceLoss(): void {
+  invalidateExternalState(): void {
+    if (this.owner.state !== 'live') throw new Error('WebGL2 context control belongs to a lost device.');
+    this.replay.invalidateExternalState();
+  }
+
+  handleDeviceLoss(reason: 'destroyed' | 'context-lost'): void {
     if (this.lossHandled) return;
     this.lossHandled = true;
-    this.replay.state.invalidate();
-    this.webgl2Metrics.recordContextLoss();
+    this.replay.handleContextLoss();
+    if (reason === 'context-lost') this.webgl2Metrics.recordContextLoss();
     for (const epoch of [...this.pending.values()]) this.settle(epoch, 'device-lost');
   }
 
@@ -163,7 +168,9 @@ export class WebGL2Queue extends WebGL2UploadQueue implements RHIQueue {
     const deferred = this.deferredReleases.get(resource);
     if (deferred === undefined) return;
     this.deferredReleases.delete(resource);
-    releaseWebGL2Native(this.native, resource, deferred.handle, deferred.owned);
+    if (this.owner.state === 'live') {
+      releaseWebGL2Native(this.native, resource, deferred.handle, deferred.owned);
+    }
   }
 
   private settle(epoch: PendingEpoch, status: TerminalStatus, error?: unknown): void {
