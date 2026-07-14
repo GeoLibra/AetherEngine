@@ -9,6 +9,11 @@ export { NativeBridgeDispatcher, NativeBridgeError } from './bridge';
 export { NativeCancellationSource } from './cancellation';
 export { NativeEventPump, NativeEventPumpError } from './event-pump';
 export type {
+  NativeServiceModule,
+  NativeServiceToken,
+  NativeServiceUnavailableDiagnostic
+} from './module-types';
+export type {
   NativeBridgeDispatcherOptions,
   NativeBridgeErrorCode,
   NativeBridgeInvocation,
