@@ -34,6 +34,7 @@ export interface NativeMemoryPressureResult {
   readonly evictedBytes: number;
   readonly sufficient: boolean;
   readonly callbacks: number;
+  readonly failedEvictors: readonly string[];
 }
 
 export interface NativeCrashReportInput {

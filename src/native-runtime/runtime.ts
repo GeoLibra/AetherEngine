@@ -23,6 +23,8 @@ export class NativeRuntimeController {
     this.runtime = options.ownership === 'dedicated' ? options.createRuntime() : options.runtime;
   }
 
+  isOnJsThread(): boolean { return this.threads.currentThread() === this.threads.jsThread; }
+
   enterJsThread<T>(operation: string, run: () => T): T {
     this.assertActive(operation);
     assertNativeJsThread(this.threads, operation);
@@ -36,6 +38,7 @@ export class NativeRuntimeController {
     if (this.threads.currentThread() === this.threads.jsThread) return this.run(operation, run);
     return new Promise<T>((resolve, reject) => {
       this.threads.dispatchToJs(() => {
+        // Destruction wins over queued work so callbacks cannot enter a dead runtime.
         if (this.destroyed) {
           reject(new NativeRuntimeOperationError(operation, new Error('Native runtime is destroyed.')));
           return;

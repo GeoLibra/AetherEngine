@@ -6,7 +6,6 @@ import type {
   GPUColorTargetState,
   GPUDepthStencilState,
   GPUFragmentState,
-  GPUMultisampleState,
   GPUPrimitiveTopology,
   GPUPrimitiveState,
   GPUProgrammableStage,

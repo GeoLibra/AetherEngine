@@ -1,4 +1,4 @@
-import type { RHIDeviceState, RHIResourceState } from '../lifecycle-types';
+import type { RHIResourceState } from '../lifecycle-types';
 import type {
   RHIBuffer,
   RHIResource,

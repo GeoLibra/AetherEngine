@@ -104,6 +104,7 @@ export class NativeHandleRegistry<T> {
   }
 
   private destroyIfReady(entry: HandleEntry<T>): void {
+    // Logical reachability and native in-flight safety are independent release gates.
     if (entry.logical || entry.leases !== 0 || !this.entries.delete(entry.id)) return;
     this.destroyValue(entry.value);
   }

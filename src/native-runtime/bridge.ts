@@ -75,22 +75,26 @@ export class NativeBridgeDispatcher {
       let unsubscribe = () => false;
       const settle = (response: NativeBridgeResponse): void => {
         if (terminal || response.id !== request.id) return;
+        // Snapshot on the callback thread so native code cannot mutate payloads before JS dispatch.
+        const responseOk = response.ok;
+        const responsePayload = responseOk ? encodePayload(response.payload)?.payload : undefined;
         terminal = true;
         unsubscribe();
         this.onJsOwner(`bridge.${request.module}.${request.method}`, () => {
-          if (!response.ok) {
+          if (!responseOk) {
             reject(new NativeBridgeError('native-failure'));
             return;
           }
-          if (!descriptor.validateResponse(response.payload)) {
+          if (!descriptor.validateResponse(responsePayload)) {
             reject(new NativeBridgeError('invalid-response'));
             return;
           }
-          resolve(response.payload);
+          resolve(responsePayload);
         }, reject);
       };
       const cancel = (): void => {
         if (terminal) return;
+        // Claim the terminal state before notifying native code; reentrant completion is then stale.
         terminal = true;
         if (invocation === undefined) cancelPending = true;
         else invocation.cancel();

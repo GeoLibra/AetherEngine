@@ -13,8 +13,7 @@ import type {
   RHIBuffer,
   RHIResource,
   RHIRenderPassDescriptor,
-  RHIRenderPassEncoder,
-  RHITexture
+  RHIRenderPassEncoder
 } from '../types';
 import { toResourceRef } from '../resource';
 import { cloneCommandStats, createCommandStats, recordDraw, recordIndexedDraw } from '../stats';

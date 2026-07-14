@@ -15,8 +15,7 @@ import type {
 import type {
   WebGPUNativeBufferPort,
   WebGPUNativeDevicePort,
-  WebGPUNativeImportTexturePort,
-  WebGPUNativeResourcePort
+  WebGPUNativeImportTexturePort
 } from './native-types';
 import {
   WebGPUBuffer,

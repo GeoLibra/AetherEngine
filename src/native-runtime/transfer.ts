@@ -47,6 +47,7 @@ class TransferLease implements NativeTransferLease {
         : data;
     this.bytes = new Uint8Array(backing);
     const thisLease = this;
+    // Expose checked operations instead of a backing view that could outlive settlement.
     this.transferView = Object.freeze({
       get byteLength(): number { return thisLease.requireBytes().byteLength; },
       read: (index: number): number => this.read(index),

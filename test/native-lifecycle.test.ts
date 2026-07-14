@@ -43,7 +43,10 @@ describe('NativeLifecycleCoordinator', () => {
     const result = coordinator.memoryPressure({ severity: 'critical', targetBytes: 100, maxCallbacks: 2 });
 
     expect(calls).toEqual(['critical:100', 'optional:60']);
-    expect(result).toEqual({ requestedBytes: 100, evictedBytes: 70, sufficient: false, callbacks: 2 });
+    expect(result).toEqual({
+      requestedBytes: 100, evictedBytes: 70, sufficient: false, callbacks: 2,
+      failedEvictors: []
+    });
     expect(Object.isFrozen(result)).toBe(true);
   });
 

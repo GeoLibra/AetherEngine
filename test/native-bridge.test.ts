@@ -104,7 +104,9 @@ describe('NativeBridgeDispatcher', () => {
     expect(Object.isFrozen(request)).toBe(true);
     expect(Object.isFrozen(request.payload)).toBe(true);
     expect(request.payload).toEqual({ text: 'hello' });
-    port.complete({ id: request.id, ok: true, payload: { echoed: 'hello' } });
+    const response = { id: request.id, ok: true as const, payload: { echoed: 'hello' } };
+    port.complete(response);
+    response.payload.echoed = 'mutated by native';
     let settled = false;
     void result.finally(() => { settled = true; });
     await Promise.resolve();
