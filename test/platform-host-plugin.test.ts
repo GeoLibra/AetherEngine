@@ -5,7 +5,8 @@ import {
   HeadlessHost,
   HostService,
   MinimalPlugins,
-  createHostPlugin
+  createHostPlugin,
+  definePlugin
 } from '../src';
 
 describe('Host App integration', () => {
@@ -55,6 +56,25 @@ describe('Host App integration', () => {
     await destroying;
 
     expect(host.destroyCompleted).toBe(true);
+  });
+
+  test('destroys the Host when another plugin fails before Host service resolution', async () => {
+    const host = new HeadlessHost();
+    const app = new App()
+      .addPlugin(
+        definePlugin({
+          id: 'aether.early-ready-failure',
+          build() {},
+          ready: () => {
+            throw new Error('not ready');
+          }
+        })
+      )
+      .addPlugin(createHostPlugin(host));
+
+    await expect(app.startup()).rejects.toThrow('not ready');
+
+    expect(host.state).toBe('destroyed');
   });
 
   test('keeps concrete Host choice out of default plugin groups', () => {
