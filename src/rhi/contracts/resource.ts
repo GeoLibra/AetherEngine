@@ -228,6 +228,13 @@ export interface GPUImageCopyTexture {
   aspect?: GPUTextureAspect;
 }
 
+export interface GPUImageCopyBuffer {
+  buffer: RHIBuffer;
+  offset?: number;
+  bytesPerRow?: number;
+  rowsPerImage?: number;
+}
+
 export interface RHIRenderPipelineDescriptor {
   label?: string;
   layout?: RHIPipelineLayout;

@@ -64,6 +64,7 @@ export type {
   WebGPUNativeSurfaceConfiguration,
   WebGPUNativeTexturePort
 } from './webgpu/native-types';
+export type { GPUImageCopyBuffer } from './contracts/resource';
 export type {
   NativeImportDescriptorMap,
   RHINativeResourceMap,

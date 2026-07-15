@@ -1,8 +1,10 @@
 import type { NativeRuntimeController } from '../native-runtime/runtime';
+import { NativeLifecycleCoordinator } from '../native-runtime/lifecycle';
+import type { NativeBackgroundPolicy } from '../native-runtime/lifecycle-types';
 import { MutablePlatformServiceRegistry } from './services';
 import { PlatformWindow } from './window';
 import { NativeRunner } from './native-runner';
-import type { NativePlatformPort } from './native-host-types';
+import type { NativePlatformLifecycleEvent, NativePlatformPort } from './native-host-types';
 import type { Host, HostState, RunnerOptions, WindowId, WindowOptions } from './types';
 
 interface NativeWindowLifecycle {
@@ -25,16 +27,21 @@ export class NativeHost implements Host {
   readonly kind = 'native' as const;
   readonly clock;
   readonly services = new MutablePlatformServiceRegistry();
+  readonly lifecycle: NativeLifecycleCoordinator;
   private currentState: HostState = 'active';
   private nextWindowId = 1;
   private readonly ownedWindows: PlatformWindow[] = [];
   private readonly runners = new Set<NativeRunner>();
+  private readonly unsubscribeLifecycle: () => void;
 
   constructor(
     private readonly port: NativePlatformPort,
-    private readonly runtime: NativeRuntimeController
+    private readonly runtime: NativeRuntimeController,
+    backgroundPolicy: NativeBackgroundPolicy = DEFAULT_NATIVE_BACKGROUND_POLICY
   ) {
     this.clock = port.clock;
+    this.lifecycle = new NativeLifecycleCoordinator(backgroundPolicy);
+    this.unsubscribeLifecycle = port.onLifecycle?.((event) => this.handleLifecycle(event)) ?? (() => undefined);
   }
 
   get state(): HostState { return this.currentState; }
@@ -59,6 +66,7 @@ export class NativeHost implements Host {
       id,
       windowOptions,
       () => {
+        this.removeWindow(window);
         lifecycle.unsubscribeMetrics();
         lifecycle.unsubscribeSurface();
         lifecycle.unsubscribeClose();
@@ -111,7 +119,10 @@ export class NativeHost implements Host {
     const errors: unknown[] = [];
     // Teardown is best-effort across every owned layer; one faulty port must not strand the runtime.
     for (const runner of this.runners) captureCleanup(errors, () => runner.requestStop('host-destroyed'));
-    for (const window of this.ownedWindows) captureCleanup(errors, () => window.close());
+    // Closing mutates the registry, so teardown must iterate a stable snapshot.
+    for (const window of [...this.ownedWindows]) captureCleanup(errors, () => window.close());
+    captureCleanup(errors, this.unsubscribeLifecycle);
+    captureCleanup(errors, () => this.lifecycle.terminate());
     captureCleanup(errors, () => this.port.destroy());
     captureCleanup(errors, () => this.runtime.destroy());
     if (errors.length > 0) throw new NativeHostDestroyError(errors);
@@ -122,7 +133,33 @@ export class NativeHost implements Host {
       throw new Error(`Cannot ${operation} on a destroyed NativeHost.`);
     }
   }
+
+  private removeWindow(window: PlatformWindow): void {
+    const index = this.ownedWindows.indexOf(window);
+    if (index >= 0) this.ownedWindows.splice(index, 1);
+  }
+
+  private handleLifecycle(event: NativePlatformLifecycleEvent): void {
+    this.runtime.enterJsThread('native.lifecycle', () => {
+      switch (event.kind) {
+        case 'foreground': this.lifecycle.foreground(); return;
+        case 'background': this.lifecycle.background(); return;
+        case 'audio-interruption': this.lifecycle.audioInterrupted(event.interrupted); return;
+        case 'orientation': this.lifecycle.orientation(event.orientation); return;
+        case 'resize': this.lifecycle.resize(event.size); return;
+        case 'surface-lost': this.lifecycle.surfaceLost(event.generation); return;
+        case 'surface-recreated': this.lifecycle.surfaceRecreated(event.generation); return;
+        case 'memory-pressure': this.lifecycle.memoryPressure(event.pressure); return;
+      }
+    });
+  }
 }
+
+const DEFAULT_NATIVE_BACKGROUND_POLICY: NativeBackgroundPolicy = Object.freeze({
+  simulation: 'pause',
+  render: 'pause',
+  audio: 'pause'
+});
 
 function captureCleanup(errors: unknown[], cleanup: () => void): void {
   try { cleanup(); } catch (error) { errors.push(error); }

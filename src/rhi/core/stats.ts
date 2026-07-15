@@ -11,7 +11,9 @@ export function createCommandStats(): RHICommandStats {
     },
     copy: {
       copyBufferToBuffer: 0,
-      copyTextureToTexture: 0
+      copyTextureToTexture: 0,
+      copyBufferToTexture: 0,
+      copyTextureToBuffer: 0
     }
   };
 }

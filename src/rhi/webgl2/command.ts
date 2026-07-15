@@ -5,6 +5,7 @@ import type {
   GPUComputePassDescriptor,
   GPUExtent3D,
   GPUImageCopyTexture,
+  GPUImageCopyBuffer,
   RHICommandBuffer,
   RHICommandEncoder,
   RHICommandRecord,
@@ -22,6 +23,7 @@ import type { WebGL2DeviceOwner } from './resource-types';
 import type { WebGL2ImageCopyTexture, WebGL2RenderPassSnapshot, WebGL2ReplayCommand } from './command-types';
 import { WebGL2RenderPassEncoder, type WebGL2PassController } from './pass';
 import { throwWebGL2Unsupported } from './unsupported';
+import { validateBufferTextureCopy } from '../core/texture-copy-layout';
 
 export class WebGL2CommandBuffer extends WebGL2ResourceBase implements RHICommandBuffer {
   readonly kind = 'command-buffer';
@@ -150,6 +152,40 @@ export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassContro
       Object.freeze({ kind: 'copy-texture-to-texture', source: normalizedSource, destination: normalizedDestination, copySize: extent }),
       { kind: 'copyTextureToTexture', source: portableTextureCopy(normalizedSource),
         destination: portableTextureCopy(normalizedDestination), copySize: extent }
+    );
+  }
+
+  copyBufferToTexture(source: GPUImageCopyBuffer, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void {
+    this.ensureCanRecord();
+    this.ensureNoActivePass('copy buffer to texture');
+    const sourceBuffer = requireBuffer(source.buffer, this.ownerToken);
+    const extent = validateExtent(copySize);
+    const destinationTexture = validateTextureCopy(destination, extent, this.ownerToken);
+    const layout = validateBufferTextureCopy({ ...source, buffer: sourceBuffer }, destination, extent, 'buffer-to-texture');
+    const replaySource = Object.freeze({ buffer: sourceBuffer, offset: layout.offset, bytesPerRow: layout.bytesPerRow, rowsPerImage: layout.rowsPerImage });
+    this.lease(sourceBuffer);
+    this.lease(destinationTexture.texture);
+    this.stats.copy.copyBufferToTexture += 1;
+    this.record(
+      Object.freeze({ kind: 'copy-buffer-to-texture', source: replaySource, destination: destinationTexture, copySize: extent }),
+      { kind: 'copyBufferToTexture', source: layout, destination: portableTextureCopy(destinationTexture), copySize: extent }
+    );
+  }
+
+  copyTextureToBuffer(source: GPUImageCopyTexture, destination: GPUImageCopyBuffer, copySize: GPUExtent3D): void {
+    this.ensureCanRecord();
+    this.ensureNoActivePass('copy texture to buffer');
+    const destinationBuffer = requireBuffer(destination.buffer, this.ownerToken);
+    const extent = validateExtent(copySize);
+    const sourceTexture = validateTextureCopy(source, extent, this.ownerToken);
+    const layout = validateBufferTextureCopy({ ...destination, buffer: destinationBuffer }, source, extent, 'texture-to-buffer');
+    const replayDestination = Object.freeze({ buffer: destinationBuffer, offset: layout.offset, bytesPerRow: layout.bytesPerRow, rowsPerImage: layout.rowsPerImage });
+    this.lease(sourceTexture.texture);
+    this.lease(destinationBuffer);
+    this.stats.copy.copyTextureToBuffer += 1;
+    this.record(
+      Object.freeze({ kind: 'copy-texture-to-buffer', source: sourceTexture, destination: replayDestination, copySize: extent }),
+      { kind: 'copyTextureToBuffer', source: portableTextureCopy(sourceTexture), destination: layout, copySize: extent }
     );
   }
 

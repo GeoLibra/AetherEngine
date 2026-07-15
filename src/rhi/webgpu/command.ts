@@ -10,7 +10,9 @@ import type {
   RHIResource,
   RHIRenderPipeline,
   RHIBuffer,
+  RHITextureView,
   GPUImageCopyTexture,
+  GPUImageCopyBuffer,
 } from '../contracts/resource';
 import type { RHIRenderPassDescriptor } from '../contracts/render-target';
 import type {
@@ -42,6 +44,7 @@ import {
   normalizeUploadExtent,
   validateUploadBufferRange,
 } from './upload-validation';
+import { validateBufferTextureCopy } from '../core/texture-copy-layout';
 
 interface EncoderInteropState {
   readonly owner: WebGPUDeviceOwner;
@@ -225,6 +228,40 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     this.native.copyTextureToTexture(loweredSource, loweredDestination, extent);
     this.stats.copy.copyTextureToTexture += 1;
   }
+  copyBufferToTexture(source: GPUImageCopyBuffer, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void {
+    this.ensureIdle();
+    const extent = normalizeUploadExtent(copySize);
+    const nativeBuffer = getWebGPUNativeHandle(source.buffer, this.owner);
+    const nativeTexture = getWebGPUNativeHandle(destination.texture, this.owner);
+    const layout = validateBufferTextureCopy(source, destination, extent, 'buffer-to-texture');
+    const loweredDestination = lowerAndValidateTextureDestination(destination, destination.texture, nativeTexture, extent);
+    if (this.native.copyBufferToTexture === undefined) throw new Error('Native WebGPU command encoder does not support copyBufferToTexture.');
+    this.lease(source.buffer);
+    this.lease(destination.texture);
+    this.native.copyBufferToTexture(
+      Object.freeze({ buffer: nativeBuffer, offset: layout.offset, bytesPerRow: layout.bytesPerRow, rowsPerImage: layout.rowsPerImage }),
+      loweredDestination,
+      extent
+    );
+    this.stats.copy.copyBufferToTexture += 1;
+  }
+  copyTextureToBuffer(source: GPUImageCopyTexture, destination: GPUImageCopyBuffer, copySize: GPUExtent3D): void {
+    this.ensureIdle();
+    const extent = normalizeUploadExtent(copySize);
+    const nativeTexture = getWebGPUNativeHandle(source.texture, this.owner);
+    const nativeBuffer = getWebGPUNativeHandle(destination.buffer, this.owner);
+    const loweredSource = lowerAndValidateTextureDestination(source, source.texture, nativeTexture, extent);
+    const layout = validateBufferTextureCopy(destination, source, extent, 'texture-to-buffer');
+    if (this.native.copyTextureToBuffer === undefined) throw new Error('Native WebGPU command encoder does not support copyTextureToBuffer.');
+    this.lease(source.texture);
+    this.lease(destination.buffer);
+    this.native.copyTextureToBuffer(
+      loweredSource,
+      Object.freeze({ buffer: nativeBuffer, offset: layout.offset, bytesPerRow: layout.bytesPerRow, rowsPerImage: layout.rowsPerImage }),
+      extent
+    );
+    this.stats.copy.copyTextureToBuffer += 1;
+  }
   finish(descriptor: GPUCommandBufferDescriptor = {}): RHICommandBuffer {
     this.ensureIdle();
     if (this.debugDepth > 0)
@@ -249,6 +286,10 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
   lease(resource: RHIResource): void {
     getWebGPUNativeHandle(resource, this.owner);
     this.leases.add(resource);
+    // A view does not own its allocation; retain the parent for the same submission epoch.
+    if (resource.kind === 'texture-view') {
+      this.lease((resource as RHITextureView).texture);
+    }
   }
   nativeHandle(resource: RHIResource): WebGPUNativeResourcePort {
     this.lease(resource);

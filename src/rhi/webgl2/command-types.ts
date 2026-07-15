@@ -15,6 +15,13 @@ export interface WebGL2ImageCopyTexture {
   readonly aspect: GPUTextureAspect;
 }
 
+export interface WebGL2ImageCopyBuffer {
+  readonly buffer: RHIBuffer;
+  readonly offset: number;
+  readonly bytesPerRow: number;
+  readonly rowsPerImage: number;
+}
+
 export interface WebGL2RenderPassSnapshot {
   readonly label?: string;
   readonly colorAttachments: readonly Readonly<{
@@ -55,6 +62,16 @@ export type WebGL2ReplayCommand =
   | Readonly<{
       kind: 'copy-texture-to-texture'; source: WebGL2ImageCopyTexture;
       destination: WebGL2ImageCopyTexture;
+      copySize: Readonly<{ width: number; height: number; depthOrArrayLayers: number }>;
+    }>
+  | Readonly<{
+      kind: 'copy-buffer-to-texture'; source: WebGL2ImageCopyBuffer;
+      destination: WebGL2ImageCopyTexture;
+      copySize: Readonly<{ width: number; height: number; depthOrArrayLayers: number }>;
+    }>
+  | Readonly<{
+      kind: 'copy-texture-to-buffer'; source: WebGL2ImageCopyTexture;
+      destination: WebGL2ImageCopyBuffer;
       copySize: Readonly<{ width: number; height: number; depthOrArrayLayers: number }>;
     }>;
 

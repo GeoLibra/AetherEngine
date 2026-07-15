@@ -1,7 +1,8 @@
-import { validateBufferCopy } from './buffer';
+import { assertBufferUnmapped, validateBufferCopy } from './buffer';
 import { NullComputePassEncoder, NullPassEncoder, NullRenderPassEncoder } from './passes';
 import { normalizeAndValidateExtent, validateTextureCopyView } from './texture';
 import { toResourceRef } from '../core/resource-ref';
+import { validateBufferTextureCopy } from '../core/texture-copy-layout';
 import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
 import type { NullDeviceOwner } from './resource';
 import { assertRHIFeature } from './capability-validation';
@@ -18,6 +19,7 @@ import type {
   GPUComputePassDescriptor,
   GPUExtent3D,
   GPUImageCopyTexture,
+  GPUImageCopyBuffer,
   GPUPrimitiveTopology,
   RHICommandBuffer,
   RHICommandEncoder,
@@ -183,6 +185,36 @@ export class NullCommandEncoder implements RHICommandEncoder {
       destination: normalizedDestination,
       copySize: normalizedSize
     });
+  }
+
+  copyBufferToTexture(source: GPUImageCopyBuffer, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void {
+    this.ensureCanRecord();
+    this.ensureNoActivePass('copy buffer to texture');
+    assertResourceOwnedBy(source.buffer, this.owner);
+    assertResourceLive(source.buffer);
+    assertBufferUnmapped(source.buffer);
+    const size = normalizeAndValidateExtent(copySize);
+    const texture = validateTextureCopyView(destination, this.owner, size);
+    const buffer = validateBufferTextureCopy(source, destination, size, 'buffer-to-texture');
+    this.lease(source.buffer);
+    this.lease(destination.texture);
+    this.stats.copy.copyBufferToTexture += 1;
+    this.record({ kind: 'copyBufferToTexture', source: buffer, destination: texture, copySize: size });
+  }
+
+  copyTextureToBuffer(source: GPUImageCopyTexture, destination: GPUImageCopyBuffer, copySize: GPUExtent3D): void {
+    this.ensureCanRecord();
+    this.ensureNoActivePass('copy texture to buffer');
+    assertResourceOwnedBy(destination.buffer, this.owner);
+    assertResourceLive(destination.buffer);
+    assertBufferUnmapped(destination.buffer);
+    const size = normalizeAndValidateExtent(copySize);
+    const texture = validateTextureCopyView(source, this.owner, size);
+    const buffer = validateBufferTextureCopy(destination, source, size, 'texture-to-buffer');
+    this.lease(source.texture);
+    this.lease(destination.buffer);
+    this.stats.copy.copyTextureToBuffer += 1;
+    this.record({ kind: 'copyTextureToBuffer', source: texture, destination: buffer, copySize: size });
   }
 
   finish(descriptor: GPUCommandBufferDescriptor = {}): RHICommandBuffer {

@@ -97,6 +97,16 @@ export interface WebGPUNativeCommandEncoderPort {
     destination: Readonly<Record<string, unknown>>,
     copySize: Readonly<Record<string, number>>
   ): void;
+  copyBufferToTexture?(
+    source: Readonly<Record<string, unknown>>,
+    destination: Readonly<Record<string, unknown>>,
+    copySize: Readonly<Record<string, number>>
+  ): void;
+  copyTextureToBuffer?(
+    source: Readonly<Record<string, unknown>>,
+    destination: Readonly<Record<string, unknown>>,
+    copySize: Readonly<Record<string, number>>
+  ): void;
   finish(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort;
 }
 

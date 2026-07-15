@@ -14,6 +14,7 @@ import type {
   RHITextureViewDescriptor
 } from '../contracts/descriptor';
 import type { GPUMapModeFlags, GPUExtent3D } from '../contracts/webgpu';
+import { textureMipDimension, validateTextureViewMipLevel } from '../core/texture-dimensions';
 import type { WebGL2DeviceOwner } from './resource-types';
 import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
 
@@ -117,8 +118,12 @@ export class WebGL2TextureView extends WebGL2ResourceBase implements RHITextureV
   ) {
     super(id, owner, handle, descriptor.label ?? texture.label, false);
     this.descriptor = Object.freeze({ ...descriptor });
-    this.width = texture.width;
-    this.height = texture.height;
+    const mipLevel = validateTextureViewMipLevel(
+      descriptor.baseMipLevel,
+      texture.descriptor.mipLevelCount
+    );
+    this.width = textureMipDimension(texture.width, mipLevel);
+    this.height = textureMipDimension(texture.height, mipLevel);
     this.depthOrArrayLayers = descriptor.arrayLayerCount ?? texture.depthOrArrayLayers;
     this.format = descriptor.format ?? texture.format;
   }

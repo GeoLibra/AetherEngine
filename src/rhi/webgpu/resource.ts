@@ -27,6 +27,7 @@ import type {
   RHITextureViewDescriptor
 } from '../contracts/descriptor';
 import type { GPUExtent3D, GPUMapModeFlags } from '../contracts/webgpu';
+import { textureMipDimension, validateTextureViewMipLevel } from '../core/texture-dimensions';
 import type { WebGPUNativeResourcePort, WebGPUNativeTexturePort } from './native-types';
 
 const nativeHandles = new WeakMap<WebGPUResourceBase, WebGPUNativeResourcePort>();
@@ -171,8 +172,12 @@ class WebGPUTextureView extends WebGPUResourceBase implements RHITextureView {
   constructor(id: number, owner: WebGPUDeviceOwner, native: WebGPUNativeResourcePort, readonly texture: RHITexture, descriptor: RHITextureViewDescriptor) {
     super(id, owner, native, descriptor.label ?? texture.label);
     this.descriptor = Object.freeze({ ...descriptor });
-    this.width = texture.width;
-    this.height = texture.height;
+    const mipLevel = validateTextureViewMipLevel(
+      descriptor.baseMipLevel,
+      texture.descriptor.mipLevelCount
+    );
+    this.width = textureMipDimension(texture.width, mipLevel);
+    this.height = textureMipDimension(texture.height, mipLevel);
     this.depthOrArrayLayers = descriptor.arrayLayerCount ?? texture.depthOrArrayLayers;
     this.format = descriptor.format ?? texture.format;
   }

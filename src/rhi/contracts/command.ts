@@ -7,6 +7,7 @@ import type {
 } from './webgpu';
 import type {
   GPUImageCopyTexture,
+  GPUImageCopyBuffer,
   RHIBindGroup,
   RHIBuffer,
   RHIComputePipeline,
@@ -35,6 +36,8 @@ export interface RHIComputeStats {
 export interface RHICopyStats {
   copyBufferToBuffer: number;
   copyTextureToTexture: number;
+  copyBufferToTexture: number;
+  copyTextureToBuffer: number;
 }
 
 export interface RHICommandStats {
@@ -95,6 +98,18 @@ export type RHICommandRecord =
       copySize: RHINormalizedExtent3D;
     }
   | {
+      kind: 'copyBufferToTexture';
+      source: RHINormalizedImageCopyBuffer;
+      destination: RHINormalizedImageCopyTexture;
+      copySize: RHINormalizedExtent3D;
+    }
+  | {
+      kind: 'copyTextureToBuffer';
+      source: RHINormalizedImageCopyTexture;
+      destination: RHINormalizedImageCopyBuffer;
+      copySize: RHINormalizedExtent3D;
+    }
+  | {
       kind: 'setBindGroup';
       scope: 'render-pass' | 'compute-pass';
       index: number;
@@ -131,6 +146,13 @@ export interface RHINormalizedImageCopyTexture {
   aspect: GPUTextureAspect;
 }
 
+export interface RHINormalizedImageCopyBuffer {
+  buffer: RHIResourceRef;
+  offset: number;
+  bytesPerRow: number;
+  rowsPerImage: number;
+}
+
 export interface RHICommandBuffer extends RHIResource {
   readonly kind: 'command-buffer';
   getStats(): RHICommandStats;
@@ -155,6 +177,8 @@ export interface RHICommandEncoder {
     destination: GPUImageCopyTexture,
     copySize: GPUExtent3D
   ): void;
+  copyBufferToTexture(source: GPUImageCopyBuffer, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void;
+  copyTextureToBuffer(source: GPUImageCopyTexture, destination: GPUImageCopyBuffer, copySize: GPUExtent3D): void;
   finish(descriptor?: GPUCommandBufferDescriptor): RHICommandBuffer;
   getStats(): RHICommandStats;
 }

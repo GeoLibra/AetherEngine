@@ -55,6 +55,7 @@ export type {
   GPUFragmentState,
   GPUFrontFace,
   GPUImageCopyTexture,
+  GPUImageCopyBuffer,
   GPUIndexFormatWithUndefined,
   GPUMultisampleState,
   GPUPipelineLayoutDescriptor,
@@ -100,6 +101,7 @@ export type {
   RHIDrawStats,
   RHINormalizedExtent3D,
   RHINormalizedImageCopyTexture,
+  RHINormalizedImageCopyBuffer,
   RHINormalizedOrigin3D,
   RHIRenderPassEncoder,
   RHIResourceRef
