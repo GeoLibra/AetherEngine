@@ -16,5 +16,5 @@
     "sourceMap": true,
     "types": ["vitest/globals"]
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "benchmark", "vite.config.ts"]
 }
