@@ -12,7 +12,7 @@ describe('benchmark manifest', () => {
     const result = validateManifest(BENCHMARK_MANIFEST);
 
     expect(result.errors).toEqual([]);
-    expect(result.uncoveredDomainIds).toContain('rendering');
+    expect(result.uncoveredDomainIds).not.toContain('rendering');
     expect(result.uncoveredDomainIds).not.toContain('ecs');
   });
 
@@ -49,15 +49,15 @@ describe('changed-file routing', () => {
     const route = routeChangedFiles(BENCHMARK_MANIFEST, ['src/rendering/render-graph.ts']);
 
     expect(route.domainIds).toEqual(['rendering']);
-    expect(route.suiteIds).toEqual([]);
-    expect(route.missingDomainIds).toEqual(['rendering']);
+    expect(route.suiteIds).toEqual(['render-world']);
+    expect(route.missingDomainIds).toEqual([]);
   });
 
   test('also recognizes the Rendering design directory and ignores unrelated files', () => {
     expect(routeChangedFiles(
       BENCHMARK_MANIFEST,
       ['engine/design/v2/04-rendering/01-render-world.md', 'README.md']
-    ).missingDomainIds).toEqual(['rendering']);
+    ).suiteIds).toEqual(['render-world']);
     expect(routeChangedFiles(BENCHMARK_MANIFEST, ['README.md']).domainIds).toEqual([]);
   });
 });
@@ -85,15 +85,16 @@ describe('framework command planning', () => {
     expect(() => parseFrameworkCliOptions(['changed', '--quick'])).toThrow('Unknown benchmark framework option');
   });
 
-  test('fails changed runs with uncovered domains before executing commands', async () => {
+  test('runs changed rendering work through the registered suite', async () => {
     const execute = vi.fn();
 
-    await expect(runBenchmarkPlan(
+    const result = await runBenchmarkPlan(
       BENCHMARK_MANIFEST,
       { mode: 'changed', profile: 'smoke', files: ['src/rendering/render-graph.ts'], dryRun: false },
       execute
-    )).rejects.toThrow('rendering');
-    expect(execute).not.toHaveBeenCalled();
+    );
+    expect(result.suiteIds).toEqual(['render-world']);
+    expect(execute).toHaveBeenCalled();
   });
 
   test('runs only routed suites and supports dry-run planning', async () => {

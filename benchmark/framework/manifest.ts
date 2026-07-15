@@ -86,6 +86,21 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         executable: 'npm',
         args: Object.freeze(['run', 'bench:ecs', '--', '--profile', '{profile}'])
       })
+    }),
+    Object.freeze({
+      id: 'render-world',
+      description: 'RenderWorld extraction, immutable revisions, identity mapping, and deterministic diff publishing.',
+      domainIds: Object.freeze(['rendering']),
+      pathPrefixes: Object.freeze([
+        'benchmark/render-world.bench.ts',
+        'engine/design/v2/04-rendering/01-render-world.md',
+        'src/rendering/',
+        'test/rendering/'
+      ]),
+      command: Object.freeze({
+        executable: 'npm',
+        args: Object.freeze(['run', 'bench:render-world', '--', '{profile}'])
+      })
     })
   ])
 });

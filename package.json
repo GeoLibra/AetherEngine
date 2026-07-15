@@ -12,6 +12,7 @@
     "bench:all": "vite-node benchmark/framework/cli.ts all",
     "bench:foundation": "vitest bench --run benchmark/foundation-transform.bench.ts",
     "bench:ecs": "vite-node benchmark/cli.ts",
+    "bench:render-world": "node benchmark/render-world-runner.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
