@@ -1,5 +1,5 @@
-import type { GPUColor, GPULoadOp, GPUStoreOp, GPUTextureFormat } from './webgpu-types';
-import type { RHIResource, RHITexture, RHITextureView } from './resource-types';
+import type { GPUColor, GPULoadOp, GPUStoreOp, GPUTextureFormat } from './webgpu';
+import type { RHIResource, RHITexture, RHITextureView } from './resource';
 
 export interface RenderTargetDescriptor {
   label?: string;

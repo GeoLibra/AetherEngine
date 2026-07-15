@@ -1,6 +1,7 @@
 import { getBindGroupResources, validateBindGroupSlot, validatePipelineLayout } from './bindings';
 import { assertBufferUnmapped } from './buffer';
-import { assertResourceLive, assertResourceOwnedBy, toResourceRef } from '../resource';
+import { toResourceRef } from '../core/resource-ref';
+import { assertResourceLive, assertResourceOwnedBy } from './resource';
 import type {
   GPUIndexFormat,
   GPUPrimitiveTopology,
@@ -14,9 +15,9 @@ import type {
   RHIRenderPassDescriptor,
   RHIRenderPassEncoder,
   RHIRenderPipeline
-} from '../types';
-import type { NullDeviceOwner } from '../resource';
-import { assertRHIFeature } from '../capability-validation';
+} from '../contracts';
+import type { NullDeviceOwner } from './resource';
+import { assertRHIFeature } from './capability-validation';
 
 export type NullPassEncoder = NullRenderPassEncoder | NullComputePassEncoder;
 

@@ -1,4 +1,4 @@
-import type { RHIRenderPipeline } from '../resource-types';
+import type { RHIRenderPipeline } from '../contracts/resource';
 import {
   createVertexArrayCacheKey,
   type WebGL2IndexBufferState,

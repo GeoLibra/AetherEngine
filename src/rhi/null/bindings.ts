@@ -1,6 +1,6 @@
 import { assertBufferUnmapped, validateBufferRange } from './buffer';
-import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from '../resource';
-import type { NullDeviceOwner } from '../resource';
+import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
+import type { NullDeviceOwner } from './resource';
 import type {
   GPUBindGroupDescriptor,
   GPUBindGroupEntry,
@@ -15,7 +15,7 @@ import type {
   RHIPipelineLayout,
   RHIResource,
   RHIShaderModule
-} from '../types';
+} from '../contracts';
 
 export class NullShaderModule extends NullResourceBase implements RHIShaderModule {
   readonly kind = 'shader-module';

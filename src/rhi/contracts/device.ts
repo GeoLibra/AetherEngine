@@ -3,7 +3,7 @@ import type {
   GPUImageDataLayout,
   GPUExtent3D,
   RHIUploadData
-} from './webgpu-types';
+} from './webgpu';
 import type {
   GPUImageCopyTexture,
   RHIBindGroup,
@@ -17,10 +17,10 @@ import type {
   RHISampler,
   RHIShaderModule,
   RHITexture
-} from './resource-types';
-import type { RHICommandEncoder, RHICommandBuffer } from './command-types';
-import type { DeviceCapabilities } from './capability-types';
-import type { DeviceLostInfo, RHIDeviceState } from './lifecycle-types';
+} from './resource';
+import type { RHICommandEncoder, RHICommandBuffer } from './command';
+import type { DeviceCapabilities } from './capability';
+import type { DeviceLostInfo, RHIDeviceState } from './lifecycle';
 import type {
   RHIBindGroupDescriptor,
   RHIBindGroupLayoutDescriptor,
@@ -30,9 +30,9 @@ import type {
   RHISamplerDescriptor,
   RHIShaderModuleDescriptor,
   RHITextureDescriptor
-} from './descriptor-types';
-import type { RHIQueueMetrics, RHISubmission } from './submission-types';
-import type { RHIExtensionToken } from './extension-types';
+} from './descriptor';
+import type { RHIQueueMetrics, RHISubmission } from './submission';
+import type { RHIExtensionToken } from './extension';
 
 export interface RHIQueue {
   submit(commandBuffers: readonly RHICommandBuffer[]): RHISubmission;

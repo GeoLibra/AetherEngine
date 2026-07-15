@@ -1,6 +1,6 @@
 import type { SurfaceTarget } from '../../platform/types';
-import type { RHIDevice } from '../device-types';
-import type { RHITexture } from '../resource-types';
+import type { RHIDevice } from '../contracts/device';
+import type { RHITexture } from '../contracts/resource';
 import type {
   RHISurface,
   RHISurfaceAcquireResult,
@@ -8,7 +8,7 @@ import type {
   RHISurfaceFrame,
   RHISurfaceFrameState,
   RHISurfaceState
-} from '../surface-types';
+} from '../contracts/surface';
 
 const TEXTURE_USAGE_RENDER_ATTACHMENT = 1 << 4;
 

@@ -1,4 +1,4 @@
-import type { RHIRenderPipeline } from '../resource-types';
+import type { RHIRenderPipeline } from '../contracts/resource';
 import type { WebGL2RenderPassSnapshot } from './command-types';
 import type { WebGL2Buffer } from './resource';
 

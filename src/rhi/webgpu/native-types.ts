@@ -1,7 +1,7 @@
-import type { FormatCapabilities, RHIFeature, RHILimits } from '../capability-types';
+import type { FormatCapabilities, RHIFeature, RHILimits } from '../contracts/capability';
 import type { DiagnosticSource } from '../../diagnostics';
-import type { RHISurfaceConfiguration } from '../surface-types';
-import type { GPUTextureFormat } from '../webgpu-types';
+import type { RHISurfaceConfiguration } from '../contracts/surface';
+import type { GPUTextureFormat } from '../contracts/webgpu';
 
 export interface WebGPUNativeAdapterInfo {
   readonly name: string;

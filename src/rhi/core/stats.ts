@@ -1,4 +1,4 @@
-import type { GPUPrimitiveTopology, RHICommandStats, RHIDrawStats } from './types';
+import type { GPUPrimitiveTopology, RHICommandStats, RHIDrawStats } from '../contracts';
 
 export function createCommandStats(): RHICommandStats {
   return {

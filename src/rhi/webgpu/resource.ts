@@ -1,4 +1,4 @@
-import type { RHIDeviceState, RHIResourceState } from '../lifecycle-types';
+import type { RHIDeviceState, RHIResourceState } from '../contracts/lifecycle';
 import type {
   GPUBindGroupDescriptor,
   GPUBufferBinding,
@@ -17,7 +17,7 @@ import type {
   RHIShaderModule,
   RHITexture,
   RHITextureView
-} from '../resource-types';
+} from '../contracts/resource';
 import type {
   RHIBindGroupLayoutDescriptor,
   RHIBufferDescriptor,
@@ -25,8 +25,8 @@ import type {
   RHIShaderModuleDescriptor,
   RHITextureDescriptor,
   RHITextureViewDescriptor
-} from '../descriptor-types';
-import type { GPUExtent3D, GPUMapModeFlags } from '../webgpu-types';
+} from '../contracts/descriptor';
+import type { GPUExtent3D, GPUMapModeFlags } from '../contracts/webgpu';
 import type { WebGPUNativeResourcePort, WebGPUNativeTexturePort } from './native-types';
 
 const nativeHandles = new WeakMap<WebGPUResourceBase, WebGPUNativeResourcePort>();

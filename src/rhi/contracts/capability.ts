@@ -1,4 +1,4 @@
-import type { GPUTextureFormat } from './webgpu-types';
+import type { GPUTextureFormat } from './webgpu';
 
 export type RHIBackend = 'webgpu' | 'webgl2' | 'native' | 'null';
 

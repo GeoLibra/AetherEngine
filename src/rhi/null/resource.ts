@@ -1,6 +1,6 @@
-import type { RHIResource, RHIResourceKind, RHIResourceRef } from './types';
-import type { RHIDeviceState, RHIResourceState } from './lifecycle-types';
-import type { DeviceCapabilities } from './capability-types';
+import type { RHIResource, RHIResourceKind } from '../contracts';
+import type { DeviceCapabilities } from '../contracts/capability';
+import type { RHIDeviceState, RHIResourceState } from '../contracts/lifecycle';
 
 export interface NullDeviceOwner {
   readonly token: symbol;
@@ -56,15 +56,4 @@ export function assertResourceOwnedBy(resource: RHIResource, owner: NullDeviceOw
   if (resource.owner !== owner) {
     throw new Error(`Resource "${resource.label ?? resource.kind}" belongs to a different NullDevice.`);
   }
-}
-
-export function toResourceRef(resource: RHIResource): RHIResourceRef {
-  const ref: RHIResourceRef = {
-    kind: resource.kind,
-    id: resource.id
-  };
-  if (resource.label !== undefined) {
-    ref.label = resource.label;
-  }
-  return ref;
 }

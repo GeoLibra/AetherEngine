@@ -1,4 +1,4 @@
-import type { RHISubmission, RHISubmissionStatus, SubmissionResult } from '../submission-types';
+import type { RHISubmission, RHISubmissionStatus, SubmissionResult } from '../contracts/submission';
 
 export class WebGL2Submission implements RHISubmission {
   private currentStatus: RHISubmissionStatus = 'pending';

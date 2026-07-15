@@ -1,7 +1,7 @@
-import type { AdapterInfo, DeviceRequest, RHIAdapter } from '../adapter-types';
-import { collectDeviceRequestDifferences } from '../adapter-validation';
-import type { AdapterCapabilities } from '../capability-types';
-import { RHIDeviceRequestError } from '../errors';
+import type { AdapterInfo, DeviceRequest, RHIAdapter } from '../contracts/adapter';
+import { collectDeviceRequestDifferences } from '../core/adapter-validation';
+import type { AdapterCapabilities } from '../contracts/capability';
+import { RHIDeviceRequestError } from '../contracts/errors';
 import { createWebGL2Capabilities, createWebGL2Facts } from './capabilities';
 import { WebGL2Device } from './device';
 import type { WebGL2AdapterFacts, WebGL2NativeContextPort } from './native-types';

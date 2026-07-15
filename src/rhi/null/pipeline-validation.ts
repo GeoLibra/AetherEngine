@@ -1,5 +1,5 @@
-import { assertResourceLive, assertResourceOwnedBy } from '../resource';
-import type { NullDeviceOwner } from '../resource';
+import { assertResourceLive, assertResourceOwnedBy } from './resource';
+import type { NullDeviceOwner } from './resource';
 import type {
   GPUBlendComponent,
   GPUColorTargetState,
@@ -13,7 +13,7 @@ import type {
   RHIComputePipelineDescriptor,
   RHIRenderPipelineDescriptor,
   RHIShaderModule
-} from '../types';
+} from '../contracts';
 
 type PipelineStageName = 'Vertex' | 'Fragment' | 'Compute';
 

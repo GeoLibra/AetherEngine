@@ -1,4 +1,4 @@
-import type { GPUIndexFormat } from '../webgpu-types';
+import type { GPUIndexFormat } from '../contracts/webgpu';
 import type { WebGL2Metrics } from './metrics';
 import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
 

@@ -1,6 +1,6 @@
-import type { DeviceCapabilities } from '../capability-types';
+import type { DeviceCapabilities } from '../contracts/capability';
 import { DiagnosticStore } from '../../diagnostics';
-import type { RHICommandEncoder } from '../command-types';
+import type { RHICommandEncoder } from '../contracts/command';
 import type {
   RHIBindGroupDescriptor,
   RHIBindGroupLayoutDescriptor,
@@ -10,11 +10,11 @@ import type {
   RHISamplerDescriptor,
   RHIShaderModuleDescriptor,
   RHITextureDescriptor
-} from '../descriptor-types';
-import type { RHIDevice } from '../device-types';
-import type { RHIExtensionToken } from '../extension-types';
-import type { DeviceLostInfo, RHIDeviceState } from '../lifecycle-types';
-import type { RHISurfaceConfiguration } from '../surface-types';
+} from '../contracts/descriptor';
+import type { RHIDevice } from '../contracts/device';
+import type { RHIExtensionToken } from '../contracts/extension';
+import type { DeviceLostInfo, RHIDeviceState } from '../contracts/lifecycle';
+import type { RHISurfaceConfiguration } from '../contracts/surface';
 import type {
   RHIBindGroup,
   RHIBindGroupLayout,
@@ -27,8 +27,8 @@ import type {
   RHISampler,
   RHIShaderModule,
   RHITexture
-} from '../resource-types';
-import { WebGPUNativeOperationError } from '../errors';
+} from '../contracts/resource';
+import { WebGPUNativeOperationError } from '../contracts/errors';
 import type {
   WebGPUNativeCanvasContextPort,
   WebGPUNativeDeviceLostInfo,

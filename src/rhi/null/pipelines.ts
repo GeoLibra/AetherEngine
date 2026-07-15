@@ -1,5 +1,5 @@
-import { NullResourceBase } from '../resource';
-import type { NullDeviceOwner } from '../resource';
+import { NullResourceBase } from './resource';
+import type { NullDeviceOwner } from './resource';
 import type {
   GPUBlendComponent,
   GPUBlendState,
@@ -17,7 +17,7 @@ import type {
   RHIPipelineLayout,
   RHIRenderPipeline,
   RHIRenderPipelineDescriptor
-} from '../types';
+} from '../contracts';
 
 export class NullRenderPipeline extends NullResourceBase implements RHIRenderPipeline {
   readonly kind = 'render-pipeline';

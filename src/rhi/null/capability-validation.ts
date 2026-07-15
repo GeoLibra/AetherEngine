@@ -1,5 +1,5 @@
-import type { RHIFeature, RHIOperation } from './capability-types';
-import { RHIUnsupportedOperationError } from './errors';
+import type { RHIFeature, RHIOperation } from '../contracts/capability';
+import { RHIUnsupportedOperationError } from '../contracts/errors';
 import type { NullDeviceOwner } from './resource';
 
 export function assertRHIFeature(

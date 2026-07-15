@@ -1,8 +1,8 @@
 import { DiagnosticStore } from '../../diagnostics';
-import type { AdapterInfo, DeviceRequest, RHIAdapter } from '../adapter-types';
-import { collectDeviceRequestDifferences } from '../adapter-validation';
-import type { AdapterCapabilities, RHIFeature } from '../capability-types';
-import { RHIDeviceRequestError } from '../errors';
+import type { AdapterInfo, DeviceRequest, RHIAdapter } from '../contracts/adapter';
+import { collectDeviceRequestDifferences } from '../core/adapter-validation';
+import type { AdapterCapabilities, RHIFeature } from '../contracts/capability';
+import { RHIDeviceRequestError } from '../contracts/errors';
 import { WebGPUDevice } from '../webgpu/device';
 import type { WebGPUNativeDeviceRequest } from '../webgpu/native-types';
 import { createNativeDawnCapabilities } from './capabilities';

@@ -1,16 +1,17 @@
 import { validateBufferCopy } from './buffer';
 import { NullComputePassEncoder, NullPassEncoder, NullRenderPassEncoder } from './passes';
 import { normalizeAndValidateExtent, validateTextureCopyView } from './texture';
-import { assertResourceLive, assertResourceOwnedBy, NullResourceBase, toResourceRef } from '../resource';
-import type { NullDeviceOwner } from '../resource';
-import { assertRHIFeature } from '../capability-validation';
+import { toResourceRef } from '../core/resource-ref';
+import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
+import type { NullDeviceOwner } from './resource';
+import { assertRHIFeature } from './capability-validation';
 import {
   cloneCommandStats,
   createCommandStats,
   recordDraw,
   recordIndexedDraw,
   recordIndirectDraw
-} from '../stats';
+} from '../core/stats';
 import type {
   GPUCommandBufferDescriptor,
   GPUCommandEncoderDescriptor,
@@ -27,7 +28,7 @@ import type {
   RHIResource,
   RHIRenderPassDescriptor,
   RHIRenderPassEncoder
-} from '../types';
+} from '../contracts';
 
 export class NullCommandBuffer extends NullResourceBase implements RHICommandBuffer {
   readonly kind = 'command-buffer';

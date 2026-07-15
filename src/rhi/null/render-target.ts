@@ -9,7 +9,7 @@ import type {
   RHIRenderTarget,
   RHITexture,
   RenderTargetDescriptor
-} from './types';
+} from '../contracts';
 
 export class NullRenderTarget extends NullResourceBase implements RHIRenderTarget {
   readonly kind = 'render-target';

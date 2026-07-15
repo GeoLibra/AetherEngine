@@ -14,9 +14,9 @@ import type {
   RHIResource,
   RHIRenderPassDescriptor,
   RHIRenderPassEncoder
-} from '../types';
-import { toResourceRef } from '../resource';
-import { cloneCommandStats, createCommandStats, recordDraw, recordIndexedDraw } from '../stats';
+} from '../contracts';
+import { toResourceRef } from '../core/resource-ref';
+import { cloneCommandStats, createCommandStats, recordDraw, recordIndexedDraw } from '../core/stats';
 import { WebGL2Buffer, WebGL2ResourceBase, WebGL2Texture, assertWebGL2Resource, normalizeExtent } from './resource';
 import type { WebGL2DeviceOwner } from './resource-types';
 import type { WebGL2ImageCopyTexture, WebGL2RenderPassSnapshot, WebGL2ReplayCommand } from './command-types';

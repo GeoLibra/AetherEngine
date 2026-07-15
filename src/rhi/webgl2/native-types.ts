@@ -1,5 +1,5 @@
-import type { FormatCapabilities, RHILimits } from '../capability-types';
-import type { GPUTextureFormat } from '../webgpu-types';
+import type { FormatCapabilities, RHILimits } from '../contracts/capability';
+import type { GPUTextureFormat } from '../contracts/webgpu';
 import type { WebGL2BindingManifestEntry } from './shader-types';
 
 export type WebGL2NativeLimits = RHILimits;

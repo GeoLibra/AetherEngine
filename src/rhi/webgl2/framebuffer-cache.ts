@@ -1,4 +1,4 @@
-import type { RHIResource, RHITextureView } from '../resource-types';
+import type { RHIResource, RHITextureView } from '../contracts/resource';
 import { createFramebufferCacheKey } from './cache-key';
 import type { WebGL2RenderPassSnapshot } from './command-types';
 import type { WebGL2Metrics } from './metrics';

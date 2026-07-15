@@ -1,5 +1,5 @@
-import { createCapabilitySnapshot, RHI_FEATURES } from '../capabilities';
-import type { AdapterCapabilities, FeatureSupport, RHIFeature } from '../capability-types';
+import { createCapabilitySnapshot, RHI_FEATURES } from '../core/capabilities';
+import type { AdapterCapabilities, FeatureSupport, RHIFeature } from '../contracts/capability';
 import { WEBGPU_CORE_FEATURES } from '../webgpu/native-types';
 import type { NativeDawnAdapterPort } from './native-types';
 

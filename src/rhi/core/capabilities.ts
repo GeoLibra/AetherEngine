@@ -5,8 +5,8 @@ import type {
   QueueCapability,
   RHIFeature,
   RHILimits
-} from './capability-types';
-import type { RHIBackend } from './capability-types';
+} from '../contracts/capability';
+import type { RHIBackend } from '../contracts/capability';
 
 export const RHI_FEATURES: readonly RHIFeature[] = Object.freeze([
   'compute',

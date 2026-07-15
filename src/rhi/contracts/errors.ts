@@ -2,8 +2,8 @@ import type {
   DeviceCapabilities,
   RHICapabilityRequirement,
   RHIOperation
-} from './capability-types';
-import type { DeviceRequestDifference } from './adapter-types';
+} from './capability';
+import type { DeviceRequestDifference } from './adapter';
 
 export class RHIDeviceRequestError extends Error {
   readonly code = 'rhi/device-request-failed' as const;

@@ -1,5 +1,5 @@
-import type { GPUImageCopyTexture, RHIBuffer } from '../resource-types';
-import type { BufferWriteRange, GPUExtent3D, GPUImageDataLayout, RHIUploadData } from '../webgpu-types';
+import type { GPUImageCopyTexture, RHIBuffer } from '../contracts/resource';
+import type { BufferWriteRange, GPUExtent3D, GPUImageDataLayout, RHIUploadData } from '../contracts/webgpu';
 import { WebGL2Buffer, WebGL2Texture, assertWebGL2Resource, getWebGL2Handle, normalizeExtent } from './resource';
 import type { WebGL2DeviceOwner } from './resource-types';
 import type { WebGL2NativeContextPort } from './native-types';

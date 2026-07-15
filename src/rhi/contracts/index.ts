@@ -37,7 +37,7 @@ export type {
   GPUTextureUsageFlags,
   GPUTextureViewDescriptor,
   RHIUploadData
-} from './webgpu-types';
+} from './webgpu';
 export type {
   GPUBindGroupDescriptor,
   GPUBindGroupEntry,
@@ -79,7 +79,7 @@ export type {
   RHIShaderModule,
   RHITexture,
   RHITextureView
-} from './resource-types';
+} from './resource';
 export type {
   ColorAttachmentDescriptor,
   DepthStencilAttachmentDescriptor,
@@ -88,7 +88,7 @@ export type {
   RHIRenderPassDescriptor,
   RHIRenderTarget,
   RenderTargetDescriptor
-} from './render-target-types';
+} from './render-target';
 export type {
   RHICopyStats,
   RHICommandBuffer,
@@ -103,7 +103,7 @@ export type {
   RHINormalizedOrigin3D,
   RHIRenderPassEncoder,
   RHIResourceRef
-} from './command-types';
-export type { RHIDevice, RHIQueue } from './device-types';
-export type { RHIExtensionToken } from './extension-types';
-export type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus, SubmissionResult } from './submission-types';
+} from './command';
+export type { RHIDevice, RHIQueue } from './device';
+export type { RHIExtensionToken } from './extension';
+export type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus, SubmissionResult } from './submission';

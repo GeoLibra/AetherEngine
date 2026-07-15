@@ -3,7 +3,7 @@ import type {
   RHIRenderPipeline,
   RHIRenderPipelineDescriptor,
   RHIShaderModule
-} from '../resource-types';
+} from '../contracts/resource';
 import { WebGL2ResourceBase, assertWebGL2Resource } from './resource';
 import type { WebGL2DeviceOwner } from './resource-types';
 import type {
