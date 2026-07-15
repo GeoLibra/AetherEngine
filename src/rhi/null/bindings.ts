@@ -1,5 +1,6 @@
 import { assertBufferUnmapped, validateBufferRange } from './buffer';
-import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from '../resource';
+import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
+import type { NullDeviceOwner } from './resource';
 import type {
   GPUBindGroupDescriptor,
   GPUBindGroupEntry,
@@ -12,14 +13,15 @@ import type {
   RHIBindGroup,
   RHIBindGroupLayout,
   RHIPipelineLayout,
+  RHIResource,
   RHIShaderModule
-} from '../types';
+} from '../contracts';
 
 export class NullShaderModule extends NullResourceBase implements RHIShaderModule {
   readonly kind = 'shader-module';
   readonly descriptor: Readonly<GPUShaderModuleDescriptor>;
 
-  constructor(id: number, owner: symbol, descriptor: GPUShaderModuleDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, descriptor: GPUShaderModuleDescriptor) {
     super(id, owner, descriptor.label);
     if (typeof descriptor.code !== 'string' || descriptor.code.length === 0) {
       throw new Error('Shader module descriptor requires non-empty code.');
@@ -34,7 +36,7 @@ export class NullBindGroupLayout extends NullResourceBase implements RHIBindGrou
   readonly dynamicBindingCount: number;
   private readonly entriesByBinding = new Map<number, GPUBindGroupLayoutEntry>();
 
-  constructor(id: number, owner: symbol, descriptor: GPUBindGroupLayoutDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, descriptor: GPUBindGroupLayoutDescriptor) {
     super(id, owner, descriptor.label);
     validateBindGroupLayoutDescriptor(descriptor);
     const entries = descriptor.entries.map(cloneBindGroupLayoutEntry);
@@ -60,7 +62,7 @@ export class NullPipelineLayout extends NullResourceBase implements RHIPipelineL
   readonly descriptor: Readonly<GPUPipelineLayoutDescriptor>;
   readonly bindGroupLayouts: readonly RHIBindGroupLayout[];
 
-  constructor(id: number, owner: symbol, descriptor: GPUPipelineLayoutDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, descriptor: GPUPipelineLayoutDescriptor) {
     super(id, owner, descriptor.label);
     for (const layout of descriptor.bindGroupLayouts) {
       assertResourceOwnedBy(layout, owner);
@@ -81,7 +83,7 @@ export class NullBindGroup extends NullResourceBase implements RHIBindGroup {
   readonly layout: RHIBindGroupLayout;
   readonly dynamicBindingCount: number;
 
-  constructor(id: number, owner: symbol, descriptor: GPUBindGroupDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, descriptor: GPUBindGroupDescriptor) {
     super(id, owner, descriptor.label);
     validateBindGroupDescriptor(descriptor, owner);
     this.layout = descriptor.layout;
@@ -97,7 +99,7 @@ export class NullBindGroup extends NullResourceBase implements RHIBindGroup {
   }
 }
 
-export function validatePipelineLayout(layout: RHIPipelineLayout | undefined, owner: symbol): void {
+export function validatePipelineLayout(layout: RHIPipelineLayout | undefined, owner: NullDeviceOwner): void {
   if (layout === undefined) {
     return;
   }
@@ -113,7 +115,7 @@ export function validateBindGroupSlot(
   index: number,
   bindGroup: RHIBindGroup,
   dynamicOffsets: readonly number[],
-  owner: symbol,
+  owner: NullDeviceOwner,
   pipelineLayout: RHIPipelineLayout | undefined
 ): void {
   if (!Number.isInteger(index) || index < 0) {
@@ -148,6 +150,13 @@ export function validateBindGroupSlot(
   validateDynamicOffsetRanges(bindGroup, dynamicOffsets);
 }
 
+export function getBindGroupResources(bindGroup: RHIBindGroup): readonly RHIResource[] {
+  return bindGroup.descriptor.entries.map((entry) => {
+    const resource = entry.resource;
+    return isBufferBinding(resource) ? resource.buffer : resource;
+  });
+}
+
 function validateBindGroupLayoutDescriptor(descriptor: GPUBindGroupLayoutDescriptor): void {
   const bindings = new Set<number>();
   for (const entry of descriptor.entries) {
@@ -171,7 +180,7 @@ function validateBindGroupLayoutDescriptor(descriptor: GPUBindGroupLayoutDescrip
   }
 }
 
-function validateBindGroupDescriptor(descriptor: GPUBindGroupDescriptor, owner: symbol): void {
+function validateBindGroupDescriptor(descriptor: GPUBindGroupDescriptor, owner: NullDeviceOwner): void {
   assertResourceOwnedBy(descriptor.layout, owner);
   assertResourceLive(descriptor.layout);
 
@@ -201,7 +210,7 @@ function validateBindGroupDescriptor(descriptor: GPUBindGroupDescriptor, owner: 
 function validateBindingResource(
   layoutEntry: GPUBindGroupLayoutEntry,
   resource: GPUBindingResource,
-  owner: symbol
+  owner: NullDeviceOwner
 ): void {
   if (!isObjectResource(resource)) {
     throw new Error(`Binding ${layoutEntry.binding} resource is missing or invalid.`);
@@ -264,7 +273,7 @@ function isObjectResource(resource: GPUBindingResource): resource is GPUBindingR
   return typeof resource === 'object' && resource !== null;
 }
 
-function validateBindGroupContentsLive(bindGroup: RHIBindGroup, owner: symbol): void {
+function validateBindGroupContentsLive(bindGroup: RHIBindGroup, owner: NullDeviceOwner): void {
   for (const descriptorEntry of bindGroup.descriptor.entries) {
     const layoutEntry = bindGroup.layout.getEntry(descriptorEntry.binding);
     if (layoutEntry === undefined) {

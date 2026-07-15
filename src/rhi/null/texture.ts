@@ -1,4 +1,7 @@
-import { assertResourceLive, assertResourceOwnedBy, NullResourceBase, toResourceRef } from '../resource';
+import { toResourceRef } from '../core/resource-ref';
+import { textureMipDimension, validateTextureViewMipLevel } from '../core/texture-dimensions';
+import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
+import type { NullDeviceOwner } from './resource';
 import type {
   GPUExtent3D,
   GPUImageCopyTexture,
@@ -14,7 +17,7 @@ import type {
   RHISampler,
   RHITexture,
   RHITextureView
-} from '../types';
+} from '../contracts';
 
 export class NullTexture extends NullResourceBase implements RHITexture {
   readonly kind = 'texture';
@@ -27,7 +30,7 @@ export class NullTexture extends NullResourceBase implements RHITexture {
 
   constructor(
     id: number,
-    owner: symbol,
+    owner: NullDeviceOwner,
     descriptor: GPUTextureDescriptor,
     private readonly allocateViewId: () => number
   ) {
@@ -42,9 +45,7 @@ export class NullTexture extends NullResourceBase implements RHITexture {
   }
 
   createView(descriptor: GPUTextureViewDescriptor = {}): RHITextureView {
-    if (this.released) {
-      throw new Error(`Texture "${this.label ?? this.id}" has been released.`);
-    }
+    assertResourceLive(this);
     return new NullTextureView(this.allocateViewId(), this.owner, this, descriptor);
   }
 }
@@ -57,17 +58,22 @@ export class NullTextureView extends NullResourceBase implements RHITextureView 
   readonly depthOrArrayLayers: number;
   readonly format: GPUTextureFormat;
 
-  constructor(id: number, owner: symbol, readonly texture: RHITexture, descriptor: GPUTextureViewDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, readonly texture: RHITexture, descriptor: GPUTextureViewDescriptor) {
     super(id, owner, descriptor.label ?? texture.label);
     this.descriptor = { ...descriptor };
-    this.width = texture.width;
-    this.height = texture.height;
+    const mipLevel = validateTextureViewMipLevel(
+      descriptor.baseMipLevel,
+      texture.descriptor.mipLevelCount
+    );
+    this.width = textureMipDimension(texture.width, mipLevel);
+    this.height = textureMipDimension(texture.height, mipLevel);
     this.depthOrArrayLayers = descriptor.arrayLayerCount ?? texture.depthOrArrayLayers;
     this.format = descriptor.format ?? texture.format;
   }
 
-  override get released(): boolean {
-    return this.isReleased || this.texture.released;
+  override get state() {
+    if (this.owner.state !== 'live') return 'device-lost' as const;
+    return this.isDisposed ? 'disposed' as const : this.texture.state;
   }
 }
 
@@ -75,7 +81,7 @@ export class NullSampler extends NullResourceBase implements RHISampler {
   readonly kind = 'sampler';
   readonly descriptor: Readonly<GPUSamplerDescriptor>;
 
-  constructor(id: number, owner: symbol, descriptor: GPUSamplerDescriptor) {
+  constructor(id: number, owner: NullDeviceOwner, descriptor: GPUSamplerDescriptor) {
     super(id, owner, descriptor.label);
     this.descriptor = { ...descriptor };
   }
@@ -125,7 +131,7 @@ export function normalizeAndValidateExtent(size: GPUExtent3D): RHINormalizedExte
 
 export function validateTextureCopyView(
   view: GPUImageCopyTexture,
-  owner: symbol,
+  owner: NullDeviceOwner,
   copySize: RHINormalizedExtent3D
 ): RHINormalizedImageCopyTexture {
   assertResourceOwnedBy(view.texture, owner);
@@ -209,13 +215,12 @@ function normalizeOrigin(origin: GPUImageCopyTexture['origin']): RHINormalizedOr
 }
 
 function getTextureMipSize(texture: RHITexture, mipLevel: number): RHINormalizedExtent3D {
-  const scale = 2 ** mipLevel;
   const scaleDepth = texture.descriptor.dimension === '3d';
   return {
-    width: Math.max(1, Math.floor(texture.width / scale)),
-    height: Math.max(1, Math.floor(texture.height / scale)),
+    width: textureMipDimension(texture.width, mipLevel),
+    height: textureMipDimension(texture.height, mipLevel),
     depthOrArrayLayers: scaleDepth
-      ? Math.max(1, Math.floor(texture.depthOrArrayLayers / scale))
+      ? textureMipDimension(texture.depthOrArrayLayers, mipLevel)
       : texture.depthOrArrayLayers
   };
 }

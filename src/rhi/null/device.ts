@@ -4,18 +4,11 @@ import { NullCommandEncoder } from './command';
 import { NullComputePipeline, NullRenderPipeline } from './pipelines';
 import { validateComputePipelineDescriptor, validateRenderPipelineDescriptor } from './pipeline-validation';
 import { NullQueue } from './queue';
+import type { NullSubmissionMode } from './queue';
 import { NullSampler, NullTexture } from './texture';
-import { NullRenderTarget } from '../render-target';
-import { assertResourceOwnedBy, NullResourceBase } from '../resource';
+import { NullRenderTarget } from './render-target';
+import type { NullDeviceOwner } from './resource';
 import type {
-  GPUBindGroupDescriptor,
-  GPUBindGroupLayoutDescriptor,
-  GPUBufferDescriptor,
-  GPUCommandEncoderDescriptor,
-  GPUPipelineLayoutDescriptor,
-  GPUSamplerDescriptor,
-  GPUSupportedLimits,
-  GPUTextureDescriptor,
   RHIBindGroup,
   RHIBindGroupLayout,
   RHIBuffer,
@@ -27,48 +20,120 @@ import type {
   RHIRenderPipeline,
   RHIRenderPipelineDescriptor,
   RHIRenderTarget,
-  RHIResource,
   RHISampler,
   RHIShaderModule,
   RHITexture,
   RenderTargetDescriptor,
-  GPUShaderModuleDescriptor
-} from '../types';
+} from '../contracts';
+import { createNullConformanceCapabilities } from '../core/capabilities';
+import type { DeviceCapabilities } from '../contracts/capability';
+import type { DeviceLostInfo, RHIDeviceState } from '../contracts/lifecycle';
+import { assertRHIFeature } from './capability-validation';
+import type {
+  RHIBindGroupDescriptor,
+  RHIBindGroupLayoutDescriptor,
+  RHIBufferDescriptor,
+  RHICommandEncoderDescriptor,
+  RHIPipelineLayoutDescriptor,
+  RHISamplerDescriptor,
+  RHIShaderModuleDescriptor,
+  RHITextureDescriptor
+} from '../contracts/descriptor';
+import type { RHIExtensionToken } from '../contracts/extension';
+
+let nextDeviceGeneration = 1;
+
+export interface NullDeviceOptions {
+  readonly capabilities?: DeviceCapabilities;
+  readonly submissionMode?: NullSubmissionMode;
+}
 
 export class NullDevice implements RHIDevice {
-  private readonly owner = Symbol('NullDevice');
+  private readonly owner: NullDeviceOwner;
 
-  readonly queue = new NullQueue(this.owner);
-  readonly features = new Set<string>();
-  readonly limits = {} as GPUSupportedLimits;
+  readonly queue: NullQueue;
+  readonly capabilities: DeviceCapabilities;
+  readonly generation = nextDeviceGeneration++;
+  readonly lost: Promise<DeviceLostInfo>;
 
   private nextResourceId = 1;
+  private currentState: RHIDeviceState = 'live';
+  private resolveLost!: (info: DeviceLostInfo) => void;
 
-  createBuffer(descriptor: GPUBufferDescriptor): RHIBuffer {
+  constructor(options: NullDeviceOptions = {}) {
+    this.capabilities = options.capabilities ?? createNullConformanceCapabilities();
+    this.owner = {
+      token: Symbol('NullDevice'),
+      generation: this.generation,
+      capabilities: this.capabilities,
+      state: 'live'
+    };
+    this.queue = new NullQueue(this.owner, options.submissionMode);
+    this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
+  }
+
+  get state(): RHIDeviceState { return this.currentState; }
+
+  getExtension<T>(_token: RHIExtensionToken<T>): T | undefined { return undefined; }
+
+  loseForTesting(reason: DeviceLostInfo['reason'], message: string): void {
+    if (this.currentState !== 'live') return;
+    this.currentState = 'lost';
+    this.owner.state = 'lost';
+    this.queue.handleDeviceLoss();
+    this.resolveLost(Object.freeze({ reason, message, generation: this.generation }));
+  }
+
+  destroy(): void {
+    if (this.currentState === 'destroyed') return;
+    if (this.currentState === 'live') {
+      this.currentState = 'destroyed';
+      this.owner.state = 'destroyed';
+      this.queue.handleDeviceLoss();
+      this.resolveLost(Object.freeze({
+        reason: 'destroyed',
+        message: 'NullDevice was destroyed.',
+        generation: this.generation
+      }));
+      return;
+    }
+    this.currentState = 'destroyed';
+    this.owner.state = 'destroyed';
+  }
+
+  createBuffer(descriptor: RHIBufferDescriptor): RHIBuffer {
     return new NullBuffer(this.allocateId(), this.owner, descriptor);
   }
 
-  createTexture(descriptor: GPUTextureDescriptor): RHITexture {
+  createTexture(descriptor: RHITextureDescriptor): RHITexture {
     return new NullTexture(this.allocateId(), this.owner, descriptor, () => this.allocateId());
   }
 
-  createSampler(descriptor: GPUSamplerDescriptor = {}): RHISampler {
+  createSampler(descriptor: RHISamplerDescriptor = {}): RHISampler {
     return new NullSampler(this.allocateId(), this.owner, descriptor);
   }
 
-  createShaderModule(descriptor: GPUShaderModuleDescriptor): RHIShaderModule {
+  createShaderModule(descriptor: RHIShaderModuleDescriptor): RHIShaderModule {
     return new NullShaderModule(this.allocateId(), this.owner, descriptor);
   }
 
-  createBindGroupLayout(descriptor: GPUBindGroupLayoutDescriptor): RHIBindGroupLayout {
+  createBindGroupLayout(descriptor: RHIBindGroupLayoutDescriptor): RHIBindGroupLayout {
+    for (const entry of descriptor.entries) {
+      if (entry.buffer?.type === 'storage' || entry.buffer?.type === 'read-only-storage') {
+        assertRHIFeature(this.owner, 'storage-buffer', 'create-storage-buffer');
+      }
+      if (entry.storageTexture !== undefined) {
+        assertRHIFeature(this.owner, 'storage-texture', 'create-storage-texture');
+      }
+    }
     return new NullBindGroupLayout(this.allocateId(), this.owner, descriptor);
   }
 
-  createPipelineLayout(descriptor: GPUPipelineLayoutDescriptor): RHIPipelineLayout {
+  createPipelineLayout(descriptor: RHIPipelineLayoutDescriptor): RHIPipelineLayout {
     return new NullPipelineLayout(this.allocateId(), this.owner, descriptor);
   }
 
-  createBindGroup(descriptor: GPUBindGroupDescriptor): RHIBindGroup {
+  createBindGroup(descriptor: RHIBindGroupDescriptor): RHIBindGroup {
     return new NullBindGroup(this.allocateId(), this.owner, descriptor);
   }
 
@@ -80,6 +145,7 @@ export class NullDevice implements RHIDevice {
   }
 
   createComputePipeline(descriptor: RHIComputePipelineDescriptor = {}): RHIComputePipeline {
+    assertRHIFeature(this.owner, 'compute', 'create-compute-pipeline');
     validatePipelineDescriptorObject(descriptor, 'Compute');
     validatePipelineLayout(descriptor.layout, this.owner);
     validateComputePipelineDescriptor(descriptor, this.owner);
@@ -90,24 +156,12 @@ export class NullDevice implements RHIDevice {
     return new NullRenderTarget(this.allocateId(), this.owner, descriptor);
   }
 
-  createCommandEncoder(descriptor: GPUCommandEncoderDescriptor = {}): RHICommandEncoder {
+  createCommandEncoder(descriptor: RHICommandEncoderDescriptor = {}): RHICommandEncoder {
     return new NullCommandEncoder(this.allocateId(), this.owner, descriptor);
   }
 
-  destroy(resource: RHIResource): void {
-    // ADR-001: Public resources are released through the owning device.
-    if (!(resource instanceof NullResourceBase)) {
-      const label =
-        typeof resource === 'object' && resource !== null && 'label' in resource
-          ? String(resource.label)
-          : 'unknown';
-      throw new Error(`Resource "${label}" was not created by NullDevice.`);
-    }
-    assertResourceOwnedBy(resource, this.owner);
-    resource.release();
-  }
-
   private allocateId(): number {
+    if (this.currentState !== 'live') throw new Error('NullDevice is lost.');
     const id = this.nextResourceId;
     this.nextResourceId += 1;
     return id;

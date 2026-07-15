@@ -1,5 +1,127 @@
-export { NullDevice } from './null-device';
-export { NullRenderTarget } from './render-target';
+export { NullDevice } from './null/device';
+export type { NullDeviceOptions } from './null/device';
+export type { NullSubmissionMode } from './null/queue';
+export { NullAdapter } from './null/adapter';
+export { WebGPUAdapter } from './webgpu/adapter';
+export { WebGL2Adapter } from './webgl2/adapter';
+export {
+  NativeDawnAdapter,
+  NativeDawnDeviceRequestError,
+  createNativeDawnCapabilities
+} from './native';
+export type {
+  NativeDawnAdapterFacts,
+  NativeDawnAdapterPort,
+  NativeDawnBackend,
+  NativeDawnFactsPort
+} from './native';
+export { WebGL2ContextControlExtension } from './webgl2/extension-types';
+export { WebGL2ProgramCreationError } from './webgl2/errors';
+export { WebGPUSurface } from './webgpu/surface';
+export { WebGPUInteropExtension } from './webgpu/interop';
+export type { NullAdapterOptions } from './null/adapter';
+export { NullRenderTarget } from './null/render-target';
+export { NullSurface } from './null/surface';
+export {
+  RHIDeviceRequestError,
+  RHIUnsupportedOperationError,
+  WebGPUNativeDeviceRequestError,
+  WebGPUNativeOperationError
+} from './contracts/errors';
+export type {
+  WebGL2AdapterFacts,
+  WebGL2NativeContextInfo,
+  WebGL2NativeContextLostInfo,
+  WebGL2NativeContextPort,
+  WebGL2NativeLimits
+} from './webgl2/native-types';
+export type {
+  WebGL2BindingKind,
+  WebGL2BindingManifestEntry,
+  WebGL2ShaderStage,
+  WebGL2ShaderTranslationPort,
+  WebGL2TranslatedShader
+} from './webgl2/shader-types';
+export type { WebGL2MetricsSnapshot } from './webgl2/metrics';
+export type { WebGL2ContextControl } from './webgl2/extension-types';
+export type {
+  WebGPUNativeAdapterInfo,
+  WebGPUNativeAdapterPort,
+  WebGPUNativeBufferPort,
+  WebGPUNativeCanvasContextPort,
+  WebGPUNativeCommandEncoderPort,
+  WebGPUNativeComputePassPort,
+  WebGPUNativeDeviceLostInfo,
+  WebGPUNativeDevicePort,
+  WebGPUNativeDeviceRequest,
+  WebGPUNativeErrorPort,
+  WebGPUNativeErrorType,
+  WebGPUNativeImportTexturePort,
+  WebGPUNativeQueuePort,
+  WebGPUNativeResourcePort,
+  WebGPUNativeRenderPassPort,
+  WebGPUNativeSurfaceAcquireResult,
+  WebGPUNativeSurfaceConfiguration,
+  WebGPUNativeTexturePort
+} from './webgpu/native-types';
+export type { GPUImageCopyBuffer } from './contracts/resource';
+export type {
+  NativeImportDescriptorMap,
+  RHINativeResourceMap,
+  WebGPUInterop,
+  WebGPUInteropScope,
+  WebGPUInteropSubmissionPolicy,
+  WebGPUNativeImportKind,
+  WebGPUNativeKind,
+  WebGPUNativeResourceMap
+} from './webgpu/interop-types';
+export type { RHIExtensionToken } from './contracts/extension';
+export type { WebGPUPipelineCreationResult } from './webgpu/pipeline-types';
+export type { WebGPUFastPathMetrics } from './webgpu/metrics';
+export { webgpuCompat } from './core/webgpu-compat';
+export type {
+  AdapterCapabilities,
+  DeviceCapabilities,
+  FeatureSupport,
+  FormatCapabilities,
+  QueueCapability,
+  RHIBackend,
+  RHICapabilityRequirement,
+  RHIFeature,
+  RHILimits,
+  RHIOperation,
+  RHIQueueRole,
+  SupportStatus
+} from './contracts/capability';
+export type {
+  AdapterInfo,
+  DeviceRequest,
+  DeviceRequestDifference,
+  RHIAdapter
+} from './contracts/adapter';
+export type { DeviceLostInfo, RHIDeviceState, RHIResourceState } from './contracts/lifecycle';
+export type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus, SubmissionResult } from './contracts/submission';
+export type {
+  RHISurface,
+  RHISurfaceAcquireResult,
+  RHISurfaceConfiguration,
+  RHISurfaceFrame,
+  RHISurfaceFrameState,
+  RHISurfaceState
+} from './contracts/surface';
+export type {
+  RHIBindGroupLayoutDescriptor,
+  RHIBindGroupDescriptor,
+  RHIBufferDescriptor,
+  RHICommandBufferDescriptor,
+  RHICommandEncoderDescriptor,
+  RHIComputePassDescriptor,
+  RHIPipelineLayoutDescriptor,
+  RHISamplerDescriptor,
+  RHIShaderModuleDescriptor,
+  RHITextureDescriptor,
+  RHITextureViewDescriptor
+} from './contracts/descriptor';
 export type {
   ColorAttachmentDescriptor,
   BufferWriteRange,
@@ -50,4 +172,4 @@ export type {
   RHITexture,
   RHITextureView,
   RenderTargetDescriptor
-} from './types';
+} from './contracts';
