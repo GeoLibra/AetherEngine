@@ -1,13 +1,20 @@
 import { bench, expect } from 'vitest';
-import { ChildOf, Mat4, TransformRuntime, World, WorldTransform } from '../src';
+import {
+  ChildOf,
+  Mat4,
+  TransformRuntime,
+  World,
+  WorldTransform,
+  type Entity
+} from '../src';
 
 bench(
   'propagates a 10K deep Transform hierarchy iteratively',
   () => {
     const world = new World();
     const transforms = TransformRuntime.install(world);
-    let parent: number | undefined;
-    let last = 0;
+    let parent: Entity | undefined;
+    let last: Entity | undefined;
     for (let index = 0; index < 10_000; index++) {
       const entity = world.spawn().build();
       transforms.attach(entity, { translation: [1, 0, 0] });
@@ -20,7 +27,7 @@ bench(
 
     const stats = transforms.propagate();
     const position = Mat4.transformPoint(
-      world.getComponent(last, WorldTransform)!.matrix,
+      world.getComponent(last!, WorldTransform)!.matrix,
       [0, 0, 0]
     );
     expect(stats).toMatchObject({

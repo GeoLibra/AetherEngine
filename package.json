@@ -7,12 +7,18 @@
     "build": "vite build",
     "dev": "vite --host 127.0.0.1",
     "test": "vitest run",
+    "bench:validate": "vite-node benchmark/framework/cli.ts validate",
+    "bench:changed": "vite-node benchmark/framework/cli.ts changed",
+    "bench:all": "vite-node benchmark/framework/cli.ts all",
     "bench:foundation": "vitest bench --run benchmark/foundation-transform.bench.ts",
+    "bench:ecs": "vite-node benchmark/cli.ts",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
+    "bitecs": "0.4.0",
+    "koota": "0.6.6",
     "typescript": "^5.5.4",
     "vite": "^5.4.11",
     "vitest": "^2.1.4"

@@ -8,3 +8,4 @@ webgpu-render-engine/
 downloads/
 .codegraph
 engine/
+benchmark/artifacts/
