@@ -43,7 +43,19 @@ export function registerNativeServiceModules(
 ): readonly NativeServiceUnavailableDiagnostic[] {
   const negotiated = new Map(handshake.modules.map((module) => [module.name, module.version]));
   const diagnostics: NativeServiceUnavailableDiagnostic[] = [];
+  const admitted: NativeServiceModule<unknown>[] = [];
+  const tokens = new Set<symbol>();
+  const existingTokens = new Set(registry.list().map((entry) => entry.token.key));
+
+  // Validate the complete module set before factories run or registry state becomes observable.
   for (const module of modules) {
+    if (tokens.has(module.token.key)) {
+      throw new Error(`Native service token "${module.token.name}" is registered more than once in the module set.`);
+    }
+    tokens.add(module.token.key);
+    if (existingTokens.has(module.token.key)) {
+      throw new Error(`Platform service "${module.token.name}" is already registered.`);
+    }
     const actualVersion = negotiated.get(module.name);
     if (actualVersion === undefined || actualVersion < module.version) {
       if (module.required) {
@@ -57,8 +69,12 @@ export function registerNativeServiceModules(
       }));
       continue;
     }
-    registry.provide(module.token, module.create());
+    admitted.push(module);
   }
+
+  // Construct every service before publishing any of them so a failing factory cannot leave a partial install.
+  const services = admitted.map((module) => ({ module, value: module.create() }));
+  for (const { module, value } of services) registry.provide(module.token, value);
   return Object.freeze(diagnostics);
 }
 

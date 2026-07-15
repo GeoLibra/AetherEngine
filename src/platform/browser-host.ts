@@ -73,17 +73,21 @@ export class BrowserHost implements Host {
         windowPort.close();
       }
     });
-    lifecycle.unsubscribeMetrics = windowPort.onMetrics((update) => {
-      hostWindow.queueMetrics(update);
-    });
-    lifecycle.unsubscribeClose = windowPort.onClose(() => {
-      lifecycle.closingFromPort = true;
-      try {
-        hostWindow.close();
-      } finally {
-        lifecycle.closingFromPort = false;
-      }
-    });
+    try {
+      lifecycle.unsubscribeMetrics = windowPort.onMetrics((update) => {
+        hostWindow.queueMetrics(update);
+      });
+      lifecycle.unsubscribeClose = windowPort.onClose(() => {
+        lifecycle.closingFromPort = true;
+        try {
+          hostWindow.close();
+        } finally {
+          lifecycle.closingFromPort = false;
+        }
+      });
+    } catch (error) {
+      rollbackWindowSetup(hostWindow, error, 'BrowserHost');
+    }
     this.ownedWindows.push(hostWindow);
     return hostWindow;
   }
@@ -107,8 +111,16 @@ export class BrowserHost implements Host {
       return;
     }
     this.currentState = 'destroyed';
+    const errors: unknown[] = [];
     for (const hostWindow of this.ownedWindows) {
-      hostWindow.close();
+      try {
+        hostWindow.close();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, `BrowserHost window cleanup failed (${errors.length}).`);
     }
   }
 
@@ -123,6 +135,15 @@ export class BrowserHost implements Host {
       hostWindow.commitFrameBoundary();
     }
   }
+}
+
+function rollbackWindowSetup(window: PlatformWindow, setupError: unknown, hostName: string): never {
+  try {
+    window.close();
+  } catch (cleanupError) {
+    throw new AggregateError([setupError, cleanupError], `${hostName} window setup and cleanup failed.`);
+  }
+  throw setupError;
 }
 
 function withPortSurfaceTarget(

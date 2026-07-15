@@ -46,6 +46,7 @@ class TestAnimationFrames implements AnimationFrameHost {
 class TestBrowserWindowPort implements BrowserWindowPort {
   readonly surfaceTarget: SurfaceTarget;
   closeRequests = 0;
+  throwOnClose = false;
   private metricsListener: ((update: WindowMetricsUpdate) => void) | undefined;
   private closeListener: (() => void) | undefined;
 
@@ -72,6 +73,7 @@ class TestBrowserWindowPort implements BrowserWindowPort {
 
   close(): void {
     this.closeRequests++;
+    if (this.throwOnClose) throw new Error(`window ${this.id} cleanup failed`);
   }
 
   emitMetrics(update: WindowMetricsUpdate): void {
@@ -175,6 +177,40 @@ describe('BrowserHost', () => {
     await expect(host.createWindow({ logicalSize: [1, 1] })).rejects.toThrow(
       'Cannot create a window on a destroyed BrowserHost.'
     );
+  });
+
+  test('rolls back the native window when listener setup fails', async () => {
+    let metricUnsubscribes = 0;
+    let closeRequests = 0;
+    const host = new BrowserHost({
+      clock: { now: () => 0 },
+      animationFrames: new TestAnimationFrames(),
+      createWindow: () => ({
+        onMetrics: () => () => { metricUnsubscribes += 1; },
+        onClose: () => { throw new Error('close listener failed'); },
+        close: () => { closeRequests += 1; }
+      })
+    });
+
+    await expect(host.createWindow({ logicalSize: [1, 1] })).rejects.toThrow('close listener failed');
+    expect(metricUnsubscribes).toBe(1);
+    expect(closeRequests).toBe(1);
+    expect(host.windows()).toEqual([]);
+  });
+
+  test('continues closing remaining windows when one browser port fails', async () => {
+    const port = new TestBrowserPlatformPort();
+    const host = new BrowserHost(port);
+    const first = await host.createWindow({ logicalSize: [1, 1] });
+    const second = await host.createWindow({ logicalSize: [1, 1] });
+    port.window(first.id).throwOnClose = true;
+
+    expect(() => host.destroy()).toThrow(AggregateError);
+    expect(port.window(first.id).closeRequests).toBe(1);
+    expect(port.window(second.id).closeRequests).toBe(1);
+    expect(first.state).toBe('closed');
+    expect(second.state).toBe('closed');
+    expect(() => host.destroy()).not.toThrow();
   });
 });
 

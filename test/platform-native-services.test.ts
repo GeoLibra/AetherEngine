@@ -58,6 +58,37 @@ describe('native platform service modules', () => {
     expect(Object.isFrozen(diagnostics)).toBe(true);
     expect(diagnostics.every(Object.isFrozen)).toBe(true);
   });
+
+  test('does not publish a partial service set when preflight or creation fails', () => {
+    const filesystem = defineNativeServiceModule({
+      name: 'filesystem', version: 1, required: true,
+      token: NativeFilesystemServiceToken,
+      create: () => createNativeFilesystemService({ canRead: () => true, read: async () => new Uint8Array() })
+    });
+    const sensors = defineNativeServiceModule({
+      name: 'sensors', version: 1, required: true,
+      token: NativeSensorsServiceToken,
+      create: () => createNativeSensorService({ subscribe: () => () => undefined })
+    });
+
+    const missingRegistry = new MutablePlatformServiceRegistry();
+    expect(() => registerNativeServiceModules(
+      missingRegistry, handshake([{ name: 'filesystem', version: 1 }]), [filesystem, sensors]
+    )).toThrow(/version requirement/i);
+    expect(missingRegistry.tryGet(NativeFilesystemServiceToken)).toBeUndefined();
+
+    const throwingRegistry = new MutablePlatformServiceRegistry();
+    const throwingSensors = defineNativeServiceModule({
+      ...sensors,
+      create: () => { throw new Error('sensor factory failed'); }
+    });
+    expect(() => registerNativeServiceModules(
+      throwingRegistry,
+      handshake([{ name: 'filesystem', version: 1 }, { name: 'sensors', version: 1 }]),
+      [filesystem, throwingSensors]
+    )).toThrow('sensor factory failed');
+    expect(throwingRegistry.tryGet(NativeFilesystemServiceToken)).toBeUndefined();
+  });
 });
 
 describe('native filesystem service', () => {

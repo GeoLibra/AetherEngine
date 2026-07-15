@@ -70,7 +70,7 @@ export class WebGPUBuffer extends WebGPUResourceBase implements RHIBuffer {
   readonly descriptor: Readonly<RHIBufferDescriptor>;
   readonly size: number;
   readonly usage: number;
-  private mapped: boolean;
+  private mapState: 'unmapped' | 'mapping-pending' | 'mapped';
   constructor(
     id: number,
     owner: WebGPUDeviceOwner,
@@ -82,20 +82,36 @@ export class WebGPUBuffer extends WebGPUResourceBase implements RHIBuffer {
     this.descriptor = freezeWithLabel({ size: descriptor.size, usage: descriptor.usage, mappedAtCreation: descriptor.mappedAtCreation ?? false }, descriptor.label);
     this.size = descriptor.size;
     this.usage = descriptor.usage;
-    this.mapped = descriptor.mappedAtCreation === true;
+    this.mapState = descriptor.mappedAtCreation === true ? 'mapped' : 'unmapped';
   }
-  get isMapped(): boolean { return this.mapped; }
+  // Pending mappings exclude queue and command use just like an established mapped range.
+  get isMapped(): boolean { return this.mapState !== 'unmapped'; }
   async mapAsync(mode: GPUMapModeFlags, offset = 0, size = this.size - offset): Promise<void> {
     assertWebGPUResource(this, this.owner);
-    if (this.mapped) throw new Error(`Buffer "${this.label ?? this.id}" is already mapped.`);
+    if (this.mapState === 'mapped') throw new Error(`Buffer "${this.label ?? this.id}" is already mapped.`);
+    if (this.mapState === 'mapping-pending') {
+      throw new Error(`Buffer "${this.label ?? this.id}" mapping is already pending.`);
+    }
+    validateBufferRange(offset, size, this.size);
     const native = getWebGPUNativeHandle(this, this.owner);
     if (native.mapAsync === undefined) throw new Error('Native WebGPU buffer does not support mapAsync.');
-    await native.mapAsync(mode, offset, size);
-    assertWebGPUResource(this, this.owner);
-    this.mapped = true;
+    this.mapState = 'mapping-pending';
+    try {
+      await native.mapAsync(mode, offset, size);
+      assertWebGPUResource(this, this.owner);
+      if (this.mapState !== 'mapping-pending') {
+        throw new Error(`Buffer "${this.label ?? this.id}" mapping was cancelled before completion.`);
+      }
+      this.mapState = 'mapped';
+    } catch (error) {
+      if (this.mapState === 'mapping-pending') this.mapState = 'unmapped';
+      throw error;
+    }
   }
   getMappedRange(offset = 0, size = this.size - offset): ArrayBuffer {
     assertWebGPUResource(this, this.owner);
+    if (this.mapState !== 'mapped') throw new Error(`Buffer "${this.label ?? this.id}" is not mapped.`);
+    validateBufferRange(offset, size, this.size);
     const native = getWebGPUNativeHandle(this, this.owner);
     if (native.getMappedRange === undefined) throw new Error('Native WebGPU buffer does not expose a mapped range.');
     return native.getMappedRange(offset, size);
@@ -105,7 +121,7 @@ export class WebGPUBuffer extends WebGPUResourceBase implements RHIBuffer {
     const native = getWebGPUNativeHandle(this, this.owner);
     if (native.unmap === undefined) throw new Error('Native WebGPU buffer does not support unmap.');
     native.unmap();
-    this.mapped = false;
+    this.mapState = 'unmapped';
   }
 }
 
@@ -347,4 +363,10 @@ function snapshotStage<T extends { module: RHIShaderModule; constants?: Readonly
 
 function freezeWithLabel<T extends object>(value: T, label: string | undefined): Readonly<T & { label?: string }> {
   return Object.freeze(label === undefined ? value : { ...value, label });
+}
+
+function validateBufferRange(offset: number, size: number, bufferSize: number): void {
+  if (!Number.isInteger(offset) || !Number.isInteger(size) || offset < 0 || size < 0 || offset + size > bufferSize) {
+    throw new Error(`Buffer range ${offset}..${offset + size} is outside buffer size ${bufferSize}.`);
+  }
 }

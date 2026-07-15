@@ -10,7 +10,17 @@ import {
 
 class NativeResource implements WebGPUNativeResourcePort {
   destroyed = 0;
+  mapRequests = 0;
+  mappedRangeRequests = 0;
+  unmaps = 0;
+  mapResult: Promise<void> = Promise.resolve();
   destroy(): void { this.destroyed += 1; }
+  mapAsync(): Promise<void> { this.mapRequests += 1; return this.mapResult; }
+  getMappedRange(_offset: number, size: number): ArrayBuffer {
+    this.mappedRangeRequests += 1;
+    return new ArrayBuffer(size);
+  }
+  unmap(): void { this.unmaps += 1; }
 }
 
 class NativeTexture extends NativeResource implements WebGPUNativeTexturePort {
@@ -25,10 +35,13 @@ class NativeDevice implements WebGPUNativeDevicePort {
   readonly lost = new Promise<never>(() => undefined);
   readonly queue = { submit(): void {}, onSubmittedWorkDone: async () => undefined };
   readonly calls: { operation: string; descriptor: Readonly<Record<string, unknown>> }[] = [];
+  readonly resources: NativeResource[] = [];
 
   createBuffer(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort {
     this.calls.push({ operation: 'buffer', descriptor });
-    return new NativeResource();
+    const resource = new NativeResource();
+    this.resources.push(resource);
+    return resource;
   }
   createTexture(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeTexturePort {
     this.calls.push({ operation: 'texture', descriptor });
@@ -137,5 +150,30 @@ describe('WebGPU resource lowering', () => {
       'belongs to a different WebGPUDevice.'
     );
     expect(second.native.calls).toHaveLength(callCount);
+  });
+
+  test('enforces the unmapped to mapping-pending to mapped state machine', async () => {
+    const { device, native } = await createDevice();
+    const buffer = device.createBuffer({ label: 'mapped', size: 64, usage: 1 });
+    const nativeBuffer = native.resources[0]!;
+    let resolveMap!: () => void;
+    nativeBuffer.mapResult = new Promise<void>((resolve) => { resolveMap = resolve; });
+
+    expect(() => buffer.getMappedRange()).toThrow('is not mapped');
+    const mapping = buffer.mapAsync(1, 4, 8);
+    await expect(buffer.mapAsync(1, 4, 8)).rejects.toThrow('mapping is already pending');
+    expect(() => buffer.getMappedRange(4, 8)).toThrow('is not mapped');
+    expect(nativeBuffer.mapRequests).toBe(1);
+
+    resolveMap();
+    await mapping;
+    expect(buffer.getMappedRange(4, 8).byteLength).toBe(8);
+    expect(nativeBuffer.mappedRangeRequests).toBe(1);
+
+    buffer.unmap();
+    expect(nativeBuffer.unmaps).toBe(1);
+    expect(() => buffer.getMappedRange()).toThrow('is not mapped');
+    await expect(buffer.mapAsync(1, 60, 8)).rejects.toThrow('outside buffer size 64');
+    expect(nativeBuffer.mapRequests).toBe(1);
   });
 });

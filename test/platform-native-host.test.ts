@@ -257,4 +257,22 @@ describe('NativeHost', () => {
     expect(events).toEqual(['window.close', 'platform.destroy', 'runtime.destroy']);
     expect(() => host.destroy()).not.toThrow();
   });
+
+  test('rolls back the native window when listener setup fails', async () => {
+    const { host, platform } = await setup();
+    let metricUnsubscribes = 0;
+    let closes = 0;
+    platform.createWindow = () => ({
+      surfaceTarget: undefined,
+      onMetrics: () => () => { metricUnsubscribes += 1; },
+      onSurface: () => { throw new Error('surface listener failed'); },
+      onClose: () => () => undefined,
+      close: () => { closes += 1; }
+    });
+
+    await expect(host.createWindow({ logicalSize: [1, 1] })).rejects.toThrow('surface listener failed');
+    expect(metricUnsubscribes).toBe(1);
+    expect(closes).toBe(1);
+    expect(host.windows()).toEqual([]);
+  });
 });
