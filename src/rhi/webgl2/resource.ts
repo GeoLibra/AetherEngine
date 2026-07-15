@@ -1,4 +1,4 @@
-import type { RHIResourceState } from '../lifecycle-types';
+import type { RHIResourceState } from '../contracts/lifecycle';
 import type {
   RHIBuffer,
   RHIResource,
@@ -6,14 +6,14 @@ import type {
   RHISampler,
   RHITexture,
   RHITextureView
-} from '../resource-types';
+} from '../contracts/resource';
 import type {
   RHIBufferDescriptor,
   RHISamplerDescriptor,
   RHITextureDescriptor,
   RHITextureViewDescriptor
-} from '../descriptor-types';
-import type { GPUMapModeFlags, GPUExtent3D } from '../webgpu-types';
+} from '../contracts/descriptor';
+import type { GPUMapModeFlags, GPUExtent3D } from '../contracts/webgpu';
 import type { WebGL2DeviceOwner } from './resource-types';
 import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
 

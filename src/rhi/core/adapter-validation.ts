@@ -1,5 +1,5 @@
-import type { DeviceRequest, DeviceRequestDifference } from './adapter-types';
-import type { AdapterCapabilities } from './capability-types';
+import type { DeviceRequest, DeviceRequestDifference } from '../contracts/adapter';
+import type { AdapterCapabilities } from '../contracts/capability';
 
 export function collectDeviceRequestDifferences(
   capabilities: AdapterCapabilities,

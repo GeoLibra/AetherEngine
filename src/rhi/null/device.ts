@@ -6,8 +6,8 @@ import { validateComputePipelineDescriptor, validateRenderPipelineDescriptor } f
 import { NullQueue } from './queue';
 import type { NullSubmissionMode } from './queue';
 import { NullSampler, NullTexture } from './texture';
-import { NullRenderTarget } from '../render-target';
-import type { NullDeviceOwner } from '../resource';
+import { NullRenderTarget } from './render-target';
+import type { NullDeviceOwner } from './resource';
 import type {
   RHIBindGroup,
   RHIBindGroupLayout,
@@ -24,11 +24,11 @@ import type {
   RHIShaderModule,
   RHITexture,
   RenderTargetDescriptor,
-} from '../types';
-import { createNullConformanceCapabilities } from '../capabilities';
-import type { DeviceCapabilities } from '../capability-types';
-import type { DeviceLostInfo, RHIDeviceState } from '../lifecycle-types';
-import { assertRHIFeature } from '../capability-validation';
+} from '../contracts';
+import { createNullConformanceCapabilities } from '../core/capabilities';
+import type { DeviceCapabilities } from '../contracts/capability';
+import type { DeviceLostInfo, RHIDeviceState } from '../contracts/lifecycle';
+import { assertRHIFeature } from './capability-validation';
 import type {
   RHIBindGroupDescriptor,
   RHIBindGroupLayoutDescriptor,
@@ -38,8 +38,8 @@ import type {
   RHISamplerDescriptor,
   RHIShaderModuleDescriptor,
   RHITextureDescriptor
-} from '../descriptor-types';
-import type { RHIExtensionToken } from '../extension-types';
+} from '../contracts/descriptor';
+import type { RHIExtensionToken } from '../contracts/extension';
 
 let nextDeviceGeneration = 1;
 

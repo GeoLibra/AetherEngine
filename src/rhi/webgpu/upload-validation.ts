@@ -1,5 +1,5 @@
-import type { GPUImageCopyTexture, RHITexture } from '../resource-types';
-import type { GPUExtent3D, GPUImageDataLayout, RHIUploadData } from '../webgpu-types';
+import type { GPUImageCopyTexture, RHITexture } from '../contracts/resource';
+import type { GPUExtent3D, GPUImageDataLayout, RHIUploadData } from '../contracts/webgpu';
 import { normalizeExtent } from './resource';
 
 export function copyUploadBytes(data: RHIUploadData): Uint8Array {

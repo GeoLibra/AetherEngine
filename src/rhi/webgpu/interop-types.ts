@@ -1,5 +1,5 @@
-import type { RHICommandEncoder } from '../command-types';
-import type { RHIBufferDescriptor, RHITextureDescriptor } from '../descriptor-types';
+import type { RHICommandEncoder } from '../contracts/command';
+import type { RHIBufferDescriptor, RHITextureDescriptor } from '../contracts/descriptor';
 import type {
   RHIBindGroup,
   RHIBuffer,
@@ -8,7 +8,7 @@ import type {
   RHISampler,
   RHITexture,
   RHITextureView
-} from '../resource-types';
+} from '../contracts/resource';
 import type {
   WebGPUNativeBufferPort,
   WebGPUNativeCommandEncoderPort,

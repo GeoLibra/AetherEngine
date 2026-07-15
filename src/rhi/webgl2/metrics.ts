@@ -1,4 +1,4 @@
-import type { RHIQueueMetrics } from '../submission-types';
+import type { RHIQueueMetrics } from '../contracts/submission';
 
 export interface WebGL2MetricsSnapshot extends RHIQueueMetrics {
   readonly submissionEpochs: number;

@@ -1,6 +1,6 @@
-import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from '../resource';
-import type { NullDeviceOwner } from '../resource';
-import type { GPUBufferDescriptor, GPUBufferUsageFlags, GPUMapModeFlags, RHIBuffer, RHIUploadData } from '../types';
+import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
+import type { NullDeviceOwner } from './resource';
+import type { GPUBufferDescriptor, GPUBufferUsageFlags, GPUMapModeFlags, RHIBuffer, RHIUploadData } from '../contracts';
 
 export class NullBuffer extends NullResourceBase implements RHIBuffer {
   readonly kind = 'buffer';

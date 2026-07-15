@@ -8,8 +8,8 @@ import type {
   GPUShaderModuleDescriptor,
   GPUTextureDescriptor,
   GPUTextureViewDescriptor
-} from './webgpu-types';
-import type { GPUBindGroupDescriptor, GPUPipelineLayoutDescriptor } from './resource-types';
+} from './webgpu';
+import type { GPUBindGroupDescriptor, GPUPipelineLayoutDescriptor } from './resource';
 
 /** Canonical portable names; these descriptors contain values or RHI handles only. */
 export type RHIBufferDescriptor = GPUBufferDescriptor;

@@ -1,7 +1,7 @@
-import type { SurfaceTarget } from '../platform/types';
-import type { RHIDevice } from './device-types';
-import type { RHITexture } from './resource-types';
-import type { GPUTextureFormat } from './webgpu-types';
+import type { SurfaceTarget } from '../../platform/types';
+import type { RHIDevice } from './device';
+import type { RHITexture } from './resource';
+import type { GPUTextureFormat } from './webgpu';
 
 export interface RHISurfaceConfiguration {
   readonly format: GPUTextureFormat;

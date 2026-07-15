@@ -1,5 +1,5 @@
-import type { RHIShaderModule } from '../resource-types';
-import type { RHIShaderModuleDescriptor } from '../descriptor-types';
+import type { RHIShaderModule } from '../contracts/resource';
+import type { RHIShaderModuleDescriptor } from '../contracts/descriptor';
 import { WebGL2ResourceBase } from './resource';
 import type { WebGL2DeviceOwner } from './resource-types';
 

@@ -1,5 +1,5 @@
-import type { GPUExtent3D } from './types';
-import type { RHIBufferDescriptor, RHISamplerDescriptor, RHITextureDescriptor } from './descriptor-types';
+import type { GPUExtent3D } from '../contracts';
+import type { RHIBufferDescriptor, RHISamplerDescriptor, RHITextureDescriptor } from '../contracts/descriptor';
 
 const BUFFER_FIELDS = new Set(['label', 'size', 'usage', 'mappedAtCreation']);
 const TEXTURE_FIELDS = new Set([

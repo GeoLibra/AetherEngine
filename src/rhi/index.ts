@@ -1,6 +1,7 @@
-export { NullDevice } from './null-device';
-export type { NullDeviceOptions, NullSubmissionMode } from './null-device';
-export { NullAdapter } from './null-adapter';
+export { NullDevice } from './null/device';
+export type { NullDeviceOptions } from './null/device';
+export type { NullSubmissionMode } from './null/queue';
+export { NullAdapter } from './null/adapter';
 export { WebGPUAdapter } from './webgpu/adapter';
 export { WebGL2Adapter } from './webgl2/adapter';
 export {
@@ -18,15 +19,15 @@ export { WebGL2ContextControlExtension } from './webgl2/extension-types';
 export { WebGL2ProgramCreationError } from './webgl2/errors';
 export { WebGPUSurface } from './webgpu/surface';
 export { WebGPUInteropExtension } from './webgpu/interop';
-export type { NullAdapterOptions } from './null-adapter';
-export { NullRenderTarget } from './render-target';
+export type { NullAdapterOptions } from './null/adapter';
+export { NullRenderTarget } from './null/render-target';
 export { NullSurface } from './null/surface';
 export {
   RHIDeviceRequestError,
   RHIUnsupportedOperationError,
   WebGPUNativeDeviceRequestError,
   WebGPUNativeOperationError
-} from './errors';
+} from './contracts/errors';
 export type {
   WebGL2AdapterFacts,
   WebGL2NativeContextInfo,
@@ -73,10 +74,10 @@ export type {
   WebGPUNativeKind,
   WebGPUNativeResourceMap
 } from './webgpu/interop-types';
-export type { RHIExtensionToken } from './extension-types';
+export type { RHIExtensionToken } from './contracts/extension';
 export type { WebGPUPipelineCreationResult } from './webgpu/pipeline-types';
 export type { WebGPUFastPathMetrics } from './webgpu/metrics';
-export { webgpuCompat } from './webgpu-compat';
+export { webgpuCompat } from './core/webgpu-compat';
 export type {
   AdapterCapabilities,
   DeviceCapabilities,
@@ -90,15 +91,15 @@ export type {
   RHIOperation,
   RHIQueueRole,
   SupportStatus
-} from './capability-types';
+} from './contracts/capability';
 export type {
   AdapterInfo,
   DeviceRequest,
   DeviceRequestDifference,
   RHIAdapter
-} from './adapter-types';
-export type { DeviceLostInfo, RHIDeviceState, RHIResourceState } from './lifecycle-types';
-export type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus, SubmissionResult } from './submission-types';
+} from './contracts/adapter';
+export type { DeviceLostInfo, RHIDeviceState, RHIResourceState } from './contracts/lifecycle';
+export type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus, SubmissionResult } from './contracts/submission';
 export type {
   RHISurface,
   RHISurfaceAcquireResult,
@@ -106,7 +107,7 @@ export type {
   RHISurfaceFrame,
   RHISurfaceFrameState,
   RHISurfaceState
-} from './surface-types';
+} from './contracts/surface';
 export type {
   RHIBindGroupLayoutDescriptor,
   RHIBindGroupDescriptor,
@@ -119,7 +120,7 @@ export type {
   RHIShaderModuleDescriptor,
   RHITextureDescriptor,
   RHITextureViewDescriptor
-} from './descriptor-types';
+} from './contracts/descriptor';
 export type {
   ColorAttachmentDescriptor,
   BufferWriteRange,
@@ -170,4 +171,4 @@ export type {
   RHITexture,
   RHITextureView,
   RenderTargetDescriptor
-} from './types';
+} from './contracts';

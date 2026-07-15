@@ -4,7 +4,7 @@ import type {
   GPUExtent3D,
   GPUIndexFormat,
   GPUTextureAspect
-} from './webgpu-types';
+} from './webgpu';
 import type {
   GPUImageCopyTexture,
   RHIBindGroup,
@@ -13,8 +13,8 @@ import type {
   RHIResource,
   RHIResourceKind,
   RHIRenderPipeline
-} from './resource-types';
-import type { RHIRenderPassDescriptor } from './render-target-types';
+} from './resource';
+import type { RHIRenderPassDescriptor } from './render-target';
 
 export interface RHIDrawStats {
   drawCalls: number;

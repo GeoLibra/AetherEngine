@@ -8,8 +8,8 @@ import type {
   GPUTextureAspect,
   GPUTextureFormat,
   GPUTextureUsageFlags
-} from './webgpu-types';
-import type { RHIResourceState } from './lifecycle-types';
+} from './webgpu';
+import type { RHIResourceState } from './lifecycle';
 import type {
   RHIBindGroupLayoutDescriptor,
   RHIBufferDescriptor,
@@ -17,7 +17,7 @@ import type {
   RHIShaderModuleDescriptor,
   RHITextureDescriptor,
   RHITextureViewDescriptor
-} from './descriptor-types';
+} from './descriptor';
 
 export type RHIResourceKind =
   | 'buffer'

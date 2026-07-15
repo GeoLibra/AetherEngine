@@ -1,12 +1,12 @@
-import type { AdapterInfo, DeviceRequest, RHIAdapter } from './adapter-types';
+import type { AdapterInfo, DeviceRequest, RHIAdapter } from '../contracts/adapter';
 import {
   createNullCapabilities,
   type NullCapabilityProfile
-} from './capabilities';
-import type { AdapterCapabilities } from './capability-types';
-import { RHIDeviceRequestError } from './errors';
-import { NullDevice } from './null/device';
-import { collectDeviceRequestDifferences } from './adapter-validation';
+} from '../core/capabilities';
+import { collectDeviceRequestDifferences } from '../core/adapter-validation';
+import type { AdapterCapabilities } from '../contracts/capability';
+import { RHIDeviceRequestError } from '../contracts/errors';
+import { NullDevice } from './device';
 
 export interface NullAdapterOptions extends NullCapabilityProfile {
   readonly name?: string;

@@ -1,4 +1,4 @@
-import type { GPUBindingResource, RHIBindGroup } from '../resource-types';
+import type { GPUBindingResource, RHIBindGroup } from '../contracts/resource';
 import type { WebGL2IndexBufferState, WebGL2VertexBufferState } from './cache-key';
 import { WebGL2FramebufferCache } from './framebuffer-cache';
 import { WebGL2RenderPipeline } from './pipeline';

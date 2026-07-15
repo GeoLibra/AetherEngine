@@ -1,4 +1,4 @@
-import type { RHIShaderModule } from '../resource-types';
+import type { RHIShaderModule } from '../contracts/resource';
 
 export type WebGL2ShaderStage = 'vertex' | 'fragment';
 export type WebGL2BindingKind = 'uniform-buffer' | 'texture' | 'sampler';

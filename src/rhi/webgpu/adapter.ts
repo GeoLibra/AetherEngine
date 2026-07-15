@@ -1,9 +1,9 @@
-import type { AdapterInfo, DeviceRequest, RHIAdapter } from '../adapter-types';
+import type { AdapterInfo, DeviceRequest, RHIAdapter } from '../contracts/adapter';
 import { DiagnosticStore } from '../../diagnostics';
-import { collectDeviceRequestDifferences } from '../adapter-validation';
-import { createCapabilitySnapshot, RHI_FEATURES } from '../capabilities';
-import type { AdapterCapabilities, FeatureSupport, RHIFeature } from '../capability-types';
-import { RHIDeviceRequestError, WebGPUNativeDeviceRequestError } from '../errors';
+import { collectDeviceRequestDifferences } from '../core/adapter-validation';
+import { createCapabilitySnapshot, RHI_FEATURES } from '../core/capabilities';
+import type { AdapterCapabilities, FeatureSupport, RHIFeature } from '../contracts/capability';
+import { RHIDeviceRequestError, WebGPUNativeDeviceRequestError } from '../contracts/errors';
 import { WebGPUDevice } from './device';
 import {
   WEBGPU_CORE_FEATURES,

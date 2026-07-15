@@ -1,4 +1,4 @@
-import type { GPUIndexFormat, GPUTextureAspect } from '../webgpu-types';
+import type { GPUIndexFormat, GPUTextureAspect } from '../contracts/webgpu';
 import type {
   RHIBindGroup,
   RHIBuffer,
@@ -6,7 +6,7 @@ import type {
   RHIRenderPipeline,
   RHITexture,
   RHITextureView
-} from '../resource-types';
+} from '../contracts/resource';
 
 export interface WebGL2ImageCopyTexture {
   readonly texture: RHITexture;

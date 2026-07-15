@@ -6,7 +6,7 @@ import {
   type RHICommandRecord,
   type WebGL2NativeContextLostInfo
 } from '../src';
-import type { RHIRenderPassColorAttachment } from '../src/rhi/types';
+import type { RHIRenderPassColorAttachment } from '../src/rhi/contracts';
 
 class CommandContext {
   readonly info = { name: 'Command WebGL2' };

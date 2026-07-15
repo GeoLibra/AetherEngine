@@ -1,6 +1,6 @@
-import type { RHICommandEncoder } from '../command-types';
-import type { RHIExtensionToken } from '../extension-types';
-import type { RHIResource } from '../resource-types';
+import type { RHICommandEncoder } from '../contracts/command';
+import type { RHIExtensionToken } from '../contracts/extension';
+import type { RHIResource } from '../contracts/resource';
 import { getWebGPUNativeCommandEncoder } from './command';
 import type {
   NativeImportDescriptorMap,

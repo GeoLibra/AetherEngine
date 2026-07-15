@@ -1,5 +1,5 @@
 import type { SurfaceTarget } from '../../platform/types';
-import type { RHIDevice } from '../device-types';
+import type { RHIDevice } from '../contracts/device';
 import type {
   RHISurface,
   RHISurfaceAcquireResult,
@@ -7,7 +7,7 @@ import type {
   RHISurfaceFrame,
   RHISurfaceFrameState,
   RHISurfaceState
-} from '../surface-types';
+} from '../contracts/surface';
 import { WebGPUDevice } from './device';
 import type { WebGPUNativeCanvasContextPort } from './native-types';
 import type { WebGPUTexture } from './resource';

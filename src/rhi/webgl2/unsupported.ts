@@ -1,5 +1,5 @@
-import type { DeviceCapabilities, RHIFeature, RHIOperation } from '../capability-types';
-import { RHIUnsupportedOperationError } from '../errors';
+import type { DeviceCapabilities, RHIFeature, RHIOperation } from '../contracts/capability';
+import { RHIUnsupportedOperationError } from '../contracts/errors';
 
 export function throwWebGL2Unsupported(
   capabilities: DeviceCapabilities,

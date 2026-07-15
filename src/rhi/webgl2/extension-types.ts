@@ -1,4 +1,4 @@
-import type { RHIExtensionToken } from '../extension-types';
+import type { RHIExtensionToken } from '../contracts/extension';
 
 export interface WebGL2ContextControl {
   invalidateExternalState(): void;

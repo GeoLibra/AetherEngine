@@ -7,8 +7,8 @@ import type {
   RHIBindGroupLayout,
   RHIPipelineLayout,
   RHIResource
-} from '../resource-types';
-import type { GPUBindGroupLayoutDescriptor, GPUBindGroupLayoutEntry } from '../webgpu-types';
+} from '../contracts/resource';
+import type { GPUBindGroupLayoutDescriptor, GPUBindGroupLayoutEntry } from '../contracts/webgpu';
 import { WebGL2ResourceBase, assertWebGL2Resource } from './resource';
 import type { WebGL2DeviceOwner } from './resource-types';
 

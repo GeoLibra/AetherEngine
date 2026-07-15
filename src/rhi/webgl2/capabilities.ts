@@ -2,8 +2,8 @@ import type {
   AdapterCapabilities,
   FeatureSupport,
   RHIFeature
-} from '../capability-types';
-import { createCapabilitySnapshot, RHI_FEATURES } from '../capabilities';
+} from '../contracts/capability';
+import { createCapabilitySnapshot, RHI_FEATURES } from '../core/capabilities';
 import type { WebGL2AdapterFacts, WebGL2NativeContextPort } from './native-types';
 
 const TIMER_QUERY_EXTENSION = 'EXT_disjoint_timer_query_webgl2';

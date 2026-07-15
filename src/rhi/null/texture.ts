@@ -1,5 +1,6 @@
-import { assertResourceLive, assertResourceOwnedBy, NullResourceBase, toResourceRef } from '../resource';
-import type { NullDeviceOwner } from '../resource';
+import { toResourceRef } from '../core/resource-ref';
+import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
+import type { NullDeviceOwner } from './resource';
 import type {
   GPUExtent3D,
   GPUImageCopyTexture,
@@ -15,7 +16,7 @@ import type {
   RHISampler,
   RHITexture,
   RHITextureView
-} from '../types';
+} from '../contracts';
 
 export class NullTexture extends NullResourceBase implements RHITexture {
   readonly kind = 'texture';

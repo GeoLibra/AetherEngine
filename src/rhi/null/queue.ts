@@ -1,7 +1,7 @@
 import { toByteCopy, validateBufferForQueueWrite, validateBufferRange } from './buffer';
 import { normalizeAndValidateExtent, validateImageDataLayout, validateTextureCopyView } from './texture';
-import { assertResourceLive, assertResourceOwnedBy } from '../resource';
-import type { NullDeviceOwner } from '../resource';
+import { assertResourceLive, assertResourceOwnedBy } from './resource';
+import type { NullDeviceOwner } from './resource';
 import { NullCommandBuffer } from './command';
 import { NullSubmission } from './submission';
 import type {
@@ -16,7 +16,7 @@ import type {
   RHIResource,
   RHISubmission,
   RHIUploadData
-} from '../types';
+} from '../contracts';
 
 export type NullSubmissionMode = 'auto-complete' | 'manual';
 

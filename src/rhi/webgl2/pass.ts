@@ -9,8 +9,8 @@ import type {
   RHIRenderPassDescriptor,
   RHIRenderPassEncoder,
   RHIRenderPipeline
-} from '../types';
-import { toResourceRef } from '../resource';
+} from '../contracts';
+import { toResourceRef } from '../core/resource-ref';
 import { getWebGL2BindGroupResources, validateWebGL2BindGroupSlot } from './bindings';
 import { assertWebGL2Resource } from './resource';
 import type { WebGL2DeviceOwner } from './resource-types';

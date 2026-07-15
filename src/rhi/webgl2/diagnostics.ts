@@ -1,4 +1,4 @@
-import type { DeviceLostInfo } from '../lifecycle-types';
+import type { DeviceLostInfo } from '../contracts/lifecycle';
 import type { WebGL2NativeContextLostInfo } from './native-types';
 
 export function createWebGL2LossDiagnostic(

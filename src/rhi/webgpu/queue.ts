@@ -1,8 +1,8 @@
-import type { RHICommandBuffer } from '../command-types';
-import type { RHIQueue } from '../device-types';
-import type { GPUImageCopyTexture, RHIBuffer } from '../resource-types';
-import type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus } from '../submission-types';
-import type { BufferWriteRange, GPUExtent3D, GPUImageDataLayout, RHIUploadData } from '../webgpu-types';
+import type { RHICommandBuffer } from '../contracts/command';
+import type { RHIQueue } from '../contracts/device';
+import type { GPUImageCopyTexture, RHIBuffer } from '../contracts/resource';
+import type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus } from '../contracts/submission';
+import type { BufferWriteRange, GPUExtent3D, GPUImageDataLayout, RHIUploadData } from '../contracts/webgpu';
 import { WebGPUCommandBuffer } from './command';
 import type { WebGPUNativeQueuePort, WebGPUNativeResourcePort } from './native-types';
 import {

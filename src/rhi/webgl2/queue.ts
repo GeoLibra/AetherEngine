@@ -1,7 +1,7 @@
-import type { RHICommandBuffer } from '../command-types';
-import type { RHIQueue } from '../device-types';
-import type { RHIResource } from '../resource-types';
-import type { RHISubmission, RHISubmissionStatus } from '../submission-types';
+import type { RHICommandBuffer } from '../contracts/command';
+import type { RHIQueue } from '../contracts/device';
+import type { RHIResource } from '../contracts/resource';
+import type { RHISubmission, RHISubmissionStatus } from '../contracts/submission';
 import { WebGL2CommandBuffer } from './command';
 import { WebGL2Metrics, type WebGL2MetricsSnapshot } from './metrics';
 import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
