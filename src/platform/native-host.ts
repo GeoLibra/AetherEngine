@@ -66,12 +66,16 @@ export class NativeHost implements Host {
       },
       true
     );
-    lifecycle.unsubscribeMetrics = windowPort.onMetrics((update) => window.queueMetrics(update));
-    lifecycle.unsubscribeSurface = windowPort.onSurface((target) => window.queueSurfaceTarget(target));
-    lifecycle.unsubscribeClose = windowPort.onClose(() => {
-      lifecycle.closingFromPort = true;
-      try { window.close(); } finally { lifecycle.closingFromPort = false; }
-    });
+    try {
+      lifecycle.unsubscribeMetrics = windowPort.onMetrics((update) => window.queueMetrics(update));
+      lifecycle.unsubscribeSurface = windowPort.onSurface((target) => window.queueSurfaceTarget(target));
+      lifecycle.unsubscribeClose = windowPort.onClose(() => {
+        lifecycle.closingFromPort = true;
+        try { window.close(); } finally { lifecycle.closingFromPort = false; }
+      });
+    } catch (error) {
+      rollbackWindowSetup(window, error, 'NativeHost');
+    }
     this.ownedWindows.push(window);
     return window;
   }
@@ -122,4 +126,13 @@ export class NativeHost implements Host {
 
 function captureCleanup(errors: unknown[], cleanup: () => void): void {
   try { cleanup(); } catch (error) { errors.push(error); }
+}
+
+function rollbackWindowSetup(window: PlatformWindow, setupError: unknown, hostName: string): never {
+  try {
+    window.close();
+  } catch (cleanupError) {
+    throw new AggregateError([setupError, cleanupError], `${hostName} window setup and cleanup failed.`);
+  }
+  throw setupError;
 }

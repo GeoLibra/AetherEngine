@@ -205,7 +205,6 @@ export class WebGPUDevice implements RHIDevice {
       id,
       this.owner,
       nativeEncoder,
-      descriptor.label,
       this.fastPath
     );
   }

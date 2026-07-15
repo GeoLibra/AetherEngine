@@ -8,7 +8,7 @@ import type {
 } from '../command-types';
 import type { RHIResource, RHIRenderPipeline, RHIComputePipeline, RHIBindGroup, RHIBuffer, GPUImageCopyTexture } from '../resource-types';
 import type { RHIRenderPassDescriptor } from '../render-target-types';
-import type { GPUCommandBufferDescriptor, GPUCommandEncoderDescriptor, GPUComputePassDescriptor, GPUExtent3D, GPUIndexFormat } from '../webgpu-types';
+import type { GPUCommandBufferDescriptor, GPUComputePassDescriptor, GPUExtent3D, GPUIndexFormat } from '../webgpu-types';
 import { cloneCommandStats, createCommandStats, recordDraw, recordIndexedDraw, recordIndirectDraw } from '../stats';
 import type { WebGPUNativeCommandEncoderPort, WebGPUNativeComputePassPort, WebGPUNativeRenderPassPort, WebGPUNativeResourcePort } from './native-types';
 import {
@@ -63,7 +63,6 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     private readonly id: number,
     private readonly owner: WebGPUDeviceOwner,
     private readonly native: WebGPUNativeCommandEncoderPort,
-    private readonly label: string | undefined,
     private readonly fastPath: WebGPUFastPathCounter
   ) {
     encoderInteropState.set(this, {
