@@ -249,6 +249,7 @@ export type {
   GPUBufferBindingLayout,
   GPUComputePassDescriptor,
   GPUImageCopyTexture,
+  GPUImageCopyBuffer,
   GPUImageDataLayout,
   GPUOrigin3D,
   GPUPipelineLayoutDescriptor,

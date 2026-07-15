@@ -1,4 +1,5 @@
 import { toResourceRef } from '../core/resource-ref';
+import { textureMipDimension, validateTextureViewMipLevel } from '../core/texture-dimensions';
 import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
 import type { NullDeviceOwner } from './resource';
 import type {
@@ -60,8 +61,12 @@ export class NullTextureView extends NullResourceBase implements RHITextureView 
   constructor(id: number, owner: NullDeviceOwner, readonly texture: RHITexture, descriptor: GPUTextureViewDescriptor) {
     super(id, owner, descriptor.label ?? texture.label);
     this.descriptor = { ...descriptor };
-    this.width = texture.width;
-    this.height = texture.height;
+    const mipLevel = validateTextureViewMipLevel(
+      descriptor.baseMipLevel,
+      texture.descriptor.mipLevelCount
+    );
+    this.width = textureMipDimension(texture.width, mipLevel);
+    this.height = textureMipDimension(texture.height, mipLevel);
     this.depthOrArrayLayers = descriptor.arrayLayerCount ?? texture.depthOrArrayLayers;
     this.format = descriptor.format ?? texture.format;
   }
@@ -210,13 +215,12 @@ function normalizeOrigin(origin: GPUImageCopyTexture['origin']): RHINormalizedOr
 }
 
 function getTextureMipSize(texture: RHITexture, mipLevel: number): RHINormalizedExtent3D {
-  const scale = 2 ** mipLevel;
   const scaleDepth = texture.descriptor.dimension === '3d';
   return {
-    width: Math.max(1, Math.floor(texture.width / scale)),
-    height: Math.max(1, Math.floor(texture.height / scale)),
+    width: textureMipDimension(texture.width, mipLevel),
+    height: textureMipDimension(texture.height, mipLevel),
     depthOrArrayLayers: scaleDepth
-      ? Math.max(1, Math.floor(texture.depthOrArrayLayers / scale))
+      ? textureMipDimension(texture.depthOrArrayLayers, mipLevel)
       : texture.depthOrArrayLayers
   };
 }

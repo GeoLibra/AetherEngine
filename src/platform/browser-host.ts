@@ -67,6 +67,7 @@ export class BrowserHost implements Host {
     };
     const windowOptions = withPortSurfaceTarget(options, windowPort.surfaceTarget);
     const hostWindow = new PlatformWindow(id, windowOptions, () => {
+      this.removeWindow(hostWindow);
       lifecycle.unsubscribeMetrics();
       lifecycle.unsubscribeClose();
       if (!lifecycle.closingFromPort) {
@@ -112,7 +113,8 @@ export class BrowserHost implements Host {
     }
     this.currentState = 'destroyed';
     const errors: unknown[] = [];
-    for (const hostWindow of this.ownedWindows) {
+    // Closing mutates the registry, so teardown must iterate a stable snapshot.
+    for (const hostWindow of [...this.ownedWindows]) {
       try {
         hostWindow.close();
       } catch (error) {
@@ -134,6 +136,11 @@ export class BrowserHost implements Host {
     for (const hostWindow of this.ownedWindows) {
       hostWindow.commitFrameBoundary();
     }
+  }
+
+  private removeWindow(window: PlatformWindow): void {
+    const index = this.ownedWindows.indexOf(window);
+    if (index >= 0) this.ownedWindows.splice(index, 1);
   }
 }
 

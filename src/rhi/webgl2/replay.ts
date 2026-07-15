@@ -142,6 +142,16 @@ export class WebGL2ReplayExecutor {
           'copyTextureToTexture', lowerTextureCopy(command.source, this.owner),
           lowerTextureCopy(command.destination, this.owner), command.copySize
         );
+      case 'copy-buffer-to-texture':
+        return this.call(
+          'copyBufferToTexture', lowerBufferCopy(command.source, this.owner),
+          lowerTextureCopy(command.destination, this.owner), command.copySize
+        );
+      case 'copy-texture-to-buffer':
+        return this.call(
+          'copyTextureToBuffer', lowerTextureCopy(command.source, this.owner),
+          lowerBufferCopy(command.destination, this.owner), command.copySize
+        );
     }
   }
 
@@ -209,6 +219,15 @@ export class WebGL2ReplayExecutor {
     (operation as (...values: unknown[]) => void).call(this.native, ...args);
     this.metrics.recordGLCall();
   }
+}
+
+function lowerBufferCopy(copy: import('./command-types').WebGL2ImageCopyBuffer, owner: WebGL2DeviceOwner) {
+  return Object.freeze({
+    buffer: getWebGL2Handle(copy.buffer, owner),
+    offset: copy.offset,
+    bytesPerRow: copy.bytesPerRow,
+    rowsPerImage: copy.rowsPerImage
+  });
 }
 
 function dynamicOffsetMap(group: RHIBindGroup, offsets: readonly number[]): ReadonlyMap<number, number> {

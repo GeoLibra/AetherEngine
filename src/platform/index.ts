@@ -9,7 +9,12 @@ export { PlatformWindow } from './window';
 export { NativeHost, NativeHostDestroyError } from './native-host';
 export { NativeRunner } from './native-runner';
 export type { NativeRunnerBoundary } from './native-runner';
-export type { NativeFramePort, NativePlatformPort, NativeWindowPort } from './native-host-types';
+export type {
+  NativeFramePort,
+  NativePlatformLifecycleEvent,
+  NativePlatformPort,
+  NativeWindowPort
+} from './native-host-types';
 export {
   NativeAudioServiceToken,
   NativeClipboardServiceToken,

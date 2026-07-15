@@ -68,6 +68,16 @@ export interface WebGL2NativeContextPort {
     destination: Readonly<Record<string, unknown>>,
     size: Readonly<Record<string, number>>
   ): void;
+  copyBufferToTexture?(
+    source: Readonly<Record<string, unknown>>,
+    destination: Readonly<Record<string, unknown>>,
+    size: Readonly<Record<string, number>>
+  ): void;
+  copyTextureToBuffer?(
+    source: Readonly<Record<string, unknown>>,
+    destination: Readonly<Record<string, unknown>>,
+    size: Readonly<Record<string, number>>
+  ): void;
   pushDebugGroup?(label: string): void;
   popDebugGroup?(): void;
   createSubmissionFence?(): Promise<void>;
