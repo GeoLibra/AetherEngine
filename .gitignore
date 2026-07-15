@@ -3,7 +3,8 @@ dist/
 coverage/
 .vite/
 *.tsbuildinfo
-docs
-webgpu-render-engine
-downloads
+docs/
+webgpu-render-engine/
+downloads/
 .codegraph
+engine/
