@@ -20,19 +20,51 @@ class CommandContext {
   readonly precision = {};
   readonly lost = new Promise<WebGL2NativeContextLostInfo>(() => {});
   readonly calls: string[] = [];
-  createBuffer(): object { this.calls.push('createBuffer'); return {}; }
-  createTexture(): object { this.calls.push('createTexture'); return {}; }
-  createProgram(): object { this.calls.push('createProgram'); return {}; }
-  getProgramReflection(): readonly [] { this.calls.push('getProgramReflection'); return []; }
-  deleteBuffer(): void { this.calls.push('deleteBuffer'); }
-  deleteTexture(): void { this.calls.push('deleteTexture'); }
-  deleteProgram(): void { this.calls.push('deleteProgram'); }
+  createBuffer(): object {
+    this.calls.push('createBuffer');
+    return {};
+  }
+  createTexture(): object {
+    this.calls.push('createTexture');
+    return {};
+  }
+  createProgram(): object {
+    this.calls.push('createProgram');
+    return {};
+  }
+  getProgramReflection(): readonly [] {
+    this.calls.push('getProgramReflection');
+    return [];
+  }
+  deleteBuffer(): void {
+    this.calls.push('deleteBuffer');
+  }
+  deleteTexture(): void {
+    this.calls.push('deleteTexture');
+  }
+  deleteProgram(): void {
+    this.calls.push('deleteProgram');
+  }
 }
 
 class Translator {
+  readonly translatorId = 'test';
+  readonly version = 1;
   translate(input: { entryPoint: string }) {
-    return { source: `#version 300 es\nvoid ${input.entryPoint}() {}`, bindings: [] };
+    return translated(`void ${input.entryPoint}() {}`);
   }
+}
+
+function translated(source: string) {
+  return {
+    source,
+    bindings: [],
+    targetAbiFingerprint: 'test-abi',
+    physicalBindings: [],
+    requiredExtensions: [],
+    sourceMap: [],
+    translatorFingerprint: 'test-output'
+  };
 }
 
 async function createFixture() {
@@ -42,7 +74,8 @@ async function createFixture() {
     translator: Translator
   ) => WebGL2Adapter;
   const device = await new Adapter(native, new Translator()).requestDevice({
-    requiredFeatures: [], optionalFeatures: []
+    requiredFeatures: [],
+    optionalFeatures: []
   });
   const module = device.createShaderModule({ code: 'portable-ir' });
   const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
@@ -63,7 +96,10 @@ describe('WebGL2 deferred command recording', () => {
     const { device, native, pipeline, color, vertex, index } = await createFixture();
     const copyTarget = device.createTexture({ size: [8, 8], format: 'rgba8unorm', usage: 2 });
     const attachment: RHIRenderPassColorAttachment = {
-      view: color.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1]
+      view: color.createView(),
+      loadOp: 'clear',
+      storeOp: 'store',
+      clearValue: [0, 0, 0, 1]
     };
     const attachments = [attachment];
     const encoder = device.createCommandEncoder({ label: 'frame' });
@@ -89,9 +125,19 @@ describe('WebGL2 deferred command recording', () => {
 
     expect(native.calls).toEqual([]);
     expect(commandBuffer.getCommandStream().map((record) => record.kind)).toEqual([
-      'pushDebugGroup', 'popDebugGroup', 'beginRenderPass', 'setRenderPipeline',
-      'setVertexBuffer', 'setIndexBuffer', 'setViewport', 'setScissorRect',
-      'draw', 'drawIndexed', 'endRenderPass', 'copyBufferToBuffer', 'copyTextureToTexture'
+      'pushDebugGroup',
+      'popDebugGroup',
+      'beginRenderPass',
+      'setRenderPipeline',
+      'setVertexBuffer',
+      'setIndexBuffer',
+      'setViewport',
+      'setScissorRect',
+      'draw',
+      'drawIndexed',
+      'endRenderPass',
+      'copyBufferToBuffer',
+      'copyTextureToTexture'
     ]);
     expect(commandBuffer.getStats()).toMatchObject({
       renderPasses: 1,
@@ -109,8 +155,9 @@ describe('WebGL2 deferred command recording', () => {
       colorAttachments: [{ loadOp: 'clear' }]
     });
     expect(Object.isFrozen(replay[2])).toBe(true);
-    const leases = (commandBuffer as typeof commandBuffer & { getLeasedResources(): readonly unknown[] })
-      .getLeasedResources();
+    const leases = (
+      commandBuffer as typeof commandBuffer & { getLeasedResources(): readonly unknown[] }
+    ).getLeasedResources();
     expect(leases).toEqual(expect.arrayContaining([color, copyTarget, pipeline, vertex, index]));
   });
 
@@ -121,7 +168,8 @@ describe('WebGL2 deferred command recording', () => {
       entries: [{ binding: 0, visibility: 1, buffer: { type: 'uniform', hasDynamicOffset: true } }]
     });
     const group = device.createBindGroup({
-      layout: groupLayout, entries: [{ binding: 0, resource: { buffer, offset: 0, size: 256 } }]
+      layout: groupLayout,
+      entries: [{ binding: 0, resource: { buffer, offset: 0, size: 256 } }]
     });
     const offsets = [256];
     const encoder = device.createCommandEncoder();
@@ -144,17 +192,23 @@ describe('WebGL2 deferred command recording', () => {
   test('rejects invalid lifecycle and unsupported commands at record time', async () => {
     const { device, pipeline, color, vertex } = await createFixture();
     const encoder = device.createCommandEncoder();
-    expect(() => encoder.beginComputePass()).toThrow(expect.objectContaining({
-      name: 'RHIUnsupportedOperationError', operation: 'begin-compute-pass'
-    } satisfies Partial<RHIUnsupportedOperationError>));
+    expect(() => encoder.beginComputePass()).toThrow(
+      expect.objectContaining({
+        name: 'RHIUnsupportedOperationError',
+        operation: 'begin-compute-pass'
+      } satisfies Partial<RHIUnsupportedOperationError>)
+    );
     const pass = encoder.beginRenderPass({
       colorAttachments: [{ view: color.createView(), loadOp: 'load', storeOp: 'store' }]
     });
     expect(() => pass.draw(3)).toThrow('requires a render pipeline');
     pass.setPipeline(pipeline);
-    expect(() => pass.drawIndirect(vertex, 0)).toThrow(expect.objectContaining({
-      name: 'RHIUnsupportedOperationError', operation: 'draw-indirect'
-    } satisfies Partial<RHIUnsupportedOperationError>));
+    expect(() => pass.drawIndirect(vertex, 0)).toThrow(
+      expect.objectContaining({
+        name: 'RHIUnsupportedOperationError',
+        operation: 'draw-indirect'
+      } satisfies Partial<RHIUnsupportedOperationError>)
+    );
     expect(() => encoder.finish()).toThrow('while a pass is active');
     pass.pushDebugGroup('open');
     expect(() => pass.end()).toThrow('unclosed debug groups');

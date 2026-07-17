@@ -3,18 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "build": "vite build",
     "dev": "vite --host 127.0.0.1",
     "test": "vitest run",
-    "bench:validate": "vite-node benchmark/framework/cli.ts validate",
-    "bench:changed": "vite-node benchmark/framework/cli.ts changed",
-    "bench:all": "vite-node benchmark/framework/cli.ts all",
-    "bench:foundation": "vitest bench --run benchmark/foundation-transform.bench.ts",
-    "bench:ecs": "vite-node benchmark/cli.ts",
-    "bench:render-world": "node benchmark/render-world-runner.mjs",
+    "bench": "vite-node benchmark/framework/cli.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "format:staged": "node scripts/check-staged-format.mjs",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:commit": "pnpm run typecheck && pnpm test && pnpm run build && pnpm bench validate && pnpm bench changed"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
@@ -22,6 +22,8 @@
     "koota": "0.6.6",
     "typescript": "^5.5.4",
     "vite": "^5.4.11",
-    "vitest": "^2.1.4"
+    "vite-node": "^2.1.4",
+    "vitest": "^2.1.4",
+    "prettier": "^3.6.2"
   }
 }

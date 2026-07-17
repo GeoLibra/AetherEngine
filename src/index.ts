@@ -128,6 +128,7 @@ export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
 export { HostService, createHostPlugin } from './plugins/host-plugin';
 export * from './schema';
 export * from './rendering';
+export * from './shader';
 export {
   NullAdapter,
   NativeDawnAdapter,

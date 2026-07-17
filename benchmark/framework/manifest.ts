@@ -24,10 +24,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
     Object.freeze({
       id: 'jobs',
       description: 'Worker scheduling, queues, transfer, cancellation, and commit budgets.',
-      pathPrefixes: Object.freeze([
-        'engine/design/v2/02-runtime/03-jobs-workers.md',
-        'src/jobs/'
-      ])
+      pathPrefixes: Object.freeze(['engine/design/v2/02-runtime/03-jobs-workers.md', 'src/jobs/'])
     }),
     Object.freeze({
       id: 'rhi',
@@ -41,7 +38,8 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
     }),
     Object.freeze({
       id: 'rendering',
-      description: 'RenderWorld, shader, material, RenderGraph, visibility, lighting, and post paths.',
+      description:
+        'RenderWorld, shader, material, RenderGraph, visibility, lighting, and post paths.',
       pathPrefixes: Object.freeze([
         'engine/design/v2/04-rendering/',
         'src/rendering/',
@@ -61,10 +59,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
     Object.freeze({
       id: 'editor',
       description: 'Editor document, command, snapshot, picking, and large-scene workflows.',
-      pathPrefixes: Object.freeze([
-        'engine/design/v2/06-editor/',
-        'src/editor/'
-      ])
+      pathPrefixes: Object.freeze(['engine/design/v2/06-editor/', 'src/editor/'])
     })
   ]),
   suites: Object.freeze([
@@ -83,13 +78,29 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'benchmark/worker.ts'
       ]),
       command: Object.freeze({
-        executable: 'npm',
-        args: Object.freeze(['run', 'bench:ecs', '--', '--profile', '{profile}'])
+        executable: 'vite-node',
+        args: Object.freeze(['benchmark/cli.ts', '--profile', '{profile}'])
+      })
+    }),
+    Object.freeze({
+      id: 'rhi',
+      description: 'RHI validation, command recording, and submission baseline.',
+      domainIds: Object.freeze(['rhi']),
+      pathPrefixes: Object.freeze([
+        'benchmark/rhi-command.bench.ts',
+        'benchmark/rhi-command-runner.mjs',
+        'src/rhi/',
+        'test/rhi/'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/rhi-command-runner.mjs', '{profile}'])
       })
     }),
     Object.freeze({
       id: 'render-world',
-      description: 'RenderWorld extraction, immutable revisions, identity mapping, and deterministic diff publishing.',
+      description:
+        'RenderWorld extraction, immutable revisions, identity mapping, and deterministic diff publishing.',
       domainIds: Object.freeze(['rendering']),
       pathPrefixes: Object.freeze([
         'benchmark/render-world.bench.ts',
@@ -98,8 +109,24 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'test/rendering/'
       ]),
       command: Object.freeze({
-        executable: 'npm',
-        args: Object.freeze(['run', 'bench:render-world', '--', '{profile}'])
+        executable: 'node',
+        args: Object.freeze(['benchmark/render-world-runner.mjs', '{profile}'])
+      })
+    }),
+    Object.freeze({
+      id: 'shader-system',
+      description: 'FluxSL source closure, typed parsing, ABI reflection, variant and cache paths.',
+      domainIds: Object.freeze(['rendering']),
+      pathPrefixes: Object.freeze([
+        'benchmark/shader-system.bench.ts',
+        'benchmark/shader-system-runner.mjs',
+        'engine/design/v2/04-rendering/02-shader-system.md',
+        'src/shader/',
+        'test/shader/'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/shader-system-runner.mjs', '{profile}'])
       })
     })
   ])

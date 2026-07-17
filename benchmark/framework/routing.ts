@@ -20,9 +20,16 @@ export function routeChangedFiles(
     .map((domain) => domain.id)
     .sort();
   const matchedDomains = new Set(domainIds);
-  const suites = manifest.suites.filter((suite) =>
-    suite.domainIds.some((domainId) => matchedDomains.has(domainId))
-    || changedFiles.some((path) => matchesPrefix(path, suite.pathPrefixes))
+  const directlyMatched = manifest.suites.filter((suite) =>
+    changedFiles.some((path) => matchesPrefix(path, suite.pathPrefixes))
+  );
+  const directlyCoveredDomains = new Set(directlyMatched.flatMap((suite) => suite.domainIds));
+  const suites = manifest.suites.filter(
+    (suite) =>
+      directlyMatched.includes(suite) ||
+      suite.domainIds.some(
+        (domainId) => matchedDomains.has(domainId) && !directlyCoveredDomains.has(domainId)
+      )
   );
   const coveredDomains = new Set(suites.flatMap((suite) => suite.domainIds));
 

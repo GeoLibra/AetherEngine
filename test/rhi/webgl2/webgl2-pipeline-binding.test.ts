@@ -2,7 +2,10 @@ import { describe, expect, test } from 'vitest';
 
 import { WebGL2Adapter, type WebGL2NativeContextLostInfo } from '../../../src';
 
-interface NativeObject { readonly id: number; readonly kind: string }
+interface NativeObject {
+  readonly id: number;
+  readonly kind: string;
+}
 interface TranslationInput {
   readonly stage: 'vertex' | 'fragment';
   readonly entryPoint: string;
@@ -10,6 +13,8 @@ interface TranslationInput {
 }
 
 class Translator {
+  readonly translatorId = 'test';
+  readonly version = 1;
   readonly calls: TranslationInput[] = [];
   translate(input: TranslationInput) {
     this.calls.push({
@@ -18,12 +23,21 @@ class Translator {
       constants: { ...input.constants }
     });
     return {
-      source: `#version 300 es\nvoid ${input.entryPoint}() {}`,
+      source: `void ${input.entryPoint}() {}`,
       bindings: [
         { group: 0, binding: 0, name: 'Camera', kind: 'uniform-buffer' },
         { group: 0, binding: 1, name: 'colorTexture', kind: 'texture' },
         { group: 0, binding: 2, name: 'colorSampler', kind: 'sampler' }
-      ]
+      ],
+      targetAbiFingerprint: 'test-abi',
+      physicalBindings: [
+        { group: 0, binding: 0, kind: 'uniform-buffer', slot: 0 },
+        { group: 0, binding: 1, kind: 'texture', slot: 0 },
+        { group: 0, binding: 2, kind: 'sampler', slot: 0 }
+      ],
+      requiredExtensions: [],
+      sourceMap: [],
+      translatorFingerprint: 'test-output'
     };
   }
 }
@@ -43,9 +57,15 @@ class PipelineContext {
   reflection: readonly Readonly<Record<string, unknown>>[] | undefined;
   programError: Error | undefined;
   private nextId = 1;
-  createBuffer(): NativeObject { return this.object('buffer'); }
-  createTexture(): NativeObject { return this.object('texture'); }
-  createSampler(): NativeObject { return this.object('sampler'); }
+  createBuffer(): NativeObject {
+    return this.object('buffer');
+  }
+  createTexture(): NativeObject {
+    return this.object('texture');
+  }
+  createSampler(): NativeObject {
+    return this.object('sampler');
+  }
   createProgram(descriptor: Readonly<Record<string, unknown>>): NativeObject {
     if (this.programError !== undefined) throw this.programError;
     this.programs.push(descriptor);
@@ -58,7 +78,9 @@ class PipelineContext {
   deleteTexture(): void {}
   deleteSampler(): void {}
   deleteProgram(): void {}
-  private object(kind: string): NativeObject { return { id: this.nextId++, kind }; }
+  private object(kind: string): NativeObject {
+    return { id: this.nextId++, kind };
+  }
 }
 
 async function createDevice() {
@@ -68,7 +90,10 @@ async function createDevice() {
     native: PipelineContext,
     translator: Translator
   ) => WebGL2Adapter;
-  const device = await new Adapter(native, translator).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+  const device = await new Adapter(native, translator).requestDevice({
+    requiredFeatures: [],
+    optionalFeatures: []
+  });
   return { device, native, translator };
 }
 
@@ -79,7 +104,11 @@ function createPipelineInputs(device: Awaited<ReturnType<typeof createDevice>>['
   const module = device.createShaderModule({ label: 'main-shader', code: 'typed-ir-payload' });
   const groupLayout = device.createBindGroupLayout({
     entries: [
-      { binding: 0, visibility: 3, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 256 } },
+      {
+        binding: 0,
+        visibility: 3,
+        buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 256 }
+      },
       { binding: 1, visibility: 2, texture: { sampleType: 'float' } },
       { binding: 2, visibility: 2, sampler: { type: 'filtering' } }
     ]
@@ -108,7 +137,8 @@ describe('WebGL2 shader, binding, and pipeline lowering', () => {
     const constants = { QUALITY: 2 };
 
     const pipeline = device.createRenderPipeline({
-      label: 'basic', layout,
+      label: 'basic',
+      layout,
       vertex: { module, entryPoint: 'vsMain', constants },
       fragment: { module, entryPoint: 'fsMain', targets: [{ format: 'rgba8unorm' }] }
     });
@@ -133,9 +163,12 @@ describe('WebGL2 shader, binding, and pipeline lowering', () => {
       entries: [{ binding: 0, visibility: 1, buffer: { type: 'uniform' } }]
     });
 
-    expect(() => device.createBindGroup({
-      layout, entries: [{ binding: 0, resource: { buffer, offset: 4, size: 256 } }]
-    })).toThrow('Uniform buffer binding 0 offset 4 is not aligned to 256.');
+    expect(() =>
+      device.createBindGroup({
+        layout,
+        entries: [{ binding: 0, resource: { buffer, offset: 4, size: 256 } }]
+      })
+    ).toThrow('Uniform buffer binding 0 offset 4 is not aligned to 256.');
   });
 
   test('rejects program reflection that differs from the translated manifest', async () => {
@@ -143,20 +176,25 @@ describe('WebGL2 shader, binding, and pipeline lowering', () => {
     const { module, layout } = createPipelineInputs(device);
     native.reflection = [{ group: 0, binding: 7, name: 'wrong', kind: 'texture' }];
 
-    expect(() => device.createRenderPipeline({
-      label: 'mismatch', layout,
-      vertex: { module, entryPoint: 'vsMain' },
-      fragment: { module, entryPoint: 'fsMain', targets: [{ format: 'rgba8unorm' }] }
-    })).toThrow('WebGL2 program "mismatch" reflection does not match its binding manifest.');
+    expect(() =>
+      device.createRenderPipeline({
+        label: 'mismatch',
+        layout,
+        vertex: { module, entryPoint: 'vsMain' },
+        fragment: { module, entryPoint: 'fsMain', targets: [{ format: 'rgba8unorm' }] }
+      })
+    ).toThrow('WebGL2 program "mismatch" reflection does not match its binding manifest.');
   });
 
   test('rejects binding layouts over probed limits before program creation', async () => {
     const { device, native } = await createDevice();
     native.limits.maxTextureUnits = 0;
 
-    expect(() => device.createBindGroupLayout({
-      entries: [{ binding: 0, visibility: 2, texture: { sampleType: 'float' } }]
-    })).toThrow('WebGL2 bind group layout requires 1 textures, limit is 0.');
+    expect(() =>
+      device.createBindGroupLayout({
+        entries: [{ binding: 0, visibility: 2, texture: { sampleType: 'float' } }]
+      })
+    ).toThrow('WebGL2 bind group layout requires 1 textures, limit is 0.');
     expect(native.programs).toHaveLength(0);
   });
 
@@ -181,14 +219,19 @@ describe('WebGL2 shader, binding, and pipeline lowering', () => {
     const cause = new Error('GLSL link log');
     native.programError = cause;
 
-    expect(() => device.createRenderPipeline({
-      label: 'broken', layout,
-      vertex: { module, entryPoint: 'vsMain' },
-      fragment: { module, entryPoint: 'fsMain', targets: [{ format: 'rgba8unorm' }] }
-    })).toThrow(expect.objectContaining({
-      name: 'WebGL2ProgramCreationError',
-      pipelineLabel: 'broken',
-      cause
-    }));
+    expect(() =>
+      device.createRenderPipeline({
+        label: 'broken',
+        layout,
+        vertex: { module, entryPoint: 'vsMain' },
+        fragment: { module, entryPoint: 'fsMain', targets: [{ format: 'rgba8unorm' }] }
+      })
+    ).toThrow(
+      expect.objectContaining({
+        name: 'WebGL2ProgramCreationError',
+        pipelineLabel: 'broken',
+        cause
+      })
+    );
   });
 });

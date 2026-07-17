@@ -22,13 +22,18 @@ describe('benchmark manifest', () => {
         { id: 'same', description: 'one', pathPrefixes: ['src/one/'] },
         { id: 'same', description: 'two', pathPrefixes: ['src/two/'] }
       ],
-      suites: [{
-        id: 'broken',
-        description: 'broken',
-        domainIds: ['missing'],
-        pathPrefixes: ['benchmark/broken/'],
-        command: { executable: 'npm', args: ['run', 'bench:broken', '--', '--profile', '{profile}'] }
-      }]
+      suites: [
+        {
+          id: 'broken',
+          description: 'broken',
+          domainIds: ['missing'],
+          pathPrefixes: ['benchmark/broken/'],
+          command: {
+            executable: 'npm',
+            args: ['run', 'bench:broken', '--', '--profile', '{profile}']
+          }
+        }
+      ]
     };
 
     const result = validateManifest(invalid);
@@ -41,8 +46,9 @@ describe('benchmark manifest', () => {
 describe('changed-file routing', () => {
   test('selects the ECS suite for ECS source and suite-owned files', () => {
     expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/ecs/world.ts']).suiteIds).toEqual(['ecs']);
-    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['benchmark/scenarios/definitions.ts']).suiteIds)
-      .toEqual(['ecs']);
+    expect(
+      routeChangedFiles(BENCHMARK_MANIFEST, ['benchmark/scenarios/definitions.ts']).suiteIds
+    ).toEqual(['ecs']);
   });
 
   test('requires a suite when Rendering work starts', () => {
@@ -54,18 +60,32 @@ describe('changed-file routing', () => {
   });
 
   test('also recognizes the Rendering design directory and ignores unrelated files', () => {
-    expect(routeChangedFiles(
-      BENCHMARK_MANIFEST,
-      ['engine/design/v2/04-rendering/01-render-world.md', 'README.md']
-    ).suiteIds).toEqual(['render-world']);
+    expect(
+      routeChangedFiles(BENCHMARK_MANIFEST, [
+        'engine/design/v2/04-rendering/01-render-world.md',
+        'README.md'
+      ]).suiteIds
+    ).toEqual(['render-world']);
     expect(routeChangedFiles(BENCHMARK_MANIFEST, ['README.md']).domainIds).toEqual([]);
+  });
+
+  test('routes Shader work to the dedicated semantic suite', () => {
+    expect(
+      routeChangedFiles(BENCHMARK_MANIFEST, ['engine/design/v2/04-rendering/02-shader-system.md'])
+        .suiteIds
+    ).toEqual(['shader-system']);
+    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/shader/compiler.ts']).suiteIds).toEqual([
+      'shader-system'
+    ]);
   });
 });
 
 describe('framework command planning', () => {
   test('parses and deduplicates Git name-only output', () => {
-    expect(parseChangedPaths('src/ecs/world.ts\r\nsrc/ecs/world.ts\n\nREADME.md\n'))
-      .toEqual(['README.md', 'src/ecs/world.ts']);
+    expect(parseChangedPaths('src/ecs/world.ts\r\nsrc/ecs/world.ts\n\nREADME.md\n')).toEqual([
+      'README.md',
+      'src/ecs/world.ts'
+    ]);
   });
 
   test('renders the requested profile without a shell command string', () => {
@@ -73,16 +93,35 @@ describe('framework command planning', () => {
     if (!suite) throw new Error('Expected the ECS suite.');
 
     expect(renderSuiteCommand(suite, 'standard')).toEqual({
-      executable: 'npm',
-      args: ['run', 'bench:ecs', '--', '--profile', 'standard']
+      executable: 'vite-node',
+      args: ['benchmark/cli.ts', '--profile', 'standard']
     });
   });
 
   test('parses changed and all commands and rejects unknown options', () => {
-    expect(parseFrameworkCliOptions(['changed', '--profile', 'standard', '--file', 'src/ecs/world.ts', '--dry-run']))
-      .toEqual({ command: 'changed', profile: 'standard', files: ['src/ecs/world.ts'], dryRun: true });
-    expect(parseFrameworkCliOptions(['all'])).toEqual({ command: 'all', profile: 'smoke', dryRun: false });
-    expect(() => parseFrameworkCliOptions(['changed', '--quick'])).toThrow('Unknown benchmark framework option');
+    expect(
+      parseFrameworkCliOptions([
+        'changed',
+        '--profile',
+        'standard',
+        '--file',
+        'src/ecs/world.ts',
+        '--dry-run'
+      ])
+    ).toEqual({
+      command: 'changed',
+      profile: 'standard',
+      files: ['src/ecs/world.ts'],
+      dryRun: true
+    });
+    expect(parseFrameworkCliOptions(['all'])).toEqual({
+      command: 'all',
+      profile: 'smoke',
+      dryRun: false
+    });
+    expect(() => parseFrameworkCliOptions(['changed', '--quick'])).toThrow(
+      'Unknown benchmark framework option'
+    );
   });
 
   test('runs changed rendering work through the registered suite', async () => {
@@ -90,7 +129,12 @@ describe('framework command planning', () => {
 
     const result = await runBenchmarkPlan(
       BENCHMARK_MANIFEST,
-      { mode: 'changed', profile: 'smoke', files: ['src/rendering/render-graph.ts'], dryRun: false },
+      {
+        mode: 'changed',
+        profile: 'smoke',
+        files: ['src/rendering/render-graph.ts'],
+        dryRun: false
+      },
       execute
     );
     expect(result.suiteIds).toEqual(['render-world']);
@@ -107,10 +151,12 @@ describe('framework command planning', () => {
     );
 
     expect(result.suiteIds).toEqual(['ecs']);
-    expect(result.commands).toEqual([{
-      executable: 'npm',
-      args: ['run', 'bench:ecs', '--', '--profile', 'smoke']
-    }]);
+    expect(result.commands).toEqual([
+      {
+        executable: 'vite-node',
+        args: ['benchmark/cli.ts', '--profile', 'smoke']
+      }
+    ]);
     expect(execute).not.toHaveBeenCalled();
   });
 });

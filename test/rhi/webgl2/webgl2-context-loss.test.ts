@@ -13,11 +13,16 @@ interface Deferred<T> {
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
   return { promise, resolve };
 }
 
-interface NativeObject { readonly kind: string; readonly id: number }
+interface NativeObject {
+  readonly kind: string;
+  readonly id: number;
+}
 
 class ContextLossPort {
   readonly info = { name: 'Context loss WebGL2' };
@@ -31,40 +36,92 @@ class ContextLossPort {
   readonly lost = this.loss.promise;
   private nextId = 1;
 
-  lose(info: WebGL2NativeContextLostInfo): void { this.loss.resolve(info); }
-  createBuffer(): NativeObject { return this.object('buffer'); }
-  createTexture(): NativeObject { return this.object('texture'); }
-  createProgram(): NativeObject { return this.object('program'); }
-  getProgramReflection(): readonly [] { return []; }
-  createFramebuffer(): NativeObject { this.calls.push('createFramebuffer'); return this.object('framebuffer'); }
-  checkFramebufferStatus(): { complete: true } { return { complete: true }; }
-  createVertexArray(): NativeObject { this.calls.push('createVertexArray'); return this.object('vertex-array'); }
+  lose(info: WebGL2NativeContextLostInfo): void {
+    this.loss.resolve(info);
+  }
+  createBuffer(): NativeObject {
+    return this.object('buffer');
+  }
+  createTexture(): NativeObject {
+    return this.object('texture');
+  }
+  createProgram(): NativeObject {
+    return this.object('program');
+  }
+  getProgramReflection(): readonly [] {
+    return [];
+  }
+  createFramebuffer(): NativeObject {
+    this.calls.push('createFramebuffer');
+    return this.object('framebuffer');
+  }
+  checkFramebufferStatus(): { complete: true } {
+    return { complete: true };
+  }
+  createVertexArray(): NativeObject {
+    this.calls.push('createVertexArray');
+    return this.object('vertex-array');
+  }
   createSubmissionFence(): Promise<void> {
     const fence = deferred<void>();
     this.fences.push(fence);
     return fence.promise;
   }
-  useProgram(): void { this.calls.push('useProgram'); }
-  setRasterState(): void { this.calls.push('setRasterState'); }
-  setDepthStencilState(): void { this.calls.push('setDepthStencilState'); }
-  bindFramebuffer(): void { this.calls.push('bindFramebuffer'); }
-  bindVertexArray(): void { this.calls.push('bindVertexArray'); }
-  bindVertexBuffer(): void { this.calls.push('bindVertexBuffer'); }
+  useProgram(): void {
+    this.calls.push('useProgram');
+  }
+  setRasterState(): void {
+    this.calls.push('setRasterState');
+  }
+  setDepthStencilState(): void {
+    this.calls.push('setDepthStencilState');
+  }
+  bindFramebuffer(): void {
+    this.calls.push('bindFramebuffer');
+  }
+  bindVertexArray(): void {
+    this.calls.push('bindVertexArray');
+  }
+  bindVertexBuffer(): void {
+    this.calls.push('bindVertexBuffer');
+  }
   beginRenderPass(): void {}
   endRenderPass(): void {}
   draw(): void {}
-  deleteBuffer(): void { this.calls.push('deleteBuffer'); }
-  deleteTexture(): void { this.calls.push('deleteTexture'); }
-  deleteProgram(): void { this.calls.push('deleteProgram'); }
-  deleteFramebuffer(): void { this.calls.push('deleteFramebuffer'); }
-  deleteVertexArray(): void { this.calls.push('deleteVertexArray'); }
+  deleteBuffer(): void {
+    this.calls.push('deleteBuffer');
+  }
+  deleteTexture(): void {
+    this.calls.push('deleteTexture');
+  }
+  deleteProgram(): void {
+    this.calls.push('deleteProgram');
+  }
+  deleteFramebuffer(): void {
+    this.calls.push('deleteFramebuffer');
+  }
+  deleteVertexArray(): void {
+    this.calls.push('deleteVertexArray');
+  }
 
-  private object(kind: string): NativeObject { return { kind, id: this.nextId++ }; }
+  private object(kind: string): NativeObject {
+    return { kind, id: this.nextId++ };
+  }
 }
 
 class Translator {
+  readonly translatorId = 'test';
+  readonly version = 1;
   translate(input: { entryPoint: string }) {
-    return { source: `#version 300 es\nvoid ${input.entryPoint}() {}`, bindings: [] };
+    return {
+      source: `void ${input.entryPoint}() {}`,
+      bindings: [],
+      targetAbiFingerprint: 'test-abi',
+      physicalBindings: [],
+      requiredExtensions: [],
+      sourceMap: [],
+      translatorFingerprint: 'test-output'
+    };
   }
 }
 
@@ -74,14 +131,20 @@ async function createFixture(native = new ContextLossPort()) {
     translator: Translator
   ) => WebGL2Adapter;
   const device = await new Adapter(native, new Translator()).requestDevice({
-    requiredFeatures: [], optionalFeatures: []
+    requiredFeatures: [],
+    optionalFeatures: []
   });
   const shader = device.createShaderModule({ code: 'shader-ir' });
   const pipeline = device.createRenderPipeline({
-    vertex: { module: shader, buffers: [{
-      arrayStride: 16,
-      attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }]
-    }] },
+    vertex: {
+      module: shader,
+      buffers: [
+        {
+          arrayStride: 16,
+          attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }]
+        }
+      ]
+    },
     fragment: { module: shader, targets: [{ format: 'rgba8unorm' }] }
   });
   const texture = device.createTexture({ size: [4, 4], format: 'rgba8unorm', usage: 16 });
@@ -140,17 +203,29 @@ describe('WebGL2 context control', () => {
     fixture.native.lose({ reason: 'context-lost', message: 'browser reset' });
 
     await expect(fixture.device.lost).resolves.toEqual({
-      reason: 'context-lost', message: 'browser reset', generation: fixture.device.generation
+      reason: 'context-lost',
+      message: 'browser reset',
+      generation: fixture.device.generation
     });
     await expect(pending.done).resolves.toEqual({ status: 'device-lost' });
     expect(fixture.device.state).toBe('lost');
-    expect(fixture.device.queue.metrics()).toMatchObject({ contextLosses: 1, deviceLost: 1, pending: 0 });
+    expect(fixture.device.queue.metrics()).toMatchObject({
+      contextLosses: 1,
+      deviceLost: 1,
+      pending: 0
+    });
     fixture.native.fences.at(-1)?.resolve(undefined);
     await Promise.resolve();
-    expect(fixture.device.queue.metrics()).toMatchObject({ contextLosses: 1, completed: 1, deviceLost: 1 });
+    expect(fixture.device.queue.metrics()).toMatchObject({
+      contextLosses: 1,
+      completed: 1,
+      deviceLost: 1
+    });
     expect(fixture.vertex.state).toBe('device-lost');
     expect(fixture.view.state).toBe('device-lost');
-    expect(() => fixture.device.queue.writeBuffer(fixture.vertex, 0, new Uint8Array([1]))).toThrow('lost device');
+    expect(() => fixture.device.queue.writeBuffer(fixture.vertex, 0, new Uint8Array([1]))).toThrow(
+      'lost device'
+    );
 
     fixture.view.dispose();
     fixture.vertex.dispose();
@@ -159,7 +234,9 @@ describe('WebGL2 context control', () => {
     expect(fixture.native.calls.filter((call) => call.startsWith('delete'))).toEqual([]);
     expect(() => fixture.device.createBuffer({ size: 4, usage: 1 })).toThrow('lost');
     expect(() => fixture.device.queue.submit([])).toThrow('lost device');
-    expect(() => fixture.device.getExtension(WebGL2ContextControlExtension)?.invalidateExternalState()).toThrow('lost');
+    expect(() =>
+      fixture.device.getExtension(WebGL2ContextControlExtension)?.invalidateExternalState()
+    ).toThrow('lost');
 
     const recovered = await createFixture(new ContextLossPort());
     expect(recovered.device.state).toBe('live');

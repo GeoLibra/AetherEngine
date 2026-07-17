@@ -1,0 +1,180 @@
+import { describe, expect, test, vi } from 'vitest';
+import {
+  OverlayReconciler,
+  PreparedAssetRegistry,
+  buildRenderPhase,
+  computeVisibility,
+  resolvePipelineKey,
+  runRenderFrame,
+  type PhaseItem,
+  type PreparedVariantKey,
+  type RenderEntityId,
+  type RenderView
+} from '../../src/rendering';
+import type { RHISubmission, SubmissionResult } from '../../src/rhi';
+
+const entity = (value: number) => value as RenderEntityId;
+const key: PreparedVariantKey = {
+  assetId: 'mesh',
+  payloadVersion: 2,
+  deviceGeneration: 3,
+  featurePolicyKey: 'desktop',
+  abiVersion: '1'
+};
+
+describe('prepared asset lifecycle', () => {
+  test('waits for both leases and typed submissions before destroying a retired asset', async () => {
+    let settle!: (result: SubmissionResult) => void;
+    const submission: RHISubmission = {
+      id: 1,
+      status: 'pending',
+      done: new Promise((resolve) => {
+        settle = resolve;
+      })
+    };
+    const destroy = vi.fn();
+    const registry = new PreparedAssetRegistry();
+    registry.publish({ key, value: { gpu: true } }, destroy);
+    const lease = registry.acquire<{ gpu: boolean }>(key)!;
+    lease.retainUntil(submission);
+    registry.retire(key);
+    lease.dispose();
+    expect(destroy).not.toHaveBeenCalled();
+    settle({ status: 'completed' });
+    await submission.done;
+    await Promise.resolve();
+    expect(destroy).toHaveBeenCalledOnce();
+    expect(registry.acquire(key)).toBeUndefined();
+  });
+});
+
+describe('visibility and render phases', () => {
+  const view: RenderView = {
+    id: 'main',
+    camera: entity(99),
+    surface: 'surface',
+    viewport: { x: 0, y: 0, width: 640, height: 480 },
+    layerMask: 1,
+    featurePolicyKey: 'desktop',
+    historyKey: 'main-history',
+    containsSphere: (center) => center[0] >= 0
+  };
+
+  test('isolates visibility by view and layer policy', () => {
+    expect(
+      computeVisibility(view, [
+        { entity: entity(2), layerMask: 1, center: [1, 0, 0], radius: 1 },
+        { entity: entity(1), layerMask: 2, center: [1, 0, 0], radius: 1 },
+        { entity: entity(3), layerMask: 1, center: [-1, 0, 0], radius: 1 }
+      ]).entities
+    ).toEqual([entity(2)]);
+  });
+
+  test('sorts opaque for aggregation and transparent back-to-front without cross-order batching', () => {
+    const item = (overrides: Partial<PhaseItem>): PhaseItem => ({
+      entity: entity(1),
+      phase: 'opaque',
+      pipelineKey: 'p',
+      materialKey: 'm',
+      meshKey: 'mesh',
+      bindingKey: 'b',
+      drawKey: 'd',
+      distance: 0,
+      insertionOrder: 0,
+      ...overrides
+    });
+    const opaque = buildRenderPhase('main', 'opaque', [
+      item({ entity: entity(2) }),
+      item({ entity: entity(1) })
+    ]);
+    expect(opaque.items.map((entry) => entry.entity)).toEqual([entity(1), entity(2)]);
+    expect(opaque.batches).toHaveLength(1);
+    const transparent = buildRenderPhase('main', 'transparent', [
+      item({ phase: 'transparent', entity: entity(1), distance: 2 }),
+      item({ phase: 'transparent', entity: entity(2), distance: 5 })
+    ]);
+    expect(transparent.items.map((entry) => entry.entity)).toEqual([entity(2), entity(1)]);
+    expect(transparent.batches).toHaveLength(2);
+  });
+
+  test('pipeline identity includes every compatibility axis', () => {
+    const base = {
+      shader: 's',
+      material: 'm',
+      vertexLayout: 'v',
+      attachments: ['rgba8'],
+      sampleCount: 1,
+      featurePolicy: 'p'
+    };
+    expect(resolvePipelineKey(base)).not.toBe(resolvePipelineKey({ ...base, sampleCount: 4 }));
+  });
+});
+
+describe('overlay and frame orchestration', () => {
+  test('reconciles isolated keyed scopes and reports deterministic truncation', () => {
+    const overlays = new OverlayReconciler();
+    const policy = {
+      owner: 'editor',
+      maxPrimitives: 1,
+      maxUploadBytes: 10,
+      overflow: 'truncate' as const
+    };
+    const first = overlays.reconcile('selection', policy, [
+      { key: 'b', uploadBytes: 5, payload: 2 },
+      { key: 'a', uploadBytes: 5, payload: 1 }
+    ]);
+    expect(first.created.map((item) => item.key)).toEqual(['a']);
+    expect(first.diagnostic).toMatchObject({ kind: 'truncated', omitted: 1 });
+    expect(overlays.destroyScope('selection')).toEqual(['a']);
+  });
+
+  test('prepares every view but skips graph execution for suspended surfaces and records metrics', () => {
+    const calls: string[] = [];
+    const makeView = (id: string, width: number): RenderView => ({
+      id,
+      camera: entity(id.length),
+      surface: id,
+      viewport: { x: 0, y: 0, width, height: 10 },
+      layerMask: 1,
+      featurePolicyKey: id,
+      historyKey: `${id}-history`,
+      containsSphere: () => true
+    });
+    const metrics = runRenderFrame({
+      frame: 1,
+      views: [makeView('main', 10), makeView('preview', 0)],
+      extractedEntities: 3,
+      extractBytes: 48,
+      stages: {
+        prepare: ({ view }) => {
+          calls.push(`prepare:${view.id}`);
+          return { hits: 1, misses: 0, uploadBytes: 0 };
+        },
+        queue: ({ view }) => {
+          calls.push(`queue:${view.id}`);
+          return { items: 2, skipped: ['prepare-pending'] };
+        },
+        sort: ({ view }) => {
+          calls.push(`sort:${view.id}`);
+          return { batches: 1 };
+        },
+        build: ({ view }) => {
+          calls.push(`build:${view.id}`);
+        },
+        execute: ({ view }) => {
+          calls.push(`execute:${view.id}`);
+        }
+      }
+    });
+    expect(calls).toEqual([
+      'prepare:main',
+      'queue:main',
+      'sort:main',
+      'build:main',
+      'execute:main',
+      'prepare:preview'
+    ]);
+    expect(metrics).toMatchObject({ prepareHits: 2, phaseItems: 2, batches: 1 });
+    expect(metrics.skipped).toMatchObject({ 'surface-suspended': 1, 'prepare-pending': 1 });
+  });
+});
