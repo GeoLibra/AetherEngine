@@ -2,13 +2,21 @@ import type { ShaderTarget } from './types';
 
 export type ShaderLayoutPolicyId = 'wgsl-uniform' | 'wgsl-storage' | 'glsl-std140';
 
+/**
+ * Defines memory alignment and sizing behaviors for structures and arrays
+ * according to target API standards (WebGPU/WGSL uniform & storage, WebGL2/GLSL std140).
+ */
 export interface ShaderLayoutPolicy {
   readonly id: ShaderLayoutPolicyId;
   readonly target: ShaderTarget;
   readonly addressSpace: 'uniform' | 'storage';
+  // Resolves struct alignment. In std140/uniform blocks, structures are rounded up to 16 bytes alignment.
   structAlignment(memberAlignment: number): number;
+  // Resolves array alignment. In std140/uniform blocks, array elements are rounded up to 16 bytes alignment.
   arrayAlignment(elementAlignment: number): number;
+  // Resolves array stride (step size) between consecutive array elements.
   arrayStride(elementSize: number, elementAlignment: number): number;
+  // Resolves stride between consecutive matrix column vectors.
   matrixColumnStride(rowCount: number): number;
 }
 
@@ -22,6 +30,10 @@ export function shaderLayoutPolicy(id: ShaderLayoutPolicyId): ShaderLayoutPolicy
   return POLICIES[id];
 }
 
+/**
+ * Selects the appropriate layout policy based on target device and address space bindings.
+ * Throws if attempting WebGL2 storage buffers, which are unsupported.
+ */
 export function selectShaderLayoutPolicy(
   target: ShaderTarget,
   addressSpace: 'uniform' | 'storage'

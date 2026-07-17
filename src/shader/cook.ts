@@ -10,6 +10,9 @@ export interface ShaderCookVersions {
   readonly standardLibrary: number;
 }
 
+/**
+ * Encapsulates the immutable pre-compiled artifact of a cooked shader asset.
+ */
 export interface CookedShaderArtifact {
   readonly identity: string;
   readonly fingerprint: string;
@@ -19,6 +22,11 @@ export interface CookedShaderArtifact {
   readonly versions: ShaderCookVersions;
 }
 
+/**
+ * Pre-compiles a shader's source code into a target-agnostic intermediate representation.
+ * Resolves all include files, runs the parser, validates type structures, and outputs
+ * a frozen artifact bundled with content hashes of all its file dependencies.
+ */
 export async function cookShaderArtifact(
   source: ShaderSourceRef,
   resolver: ShaderSourceResolver,

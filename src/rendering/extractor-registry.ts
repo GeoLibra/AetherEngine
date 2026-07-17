@@ -2,11 +2,19 @@ import type { ExtractorToken, RenderFieldToken } from './render-world';
 
 export type AnyExtractorToken = ExtractorToken<readonly RenderFieldToken<unknown>[]>;
 
+/**
+ * Represents a value proposal for a field on an entity, proposed by a specific extractor.
+ */
 export interface RenderFieldCandidate<T> {
   readonly extractor: AnyExtractorToken;
   readonly operation: Readonly<{ kind: 'upsert'; value: T }> | Readonly<{ kind: 'remove' }>;
 }
 
+/**
+ * Arbitrates multiple candidate values written by different extractors to the same field
+ * in a single transaction. It yields a resolved outcome: publish a value, remove the field,
+ * or keep it unchanged.
+ */
 export interface RenderFieldArbitrator<T> {
   readonly field: RenderFieldToken<T>;
   readonly contributors: readonly AnyExtractorToken[];
@@ -19,6 +27,10 @@ export interface RenderFieldArbitrator<T> {
     | Readonly<{ kind: 'unchanged' }>;
 }
 
+/**
+ * The compiled execution plan for all extractors. Checks and enforces that every render field
+ * has exactly one owner extractor, or has a registered arbitrator to resolve multi-owner conflicts.
+ */
 export class RenderExtractorPlan {
   private constructor(
     private readonly tokens: ReadonlyMap<symbol, AnyExtractorToken>,
@@ -29,6 +41,15 @@ export class RenderExtractorPlan {
     >
   ) {}
 
+  /**
+   * Compiles registered extractors and arbitrators into a checked schema plan.
+   * Throws if:
+   * - Duplicate extractor names/ids are registered.
+   * - Duplicate arbitrators exist for the same field.
+   * - An arbitrator references an unregistered extractor or one that doesn't declare the field.
+   * - An arbitrator fails to list every contributor exactly once.
+   * - A field has multiple contributors but lacks an arbitrator.
+   */
   static compile(
     extractors: readonly AnyExtractorToken[],
     arbitrators: readonly RenderFieldArbitrator<unknown>[] = []
@@ -115,6 +136,9 @@ export class RenderExtractorPlan {
   }
 }
 
+/**
+ * A builder utility to construct a RenderExtractorPlan step-by-step.
+ */
 export class RenderExtractorRegistryBuilder {
   private readonly extractors: AnyExtractorToken[] = [];
   private readonly arbitrators: RenderFieldArbitrator<unknown>[] = [];

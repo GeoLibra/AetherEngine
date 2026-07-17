@@ -121,15 +121,31 @@ interface RevisionRoot {
   leases: number;
 }
 
+/**
+ * RenderWorld manages the stateless, derived rendering representations of ECS entities.
+ * It is isolated from MainWorld logic, allowing parallel execution of logical updates
+ * and rendering command recording.
+ *
+ * Features a double-buffering/revision system where older snapshots are preserved
+ * through reference-counted leases, preventing early disposal during GPU queue submission.
+ */
 export class RenderWorld {
+  // Maps original gameplay components/sources to their mapped RenderEntityId.
   private readonly sources = new Map<unknown, SourceEntry>();
+  // Tracks all entities currently active in the latest revision.
   private readonly activeEntities = new Set<RenderEntityId>();
+  // Tracks the current generation count for each slot index to prevent handle collisions.
   private readonly generations = new Map<number, number>();
+  // Stores indices of despawned entities that are retired and eligible for recycling.
   private readonly retired = new Map<number, RenderEntityId>();
   private nextRenderIndex = 0;
+  // The current active revision root containing the latest trie snapshot.
   private root: RevisionRoot;
+  // A set of active historical roots kept alive due to outstanding leases.
   private readonly roots = new Set<RevisionRoot>();
+  // The compilation plan of extractors, defining field ownership and arbitration rules.
   private readonly extractorPlan: RenderExtractorPlan;
+  // Diagnostics counters tracking COW performance metrics.
   private countersValue: RenderWorldCounters = Object.freeze({
     copiedDirectoryNodes: 0,
     copiedPages: 0,
@@ -160,16 +176,27 @@ export class RenderWorld {
     return this.countersValue;
   }
 
+  /**
+   * Resolves a source identity to its corresponding active RenderEntityId.
+   * Throws if queried outside an extract transaction before mapping occurs.
+   */
   mapEntity(source: unknown): RenderEntityId {
     const existing = this.sources.get(source)?.entity;
     if (existing !== undefined) return existing;
     throw new Error('New render entities must be mapped inside an extract transaction.');
   }
 
+  /**
+   * Spawns a transaction to extract gameplay state into the RenderWorld.
+   */
   beginExtract(sourceTick: number, previousExtractTick: number): ExtractTransaction {
     return new ExtractTransaction(this, sourceTick, previousExtractTick);
   }
 
+  /**
+   * Leases the current active snapshot revision. The revision must be explicitly
+   * released when it is no longer used by RHI execution to allow garbage collection.
+   */
   snapshot(): RenderRevision {
     return this.lease(this.root);
   }
@@ -177,10 +204,17 @@ export class RenderWorld {
     return this.snapshot();
   }
 
+  /**
+   * Directly reads a field value from the active revision.
+   */
   read<T>(entity: RenderEntityId, field: RenderFieldToken<T>): T | undefined {
     return this.root.snapshot.get(entity)?.get(field) as T | undefined;
   }
 
+  /**
+   * Compiles and runs a filtered ECS query on a specific snapshot.
+   * Entities are filtered in O(1) matching reads, with, and without tag filters.
+   */
   query<T>(spec: RenderQuerySpec<T>): {
     run: (revision: RenderRevision) => RenderQuerySnapshot<T>;
   } {
@@ -208,6 +242,11 @@ export class RenderWorld {
     };
   }
 
+  /**
+   * Reserves a RenderEntityId slot for a new source. If a retired slot index
+   * is available and not leased by any historical revision, it is recycled,
+   * and its generation number is incremented.
+   */
   reserveSource(tx: ExtractTransaction, source: unknown): RenderEntityId {
     const committed = this.sources.get(source)?.entity;
     if (committed !== undefined) return committed;
@@ -232,6 +271,12 @@ export class RenderWorld {
     this.extractorPlan.assertExtractor(extractor);
   }
 
+  /**
+   * Commits the transaction to publish a new Revision.
+   * Performs resolution of extractor candidates via arbitrators, checks constraints,
+   * constructs the new trie snapshot (using structural sharing), generates the
+   * lifecycle and field-level diff, updates the entity mappings, and triggers revision cleanup.
+   */
   commit(tx: ExtractTransaction): RenderRevision {
     let next = this.root.snapshot;
     let comparedFields = 0;
@@ -246,7 +291,10 @@ export class RenderWorld {
       return values;
     };
 
+    // Apply entity despawn removals.
     for (const entity of tx.removals) next = next.delete(entity);
+
+    // Apply field mutations and run registered field arbitrators.
     for (const [entity, fields] of tx.candidates) {
       if (tx.removals.has(entity)) continue;
       const values = edit(entity);
@@ -273,12 +321,14 @@ export class RenderWorld {
       }
     }
 
+    // Verify required field constraints and update the trie.
     for (const [entity, values] of edited) {
       for (const required of this.options.requiredFields ?? [])
         if (!values.has(required)) throw new Error(`required field "${required.name}" is missing`);
       next = next.set(entity, freezeFields(values));
     }
 
+    // Generate revision delta diff.
     const changes: RenderWorldChange[] = [];
     const entities = new Set([...tx.removals, ...touched.keys()]);
     for (const entity of [...entities].sort((a, b) => a - b)) {
@@ -341,6 +391,9 @@ export class RenderWorld {
     return this.lease(this.root);
   }
 
+  /**
+   * Helper to create a new reference-counted lease wrapper around a revision root.
+   */
   private lease(root: RevisionRoot): RenderRevision {
     root.leases++;
     let released = false;
@@ -363,6 +416,10 @@ export class RenderWorld {
     });
   }
 
+  /**
+   * Searches the retired list to find a slot index that is no longer
+   * referenced by the current active root or any leased historical roots.
+   */
   private findReusableIndex(tx: ExtractTransaction): number | undefined {
     for (const [index] of [...this.retired].sort(([a], [b]) => a - b)) {
       if (tx.provisionalIndices.has(index)) continue;
@@ -380,32 +437,54 @@ export class RenderWorld {
     return undefined;
   }
 
+  /**
+   * Prunes root nodes that are no longer active and have no outstanding leases.
+   */
   private collectRoots(): void {
     for (const root of this.roots)
       if (root !== this.root && root.leases === 0) this.roots.delete(root);
   }
 }
 
+/**
+ * ExtractTransaction isolates write-side buffering of game state extraction.
+ * No modifications are visible to queries or subsequent render frames until
+ * commit() is successfully executed.
+ */
 export class ExtractTransaction {
+  // Collects pending field updates grouped by entity, field token, and extractor registration id.
   readonly candidates = new Map<
     RenderEntityId,
     Map<RenderFieldToken<unknown>, Map<symbol, CandidateOperation>>
   >();
+  // Set of entities marked for destruction in this frame.
   readonly removals = new Set<RenderEntityId>();
+  // Maps deleted entities to their tombstone removal reasons.
   readonly removalReasons = new Map<RenderEntityId, RenderTombstone['reason']>();
+  // Provisional mappings for entities spawned in this transaction.
   readonly provisionalSources = new Map<unknown, RenderEntityId>();
+  // Provisional index numbers reserved for recycled slots in this transaction.
   readonly provisionalIndices = new Set<number>();
   newIndexCount = 0;
   private committed = false;
+
   constructor(
     private readonly world: RenderWorld,
     readonly sourceTick: number,
     readonly previousExtractTick: number
   ) {}
+
+  /**
+   * Resolves or maps a new source to a RenderEntityId inside this transaction.
+   */
   mapEntity(source: unknown): RenderEntityId {
     this.assertOpen();
     return this.world.reserveSource(this, source);
   }
+
+  /**
+   * Returns a typed draft scope bound to a specific registered extractor token.
+   */
   draft<W extends readonly RenderFieldToken<unknown>[]>(
     owner: ExtractorToken<W>
   ): ScopedRenderDraft<W> {
@@ -413,6 +492,10 @@ export class ExtractTransaction {
     this.world.assertExtractor(owner as AnyExtractorToken);
     return new ScopedRenderDraft(this, owner);
   }
+
+  /**
+   * Schedules the deletion of a render entity and cancels any pending writes on it.
+   */
   removeEntity(entity: RenderEntityId, reason: RenderTombstone['reason']): void {
     this.assertOpen();
     this.world.assertEntityActive(this, entity);
@@ -420,18 +503,29 @@ export class ExtractTransaction {
     this.candidates.delete(entity);
     this.removalReasons.set(entity, reason);
   }
+
+  /**
+   * Commits the buffered changes to the global RenderWorld and publishes a new snapshot.
+   */
   commit(): RenderRevision {
     this.assertOpen();
     const revision = this.world.commit(this);
     this.committed = true;
     return revision;
   }
+
   assertEntityActive(entity: RenderEntityId): void {
     this.world.assertEntityActive(this, entity);
   }
+
   hasProvisionalEntity(entity: RenderEntityId): boolean {
     return [...this.provisionalSources.values()].includes(entity);
   }
+
+  /**
+   * Buffers a field operation candidate for a given extractor.
+   * Throws if the extractor does not declare ownership of the field.
+   */
   write(
     owner: AnyExtractorToken,
     entity: RenderEntityId,
@@ -449,6 +543,7 @@ export class ExtractTransaction {
     fields.set(field, candidates);
     candidates.set(owner.id, { extractor: owner, operation });
   }
+
   private assertOpen(): void {
     if (this.committed) throw new Error('Extract transaction is already committed.');
   }

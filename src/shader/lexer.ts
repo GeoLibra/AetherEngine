@@ -1,7 +1,14 @@
 import { spanAt } from './source';
 import type { ShaderDiagnostic, SourceSpan } from './types';
 
+/**
+ * Token kinds supported by the FluxSL grammar.
+ */
 export type FluxTokenKind = 'identifier' | 'number' | 'string' | 'symbol' | 'eof';
+
+/**
+ * A token extracted during lexing, with character positions and source span.
+ */
 export interface FluxToken {
   readonly kind: FluxTokenKind;
   readonly text: string;
@@ -9,6 +16,7 @@ export interface FluxToken {
   readonly end: number;
   readonly span: SourceSpan;
 }
+
 export type FluxLexResult = Readonly<{
   tokens: readonly FluxToken[];
   diagnostics: readonly ShaderDiagnostic[];
@@ -17,6 +25,10 @@ export type FluxLexResult = Readonly<{
 const TWO_CHARACTER_SYMBOLS = new Set(['->', '==', '!=', '<=', '>=', '&&', '||', '<<', '>>']);
 const ONE_CHARACTER_SYMBOLS = new Set('{}()[]<>,;:.@=+-*/%!&|^~');
 
+/**
+ * Performs lexical analysis on FluxSL source text.
+ * Skips whitespace and comments, groups characters into tokens, and flags illegal characters.
+ */
 export function lexFluxSource(uri: string, source: string): FluxLexResult {
   const tokens: FluxToken[] = [];
   const diagnostics: ShaderDiagnostic[] = [];
@@ -33,15 +45,18 @@ export function lexFluxSource(uri: string, source: string): FluxLexResult {
     );
   while (index < source.length) {
     const character = source[index]!;
+    // Skip whitespace
     if (/\s/.test(character)) {
       index++;
       continue;
     }
+    // Skip single-line comments
     if (character === '/' && source[index + 1] === '/') {
       index += 2;
       while (index < source.length && source[index] !== '\n') index++;
       continue;
     }
+    // Skip multi-line comments and check for unterminated EOF
     if (character === '/' && source[index + 1] === '*') {
       const start = index;
       index += 2;
@@ -60,12 +75,14 @@ export function lexFluxSource(uri: string, source: string): FluxLexResult {
       index += 2;
       continue;
     }
+    // Read identifiers
     if (/[A-Za-z_]/.test(character)) {
       const start = index++;
       while (index < source.length && /[A-Za-z0-9_]/.test(source[index]!)) index++;
       emit('identifier', start, index);
       continue;
     }
+    // Read numeric literals (supporting hex, decimals, and exponents/suffixes)
     if (/\d/.test(character) || (character === '.' && /\d/.test(source[index + 1] ?? ''))) {
       const start = index++;
       while (index < source.length && /[0-9A-Fa-f_xX.]/.test(source[index]!)) index++;
@@ -78,6 +95,7 @@ export function lexFluxSource(uri: string, source: string): FluxLexResult {
       emit('number', start, index);
       continue;
     }
+    // Read string literals and escape characters
     if (character === '"') {
       const start = index++;
       while (index < source.length && source[index] !== '"') {
@@ -98,17 +116,20 @@ export function lexFluxSource(uri: string, source: string): FluxLexResult {
       emit('string', start, index);
       continue;
     }
+    // Read multi-character symbols
     const pair = source.slice(index, index + 2);
     if (TWO_CHARACTER_SYMBOLS.has(pair)) {
       emit('symbol', index, index + 2);
       index += 2;
       continue;
     }
+    // Read single-character symbols
     if (ONE_CHARACTER_SYMBOLS.has(character)) {
       emit('symbol', index, index + 1);
       index++;
       continue;
     }
+    // Report syntax error for unrecognized character
     diagnostics.push(
       makeDiagnostic(
         'FLUX_UNSUPPORTED_SYNTAX',

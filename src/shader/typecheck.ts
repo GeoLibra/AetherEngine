@@ -30,6 +30,10 @@ interface LowerResult {
   readonly ir?: ShaderModuleIR;
   readonly diagnostics: readonly ShaderDiagnostic[];
 }
+
+/**
+ * Information mapping a declared variable or symbol inside a block scope.
+ */
 interface SymbolInfo {
   readonly id: ShaderSymbolId;
   readonly name: string;
@@ -37,6 +41,10 @@ interface SymbolInfo {
   readonly mutable: boolean;
   readonly span: SourceSpan;
 }
+
+/**
+ * Information mapping function signatures, parameter types, and return types.
+ */
 interface FunctionInfo {
   readonly id: ShaderFunctionId;
   readonly declaration: FluxFunctionNode;
@@ -48,6 +56,16 @@ const ERROR_TYPE = '<error>' as ShaderTypeId;
 const BUILTIN_SCALARS = new Set(['f32', 'i32', 'u32', 'bool']);
 const ADDRESS_SPACES = new Set(['uniform', 'storage', 'in', 'out', 'handle', 'private']);
 
+/**
+ * Lowers, typechecks, and validates FluxSL AST modules into a unified compiled ShaderModuleIR.
+ *
+ * Verifications performed:
+ * - Checks for duplicate structure types.
+ * - Detects duplicate global variable bindings (groups and bindings collision check).
+ * - Resolves all type definitions recursively (struct members, functions, parameters).
+ * - Checks block scoping rules and name shadowing of local parameters and variables.
+ * - Enforces correct type assignments on variable initializers, return statements, and operands.
+ */
 export function lowerFluxModules(
   modules: readonly FluxModuleNode[],
   sourceClosureHash: string

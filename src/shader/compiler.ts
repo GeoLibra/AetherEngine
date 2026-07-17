@@ -14,6 +14,9 @@ import type {
   ShaderTarget
 } from './types';
 
+/**
+ * The compiled output artifact of the compiler, addressable by content hash fingerprint.
+ */
 export interface CompiledShaderArtifact {
   readonly key: string;
   readonly fingerprint: string;
@@ -23,6 +26,7 @@ export interface CompiledShaderArtifact {
   readonly variantKey: string;
   readonly manifest: ShaderBindingManifest;
 }
+
 export type ShaderCompileResult =
   | Readonly<{
       status: 'compiled' | 'cached';
@@ -38,10 +42,20 @@ export type ShaderCompileResult =
       diagnostics: readonly ShaderDiagnostic[];
     }>;
 
+/**
+ * ShaderCompiler orchestrates the compilation of FluxSL shaders into target-backend
+ * code (WGSL or GLSL) with layouts generated for the target APIs.
+ *
+ * Features an in-memory LRU cache and tracking of last-known-good states to allow
+ * graceful fallback in the event of editor recompilation errors.
+ */
 export class ShaderCompiler {
   private readonly cache = new ShaderArtifactCache<CompiledShaderArtifact>({ maxEntries: 64 });
+  // Tracks the highest compile request revision received for each file URI to ignore stale results.
   private readonly latestRevision = new Map<string, number>();
+  // Caches the last successfully compiled shader artifact for hot-reload fallback.
   private readonly good = new Map<string, CompiledShaderArtifact>();
+
   constructor(
     private readonly options: Readonly<{
       resolver: ShaderSourceResolver;
@@ -51,6 +65,19 @@ export class ShaderCompiler {
       versions: Readonly<{ compiler: number; ir: number; abi: number; backend: number }>;
     }>
   ) {}
+
+  /**
+   * Compiles the source defined in compile request for the requested backend target.
+   *
+   * Lifecycle Stages:
+   * 1. Resolves module import and include dependencies (`resolveShaderSource`).
+   * 2. Lexes and parses the files into Frontend AST and lowers to IR (`parseFluxShader`).
+   * 3. Selects and specializes variant parameters (`resolveShaderVariants`).
+   * 4. Queries the LRU cache using a complete serialized fingerprint.
+   * 5. Translates IR to backend source (WebGL2/GLSL translation or WGSL emit) and validates.
+   * 6. Measures buffer field offsets for the specialized pipeline.
+   * 7. Caches and returns the compiled artifact.
+   */
   async compile(request: ShaderCompileRequest): Promise<ShaderCompileResult> {
     this.latestRevision.set(
       request.source.uri,

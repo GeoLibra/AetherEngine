@@ -16,12 +16,15 @@ import type {
   ShaderTarget
 } from './types';
 
+/**
+ * Dimensions and alignment layout computed for a single struct member or variable type.
+ */
 interface TypeLayout {
-  readonly size: number;
-  readonly alignment: number;
-  readonly scalarKind: ShaderScalarKind;
-  readonly elementCount: number;
-  readonly stride?: number;
+  readonly size: number; // Total size in bytes (including tail padding if necessary)
+  readonly alignment: number; // Necessary alignment boundaries in bytes (e.g. 4, 8, 16)
+  readonly scalarKind: ShaderScalarKind; // Primitive type representation
+  readonly elementCount: number; // Array/vector elements count
+  readonly stride?: number; // Offset stride between consecutive array/matrix members
 }
 
 export interface BufferLayoutOptions {
@@ -31,6 +34,14 @@ export interface BufferLayoutOptions {
   readonly access?: 'read' | 'read_write';
 }
 
+/**
+ * Recursively maps and aligns struct field declarations into a BufferLayoutManifest.
+ *
+ * Sizing/Alignment Logic:
+ * - Uses the specified layout policy (std140, wgsl-uniform, wgsl-storage) to compute sizes.
+ * - Struct members are aligned according to the policy's alignment rules.
+ * - Prevents infinite recursion through checking structure dependencies (`active` set cycle check).
+ */
 export function createBufferLayoutManifest(
   name: string,
   root: ShaderStructTypeIR,
@@ -123,6 +134,10 @@ export function createBufferLayoutManifest(
   return Object.freeze({ ...metadata, layoutHash: stableHash(metadata) });
 }
 
+/**
+ * Creates the complete ShaderBindingManifest describing bind groups, buffer layouts,
+ * vertex inputs, and fragment outputs of a shader module.
+ */
 export function createShaderBindingManifest(
   ir: ShaderModuleIR,
   shaderAbiVersion: number,
@@ -209,6 +224,13 @@ function measureStruct(
   return { size: align(cursor, alignment), alignment, scalarKind: 'f32', elementCount: 1 };
 }
 
+/**
+ * Computes sizes, alignments, and strides for scalar types, vectors, matrices, and arrays.
+ * Follows layout standard rules:
+ * - vec2 is aligned to 8 bytes, vec3 and vec4 are aligned to 16 bytes.
+ * - matrices are measured column-by-column (with strides calculated according to target policy).
+ * - arrays element layout strides are rounded up to element alignment.
+ */
 function measureType(
   type: string,
   structs: ReadonlyMap<string, ShaderStructTypeIR>,

@@ -11,8 +11,11 @@ type Page = ReadonlyMap<number, readonly [RenderEntityId, RenderEntityFields]>;
 type Directory = ReadonlyMap<number, ReadonlyMap<number, Page>>;
 
 /**
- * Persistent sparse map whose update cost depends on directory depth, not entity count.
- * Only the two directory nodes and one 256-slot page on the edited path are copied.
+ * A persistent sparse map designed for ECS RenderWorld snapshots.
+ * It uses a 3-level trie (high directory, middle branch, leaf page) to store
+ * entities and their fields. When setting or deleting an entry, it copies only
+ * the nodes along the edited path, allowing structural sharing across revisions
+ * with O(log N) updates and minimal Garbage Collection pressure.
  */
 export class PersistentEntityMap {
   static readonly empty = new PersistentEntityMap(new Map(), 0);
@@ -22,14 +25,24 @@ export class PersistentEntityMap {
     readonly size: number
   ) {}
 
+  /**
+   * Retrieves the fields mapped to the given render entity.
+   */
   get(entity: RenderEntityId): RenderEntityFields | undefined {
     return this.entry(entity)?.[1];
   }
 
+  /**
+   * Checks if the entity exists in this map.
+   */
   has(entity: RenderEntityId): boolean {
     return this.entry(entity)?.[0] === entity;
   }
 
+  /**
+   * Returns a new PersistentEntityMap with the given entity and fields inserted.
+   * Path copying is used: only the directory branch and leaf page along the path are cloned.
+   */
   set(entity: RenderEntityId, fields: RenderEntityFields): PersistentEntityMap {
     const address = addressOf(entity);
     const branch = this.directory.get(address.high) ?? new Map<number, Page>();
@@ -44,6 +57,10 @@ export class PersistentEntityMap {
     return new PersistentEntityMap(nextDirectory, this.size + (existed ? 0 : 1));
   }
 
+  /**
+   * Returns a new PersistentEntityMap with the specified entity removed.
+   * Nodes along the edited path are updated or pruned if they become empty.
+   */
   delete(entity: RenderEntityId): PersistentEntityMap {
     const address = addressOf(entity);
     const branch = this.directory.get(address.high);
@@ -102,6 +119,12 @@ export class PersistentEntityMap {
   }
 }
 
+/**
+ * Maps a packed RenderEntityId index to its three-level trie page offsets:
+ * - high: root-level directory index
+ * - middle: mid-level branch index
+ * - slot: leaf-level 256-slot page index
+ */
 function addressOf(entity: RenderEntityId): { high: number; middle: number; slot: number } {
   const index = Math.floor(entity / 0x100000);
   const page = Math.floor(index / PAGE_SIZE);

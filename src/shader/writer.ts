@@ -1,8 +1,13 @@
 import type { BufferFieldLayout, BufferLayoutManifest } from './types';
 
+/**
+ * ShaderParameterWriter provides a type-safe interface for writing structured parameters
+ * into a raw ArrayBuffer. Calculates binary field offsets based on the target alignment manifest.
+ */
 export class ShaderParameterWriter {
   private readonly fields: ReadonlyMap<string, BufferFieldLayout>;
   private readonly view: DataView;
+
   constructor(
     readonly manifest: BufferLayoutManifest,
     readonly buffer: ArrayBuffer
@@ -12,6 +17,11 @@ export class ShaderParameterWriter {
     this.fields = new Map(manifest.fields.map((field) => [field.path, field]));
     this.view = new DataView(buffer);
   }
+
+  /**
+   * Writes a parameter value into the buffer at the path specified by the layout.
+   * Maps booleans to 32-bit integers, and handles flat array mapping for vectors and matrices.
+   */
   write(path: string, value: number | boolean | readonly number[]): void {
     const field = this.fields.get(path);
     if (!field) throw new Error(`Unknown shader field "${path}".`);
@@ -37,6 +47,10 @@ export class ShaderParameterWriter {
   }
 }
 
+/**
+ * Computes the local byte offset of a scalar within a structured matrix, vector, or array.
+ * Takes array/matrix strides into account.
+ */
 function scalarOffset(field: BufferFieldLayout, index: number): number {
   if (field.stride !== undefined && field.elementCount > 1) {
     const scalarsPerStride = Math.max(

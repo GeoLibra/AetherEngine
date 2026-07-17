@@ -28,6 +28,10 @@ export interface ShaderParseResult {
   readonly diagnostics: readonly ShaderDiagnostic[];
 }
 
+/**
+ * Entry point for parsing FluxSL code.
+ * Lexes each module, parses them using the FluxParser class, and performs lowered typechecking.
+ */
 export function parseFluxShader(closure: ResolvedShaderSource): ShaderParseResult {
   const diagnostics: ShaderDiagnostic[] = [];
   if (closure.root.languageVersion !== 1)
@@ -54,12 +58,20 @@ export function parseFluxShader(closure: ResolvedShaderSource): ShaderParseResul
   return lowerFluxModules(Object.freeze(modules), closure.hash);
 }
 
+/**
+ * Custom error class to signal recursive descent parsing failures
+ * and cleanly bubble diagnostic errors out of helper methods.
+ */
 class FluxParseFailure extends Error {
   constructor(readonly diagnostic: ShaderDiagnostic) {
     super(diagnostic.message);
   }
 }
 
+/**
+ * A LL(1) recursive-descent parser for the FluxSL grammar.
+ * Translates FluxToken lists into AST nodes defined in frontend-ast.ts.
+ */
 class FluxParser {
   private index = 0;
   constructor(
@@ -67,6 +79,10 @@ class FluxParser {
     private readonly tokens: readonly FluxToken[]
   ) {}
 
+  /**
+   * Main parsing loop to construct a FluxModuleNode.
+   * Parses top-level elements: includes, imports, variants, structs, globals, and functions.
+   */
   parseModule(): FluxModuleNode {
     const declarations: FluxDeclarationNode[] = [];
     while (!this.at('eof')) {

@@ -6,6 +6,15 @@ import type {
   ShaderStatementIR
 } from './types';
 
+/**
+ * Translates a complete ShaderModuleIR back into standard compliant WGSL source code.
+ *
+ * Emission Order:
+ * 1. Struct definitions (`types`)
+ * 2. Global resources and inputs/outputs (`globals`)
+ * 3. Helper utility functions (`functions`)
+ * 4. Shader entry points (vertex, fragment, compute)
+ */
 export function emitWgslModule(
   ir: ShaderModuleIR,
   entries: readonly string[] = ir.entryPoints.map((entry) => entry.name)
@@ -22,6 +31,9 @@ export function emitWgslModule(
   ].join('\n\n');
 }
 
+/**
+ * Generates global variable declarations with annotations such as @group, @binding, and @location.
+ */
 function emitGlobal(global: ShaderModuleIR['globals'][number]): string {
   const attributes = [
     global.group === undefined ? undefined : `@group(${global.group})`,
@@ -63,6 +75,9 @@ function emitBlock(statements: readonly ShaderStatementIR[], indentation = ''): 
   return `{\n${statements.map((statement) => `${child}${emitStatement(statement, child)}`).join('\n')}\n${indentation}}`;
 }
 
+/**
+ * Translates an IR statement (declaration, assignment, conditional, loops, switches) into WGSL syntax.
+ */
 function emitStatement(statement: ShaderStatementIR, indentation: string): string {
   switch (statement.kind) {
     case 'declare':
@@ -99,6 +114,9 @@ function emitStatement(statement: ShaderStatementIR, indentation: string): strin
   }
 }
 
+/**
+ * Translates an IR expression (literals, variables, operators, member accessors, intrinsics) to WGSL format.
+ */
 function emitExpression(expression: ShaderExpressionIR): string {
   switch (expression.kind) {
     case 'literal':

@@ -1,11 +1,15 @@
 import { canonicalStringify, stableHash } from './hash';
 import type { ShaderVariantDimension } from './types';
 
+/**
+ * Encapsulates specialized variant selections along with their hashed key representation.
+ */
 export interface ResolvedShaderVariants {
   readonly ok: true;
   readonly values: Readonly<Record<string, boolean | string | number>>;
   readonly key: Readonly<{ value: string; hash: string }>;
 }
+
 export interface ShaderVariantError {
   readonly ok: false;
   readonly error: Readonly<{
@@ -19,6 +23,15 @@ export interface ShaderVariantError {
   }>;
 }
 
+/**
+ * Specializes variant options against their registered dimensions.
+ *
+ * Verifies:
+ * - Each request maps to a known variant dimension.
+ * - Suffix type assertions match (e.g. enum options or boolean types).
+ * - Enforces mutual exclusion checks (mutex lists).
+ * - Matches target capability prerequisites (requires list matching active capabilities).
+ */
 export function resolveShaderVariants(
   dimensions: readonly ShaderVariantDimension[],
   request: Readonly<Record<string, boolean | string | number>>,
