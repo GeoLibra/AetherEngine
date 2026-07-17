@@ -1,5 +1,12 @@
 import { stableHash } from './hash';
 import {
+  bindingKey,
+  indexBindingRequirements,
+  reflectBindingEntry,
+  reflectionError
+} from './binding-reflection';
+export { ShaderBindingReflectionError } from './binding-reflection';
+import {
   selectShaderLayoutPolicy,
   shaderLayoutPolicy,
   type ShaderLayoutPolicy,
@@ -8,10 +15,15 @@ import {
 import type {
   BindingGroupManifest,
   BufferFieldLayout,
+  BufferFieldLayoutShape,
   BufferLayoutManifest,
+  ShaderBindingEntryManifest,
   ShaderBindingManifest,
+  ShaderBindingManifestOptions,
+  ShaderGlobalIR,
   ShaderModuleIR,
   ShaderScalarKind,
+  ShaderSamplerBindingRequirement,
   ShaderStructTypeIR,
   ShaderTarget
 } from './types';
@@ -25,6 +37,7 @@ interface TypeLayout {
   readonly scalarKind: ShaderScalarKind; // Primitive type representation
   readonly elementCount: number; // Array/vector elements count
   readonly stride?: number; // Offset stride between consecutive array/matrix members
+  readonly shape: BufferFieldLayoutShape | Readonly<{ kind: 'struct' }>;
 }
 
 export interface BufferLayoutOptions {
@@ -33,6 +46,15 @@ export interface BufferLayoutOptions {
   readonly addressSpace?: 'uniform' | 'storage';
   readonly access?: 'read' | 'read_write';
 }
+
+interface ResolvedBufferLayoutOptions {
+  readonly policy: ShaderLayoutPolicy;
+  readonly target: ShaderTarget;
+  readonly addressSpace: 'uniform' | 'storage';
+  readonly access: 'read' | 'read_write';
+}
+
+const ROOT_BUFFER_FIELD_PATH = '$root';
 
 /**
  * Recursively maps and aligns struct field declarations into a BufferLayoutManifest.
@@ -49,19 +71,8 @@ export function createBufferLayoutManifest(
   shaderAbiVersion: number,
   options: BufferLayoutOptions = {}
 ): BufferLayoutManifest {
-  const policy = options.policy
-    ? shaderLayoutPolicy(options.policy)
-    : selectShaderLayoutPolicy(options.target ?? 'wgsl', options.addressSpace ?? 'uniform');
-  const target = options.target ?? policy.target;
-  const addressSpace = options.addressSpace ?? policy.addressSpace;
-  if (target !== policy.target || addressSpace !== policy.addressSpace) {
-    throw new Error(`Shader layout policy ${policy.id} does not match ${target}/${addressSpace}.`);
-  }
-  const access = options.access ?? 'read';
-  if (addressSpace === 'uniform' && access !== 'read') {
-    throw new Error('Uniform buffer layouts are read-only.');
-  }
-
+  const resolved = resolveBufferLayoutOptions(options);
+  const { policy } = resolved;
   const structs = new Map(types.map((type) => [type.name, type]));
   const fields: BufferFieldLayout[] = [];
   const layoutStruct = (
@@ -105,7 +116,8 @@ export function createBufferLayoutManifest(
             alignment: layout.alignment,
             ...(layout.stride === undefined ? {} : { stride: layout.stride }),
             scalarKind: layout.scalarKind,
-            elementCount: layout.elementCount
+            elementCount: layout.elementCount,
+            shape: layout.shape as BufferFieldLayoutShape
           })
         );
       }
@@ -113,25 +125,17 @@ export function createBufferLayoutManifest(
       memberAlignment = Math.max(memberAlignment, layout.alignment);
     }
     const alignment = policy.structAlignment(memberAlignment);
-    return { size: align(cursor, alignment), alignment, scalarKind: 'f32', elementCount: 1 };
+    return {
+      size: align(cursor, alignment),
+      alignment,
+      scalarKind: 'f32',
+      elementCount: 1,
+      shape: Object.freeze({ kind: 'struct' })
+    };
   };
 
   const rootLayout = layoutStruct(root, 0, '', new Set());
-  const frozenFields = Object.freeze(
-    fields.sort((left, right) => left.offset - right.offset || left.path.localeCompare(right.path))
-  );
-  const metadata = Object.freeze({
-    name,
-    shaderAbiVersion,
-    target,
-    addressSpace,
-    access,
-    policy: policy.id,
-    byteSize: rootLayout.size,
-    alignment: rootLayout.alignment,
-    fields: frozenFields
-  });
-  return Object.freeze({ ...metadata, layoutHash: stableHash(metadata) });
+  return finalizeBufferLayoutManifest(name, shaderAbiVersion, resolved, rootLayout, fields);
 }
 
 /**
@@ -141,39 +145,73 @@ export function createBufferLayoutManifest(
 export function createShaderBindingManifest(
   ir: ShaderModuleIR,
   shaderAbiVersion: number,
-  target: ShaderTarget = 'wgsl'
+  target: ShaderTarget = 'wgsl',
+  options: ShaderBindingManifestOptions = {}
 ): ShaderBindingManifest {
   const structs = new Map(ir.types.map((type) => [type.name, type]));
-  const grouped = new Map<number, Array<{ binding: number; name: string; kind: string }>>();
+  const requirements = indexBindingRequirements(options.bindingRequirements ?? []);
+  const grouped = new Map<number, ShaderBindingEntryManifest[]>();
+  const reflectedBindings = new Set<string>();
   const buffers: BufferLayoutManifest[] = [];
   for (const global of ir.globals) {
     if (global.group === undefined || global.binding === undefined) continue;
-    const kind =
-      global.addressSpace === 'uniform'
-        ? 'uniform-buffer'
-        : global.addressSpace === 'storage'
-          ? 'storage-buffer'
-          : global.type.startsWith('texture')
-            ? 'texture'
-            : global.type.startsWith('sampler')
-              ? 'sampler'
-              : 'resource';
+    const key = bindingKey(global.group, global.binding);
+    if (reflectedBindings.has(key)) {
+      throw reflectionError(
+        'duplicate-reflected-binding',
+        global.group,
+        global.binding,
+        'Shader reflection contains duplicate group and binding coordinates.',
+        global.name,
+        global.type
+      );
+    }
+    reflectedBindings.add(key);
+    const requirement = requirements.get(key);
+    const entry = reflectBindingEntry(
+      global.group,
+      global.binding,
+      global.name,
+      global.type,
+      global.addressSpace,
+      requirement
+    );
     const entries = grouped.get(global.group) ?? [];
-    entries.push(Object.freeze({ binding: global.binding, name: global.name, kind }));
+    entries.push(entry);
     grouped.set(global.group, entries);
-    const struct = structs.get(global.type);
-    if (struct && (global.addressSpace === 'uniform' || global.addressSpace === 'storage')) {
+    requirements.delete(key);
+    if (global.addressSpace === 'uniform' || global.addressSpace === 'storage') {
       const policy = selectShaderLayoutPolicy(target, global.addressSpace);
       buffers.push(
-        createBufferLayoutManifest(global.name, struct, ir.types, shaderAbiVersion, {
-          policy: policy.id,
-          target,
-          addressSpace: global.addressSpace,
-          access: global.access
-        })
+        createBoundBufferLayoutManifest(
+          global,
+          structs.get(global.type),
+          ir.types,
+          shaderAbiVersion,
+          {
+            policy: policy.id,
+            target,
+            addressSpace: global.addressSpace,
+            access: global.access
+          }
+        )
       );
     }
   }
+  const missingRequirement = requirements.values().next().value as
+    ShaderSamplerBindingRequirement | undefined;
+  if (missingRequirement !== undefined) {
+    throw reflectionError(
+      'missing-binding-requirement-target',
+      missingRequirement.group,
+      missingRequirement.binding,
+      'Binding requirement does not target a reflected shader binding.'
+    );
+  }
+  buffers.sort(
+    (left, right) =>
+      compareCodeUnits(left.name, right.name) || compareCodeUnits(left.layoutHash, right.layoutHash)
+  );
   const groups: BindingGroupManifest[] = [...grouped.entries()]
     .sort(([left], [right]) => left - right)
     .map(([group, entries]) =>
@@ -186,12 +224,14 @@ export function createShaderBindingManifest(
     .filter((value) => value.addressSpace === 'in' && value.location !== undefined)
     .map((value) =>
       Object.freeze({ location: value.location!, name: value.name, type: value.type })
-    );
+    )
+    .sort(compareStageIo);
   const fragmentOutputs = ir.globals
     .filter((value) => value.addressSpace === 'out' && value.location !== undefined)
     .map((value) =>
       Object.freeze({ location: value.location!, name: value.name, type: value.type })
-    );
+    )
+    .sort(compareStageIo);
   const data = { target, groups, buffers, vertexInputs, fragmentOutputs };
   return Object.freeze({
     groups: Object.freeze(groups),
@@ -200,6 +240,95 @@ export function createShaderBindingManifest(
     fragmentOutputs: Object.freeze(fragmentOutputs),
     layoutHash: stableHash({ shaderAbiVersion, ...data })
   });
+}
+
+function createBoundBufferLayoutManifest(
+  global: ShaderGlobalIR,
+  struct: ShaderStructTypeIR | undefined,
+  types: readonly ShaderStructTypeIR[],
+  shaderAbiVersion: number,
+  options: BufferLayoutOptions
+): BufferLayoutManifest {
+  if (struct !== undefined) {
+    return createBufferLayoutManifest(global.name, struct, types, shaderAbiVersion, options);
+  }
+  const resolved = resolveBufferLayoutOptions(options);
+  const rootLayout = measureType(
+    global.type,
+    new Map(types.map((type) => [type.name, type])),
+    resolved.policy,
+    new Set()
+  );
+  const rootField = Object.freeze({
+    path: ROOT_BUFFER_FIELD_PATH,
+    offset: 0,
+    size: rootLayout.size,
+    alignment: rootLayout.alignment,
+    ...(rootLayout.stride === undefined ? {} : { stride: rootLayout.stride }),
+    scalarKind: rootLayout.scalarKind,
+    elementCount: rootLayout.elementCount,
+    shape: rootLayout.shape as BufferFieldLayoutShape
+  });
+  return finalizeBufferLayoutManifest(global.name, shaderAbiVersion, resolved, rootLayout, [
+    rootField
+  ]);
+}
+
+function resolveBufferLayoutOptions(options: BufferLayoutOptions): ResolvedBufferLayoutOptions {
+  const policy = options.policy
+    ? shaderLayoutPolicy(options.policy)
+    : selectShaderLayoutPolicy(options.target ?? 'wgsl', options.addressSpace ?? 'uniform');
+  const target = options.target ?? policy.target;
+  const addressSpace = options.addressSpace ?? policy.addressSpace;
+  if (target !== policy.target || addressSpace !== policy.addressSpace) {
+    throw new Error(`Shader layout policy ${policy.id} does not match ${target}/${addressSpace}.`);
+  }
+  const access = options.access ?? 'read';
+  if (addressSpace === 'uniform' && access !== 'read') {
+    throw new Error('Uniform buffer layouts are read-only.');
+  }
+  return Object.freeze({ policy, target, addressSpace, access });
+}
+
+function finalizeBufferLayoutManifest(
+  name: string,
+  shaderAbiVersion: number,
+  options: ResolvedBufferLayoutOptions,
+  rootLayout: TypeLayout,
+  fields: readonly BufferFieldLayout[]
+): BufferLayoutManifest {
+  const frozenFields = Object.freeze(
+    [...fields].sort(
+      (left, right) => left.offset - right.offset || left.path.localeCompare(right.path)
+    )
+  );
+  const metadata = Object.freeze({
+    name,
+    shaderAbiVersion,
+    target: options.target,
+    addressSpace: options.addressSpace,
+    access: options.access,
+    policy: options.policy.id,
+    byteSize: rootLayout.size,
+    alignment: rootLayout.alignment,
+    fields: frozenFields
+  });
+  return Object.freeze({ ...metadata, layoutHash: stableHash(metadata) });
+}
+
+function compareStageIo(
+  left: Readonly<{ location: number; name: string; type: string }>,
+  right: Readonly<{ location: number; name: string; type: string }>
+): number {
+  return (
+    left.location - right.location ||
+    compareCodeUnits(left.name, right.name) ||
+    compareCodeUnits(left.type, right.type)
+  );
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function measureStruct(
@@ -221,7 +350,13 @@ function measureStruct(
     memberAlignment = Math.max(memberAlignment, layout.alignment);
   }
   const alignment = policy.structAlignment(memberAlignment);
-  return { size: align(cursor, alignment), alignment, scalarKind: 'f32', elementCount: 1 };
+  return {
+    size: align(cursor, alignment),
+    alignment,
+    scalarKind: 'f32',
+    elementCount: 1,
+    shape: Object.freeze({ kind: 'struct' })
+  };
 }
 
 /**
@@ -249,7 +384,8 @@ function measureType(
       size: count * 4,
       alignment: count === 2 ? 8 : 16,
       scalarKind: scalarKind(vector[2]!),
-      elementCount: count
+      elementCount: count,
+      shape: Object.freeze({ kind: 'vector', length: count as 2 | 3 | 4 })
     };
   }
   const matrix = /^mat([234])x([234])<f32>$/.exec(normalized);
@@ -262,7 +398,13 @@ function measureType(
       alignment: stride,
       stride,
       scalarKind: 'f32',
-      elementCount: columns * rows
+      elementCount: columns * rows,
+      shape: Object.freeze({
+        kind: 'matrix',
+        columns: columns as 2 | 3 | 4,
+        rows: rows as 2 | 3 | 4,
+        columnStride: stride
+      })
     };
   }
   const array = arrayElement(normalized);
@@ -278,7 +420,13 @@ function measureType(
       alignment,
       stride,
       scalarKind: element.scalarKind,
-      elementCount: array.count * element.elementCount
+      elementCount: array.count * element.elementCount,
+      shape: Object.freeze({
+        kind: 'array',
+        length: array.count,
+        stride,
+        element: element.shape as BufferFieldLayoutShape
+      })
     };
   }
   throw new Error(`Unsupported shader ABI type "${type}".`);
@@ -294,7 +442,13 @@ function arrayElement(type: string): { readonly type: string; readonly count: nu
 }
 
 function scalar(kind: ShaderScalarKind): TypeLayout {
-  return { size: 4, alignment: 4, scalarKind: kind, elementCount: 1 };
+  return {
+    size: 4,
+    alignment: 4,
+    scalarKind: kind,
+    elementCount: 1,
+    shape: Object.freeze({ kind: 'scalar' })
+  };
 }
 
 function scalarKind(kind: string): ShaderScalarKind {

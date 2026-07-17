@@ -78,6 +78,46 @@ describe('changed-file routing', () => {
       'shader-system'
     ]);
   });
+
+  test('routes Material-owned paths only to the dedicated material suite', () => {
+    for (const path of [
+      'engine/design/v2/04-rendering/03-material-system.md',
+      'src/material/parameter-block.ts',
+      'test/material/material-instance.test.ts',
+      'test/benchmark/material-system.test.ts',
+      'benchmark/material-system/scenarios.ts'
+    ]) {
+      expect(routeChangedFiles(BENCHMARK_MANIFEST, [path]).suiteIds).toEqual(['material-system']);
+    }
+  });
+
+  test('routes shared Material rendering helpers to both semantic owners', () => {
+    for (const path of [
+      'src/rendering/material-bindings.ts',
+      'src/rendering/material-cache.ts',
+      'src/rendering/material-resolution.ts',
+      'src/rendering/pipeline-resolver.ts'
+    ]) {
+      expect(routeChangedFiles(BENCHMARK_MANIFEST, [path]).suiteIds).toEqual([
+        'material-system',
+        'render-world'
+      ]);
+    }
+  });
+
+  test('keeps Shader and RenderWorld design paths with their dedicated suites', () => {
+    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/shader/layout.ts']).suiteIds).toEqual([
+      'shader-system'
+    ]);
+    expect(
+      routeChangedFiles(BENCHMARK_MANIFEST, ['engine/design/v2/04-rendering/01-render-world.md'])
+        .suiteIds
+    ).toEqual(['render-world']);
+    expect(
+      routeChangedFiles(BENCHMARK_MANIFEST, ['engine/design/v2/04-rendering/02-shader-system.md'])
+        .suiteIds
+    ).toEqual(['shader-system']);
+  });
 });
 
 describe('framework command planning', () => {
@@ -95,6 +135,18 @@ describe('framework command planning', () => {
     expect(renderSuiteCommand(suite, 'standard')).toEqual({
       executable: 'vite-node',
       args: ['benchmark/cli.ts', '--profile', 'standard']
+    });
+  });
+
+  test('renders exactly one material profile placeholder', () => {
+    const suite = BENCHMARK_MANIFEST.suites.find(({ id }) => id === 'material-system');
+    expect(suite).toBeDefined();
+    if (!suite) return;
+
+    expect(suite.command.args.filter((argument) => argument === '{profile}')).toHaveLength(1);
+    expect(renderSuiteCommand(suite, 'nightly')).toEqual({
+      executable: 'node',
+      args: ['benchmark/material-system-runner.mjs', 'nightly']
     });
   });
 

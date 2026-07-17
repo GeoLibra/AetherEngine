@@ -6,3 +6,7 @@ export * from './render-phase';
 export * from './visibility';
 export * from './overlay-reconciler';
 export * from './frame-pipeline';
+export * from './material-bindings';
+export * from './pipeline-resolver';
+export * from './material-cache';
+export * from './material-resolution';

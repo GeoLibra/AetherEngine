@@ -1,0 +1,70 @@
+export { MaterialDiagnosticError } from './diagnostics';
+export { defineMaterialSchema } from './schema';
+export { createMaterialTechniqueRole, selectMaterialTechnique } from './technique';
+export { resolveMaterialRenderState } from './render-state';
+export type {
+  MaterialRenderPhaseContext,
+  MaterialRenderStateConflict,
+  ResolvedMaterialRenderState
+} from './render-state';
+export { compileMaterialParameterLayout, writeMaterialParameters } from './parameter-layout';
+export type {
+  CompiledMaterialParameterField,
+  CompiledMaterialParameterLayout,
+  MaterialDirtyRange,
+  MaterialParameterWrite,
+  MaterialParameterWriteCounters
+} from './parameter-layout';
+export {
+  createMaterialParameterBlock,
+  getMaterialMetrics,
+  resetMaterialMetrics
+} from './parameter-block';
+export {
+  createMaterialAsset,
+  createMaterialInstance,
+  rehydrateMaterialInstance,
+  resolveMaterialAsset,
+  snapshotMaterialInstance
+} from './asset';
+export type {
+  MaterialAsset,
+  MaterialAssetDefinition,
+  MaterialAssetReference,
+  MaterialBindingDiagnosticCode,
+  MaterialDiagnostic,
+  MaterialDiagnosticCode,
+  MaterialEditDiagnosticCode,
+  MaterialField,
+  MaterialFieldDefinition,
+  MaterialFieldDefinitions,
+  MaterialFieldIndex,
+  MaterialFields,
+  MaterialInstance,
+  MaterialInstanceSnapshot,
+  MaterialMetrics,
+  MaterialOperationFailure,
+  MaterialParameterBlock,
+  MaterialParameterDraft,
+  MaterialRebaseResult,
+  MaterialBlendIntent,
+  MaterialCullMode,
+  MaterialRenderStateOverride,
+  MaterialRenderStateIntent,
+  MaterialShaderEntryRef,
+  MaterialSamplerReference,
+  MaterialSchema,
+  MaterialTechniqueDiagnosticCode,
+  MaterialTechnique,
+  MaterialTechniqueCompatibility,
+  MaterialTechniqueRequest,
+  MaterialTechniqueRole,
+  MaterialTechniqueSelection,
+  MaterialSurfaceKind,
+  MaterialTextureReference,
+  MaterialValue,
+  MaterialValueFromDefinition,
+  MaterialValueFromValueType,
+  MaterialValueType,
+  ResolvedMaterialAsset
+} from './types';

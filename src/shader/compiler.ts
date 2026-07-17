@@ -7,6 +7,7 @@ import { resolveShaderSource } from './source';
 import { resolveShaderVariants } from './variant';
 import type { WebGL2ShaderTranslationPort } from '../rhi/webgl2/shader-types';
 import type {
+  ShaderBindingRequirement,
   ShaderBindingManifest,
   ShaderCompileRequest,
   ShaderDiagnostic,
@@ -134,6 +135,7 @@ export class ShaderCompiler {
           )
         ])
       });
+    const bindingRequirements = canonicalBindingRequirements(request.bindingRequirements ?? []);
     const fingerprint = canonicalStringify({
       closure: closure.hash,
       language: request.source.languageVersion,
@@ -142,6 +144,7 @@ export class ShaderCompiler {
       entries: [...request.entries].sort(),
       variants: variants.key.value,
       capabilities: [...request.capabilities].sort(),
+      bindingRequirements,
       translator:
         request.target === 'glsl300es' && this.options.webgl2Translator
           ? `${this.options.webgl2Translator.translatorId}@${this.options.webgl2Translator.version}`
@@ -189,7 +192,9 @@ export class ShaderCompiler {
       });
     let manifest: ShaderBindingManifest;
     try {
-      manifest = createShaderBindingManifest(parsed.ir, this.options.versions.abi, request.target);
+      manifest = createShaderBindingManifest(parsed.ir, this.options.versions.abi, request.target, {
+        bindingRequirements
+      });
     } catch (error) {
       return Object.freeze({
         status: 'failed',
@@ -236,6 +241,26 @@ export class ShaderCompiler {
       (this.latestRevision.get(sourceUri) ?? currentRevision) === currentRevision
     );
   }
+}
+
+function canonicalBindingRequirements(
+  requirements: readonly ShaderBindingRequirement[]
+): readonly ShaderBindingRequirement[] {
+  return Object.freeze(
+    requirements
+      .map((requirement) => Object.freeze({ ...requirement }))
+      .sort(
+        (left, right) =>
+          left.group - right.group ||
+          left.binding - right.binding ||
+          compareCodeUnits(left.kind, right.kind) ||
+          compareCodeUnits(left.samplerType, right.samplerType)
+      )
+  );
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function variantDiagnostic(uri: string, code: string, message: string): ShaderDiagnostic {

@@ -118,7 +118,24 @@ export interface BufferFieldLayout {
   readonly stride?: number;
   readonly scalarKind: ShaderScalarKind;
   readonly elementCount: number;
+  readonly shape: BufferFieldLayoutShape;
 }
+
+export type BufferFieldLayoutShape =
+  | Readonly<{ kind: 'scalar' }>
+  | Readonly<{ kind: 'vector'; length: 2 | 3 | 4 }>
+  | Readonly<{
+      kind: 'matrix';
+      columns: 2 | 3 | 4;
+      rows: 2 | 3 | 4;
+      columnStride: number;
+    }>
+  | Readonly<{
+      kind: 'array';
+      length: number;
+      stride: number;
+      element: BufferFieldLayoutShape;
+    }>;
 
 export interface BufferLayoutManifest {
   readonly name: string;
@@ -133,9 +150,70 @@ export interface BufferLayoutManifest {
   readonly layoutHash: string;
 }
 
+export type ShaderBufferBindingEntryManifest = Readonly<{
+  kind: 'uniform-buffer' | 'storage-buffer';
+  group: number;
+  binding: number;
+  name: string;
+  bufferLayoutName: string;
+}>;
+
+export type ShaderTextureBindingEntryManifest = Readonly<{
+  kind: 'texture';
+  group: number;
+  binding: number;
+  name: string;
+  viewDimension: '2d' | 'cube';
+  sampleType: 'float' | 'depth';
+  multisampled: boolean;
+}>;
+
+export type ShaderSamplerBindingEntryManifest = Readonly<{
+  kind: 'sampler';
+  group: number;
+  binding: number;
+  name: string;
+  samplerType: 'filtering' | 'non-filtering' | 'comparison';
+}>;
+
+export type ShaderBindingEntryManifest =
+  | ShaderBufferBindingEntryManifest
+  | ShaderTextureBindingEntryManifest
+  | ShaderSamplerBindingEntryManifest;
+
 export interface BindingGroupManifest {
   readonly group: number;
-  readonly entries: readonly Readonly<{ binding: number; name: string; kind: string }>[];
+  readonly entries: readonly ShaderBindingEntryManifest[];
+}
+
+export interface ShaderSamplerBindingRequirement {
+  readonly kind: 'sampler';
+  readonly group: number;
+  readonly binding: number;
+  readonly samplerType: 'filtering' | 'non-filtering' | 'comparison';
+}
+
+export type ShaderBindingRequirement = ShaderSamplerBindingRequirement;
+
+export interface ShaderBindingManifestOptions {
+  readonly bindingRequirements?: readonly ShaderBindingRequirement[];
+}
+
+export type ShaderBindingReflectionDiagnosticCode =
+  | 'unsupported-binding-type'
+  | 'duplicate-reflected-binding'
+  | 'duplicate-binding-requirement'
+  | 'missing-binding-requirement-target'
+  | 'binding-requirement-kind-mismatch'
+  | 'binding-requirement-conflict';
+
+export interface ShaderBindingReflectionDiagnostic {
+  readonly code: ShaderBindingReflectionDiagnosticCode;
+  readonly group: number;
+  readonly binding: number;
+  readonly name?: string;
+  readonly sourceType?: string;
+  readonly message: string;
 }
 
 export interface ShaderBindingManifest {
@@ -153,6 +231,7 @@ export interface ShaderCompileRequest {
   readonly target: ShaderTarget;
   readonly variants: Readonly<Record<string, boolean | string | number>>;
   readonly capabilities: readonly string[];
+  readonly bindingRequirements?: readonly ShaderBindingRequirement[];
   readonly signal?: AbortSignal;
 }
 

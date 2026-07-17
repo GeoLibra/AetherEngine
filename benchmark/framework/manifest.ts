@@ -128,6 +128,28 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         executable: 'node',
         args: Object.freeze(['benchmark/shader-system-runner.mjs', '{profile}'])
       })
+    }),
+    Object.freeze({
+      id: 'material-system',
+      description:
+        'Material parameter edits/uploads, technique and render-state resolution, canonical identities, and generation-safe cache behavior.',
+      domainIds: Object.freeze(['rendering']),
+      pathPrefixes: Object.freeze([
+        'benchmark/material-system/',
+        'benchmark/material-system-runner.mjs',
+        'engine/design/v2/04-rendering/03-material-system.md',
+        'src/material/',
+        'src/rendering/material-bindings.ts',
+        'src/rendering/material-cache.ts',
+        'src/rendering/material-resolution.ts',
+        'src/rendering/pipeline-resolver.ts',
+        'test/material/',
+        'test/benchmark/material-system.test.ts'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/material-system-runner.mjs', '{profile}'])
+      })
     })
   ])
 });
