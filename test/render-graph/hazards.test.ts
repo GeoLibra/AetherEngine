@@ -5,6 +5,7 @@ import {
   type RenderGraphSnapshot
 } from '../../src/render-graph/builder';
 import { deriveRenderGraphHazards } from '../../src/render-graph/hazards';
+import { fullBufferRange, fullTextureRange } from '../../src/render-graph/ranges';
 import type {
   BufferDescriptor,
   BufferRange,
@@ -39,6 +40,23 @@ function mip(baseMipLevel: number): TextureRange {
 
 function bytes(offset: number, size: number): BufferRange {
   return { offset, size };
+}
+
+function replaceAccessRange(
+  snapshot: RenderGraphSnapshot,
+  passId: number,
+  accessIndex: number,
+  range: unknown
+): RenderGraphSnapshot {
+  const pass = snapshot.passes[passId]!;
+  const accesses = [...pass.accesses];
+  accesses[accessIndex] = Object.freeze({
+    ...accesses[accessIndex]!,
+    range
+  }) as unknown as GraphAccess;
+  const passes = [...snapshot.passes];
+  passes[passId] = Object.freeze({ ...pass, accesses: Object.freeze(accesses) });
+  return Object.freeze({ ...snapshot, passes: Object.freeze(passes) });
 }
 
 describe('render graph hazards', () => {
@@ -217,7 +235,6 @@ describe('render graph hazards', () => {
       },
       run() {}
     });
-
     const snapshot = graph.build();
     const unknownAccess = Object.freeze({
       ...snapshot.passes[1]!.accesses[0]!,
@@ -233,9 +250,7 @@ describe('render graph hazards', () => {
         })
       ])
     }) as RenderGraphSnapshot;
-
     const result = deriveRenderGraphHazards(unknownSnapshot);
-
     expect(result.edges).toContainEqual(
       expect.objectContaining({
         kind: 'raw',
@@ -243,6 +258,141 @@ describe('render graph hazards', () => {
         toPassId: 1,
         fallback: true,
         range: expect.objectContaining({ kind: 'buffer', offset: 0, size: 64 })
+      })
+    );
+    expect(result.counters.wholeResourceFallbacks).toBeGreaterThan(0);
+  });
+
+  test.each([
+    ['out-of-bounds mip', { baseMipLevel: 2, mipLevelEnd: 3 }],
+    ['out-of-bounds layer', { baseArrayLayer: 1, arrayLayerEnd: 2 }],
+    ['invalid aspect', { aspect: 'plane-7' }]
+  ])('uses conservative RAW for a numeric-shaped texture range with %s', (_, damage) => {
+    const graph = new RenderGraphBuilder();
+    const initial = graph.createTexture(textureDescriptor, {
+      origin: {
+        kind: 'imported',
+        initialState: 'sampled',
+        acquire: { kind: 'external-acquire', id: 'damaged-texture-read' }
+      }
+    });
+    let written = initial;
+    graph.addPass({
+      id: 'texture-writer',
+      setup(pass) {
+        written = pass.writeTexture(initial, 'color-attachment', mip(0));
+        return { written };
+      },
+      run() {}
+    });
+    graph.addPass({
+      id: 'texture-reader',
+      setup(pass) {
+        pass.readTexture(written, 'sampled', mip(0));
+        pass.sideEffect('read result');
+        return {};
+      },
+      run() {}
+    });
+    const snapshot = graph.build();
+    const validRange = snapshot.passes[1]!.accesses[0]!.range;
+    const damaged = replaceAccessRange(snapshot, 1, 0, Object.freeze({ ...validRange, ...damage }));
+    const result = deriveRenderGraphHazards(damaged);
+    expect(result.edges).toContainEqual(
+      expect.objectContaining({
+        kind: 'raw',
+        fromPassId: 0,
+        toPassId: 1,
+        fallback: true,
+        range: fullTextureRange(textureDescriptor)
+      })
+    );
+    expect(result.counters.wholeResourceFallbacks).toBeGreaterThan(0);
+  });
+
+  test('uses conservative WAW for an invalid numeric-shaped texture write range', () => {
+    const graph = new RenderGraphBuilder();
+    const initial = graph.createTexture(textureDescriptor, {
+      origin: {
+        kind: 'imported',
+        initialState: 'sampled',
+        acquire: { kind: 'external-acquire', id: 'damaged-texture-write' }
+      }
+    });
+    let first = initial;
+    graph.addPass({
+      id: 'write-mip-zero',
+      setup(pass) {
+        first = pass.writeTexture(initial, 'color-attachment', mip(0));
+        return { first };
+      },
+      run() {}
+    });
+    graph.addPass({
+      id: 'write-mip-one',
+      setup(pass) {
+        const second = pass.writeTexture(first, 'color-attachment', mip(1));
+        pass.exportTexture(second, 'copy-src');
+        return { second };
+      },
+      run() {}
+    });
+    const snapshot = graph.build();
+    const validRange = snapshot.passes[1]!.accesses[0]!.range;
+    const damaged = replaceAccessRange(
+      snapshot,
+      1,
+      0,
+      Object.freeze({ ...validRange, aspect: 'plane-7' })
+    );
+    const result = deriveRenderGraphHazards(damaged);
+    expect(result.edges).toContainEqual(
+      expect.objectContaining({
+        kind: 'waw',
+        fromPassId: 0,
+        toPassId: 1,
+        fallback: true,
+        range: fullTextureRange(textureDescriptor)
+      })
+    );
+    expect(result.counters.wholeResourceFallbacks).toBeGreaterThan(0);
+  });
+
+  test.each([
+    ['out-of-bounds', { kind: 'buffer', offset: 60, size: 16, end: 76 }],
+    ['inconsistent derived end', { kind: 'buffer', offset: 32, size: 16, end: 33 }]
+  ])('uses conservative WAR for a %s numeric-shaped buffer range', (_, damagedRange) => {
+    const graph = new RenderGraphBuilder();
+    const initial = graph.createBuffer(bufferDescriptor, {
+      origin: {
+        kind: 'imported',
+        initialState: 'storage-read',
+        acquire: { kind: 'external-acquire', id: 'damaged-buffer-read' }
+      }
+    });
+    graph.addPass({
+      id: 'write-low-buffer',
+      setup(pass) {
+        return { written: pass.writeBuffer(initial, 'storage-write', bytes(0, 16)) };
+      },
+      run() {}
+    });
+    graph.addPass({
+      id: 'read-old-buffer',
+      setup(pass) {
+        return { initial: pass.readBuffer(initial, 'storage-read', bytes(32, 16)) };
+      },
+      run() {}
+    });
+    const damaged = replaceAccessRange(graph.build(), 1, 0, Object.freeze(damagedRange));
+    const result = deriveRenderGraphHazards(damaged);
+    expect(result.edges).toContainEqual(
+      expect.objectContaining({
+        kind: 'war',
+        fromPassId: 1,
+        toPassId: 0,
+        fallback: true,
+        range: fullBufferRange(bufferDescriptor)
       })
     );
     expect(result.counters.wholeResourceFallbacks).toBeGreaterThan(0);

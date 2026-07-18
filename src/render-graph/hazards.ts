@@ -2,12 +2,14 @@ import type { GraphReadAccess, GraphWriteAccess, RenderGraphSnapshot } from './b
 import {
   fullBufferRange,
   fullTextureRange,
+  normalizeBufferRange,
+  normalizeTextureRange,
   rangesOverlap,
   type GraphRange,
   type TextureGraphRange
 } from './ranges';
 import type { GraphResourceRecord, InitializationInterval } from './resources';
-import type { GraphResourceKind } from './types';
+import type { BufferRange, GraphResourceKind, TextureRange } from './types';
 
 export type RenderGraphHazardKind = 'raw' | 'war' | 'waw';
 
@@ -182,14 +184,20 @@ function compareRanges(
   counters: MutableCounters
 ): OverlapResult {
   counters.overlapComparisons += 1;
-  if (!isKnownRange(first, resource.kind) || !isKnownRange(second, resource.kind)) {
+  const normalizedFirst = normalizeKnownRange(first, resource);
+  const normalizedSecond = normalizeKnownRange(second, resource);
+  if (normalizedFirst === undefined || normalizedSecond === undefined) {
     counters.wholeResourceFallbacks += 1;
     return Object.freeze({ overlaps: true, range: fullRange(resource), fallback: true });
   }
-  if (!rangesOverlap(first, second)) {
-    return Object.freeze({ overlaps: false, range: first, fallback: false });
+  if (!rangesOverlap(normalizedFirst, normalizedSecond)) {
+    return Object.freeze({ overlaps: false, range: normalizedFirst, fallback: false });
   }
-  return Object.freeze({ overlaps: true, range: intersectRanges(first, second), fallback: false });
+  return Object.freeze({
+    overlaps: true,
+    range: intersectRanges(normalizedFirst, normalizedSecond),
+    fallback: false
+  });
 }
 
 function hazardEdge(
@@ -230,21 +238,35 @@ function fullRange(resource: GraphResourceRecord): GraphRange {
     : fullBufferRange(resource.descriptor);
 }
 
-function isKnownRange(value: unknown, kind: GraphResourceKind): value is GraphRange {
-  if (typeof value !== 'object' || value === null || !('kind' in value)) return false;
+function normalizeKnownRange(
+  value: unknown,
+  resource: GraphResourceRecord
+): GraphRange | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
   const candidate = value as Readonly<Record<string, unknown>>;
-  if (candidate.kind !== kind) return false;
-  if (kind === 'buffer') {
-    return ['offset', 'size', 'end'].every((key) => Number.isSafeInteger(candidate[key]));
+  try {
+    if (resource.kind === 'buffer' && candidate.kind === 'buffer') {
+      const normalized = normalizeBufferRange(
+        resource.descriptor,
+        candidate as unknown as BufferRange
+      );
+      return candidate.end === normalized.end ? normalized : undefined;
+    }
+    if (resource.kind === 'texture' && candidate.kind === 'texture') {
+      const normalized = normalizeTextureRange(
+        resource.descriptor,
+        candidate as unknown as TextureRange
+      );
+      return candidate.mipLevelEnd === normalized.mipLevelEnd &&
+        candidate.arrayLayerEnd === normalized.arrayLayerEnd
+        ? normalized
+        : undefined;
+    }
+  } catch {
+    // A footprint that cannot be revalidated against its descriptor is unknown,
+    // so the caller must conservatively order the whole logical resource.
   }
-  return [
-    'baseMipLevel',
-    'mipLevelCount',
-    'baseArrayLayer',
-    'arrayLayerCount',
-    'mipLevelEnd',
-    'arrayLayerEnd'
-  ].every((key) => Number.isSafeInteger(candidate[key]));
+  return undefined;
 }
 
 function intersectRanges(first: GraphRange, second: GraphRange): GraphRange {
