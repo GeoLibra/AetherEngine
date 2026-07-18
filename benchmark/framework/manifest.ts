@@ -150,6 +150,24 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         executable: 'node',
         args: Object.freeze(['benchmark/material-system-runner.mjs', '{profile}'])
       })
+    }),
+    Object.freeze({
+      id: 'render-graph',
+      description:
+        'RenderGraph hazards, culling, stable topology, lifetime planning, and deterministic compiler evidence.',
+      domainIds: Object.freeze(['rendering']),
+      pathPrefixes: Object.freeze([
+        'benchmark/render-graph/',
+        'benchmark/render-graph-runner.mjs',
+        'engine/design/v2/04-rendering/04-render-graph.md',
+        'src/render-graph/',
+        'test/benchmark/render-graph.test.ts',
+        'test/render-graph/'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/render-graph-runner.mjs', '{profile}'])
+      })
     })
   ])
 });
