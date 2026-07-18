@@ -10,3 +10,5 @@ downloads/
 engine/
 benchmark/artifacts/
 .superpowers
+.loops/reports/.digest/
+.worktrees/
