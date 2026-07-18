@@ -111,11 +111,24 @@ function assertTextureRange(range: TextureRange, descriptor: TextureDescriptor):
   if (range.aspect !== 'all' && range.aspect !== 'depth-only' && range.aspect !== 'stencil-only') {
     throw new Error('Texture range aspect is invalid.');
   }
+  assertTextureAspect(range.aspect, descriptor.format);
   if (range.baseMipLevel + range.mipLevelCount > descriptor.mipLevelCount) {
     throw new Error('Texture range mip levels are out of bounds.');
   }
   if (range.baseArrayLayer + range.arrayLayerCount > descriptor.depthOrArrayLayers) {
     throw new Error('Texture range array layers are out of bounds.');
+  }
+}
+
+function assertTextureAspect(aspect: TextureRange['aspect'], format: string): void {
+  if (aspect === 'all') return;
+  const isDepthFormat = format.startsWith('depth');
+  const isStencilFormat = format.includes('stencil');
+  if (aspect === 'depth-only' && !isDepthFormat) {
+    throw new Error(`Texture range aspect depth-only is incompatible with format "${format}".`);
+  }
+  if (aspect === 'stencil-only' && !isStencilFormat) {
+    throw new Error(`Texture range aspect stencil-only is incompatible with format "${format}".`);
   }
 }
 

@@ -26,6 +26,12 @@ const bufferDescriptor: BufferDescriptor = {
   usage: ['vertex', 'copy-dst']
 };
 
+const depthDescriptor: TextureDescriptor = { ...textureDescriptor, format: 'depth32float' };
+const depthStencilDescriptor: TextureDescriptor = {
+  ...textureDescriptor,
+  format: 'depth24plus-stencil8'
+};
+
 describe('render graph ranges', () => {
   test('recognizes whole and partial texture overlap', () => {
     const whole = fullTextureRange(textureDescriptor);
@@ -63,14 +69,14 @@ describe('render graph ranges', () => {
       arrayLayerCount: 1,
       aspect: 'all'
     });
-    const depth = normalizeTextureRange(textureDescriptor, {
+    const depth = normalizeTextureRange(depthStencilDescriptor, {
       baseMipLevel: 1,
       mipLevelCount: 1,
       baseArrayLayer: 0,
       arrayLayerCount: 1,
       aspect: 'depth-only'
     });
-    const stencil = normalizeTextureRange(textureDescriptor, {
+    const stencil = normalizeTextureRange(depthStencilDescriptor, {
       baseMipLevel: 1,
       mipLevelCount: 1,
       baseArrayLayer: 0,
@@ -81,6 +87,24 @@ describe('render graph ranges', () => {
     expect(textureRangesOverlap(mipOne, mipTwo)).toBe(false);
     expect(textureRangesOverlap(mipOne, layerOne)).toBe(false);
     expect(textureRangesOverlap(depth, stencil)).toBe(false);
+  });
+
+  test('validates texture aspects against the descriptor format', () => {
+    const depthRange = {
+      baseMipLevel: 0,
+      mipLevelCount: 1,
+      baseArrayLayer: 0,
+      arrayLayerCount: 1,
+      aspect: 'depth-only' as const
+    };
+    const stencilRange = { ...depthRange, aspect: 'stencil-only' as const };
+
+    expect(() => normalizeTextureRange(textureDescriptor, depthRange)).toThrow(/aspect/i);
+    expect(() => normalizeTextureRange(textureDescriptor, stencilRange)).toThrow(/aspect/i);
+    expect(() => normalizeTextureRange(depthDescriptor, stencilRange)).toThrow(/aspect/i);
+    expect(normalizeTextureRange(depthDescriptor, depthRange).aspect).toBe('depth-only');
+    expect(normalizeTextureRange(depthStencilDescriptor, depthRange).aspect).toBe('depth-only');
+    expect(normalizeTextureRange(depthStencilDescriptor, stencilRange).aspect).toBe('stencil-only');
   });
 
   test('uses half-open byte intervals at buffer boundaries', () => {

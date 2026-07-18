@@ -1,24 +1,15 @@
 import { describe, expect, test } from 'vitest';
 import {
   assertGraphHandle,
+  createGraphHandle,
   isGraphHandle,
   type BufferHandle,
   type TextureHandle
 } from '../../src/render-graph/types';
 
-const textureHandle: TextureHandle = Object.freeze({
-  kind: 'texture',
-  graphId: 7,
-  resourceId: 2,
-  version: 3
-});
+const textureHandle: TextureHandle = createGraphHandle('texture', 7, 2, 3);
 
-const bufferHandle: BufferHandle = Object.freeze({
-  kind: 'buffer',
-  graphId: 7,
-  resourceId: 4,
-  version: 1
-});
+const bufferHandle: BufferHandle = createGraphHandle('buffer', 7, 4, 1);
 
 describe('render graph handles', () => {
   test('recognizes frozen graph-local typed handles', () => {
@@ -41,5 +32,17 @@ describe('render graph handles', () => {
   test('rejects malformed unknown values before reading handle fields', () => {
     expect(isGraphHandle({ kind: 'texture', graphId: 7, resourceId: 2, version: -1 })).toBe(false);
     expect(() => assertGraphHandle(null, 7, 'texture')).toThrow(/handle/i);
+  });
+
+  test('rejects a frozen structural lookalike without internal provenance', () => {
+    const forged = Object.freeze({
+      kind: 'texture' as const,
+      graphId: 7,
+      resourceId: 2,
+      version: 3
+    });
+
+    expect(isGraphHandle(forged)).toBe(false);
+    expect(() => assertGraphHandle(forged, 7, 'texture')).toThrow(/handle/i);
   });
 });
