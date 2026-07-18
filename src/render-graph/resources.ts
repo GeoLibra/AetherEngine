@@ -256,6 +256,9 @@ export class ResourceVersionStore {
     if (resource.versions[handle.version] === undefined) {
       throw new Error('Render graph handle refers to an unknown version.');
     }
+    if (resource.versions[handle.version]?.handle !== handle) {
+      throw new Error('Render graph handle is not the current stored handle identity.');
+    }
     return resource;
   }
 

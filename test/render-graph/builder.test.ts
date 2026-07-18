@@ -242,4 +242,122 @@ describe('render graph pass declarations', () => {
 
     expect(graph.build().resources[0]?.currentVersion).toBe(1);
   });
+
+  test.each([
+    ['texture', 'vertex'],
+    ['texture', 'undefined'],
+    ['buffer', 'sampled'],
+    ['buffer', 'undefined']
+  ] as const)('rejects %s export state %s', (kind, finalState) => {
+    const graph = new RenderGraphBuilder();
+    const resource =
+      kind === 'texture'
+        ? graph.createTexture(textureDescriptor)
+        : graph.createBuffer(bufferDescriptor);
+
+    expect(() =>
+      graph.addPass({
+        id: `invalid-${kind}-export`,
+        setup(pass) {
+          if (resource.kind === 'texture') {
+            const output = pass.writeTexture(resource, 'color-attachment');
+            pass.exportTexture(output, finalState);
+            return { output };
+          }
+          const output = pass.writeBuffer(resource, 'copy-dst');
+          pass.exportBuffer(output, finalState);
+          return { output };
+        },
+        run() {}
+      })
+    ).toThrow(/export.*state/i);
+  });
+
+  test.each(['texture', 'buffer'] as const)(
+    'rejects a %s export state missing from the resource descriptor usage',
+    (kind) => {
+      const graph = new RenderGraphBuilder();
+      const resource =
+        kind === 'texture'
+          ? graph.createTexture({ ...textureDescriptor, usage: ['color-attachment'] })
+          : graph.createBuffer({ ...bufferDescriptor, usage: ['copy-dst'] });
+
+      expect(() =>
+        graph.addPass({
+          id: 'undeclared-export-state',
+          setup(pass) {
+            if (resource.kind === 'texture') {
+              const output = pass.writeTexture(resource, 'color-attachment');
+              pass.exportTexture(output, 'copy-src');
+              return { output };
+            }
+            const output = pass.writeBuffer(resource, 'copy-dst');
+            pass.exportBuffer(output, 'copy-src');
+            return { output };
+          },
+          run() {}
+        })
+      ).toThrow(/descriptor.*usage/i);
+    }
+  );
+
+  test('captures the run callback when the pass is added', () => {
+    const graph = new RenderGraphBuilder();
+    const original = vi.fn();
+    const replacement = vi.fn();
+    const descriptor = {
+      id: 'captured-run',
+      setup: () => ({}),
+      run: original
+    };
+
+    graph.addPass(descriptor);
+    descriptor.run = replacement;
+    graph.build().passes[0]?.run({});
+
+    expect(original).toHaveBeenCalledOnce();
+    expect(replacement).not.toHaveBeenCalled();
+  });
+
+  test('recursively freezes nested values behind an already frozen shell', () => {
+    const graph = new RenderGraphBuilder();
+    const nested = { handle: 'declaration' };
+    const shell = Object.freeze({ nested });
+
+    graph.addPass({ id: 'frozen-shell', setup: () => shell, run() {} });
+    const resources = graph.build().passes[0]?.resources as typeof shell;
+
+    expect(Object.isFrozen(resources.nested)).toBe(true);
+    expect(() => {
+      resources.nested.handle = 'mutated';
+    }).toThrow();
+  });
+
+  test.each([Object.freeze(new Map([['mutable', true]])), Object.freeze(new Set(['mutable']))])(
+    'rejects mutable setup containers even when their shell can be frozen',
+    (container) => {
+      const graph = new RenderGraphBuilder();
+
+      expect(() =>
+        graph.addPass({
+          id: 'mutable-container',
+          setup: () => Object.freeze({ container }),
+          run() {}
+        })
+      ).toThrow(/mutable container|Map|Set/i);
+    }
+  );
+
+  test('deep freezing permits repeated references to the same frozen handle', () => {
+    const graph = new RenderGraphBuilder();
+    const texture = graph.createTexture(textureDescriptor);
+
+    expect(() =>
+      graph.addPass({
+        id: 'shared-handle',
+        setup: () => ({ first: texture, second: texture }),
+        run() {}
+      })
+    ).not.toThrow();
+  });
 });

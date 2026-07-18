@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { RenderGraphBuilder } from '../../src/render-graph/builder';
+import { RenderGraphBuilder, type PassBuilder } from '../../src/render-graph/builder';
 import type { TextureDescriptor, TextureRange } from '../../src/render-graph/types';
 
 const textureDescriptor: TextureDescriptor = {
@@ -235,5 +235,47 @@ describe('render graph resource versions', () => {
         }
       })
     ).toThrow(/texture.*initial state/i);
+  });
+
+  test('rejects a leaked rolled-back handle after its resource id is reused', () => {
+    const graph = new RenderGraphBuilder();
+    let leaked: ReturnType<PassBuilder['createTexture']> | undefined;
+
+    expect(() =>
+      graph.addPass({
+        id: 'leak-then-fail',
+        setup(pass) {
+          leaked = pass.createTexture(textureDescriptor, {
+            origin: {
+              kind: 'imported',
+              initialState: 'sampled',
+              acquire: { kind: 'external-acquire', id: 'rolled-back' }
+            }
+          });
+          throw new Error('rollback');
+        },
+        run() {}
+      })
+    ).toThrow(/rollback/i);
+
+    const replacement = graph.createTexture(textureDescriptor, {
+      origin: {
+        kind: 'imported',
+        initialState: 'sampled',
+        acquire: { kind: 'external-acquire', id: 'replacement' }
+      }
+    });
+    expect(leaked).toMatchObject({ resourceId: replacement.resourceId, version: 0 });
+    expect(leaked).not.toBe(replacement);
+
+    expect(() =>
+      graph.addPass({
+        id: 'read-leaked-handle',
+        setup(pass) {
+          return { leaked: pass.readTexture(leaked as typeof replacement, 'sampled') };
+        },
+        run() {}
+      })
+    ).toThrow(/handle.*current|unknown.*handle/i);
   });
 });
