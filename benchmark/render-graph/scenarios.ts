@@ -1,6 +1,49 @@
 import { createRenderGraphWorkload } from './fixtures';
 import { runReferenceRenderGraph } from './reference';
-import type { RenderGraphScenario, RenderGraphWorkloadOptions } from './types';
+import type {
+  RenderGraphReferenceResult,
+  RenderGraphScenario,
+  RenderGraphWorkload,
+  RenderGraphWorkloadOptions
+} from './types';
+import { RenderGraphBuilder } from '../../src/render-graph/builder';
+import { compileRenderGraph } from '../../src/render-graph/compiler';
+import { createRenderGraphDebugIR } from '../../src/render-graph/debug-ir';
+import type { BufferHandle } from '../../src/render-graph/types';
+
+export interface RenderGraphCompilerSemantic {
+  readonly orderChecksum: string;
+  readonly edgeChecksum: string;
+  readonly cullChecksum: string;
+  readonly lifetimeChecksum: string;
+  readonly retainedPasses: number;
+  readonly culledPasses: number;
+}
+
+export interface RenderGraphCompilerCounters {
+  readonly passesVisited: number;
+  readonly accessesExamined: number;
+  readonly overlapComparisons: number;
+  readonly adjacencyEntries: number;
+  readonly readyOperations: number;
+  readonly temporaryIrObjects: number;
+  readonly aliasGroups: number;
+  readonly allocations: number;
+  readonly wholeResourceFallbacks: number;
+}
+
+export interface RenderGraphCompilerObservation {
+  readonly semantic: RenderGraphCompilerSemantic;
+  readonly counters: RenderGraphCompilerCounters;
+}
+
+export interface RenderGraphCompilerScenario {
+  readonly scenarioId: 'hazard-compile-v1';
+  readonly scenarioVersion: 1;
+  readonly workload: RenderGraphWorkload;
+  runReference(): RenderGraphCompilerObservation;
+  runSubject(): RenderGraphCompilerObservation;
+}
 
 export function createReferenceRenderGraphScenario(
   options: RenderGraphWorkloadOptions
@@ -12,4 +55,289 @@ export function createReferenceRenderGraphScenario(
     workload,
     runReference: () => runReferenceRenderGraph(workload)
   });
+}
+
+export function createRenderGraphCompilerScenario(
+  options: RenderGraphWorkloadOptions
+): RenderGraphCompilerScenario {
+  const workload = createRenderGraphWorkload(options);
+  return Object.freeze({
+    scenarioId: 'hazard-compile-v1' as const,
+    scenarioVersion: 1 as const,
+    workload,
+    runReference: () => referenceObservation(workload, runReferenceRenderGraph(workload)),
+    runSubject: () => subjectObservation(workload)
+  });
+}
+
+export function assertRenderGraphScenarioComparison(
+  scenario: RenderGraphCompilerScenario,
+  reference: RenderGraphCompilerObservation,
+  subject: RenderGraphCompilerObservation
+): void {
+  if (JSON.stringify(reference.semantic) !== JSON.stringify(subject.semantic)) {
+    throw new Error(
+      `RenderGraph semantic oracle mismatch for ${scenario.scenarioId}: ${JSON.stringify(reference.semantic)} !== ${JSON.stringify(subject.semantic)}.`
+    );
+  }
+  const expectedAccesses = scenario.workload.passes.length * scenario.workload.accessesPerPass;
+  if (subject.counters.passesVisited !== scenario.workload.passes.length) {
+    throw new Error('RenderGraph subject did not visit the closed-form pass count.');
+  }
+  if (subject.counters.accessesExamined !== expectedAccesses) {
+    throw new Error('RenderGraph subject did not examine the closed-form access count.');
+  }
+  if (subject.counters.readyOperations !== scenario.workload.passes.length * 2) {
+    throw new Error('RenderGraph subject ready-queue operations diverged from the retained DAG.');
+  }
+  if (subject.counters.wholeResourceFallbacks !== 0) {
+    throw new Error(
+      'RenderGraph benchmark uses exact ranges and must not fall back to whole resources.'
+    );
+  }
+}
+
+function referenceObservation(
+  workload: RenderGraphWorkload,
+  result: RenderGraphReferenceResult
+): RenderGraphCompilerObservation {
+  return Object.freeze({
+    semantic: Object.freeze({
+      orderChecksum: integerListChecksum(result.order),
+      edgeChecksum: result.edgeChecksum,
+      cullChecksum: textChecksum(''),
+      lifetimeChecksum: referenceLifetimeChecksum(workload),
+      retainedPasses: result.retainedPasses,
+      culledPasses: 0
+    }),
+    counters: Object.freeze({
+      passesVisited: workload.passes.length,
+      accessesExamined: result.accessesExamined,
+      overlapComparisons: result.overlapComparisons,
+      adjacencyEntries: referenceRelationshipCount(workload),
+      readyOperations: workload.passes.length * 2,
+      temporaryIrObjects: 0,
+      aliasGroups: 0,
+      allocations: 0,
+      wholeResourceFallbacks: 0
+    })
+  });
+}
+
+function subjectObservation(workload: RenderGraphWorkload): RenderGraphCompilerObservation {
+  const graph = new RenderGraphBuilder();
+  const handles: BufferHandle[] = Array.from(
+    { length: workload.options.resourceCount },
+    (_, index) => {
+      const firstAccess = workload.passes
+        .flatMap((pass) => pass.accesses)
+        .find((access) => access.resourceIndex === index);
+      return graph.createBuffer(
+        {
+          label: `benchmark-resource-${index}`,
+          size: 256,
+          usage: Object.freeze(['storage-read', 'storage-write'])
+        },
+        firstAccess?.mode === 'write'
+          ? { origin: { kind: 'transient' } }
+          : {
+              origin: {
+                kind: 'imported',
+                initialState: 'storage-read',
+                acquire: { kind: 'external-acquire', id: `benchmark-resource-${index}` }
+              }
+            }
+      );
+    }
+  );
+  for (const passWorkload of workload.passes) {
+    graph.addPass({
+      id: `benchmark-pass-${passWorkload.registrationIndex}`,
+      setup(pass) {
+        for (const access of passWorkload.accesses) {
+          const handle = handles[access.resourceIndex];
+          if (handle === undefined)
+            throw new Error('RenderGraph subject fixture handle is missing.');
+          if (access.mode === 'read') pass.readBuffer(handle, 'storage-read');
+          else handles[access.resourceIndex] = pass.writeBuffer(handle, 'storage-write');
+        }
+        pass.sideEffect(`benchmark-pass-${passWorkload.registrationIndex}`);
+        return undefined;
+      },
+      run() {}
+    });
+  }
+  const snapshot = graph.build();
+  const compiled = compileRenderGraph(snapshot);
+  const debug = createRenderGraphDebugIR(snapshot, compiled);
+  const relationships = uniqueRelationships(compiled.edges);
+  const oracleRelationships = referenceRelationships(workload);
+  const equivalentEdges = equivalentReachability(
+    workload.passes.length,
+    oracleRelationships,
+    relationships
+  );
+  return Object.freeze({
+    semantic: Object.freeze({
+      orderChecksum: integerListChecksum(compiled.order),
+      edgeChecksum: equivalentEdges
+        ? relationshipChecksum(oracleRelationships)
+        : textChecksum(
+            `invalid:${relationshipChecksum(reachability(workload.passes.length, relationships))}`
+          ),
+      cullChecksum: integerListChecksum(compiled.culledPasses.map((pass) => pass.passId)),
+      lifetimeChecksum: lifetimeChecksum(debug.lifetimes),
+      retainedPasses: compiled.retainedPasses.length,
+      culledPasses: compiled.culledPasses.length
+    }),
+    counters: Object.freeze({
+      passesVisited: snapshot.passes.length,
+      accessesExamined: compiled.counters.accessesExamined,
+      overlapComparisons: compiled.counters.overlapComparisons,
+      adjacencyEntries: relationships.length,
+      readyOperations: compiled.order.length * 2,
+      temporaryIrObjects: debug.counters.temporaryIrObjects,
+      aliasGroups: debug.counters.aliasGroups,
+      allocations: debug.counters.allocations,
+      wholeResourceFallbacks: compiled.counters.wholeResourceFallbacks
+    })
+  });
+}
+
+function referenceLifetimeChecksum(workload: RenderGraphWorkload): string {
+  const intervals = Array.from({ length: workload.options.resourceCount }, (_, resourceId) => {
+    const uses = workload.passes
+      .filter((pass) => pass.accesses.some((access) => access.resourceIndex === resourceId))
+      .map((pass) => pass.registrationIndex);
+    return uses.length === 0
+      ? undefined
+      : `${resourceId}:${uses[0] as number}:${uses[uses.length - 1] as number};`;
+  }).filter((value): value is string => value !== undefined);
+  return textChecksum(intervals.join(''));
+}
+
+function lifetimeChecksum(
+  lifetimes: readonly {
+    readonly resourceId: number;
+    readonly firstUse: number;
+    readonly lastUse: number;
+  }[]
+): string {
+  return textChecksum(
+    lifetimes
+      .map((lifetime) => `${lifetime.resourceId}:${lifetime.firstUse}:${lifetime.lastUse};`)
+      .join('')
+  );
+}
+
+type Relationship = readonly [number, number];
+
+function uniqueRelationships(
+  edges: readonly { readonly fromPassId: number; readonly toPassId: number }[]
+): readonly Relationship[] {
+  const seen = new Set<string>();
+  return Object.freeze(
+    edges
+      .map((edge) => Object.freeze([edge.fromPassId, edge.toPassId] as const))
+      .filter(([from, to]) => {
+        const key = `${from}:${to}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort(
+        ([firstFrom, firstTo], [secondFrom, secondTo]) =>
+          firstFrom - secondFrom || firstTo - secondTo
+      )
+  );
+}
+
+function referenceRelationshipCount(workload: RenderGraphWorkload): number {
+  return referenceRelationships(workload).length;
+}
+
+function referenceRelationships(workload: RenderGraphWorkload): readonly Relationship[] {
+  const relationships: Relationship[] = [];
+  for (let first = 0; first < workload.passes.length; first += 1) {
+    for (let second = first + 1; second < workload.passes.length; second += 1) {
+      const firstPass = workload.passes[first];
+      const secondPass = workload.passes[second];
+      if (firstPass === undefined || secondPass === undefined) continue;
+      if (
+        firstPass.accesses.some((left) =>
+          secondPass.accesses.some(
+            (right) =>
+              left.resourceIndex === right.resourceIndex &&
+              (left.mode === 'write' || right.mode === 'write')
+          )
+        )
+      )
+        relationships.push(
+          Object.freeze([firstPass.registrationIndex, secondPass.registrationIndex])
+        );
+    }
+  }
+  return Object.freeze(relationships);
+}
+
+function adjacencyFor(
+  relationships: readonly Relationship[]
+): ReadonlyMap<number, readonly number[]> {
+  const adjacency = new Map<number, number[]>();
+  for (const [source, target] of relationships) {
+    const targets = adjacency.get(source) ?? [];
+    targets.push(target);
+    adjacency.set(source, targets);
+  }
+  return adjacency;
+}
+
+function equivalentReachability(
+  passCount: number,
+  reference: readonly Relationship[],
+  subject: readonly Relationship[]
+): boolean {
+  return (
+    relationshipChecksum(reachability(passCount, reference)) ===
+    relationshipChecksum(reachability(passCount, subject))
+  );
+}
+
+function reachability(
+  passCount: number,
+  relationships: readonly Relationship[]
+): readonly Relationship[] {
+  const adjacency = adjacencyFor(relationships);
+  const result: Relationship[] = [];
+  for (let from = 0; from < passCount; from += 1) {
+    const pending = [...(adjacency.get(from) ?? [])];
+    const visited = new Set<number>();
+    while (pending.length > 0) {
+      const current = pending.pop() as number;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      pending.push(...(adjacency.get(current) ?? []));
+    }
+    for (const to of [...visited].sort((first, second) => first - second)) {
+      if (to > from) result.push(Object.freeze([from, to]));
+    }
+  }
+  return Object.freeze(result);
+}
+
+function relationshipChecksum(relationships: readonly Relationship[]): string {
+  return textChecksum(relationships.map(([from, to]) => `${from}>${to};`).join(''));
+}
+
+function integerListChecksum(values: readonly number[]): string {
+  return textChecksum(values.map((value) => `${value};`).join(''));
+}
+
+function textChecksum(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }

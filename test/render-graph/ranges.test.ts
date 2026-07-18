@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import {
+  atomizeTextureAspects,
   fullBufferRange,
   fullTextureRange,
+  intersectGraphRanges,
   normalizeBufferRange,
   normalizeTextureRange,
   rangesOverlap,
+  subtractGraphRange,
   textureRangesOverlap
 } from '../../src/render-graph/ranges';
 import type { BufferDescriptor, TextureDescriptor } from '../../src/render-graph/types';
@@ -120,6 +123,33 @@ describe('render graph ranges', () => {
       size: 64,
       end: 64
     });
+  });
+
+  test('intersects and subtracts rectangular texture subresources', () => {
+    const whole = fullTextureRange(textureDescriptor);
+    const middle = normalizeTextureRange(textureDescriptor, {
+      baseMipLevel: 1,
+      mipLevelCount: 2,
+      baseArrayLayer: 1,
+      arrayLayerCount: 2,
+      aspect: 'all'
+    });
+
+    expect(intersectGraphRanges(whole, middle)).toEqual(middle);
+    expect(subtractGraphRange(whole, middle)).toHaveLength(4);
+    expect(subtractGraphRange(whole, middle).some((range) => rangesOverlap(range, middle))).toBe(
+      false
+    );
+  });
+
+  test('atomizes depth-stencil all-aspect ranges before state tracking', () => {
+    const whole = fullTextureRange(depthStencilDescriptor);
+
+    expect(
+      atomizeTextureAspects(whole, depthStencilDescriptor.format).map((range) =>
+        range.kind === 'texture' ? range.aspect : 'buffer'
+      )
+    ).toEqual(['depth-only', 'stencil-only']);
   });
 
   test.each([
