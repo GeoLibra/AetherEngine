@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.resolve.outputs.matrix }}
+      diagnostics: ${{ steps.resolve.outputs.diagnostics }}
       has-projects: ${{ steps.resolve.outputs.has-projects }}
     steps:
       - uses: actions/checkout@v7
@@ -40,11 +41,18 @@ jobs:
             : > "$changed_paths_file"
           fi
 
-          matrix="$(pnpm --silent e2e:resolve < "$changed_paths_file")"
+          resolution="$(pnpm --silent e2e:resolve < "$changed_paths_file")"
+          matrix="$(node -e \
+            'const value = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify({ include: value.include }));' \
+            "$resolution")"
+          diagnostics="$(node -e \
+            'const value = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify({ reasons: value.reasons, fallback: value.fallback }));' \
+            "$resolution")"
           has_projects="$(node -e \
             'const value = JSON.parse(process.argv[1]); process.stdout.write(String(value.include.length > 0));' \
             "$matrix")"
-          printf 'matrix=%s\nhas-projects=%s\n' "$matrix" "$has_projects" >> "$GITHUB_OUTPUT"
+          printf 'matrix=%s\ndiagnostics=%s\nhas-projects=%s\n' \
+            "$matrix" "$diagnostics" "$has_projects" >> "$GITHUB_OUTPUT"
 
   e2e:
     needs: resolve
@@ -64,7 +72,9 @@ jobs:
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Run ${{ matrix.project }}
-        run: pnpm e2e --project=${{ matrix.project }}
+        env:
+          E2E_PROJECT: ${{ matrix.project }}
+        run: pnpm e2e --project="$E2E_PROJECT"
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v7
