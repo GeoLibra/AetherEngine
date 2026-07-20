@@ -4,13 +4,19 @@ import type { E2EBridge, E2EState } from './types';
 
 type Scenario = 'browser-host' | 'webgl2';
 type Cleanup = () => void | Promise<void>;
+interface ResizeOperation {
+  readonly completion: Promise<void>;
+  readonly cancel: () => void;
+}
 
 const INITIAL_WIDTH = 640;
 const INITIAL_HEIGHT = 360;
 
 let currentState: E2EState = Object.freeze({ status: 'booting' });
-let resizeHarness: ((width: number, height: number, dpr: number) => Promise<void>) | undefined;
+let resizeHarness: ((width: number, height: number, dpr: number) => ResizeOperation) | undefined;
 const cleanups: Cleanup[] = [];
+const activeResizes = new Set<ResizeOperation>();
+let teardownStarted = false;
 let teardownPromise: Promise<void> | undefined;
 
 const initialization = initialize().catch((error: unknown) => {
@@ -20,20 +26,30 @@ const initialization = initialize().catch((error: unknown) => {
 const bridge: E2EBridge = Object.freeze({
   state: () => currentState,
   async resize(width: number, height: number, dpr: number) {
+    assertResizeAllowed();
     await initialization;
+    assertResizeAllowed();
     if (currentState.status === 'failed') {
       throw new Error(currentState.message);
-    }
-    if (currentState.status === 'destroyed') {
-      throw new Error('The E2E harness is destroyed.');
     }
     if (resizeHarness === undefined) {
       throw new Error('The E2E harness is not ready.');
     }
-    await resizeHarness(width, height, dpr);
+    const operation = resizeHarness(width, height, dpr);
+    activeResizes.add(operation);
+    try {
+      await operation.completion;
+    } finally {
+      activeResizes.delete(operation);
+    }
   },
   teardown() {
-    teardownPromise ??= teardownHarness();
+    if (teardownPromise === undefined) {
+      // This synchronous terminal marker closes the admission race before teardown's first await.
+      teardownStarted = true;
+      cancelActiveResizes();
+      teardownPromise = teardownHarness();
+    }
     return teardownPromise;
   }
 });
@@ -42,6 +58,8 @@ window.__AETHER_E2E__ = bridge;
 
 async function teardownHarness(): Promise<void> {
   await initialization;
+  cancelActiveResizes();
+  await Promise.allSettled([...activeResizes].map(({ completion }) => completion));
   try {
     await runCleanups();
   } catch (error) {
@@ -69,12 +87,17 @@ async function initialize(): Promise<void> {
   });
   cleanups.push(() => hostWindow.close());
 
-  resizeHarness = async (width, height, dpr) => {
+  resizeHarness = (width, height, dpr) => {
     setCanvasExtent(canvas, width, height, dpr);
     devicePixelRatio = dpr;
-    hostWindow.queueMetrics({ logicalSize: [width, height], devicePixelRatio: dpr });
-    await commitOneFrame(host);
-    publishReady(scenario, metricsDetail(hostWindow.metrics, hostWindow.generation));
+    window.dispatchEvent(new Event('resize'));
+    const frameCommit = beginFrameCommit(host);
+    return {
+      cancel: frameCommit.cancel,
+      completion: frameCommit.completion.then(() => {
+        publishReady(scenario, metricsDetail(hostWindow.metrics, hostWindow.generation));
+      })
+    };
   };
 
   if (scenario === 'webgl2') {
@@ -123,15 +146,20 @@ function validateExtent(width: number, height: number, dpr: number): void {
   }
 }
 
-async function commitOneFrame(host: BrowserHost): Promise<void> {
+function beginFrameCommit(host: BrowserHost): ResizeOperation {
   const runner = host.createRunner({ kind: 'browser' });
-  await runner.run({
-    stopRequested: false,
-    frame() {
-      runner.requestStop('e2e-frame-boundary');
-      return { frame: 1 };
-    }
-  });
+  return {
+    cancel: () => runner.requestStop('e2e-teardown'),
+    completion: runner
+      .run({
+        stopRequested: false,
+        frame() {
+          runner.requestStop('e2e-frame-boundary');
+          return { frame: 1 };
+        }
+      })
+      .then(() => undefined)
+  };
 }
 
 function metricsDetail(
@@ -150,12 +178,23 @@ function publishReady(
   backend: 'browser-host' | 'webgl2',
   detail: Readonly<Record<string, unknown>>
 ): void {
+  if (teardownStarted) return;
   currentState = Object.freeze({
     status: 'ready',
     host: 'browser',
     backend,
     detail
   });
+}
+
+function assertResizeAllowed(): void {
+  if (teardownStarted) {
+    throw new Error('The E2E harness is tearing down.');
+  }
+}
+
+function cancelActiveResizes(): void {
+  for (const operation of activeResizes) operation.cancel();
 }
 
 function publishFailed(error: unknown): void {
