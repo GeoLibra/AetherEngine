@@ -25,16 +25,30 @@ export function createMatrixOutput(input: string): {
   };
 }
 
-async function readStdin(): Promise<string> {
-  stdin.setEncoding('utf8');
+async function readInput(input: AsyncIterable<string>): Promise<string> {
+  let contents = '';
+  for await (const chunk of input) contents += chunk;
+  return contents;
+}
 
-  let input = '';
-  for await (const chunk of stdin) input += chunk;
-  return input;
+export async function runCli(
+  input: AsyncIterable<string>,
+  writeOutput: (output: string) => void
+): Promise<void> {
+  let changedPaths = '';
+
+  try {
+    changedPaths = await readInput(input);
+  } catch {
+    // A failed change feed must select every E2E project instead of silently skipping coverage.
+  }
+
+  writeOutput(`${JSON.stringify(createMatrixOutput(changedPaths))}\n`);
 }
 
 async function main(): Promise<void> {
-  process.stdout.write(`${JSON.stringify(createMatrixOutput(await readStdin()))}\n`);
+  stdin.setEncoding('utf8');
+  await runCli(stdin, (output) => process.stdout.write(output));
 }
 
 const entrypoint = process.argv[1];

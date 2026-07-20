@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { createMatrixOutput, parseChangedPaths } from './cli';
+import { createMatrixOutput, parseChangedPaths, runCli } from './cli';
 
 describe('parseChangedPaths', () => {
   test('parses newline-delimited changed paths', () => {
@@ -34,6 +34,25 @@ describe('createMatrixOutput', () => {
 
   test('fails open to every project for blank input', () => {
     expect(createMatrixOutput('')).toMatchObject({
+      include: [{ project: 'browser-host-smoke' }, { project: 'webgl2-smoke' }],
+      fallback: true
+    });
+  });
+});
+
+describe('runCli', () => {
+  test('fails open with one JSON line when changed-path input cannot be read', async () => {
+    async function* unreadableInput(): AsyncGenerator<string> {
+      throw new Error('stdin read failed');
+    }
+
+    let stdout = '';
+    await runCli(unreadableInput(), (line) => {
+      stdout += line;
+    });
+
+    expect(stdout).toBe(`${JSON.stringify(createMatrixOutput(''))}\n`);
+    expect(JSON.parse(stdout)).toMatchObject({
       include: [{ project: 'browser-host-smoke' }, { project: 'webgl2-smoke' }],
       fallback: true
     });
