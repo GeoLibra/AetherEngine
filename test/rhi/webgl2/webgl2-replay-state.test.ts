@@ -6,12 +6,19 @@ import {
   type WebGL2NativeContextLostInfo
 } from '../../../src';
 
-interface NativeObject { readonly kind: string; readonly id: number }
+interface NativeObject {
+  readonly kind: string;
+  readonly id: number;
+}
 
 class ReplayContext {
   readonly info = { name: 'Replay WebGL2' };
   readonly extensions = new Set<string>();
-  readonly limits = { maxUniformBufferBindings: 4, maxTextureUnits: 4, uniformBufferOffsetAlignment: 256 };
+  readonly limits = {
+    maxUniformBufferBindings: 4,
+    maxTextureUnits: 4,
+    uniformBufferOffsetAlignment: 256
+  };
   readonly formats = new Map();
   readonly precision = {};
   readonly lost = new Promise<WebGL2NativeContextLostInfo>(() => {});
@@ -20,23 +27,57 @@ class ReplayContext {
   failNextDraw = false;
   reflection: readonly WebGL2BindingManifestEntry[] = [];
 
-  createBuffer(): NativeObject { return this.object('buffer'); }
-  createTexture(): NativeObject { return this.object('texture'); }
-  createSampler(): NativeObject { return this.object('sampler'); }
-  createProgram(): NativeObject { return this.object('program'); }
-  getProgramReflection(): readonly WebGL2BindingManifestEntry[] { return this.reflection; }
-  useProgram(...args: unknown[]): void { this.call('useProgram', args); }
-  beginRenderPass(...args: unknown[]): void { this.call('beginRenderPass', args); }
-  endRenderPass(...args: unknown[]): void { this.call('endRenderPass', args); }
-  setRasterState(...args: unknown[]): void { this.call('setRasterState', args); }
-  setDepthStencilState(...args: unknown[]): void { this.call('setDepthStencilState', args); }
-  setViewport(...args: unknown[]): void { this.call('setViewport', args); }
-  setScissorRect(...args: unknown[]): void { this.call('setScissorRect', args); }
-  bindVertexBuffer(...args: unknown[]): void { this.call('bindVertexBuffer', args); }
-  bindIndexBuffer(...args: unknown[]): void { this.call('bindIndexBuffer', args); }
-  bindUniformBuffer(...args: unknown[]): void { this.call('bindUniformBuffer', args); }
-  bindTexture(...args: unknown[]): void { this.call('bindTexture', args); }
-  bindSampler(...args: unknown[]): void { this.call('bindSampler', args); }
+  createBuffer(): NativeObject {
+    return this.object('buffer');
+  }
+  createTexture(): NativeObject {
+    return this.object('texture');
+  }
+  createSampler(): NativeObject {
+    return this.object('sampler');
+  }
+  createProgram(): NativeObject {
+    return this.object('program');
+  }
+  getProgramReflection(): readonly WebGL2BindingManifestEntry[] {
+    return this.reflection;
+  }
+  useProgram(...args: unknown[]): void {
+    this.call('useProgram', args);
+  }
+  beginRenderPass(...args: unknown[]): void {
+    this.call('beginRenderPass', args);
+  }
+  endRenderPass(...args: unknown[]): void {
+    this.call('endRenderPass', args);
+  }
+  setRasterState(...args: unknown[]): void {
+    this.call('setRasterState', args);
+  }
+  setDepthStencilState(...args: unknown[]): void {
+    this.call('setDepthStencilState', args);
+  }
+  setViewport(...args: unknown[]): void {
+    this.call('setViewport', args);
+  }
+  setScissorRect(...args: unknown[]): void {
+    this.call('setScissorRect', args);
+  }
+  bindVertexBuffer(...args: unknown[]): void {
+    this.call('bindVertexBuffer', args);
+  }
+  bindIndexBuffer(...args: unknown[]): void {
+    this.call('bindIndexBuffer', args);
+  }
+  bindUniformBuffer(...args: unknown[]): void {
+    this.call('bindUniformBuffer', args);
+  }
+  bindTexture(...args: unknown[]): void {
+    this.call('bindTexture', args);
+  }
+  bindSampler(...args: unknown[]): void {
+    this.call('bindSampler', args);
+  }
   draw(...args: unknown[]): void {
     this.call('draw', args);
     if (this.failNextDraw) {
@@ -44,33 +85,66 @@ class ReplayContext {
       throw new Error('injected draw failure');
     }
   }
-  drawIndexed(...args: unknown[]): void { this.call('drawIndexed', args); }
-  copyBufferToBuffer(...args: unknown[]): void { this.call('copyBufferToBuffer', args); }
-  copyBufferToTexture(...args: unknown[]): void { this.call('copyBufferToTexture', args); }
-  copyTextureToBuffer(...args: unknown[]): void { this.call('copyTextureToBuffer', args); }
-  pushDebugGroup(...args: unknown[]): void { this.call('pushDebugGroup', args); }
-  popDebugGroup(...args: unknown[]): void { this.call('popDebugGroup', args); }
+  drawIndexed(...args: unknown[]): void {
+    this.call('drawIndexed', args);
+  }
+  copyBufferToBuffer(...args: unknown[]): void {
+    this.call('copyBufferToBuffer', args);
+  }
+  copyBufferToTexture(...args: unknown[]): void {
+    this.call('copyBufferToTexture', args);
+  }
+  copyTextureToBuffer(...args: unknown[]): void {
+    this.call('copyTextureToBuffer', args);
+  }
+  pushDebugGroup(...args: unknown[]): void {
+    this.call('pushDebugGroup', args);
+  }
+  popDebugGroup(...args: unknown[]): void {
+    this.call('popDebugGroup', args);
+  }
 
-  private object(kind: string): NativeObject { return { kind, id: this.nextId++ }; }
-  private call(name: string, args: readonly unknown[]): void { this.calls.push({ name, args }); }
+  private object(kind: string): NativeObject {
+    return { kind, id: this.nextId++ };
+  }
+  private call(name: string, args: readonly unknown[]): void {
+    this.calls.push({ name, args });
+  }
 }
 
 class Translator {
+  readonly translatorId = 'test';
+  readonly version = 1;
   constructor(private readonly bindings: readonly WebGL2BindingManifestEntry[] = []) {}
   translate(input: { entryPoint: string }) {
-    return { source: `#version 300 es\nvoid ${input.entryPoint}() {}`, bindings: this.bindings };
+    return {
+      source: `void ${input.entryPoint}() {}`,
+      bindings: this.bindings,
+      targetAbiFingerprint: 'test-abi',
+      physicalBindings: this.bindings.map((binding) => ({ ...binding, slot: binding.binding })),
+      requiredExtensions: [],
+      sourceMap: [],
+      translatorFingerprint: 'test-output'
+    };
   }
 }
 
 async function createFixture(bindings: readonly WebGL2BindingManifestEntry[] = []) {
   const native = new ReplayContext();
   native.reflection = bindings;
-  const Adapter = WebGL2Adapter as unknown as new (native: ReplayContext, translator: Translator) => WebGL2Adapter;
-  const device = await new Adapter(native, new Translator(bindings)).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+  const Adapter = WebGL2Adapter as unknown as new (
+    native: ReplayContext,
+    translator: Translator
+  ) => WebGL2Adapter;
+  const device = await new Adapter(native, new Translator(bindings)).requestDevice({
+    requiredFeatures: [],
+    optionalFeatures: []
+  });
   const shader = device.createShaderModule({ code: 'portable-ir' });
   const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
   const pipeline = device.createRenderPipeline({
-    layout, vertex: { module: shader },
+    layout,
+    vertex: { module: shader },
     fragment: { module: shader, targets: [{ format: 'rgba8unorm' }] },
     primitive: { topology: 'triangle-list', cullMode: 'back', frontFace: 'ccw' }
   });
@@ -86,7 +160,9 @@ describe('WebGL2 ordered replay and state VM', () => {
     const upload = device.createBuffer({ size: 1024, usage: 1 << 2 });
     const readback = device.createBuffer({ size: 1024, usage: 1 << 3 });
     const texture = device.createTexture({
-      size: [4, 2], format: 'rgba8unorm', usage: (1 << 0) | (1 << 1)
+      size: [4, 2],
+      format: 'rgba8unorm',
+      usage: (1 << 0) | (1 << 1)
     });
     const encoder = device.createCommandEncoder();
     encoder.copyBufferToTexture({ buffer: upload, bytesPerRow: 256 }, { texture }, [4, 2]);
@@ -96,7 +172,8 @@ describe('WebGL2 ordered replay and state VM', () => {
     expect(native.calls).toEqual([]);
     device.queue.submit([commands]);
     expect(native.calls.map(({ name }) => name).slice(-2)).toEqual([
-      'copyBufferToTexture', 'copyTextureToBuffer'
+      'copyBufferToTexture',
+      'copyTextureToBuffer'
     ]);
   });
   test('replays in order and skips only proven-identical state', async () => {
@@ -124,7 +201,12 @@ describe('WebGL2 ordered replay and state VM', () => {
     device.queue.submit([commands]);
 
     const names = native.calls.map((call) => call.name);
-    expect(names.slice(0, 4)).toEqual(['pushDebugGroup', 'popDebugGroup', 'beginRenderPass', 'useProgram']);
+    expect(names.slice(0, 4)).toEqual([
+      'pushDebugGroup',
+      'popDebugGroup',
+      'beginRenderPass',
+      'useProgram'
+    ]);
     expect(names.at(-2)).toBe('endRenderPass');
     expect(names.at(-1)).toBe('copyBufferToBuffer');
     expect(names.filter((name) => name === 'useProgram')).toHaveLength(1);
@@ -223,17 +305,22 @@ describe('WebGL2 ordered replay and state VM', () => {
     const uniform = device.createBuffer({ size: 1024, usage: 64 });
     const sampled = device.createTexture({ size: [4, 4], format: 'rgba8unorm', usage: 4 });
     const sampler = device.createSampler();
-    const groupLayout = device.createBindGroupLayout({ entries: [
-      { binding: 0, visibility: 1, buffer: { type: 'uniform', hasDynamicOffset: true } },
-      { binding: 1, visibility: 2, texture: { sampleType: 'float' } },
-      { binding: 2, visibility: 2, sampler: { type: 'filtering' } }
-    ] });
+    const groupLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: 1, buffer: { type: 'uniform', hasDynamicOffset: true } },
+        { binding: 1, visibility: 2, texture: { sampleType: 'float' } },
+        { binding: 2, visibility: 2, sampler: { type: 'filtering' } }
+      ]
+    });
     const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [groupLayout] });
-    const group = device.createBindGroup({ layout: groupLayout, entries: [
-      { binding: 0, resource: { buffer: uniform, offset: 0, size: 256 } },
-      { binding: 1, resource: sampled.createView() },
-      { binding: 2, resource: sampler }
-    ] });
+    const group = device.createBindGroup({
+      layout: groupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: uniform, offset: 0, size: 256 } },
+        { binding: 1, resource: sampled.createView() },
+        { binding: 2, resource: sampler }
+      ]
+    });
     const shader = device.createShaderModule({ code: 'binding-ir' });
     const pipeline = device.createRenderPipeline({
       layout: pipelineLayout,
@@ -255,9 +342,9 @@ describe('WebGL2 ordered replay and state VM', () => {
     await submission.done;
 
     expect(native.calls.filter((call) => call.name === 'bindUniformBuffer')).toHaveLength(1);
-    expect(native.calls.find((call) => call.name === 'bindUniformBuffer')?.args.slice(0, 4)).toEqual([
-      0, expect.any(Object), 256, 256
-    ]);
+    expect(
+      native.calls.find((call) => call.name === 'bindUniformBuffer')?.args.slice(0, 4)
+    ).toEqual([0, expect.any(Object), 256, 256]);
     expect(native.calls.filter((call) => call.name === 'bindTexture')).toHaveLength(1);
     expect(native.calls.filter((call) => call.name === 'bindSampler')).toHaveLength(1);
   });

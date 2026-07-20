@@ -1,4 +1,5 @@
 node_modules/
+.pnpm-store/
 dist/
 coverage/
 .vite/
@@ -9,3 +10,6 @@ downloads/
 .codegraph
 engine/
 benchmark/artifacts/
+.superpowers
+.loops/reports/.digest/
+.worktrees/

@@ -2,7 +2,10 @@ import { describe, expect, test } from 'vitest';
 
 import { WebGL2Adapter, type WebGL2NativeContextLostInfo } from '../../../src';
 
-interface NativeObject { readonly kind: string; readonly id: number }
+interface NativeObject {
+  readonly kind: string;
+  readonly id: number;
+}
 
 class VertexArrayContext {
   readonly info = { name: 'VertexArray WebGL2' };
@@ -14,15 +17,34 @@ class VertexArrayContext {
   readonly calls: Array<{ name: string; args: readonly unknown[] }> = [];
   private nextId = 1;
 
-  createBuffer(): NativeObject { return this.object('buffer'); }
-  createTexture(): NativeObject { return this.object('texture'); }
-  createProgram(): NativeObject { return this.object('program'); }
-  getProgramReflection(): readonly [] { return []; }
-  createFramebuffer(): NativeObject { return this.object('framebuffer'); }
-  checkFramebufferStatus(): { complete: true } { return { complete: true }; }
-  createVertexArray(...args: unknown[]): NativeObject { this.call('createVertexArray', args); return this.object('vertex-array'); }
-  deleteVertexArray(...args: unknown[]): void { this.call('deleteVertexArray', args); }
-  bindVertexArray(...args: unknown[]): void { this.call('bindVertexArray', args); }
+  createBuffer(): NativeObject {
+    return this.object('buffer');
+  }
+  createTexture(): NativeObject {
+    return this.object('texture');
+  }
+  createProgram(): NativeObject {
+    return this.object('program');
+  }
+  getProgramReflection(): readonly [] {
+    return [];
+  }
+  createFramebuffer(): NativeObject {
+    return this.object('framebuffer');
+  }
+  checkFramebufferStatus(): { complete: true } {
+    return { complete: true };
+  }
+  createVertexArray(...args: unknown[]): NativeObject {
+    this.call('createVertexArray', args);
+    return this.object('vertex-array');
+  }
+  deleteVertexArray(...args: unknown[]): void {
+    this.call('deleteVertexArray', args);
+  }
+  bindVertexArray(...args: unknown[]): void {
+    this.call('bindVertexArray', args);
+  }
   bindFramebuffer(): void {}
   beginRenderPass(): void {}
   applyRenderPassLoadOperations(): void {}
@@ -35,26 +57,51 @@ class VertexArrayContext {
   bindIndexBuffer(): void {}
   draw(): void {}
 
-  private object(kind: string): NativeObject { return { kind, id: this.nextId++ }; }
-  private call(name: string, args: readonly unknown[]): void { this.calls.push({ name, args }); }
+  private object(kind: string): NativeObject {
+    return { kind, id: this.nextId++ };
+  }
+  private call(name: string, args: readonly unknown[]): void {
+    this.calls.push({ name, args });
+  }
 }
 
 class Translator {
+  readonly translatorId = 'test';
+  readonly version = 1;
   translate(input: { entryPoint: string }) {
-    return { source: `#version 300 es\nvoid ${input.entryPoint}() {}`, bindings: [] };
+    return {
+      source: `void ${input.entryPoint}() {}`,
+      bindings: [],
+      targetAbiFingerprint: 'test-abi',
+      physicalBindings: [],
+      requiredExtensions: [],
+      sourceMap: [],
+      translatorFingerprint: 'test-output'
+    };
   }
 }
 
 async function createFixture() {
   const native = new VertexArrayContext();
-  const Adapter = WebGL2Adapter as unknown as new (native: VertexArrayContext, translator: Translator) => WebGL2Adapter;
-  const device = await new Adapter(native, new Translator()).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+  const Adapter = WebGL2Adapter as unknown as new (
+    native: VertexArrayContext,
+    translator: Translator
+  ) => WebGL2Adapter;
+  const device = await new Adapter(native, new Translator()).requestDevice({
+    requiredFeatures: [],
+    optionalFeatures: []
+  });
   const shader = device.createShaderModule({ code: 'vertex-ir' });
   const pipeline = device.createRenderPipeline({
-    vertex: { module: shader, buffers: [{
-      arrayStride: 16,
-      attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }]
-    }] },
+    vertex: {
+      module: shader,
+      buffers: [
+        {
+          arrayStride: 16,
+          attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }]
+        }
+      ]
+    },
     fragment: { module: shader, targets: [{ format: 'rgba8unorm' }] }
   });
   const color = device.createTexture({ size: [8, 8], format: 'rgba8unorm', usage: 16 });
@@ -63,7 +110,10 @@ async function createFixture() {
   return { device, native, pipeline, color, vertex, index };
 }
 
-function recordDraws(fixture: Awaited<ReturnType<typeof createFixture>>, offsets: readonly number[]) {
+function recordDraws(
+  fixture: Awaited<ReturnType<typeof createFixture>>,
+  offsets: readonly number[]
+) {
   const { device, pipeline, color, vertex, index } = fixture;
   const encoder = device.createCommandEncoder();
   const pass = encoder.beginRenderPass({
@@ -86,10 +136,13 @@ describe('WebGL2 vertex array cache', () => {
 
     await fixture.device.queue.submit([recordDraws(fixture, [0, 0, 16])]).done;
 
-    expect(fixture.native.calls.filter((call) => call.name === 'createVertexArray')).toHaveLength(2);
+    expect(fixture.native.calls.filter((call) => call.name === 'createVertexArray')).toHaveLength(
+      2
+    );
     expect(fixture.native.calls.filter((call) => call.name === 'bindVertexArray')).toHaveLength(2);
     expect(fixture.device.queue.metrics()).toMatchObject({
-      vertexArrayCacheHits: 1, vertexArrayCacheMisses: 2
+      vertexArrayCacheHits: 1,
+      vertexArrayCacheMisses: 2
     });
   });
 
@@ -100,6 +153,8 @@ describe('WebGL2 vertex array cache', () => {
 
     fixture.vertex.dispose();
 
-    expect(fixture.native.calls.filter((call) => call.name === 'deleteVertexArray')).toHaveLength(1);
+    expect(fixture.native.calls.filter((call) => call.name === 'deleteVertexArray')).toHaveLength(
+      1
+    );
   });
 });

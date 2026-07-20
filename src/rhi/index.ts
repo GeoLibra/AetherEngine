@@ -36,12 +36,15 @@ export type {
   WebGL2NativeLimits
 } from './webgl2/native-types';
 export type {
+  FinalizedWebGL2Shader,
   WebGL2BindingKind,
   WebGL2BindingManifestEntry,
+  WebGL2PhysicalBinding,
   WebGL2ShaderStage,
   WebGL2ShaderTranslationPort,
   WebGL2TranslatedShader
 } from './webgl2/shader-types';
+export { finalizeWebGL2Shader } from './webgl2/shader-types';
 export type { WebGL2MetricsSnapshot } from './webgl2/metrics';
 export type { WebGL2ContextControl } from './webgl2/extension-types';
 export type {
@@ -100,7 +103,12 @@ export type {
   RHIAdapter
 } from './contracts/adapter';
 export type { DeviceLostInfo, RHIDeviceState, RHIResourceState } from './contracts/lifecycle';
-export type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus, SubmissionResult } from './contracts/submission';
+export type {
+  RHIQueueMetrics,
+  RHISubmission,
+  RHISubmissionStatus,
+  SubmissionResult
+} from './contracts/submission';
 export type {
   RHISurface,
   RHISurfaceAcquireResult,

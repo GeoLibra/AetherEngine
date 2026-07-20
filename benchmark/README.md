@@ -14,7 +14,7 @@ The typed registry in [`framework/manifest.ts`](./framework/manifest.ts) maps de
 At the start of a subsystem change, the Agent routes the target design or planned source path:
 
 ```sh
-npm run bench:changed -- --file engine/design/v2/04-rendering/01-render-world.md --dry-run
+pnpm bench changed --file engine/design/v2/04-rendering/01-render-world.md --dry-run
 ```
 
 There are three possible outcomes:
@@ -29,22 +29,22 @@ The framework detects, requires, selects, and runs benchmarks. The development A
 
 ```sh
 # Validate IDs, domain references, and command definitions.
-npm run bench:validate
+pnpm bench validate
 
 # Route current staged, unstaged, and untracked files and run matching smoke suites.
-npm run bench:changed
+pnpm bench changed
 
 # Inspect routing without executing timing work.
-npm run bench:changed -- --file src/ecs/world.ts --dry-run
+pnpm bench changed --file src/ecs/world.ts --dry-run
 
 # Compare a branch and include current working-tree changes.
-npm run bench:changed -- --base origin/main
+pnpm bench changed --base origin/main
 
 # Run every registered suite with a selected profile.
-npm run bench:all -- --profile standard
+pnpm bench all --profile standard
 ```
 
-`bench:validate` reports planned domains that do not have suites yet, but does not fail solely because future work is unimplemented. `bench:changed` does fail when the current change touches one of those domains. This permits incremental engine development without allowing a new Rendering/RHI/Jobs path to silently ship without performance coverage.
+`pnpm bench validate` reports planned domains that do not have suites yet, but does not fail solely because future work is unimplemented. `pnpm bench changed` does fail when the current change touches one of those domains. This permits incremental engine development without allowing a new Rendering/RHI/Jobs path to silently ship without performance coverage.
 
 ## Adding a suite
 
@@ -57,7 +57,7 @@ Create focused files under `benchmark/`, then add one `BenchmarkSuiteDefinition`
   domainIds: ['rendering'],
   pathPrefixes: ['benchmark/rendering/'],
   command: {
-    executable: 'npm',
+    executable: 'pnpm',
     args: ['run', 'bench:rendering', '--', '--profile', '{profile}']
   }
 }
@@ -77,6 +77,6 @@ The first scenario for a domain must define:
 
 ## Rendering example
 
-Today the `rendering` domain is registered but intentionally uncovered. Therefore a request to implement `engine/design/v2/04-rendering` is expected to fail its initial dry route. The implementing Agent must introduce the smallest suite appropriate to the first slice—for example RenderWorld extraction versus a raw array baseline or RenderGraph compile versus a reference DAG—then add correctness tests, implement the slice, and run `npm run bench:changed` before completion.
+The `rendering` domain is covered by dedicated RenderWorld and Shader System suites. A new rendering slice must extend the appropriate suite—or register a new one—then add correctness tests, implement the slice, and run `pnpm bench changed` before completion.
 
 Do not build all Rendering benchmarks up front. Each implementation slice owns the scenario needed to validate its actual performance hypothesis.

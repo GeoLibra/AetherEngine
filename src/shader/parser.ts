@@ -1,0 +1,693 @@
+import type {
+  FluxAttribute,
+  FluxDeclarationNode,
+  FluxExpressionNode,
+  FluxFunctionNode,
+  FluxGlobalNode,
+  FluxModuleNode,
+  FluxParameterNode,
+  FluxStatementNode,
+  FluxStructNode,
+  FluxSwitchCaseNode,
+  FluxTypeNode,
+  FluxVariantNode
+} from './frontend-ast';
+import { lexFluxSource, type FluxToken } from './lexer';
+import { spanAt } from './source';
+import { lowerFluxModules } from './typecheck';
+import type {
+  ResolvedShaderSource,
+  ShaderDiagnostic,
+  ShaderModuleIR,
+  ShaderSourceModule,
+  SourceSpan
+} from './types';
+
+export interface ShaderParseResult {
+  readonly ir?: ShaderModuleIR;
+  readonly diagnostics: readonly ShaderDiagnostic[];
+}
+
+/**
+ * Entry point for parsing FluxSL code.
+ * Lexes each module, parses them using the FluxParser class, and performs lowered typechecking.
+ */
+export function parseFluxShader(closure: ResolvedShaderSource): ShaderParseResult {
+  const diagnostics: ShaderDiagnostic[] = [];
+  if (closure.root.languageVersion !== 1)
+    diagnostics.push(
+      diagnostic(
+        'FLUX_UNSUPPORTED_VERSION',
+        `Unsupported FluxSL language version ${closure.root.languageVersion}.`,
+        firstSpan(closure)
+      )
+    );
+  const modules: FluxModuleNode[] = [];
+  for (const sourceModule of closure.modules) {
+    const lexed = lexFluxSource(sourceModule.uri, sourceModule.content);
+    diagnostics.push(...lexed.diagnostics);
+    if (lexed.diagnostics.length > 0) continue;
+    try {
+      modules.push(new FluxParser(sourceModule, lexed.tokens).parseModule());
+    } catch (error) {
+      if (error instanceof FluxParseFailure) diagnostics.push(error.diagnostic);
+      else throw error;
+    }
+  }
+  if (diagnostics.length > 0) return Object.freeze({ diagnostics: Object.freeze(diagnostics) });
+  return lowerFluxModules(Object.freeze(modules), closure.hash);
+}
+
+/**
+ * Custom error class to signal recursive descent parsing failures
+ * and cleanly bubble diagnostic errors out of helper methods.
+ */
+class FluxParseFailure extends Error {
+  constructor(readonly diagnostic: ShaderDiagnostic) {
+    super(diagnostic.message);
+  }
+}
+
+/**
+ * A LL(1) recursive-descent parser for the FluxSL grammar.
+ * Translates FluxToken lists into AST nodes defined in frontend-ast.ts.
+ */
+class FluxParser {
+  private index = 0;
+  constructor(
+    private readonly module: ShaderSourceModule,
+    private readonly tokens: readonly FluxToken[]
+  ) {}
+
+  /**
+   * Main parsing loop to construct a FluxModuleNode.
+   * Parses top-level elements: includes, imports, variants, structs, globals, and functions.
+   */
+  parseModule(): FluxModuleNode {
+    const declarations: FluxDeclarationNode[] = [];
+    while (!this.at('eof')) {
+      if (this.at('@') && (this.peek(1).text === 'include' || this.peek(1).text === 'import')) {
+        this.consume();
+        this.consume();
+        this.expectKind('string');
+        this.expect(';');
+        continue;
+      }
+      if (this.at('@') && this.peek(1).text === 'variant') {
+        declarations.push(this.parseVariant());
+        continue;
+      }
+      const attributes = this.parseAttributes();
+      if (this.at('struct')) declarations.push(this.parseStruct());
+      else if (this.at('var')) declarations.push(this.parseGlobal(attributes));
+      else if (this.at('fn')) declarations.push(this.parseFunction(attributes));
+      else this.unsupported(`Unsupported top-level declaration "${this.current().text}".`);
+    }
+    return Object.freeze({ uri: this.module.uri, declarations: Object.freeze(declarations) });
+  }
+
+  private parseVariant(): FluxVariantNode {
+    const start = this.expect('@');
+    this.expect('variant');
+    const name = this.expectIdentifier();
+    this.expect(':');
+    const kind = this.expectIdentifier();
+    const values: string[] = [];
+    if (kind.text === 'enum') {
+      this.expect('(');
+      do values.push(this.expectIdentifier().text);
+      while (this.match(','));
+      this.expect(')');
+    } else if (kind.text !== 'bool')
+      this.unsupported(`Unsupported variant type "${kind.text}".`, kind);
+    this.expect('=');
+    const fallbackToken = this.consume();
+    if (fallbackToken.kind !== 'identifier' && fallbackToken.kind !== 'number')
+      this.unexpected('Expected variant fallback.', fallbackToken);
+    const end = this.expect(';');
+    const fallback =
+      fallbackToken.text === 'true'
+        ? true
+        : fallbackToken.text === 'false'
+          ? false
+          : kind.text === 'enum'
+            ? fallbackToken.text
+            : Number(fallbackToken.text);
+    return Object.freeze({
+      kind: 'variant',
+      name: name.text,
+      variantKind: kind.text === 'bool' ? 'boolean' : 'enum',
+      values: Object.freeze(values),
+      fallback,
+      span: this.span(start, end)
+    });
+  }
+
+  private parseStruct(): FluxStructNode {
+    const start = this.expect('struct');
+    const name = this.expectIdentifier();
+    this.expect('{');
+    const fields: Array<Readonly<{ name: string; type: FluxTypeNode; span: SourceSpan }>> = [];
+    while (!this.at('}')) {
+      if (this.at('eof')) this.unexpectedEof('Unterminated struct declaration.');
+      const field = this.expectIdentifier();
+      if (!this.match(':'))
+        throw new FluxParseFailure(
+          diagnostic(
+            'FLUX_MALFORMED_STRUCT',
+            `Struct field "${field.text}" is missing a type separator.`,
+            field.span
+          )
+        );
+      const type = this.parseType();
+      const end = this.current();
+      if (!this.at('}') && !this.match(',') && !this.match(';'))
+        this.unexpected('Expected "," or ";" after struct field.');
+      fields.push(Object.freeze({ name: field.text, type, span: this.span(field, end) }));
+    }
+    this.expect('}');
+    const end = this.expect(';');
+    return Object.freeze({
+      kind: 'struct',
+      name: name.text,
+      fields: Object.freeze(fields),
+      span: this.span(start, end)
+    });
+  }
+
+  private parseGlobal(attributes: readonly FluxAttribute[]): FluxGlobalNode {
+    const start = this.expect('var');
+    let addressSpace = 'handle';
+    let access = 'read';
+    if (this.match('<')) {
+      addressSpace = this.expectIdentifier().text;
+      if (this.match(',')) access = this.expectIdentifier().text;
+      this.expect('>');
+    }
+    const name = this.expectIdentifier();
+    this.expect(':');
+    const type = this.parseType();
+    const end = this.expect(';');
+    return Object.freeze({
+      kind: 'global',
+      name: name.text,
+      type,
+      addressSpace,
+      access,
+      attributes,
+      span: this.span(start, end)
+    });
+  }
+
+  private parseFunction(attributes: readonly FluxAttribute[]): FluxFunctionNode {
+    const start = this.expect('fn');
+    const name = this.expectIdentifier();
+    this.expect('(');
+    const parameters: FluxParameterNode[] = [];
+    while (!this.at(')')) {
+      const parameterStart = this.current();
+      const parameterAttributes = this.parseAttributes();
+      const parameterName = this.expectIdentifier();
+      this.expect(':');
+      const type = this.parseType();
+      parameters.push(
+        Object.freeze({
+          name: parameterName.text,
+          type,
+          attributes: parameterAttributes,
+          span: this.span(parameterStart, this.previous())
+        })
+      );
+      if (!this.match(',')) break;
+    }
+    this.expect(')');
+    let returnType: FluxTypeNode | undefined;
+    let returnAttributes: readonly FluxAttribute[] = Object.freeze([]);
+    if (this.match('->')) {
+      returnAttributes = this.parseAttributes();
+      returnType = this.parseType();
+    }
+    const body = this.parseBlock();
+    const stage = attributes.find(
+      (attribute) =>
+        attribute.name === 'vertex' || attribute.name === 'fragment' || attribute.name === 'compute'
+    )?.name as FluxFunctionNode['stage'];
+    return Object.freeze({
+      kind: 'function',
+      name: name.text,
+      parameters: Object.freeze(parameters),
+      ...(returnType ? { returnType } : {}),
+      returnAttributes,
+      body,
+      ...(stage ? { stage } : {}),
+      span: this.span(start, this.previous())
+    });
+  }
+
+  private parseAttributes(): readonly FluxAttribute[] {
+    const attributes: FluxAttribute[] = [];
+    while (this.at('@')) {
+      const start = this.consume();
+      const name = this.expectIdentifier();
+      let value: number | undefined;
+      let end = name;
+      if (this.match('(')) {
+        const token = this.consume();
+        if (token.kind !== 'number')
+          this.unexpected(`Attribute @${name.text} requires a numeric value.`, token);
+        value = Number(token.text.replace(/[uif]$/, ''));
+        end = this.expect(')');
+      }
+      attributes.push(
+        Object.freeze({
+          name: name.text,
+          ...(value === undefined ? {} : { value }),
+          span: this.span(start, end)
+        })
+      );
+    }
+    return Object.freeze(attributes);
+  }
+
+  private parseType(): FluxTypeNode {
+    const start = this.expectIdentifier();
+    let name = start.text;
+    let end = start;
+    if (this.match('<')) {
+      const arguments_: string[] = [];
+      while (!this.at('>')) {
+        if (this.at('eof')) this.unexpectedEof('Unterminated type argument list.');
+        if (this.current().kind === 'number')
+          arguments_.push(this.consume().text.replace(/[uif]$/, ''));
+        else arguments_.push(this.parseType().name);
+        if (!this.match(',')) break;
+      }
+      end = this.expect('>');
+      name += `<${arguments_.join(',')}>`;
+    }
+    return Object.freeze({ name, span: this.span(start, end) });
+  }
+
+  private parseBlock(): readonly FluxStatementNode[] {
+    this.expect('{');
+    const statements: FluxStatementNode[] = [];
+    while (!this.at('}')) {
+      if (this.at('eof')) this.unexpectedEof('Unterminated statement block.');
+      statements.push(this.parseStatement());
+    }
+    this.expect('}');
+    return Object.freeze(statements);
+  }
+
+  private parseStatement(): FluxStatementNode {
+    if (this.at('let') || this.at('var')) return this.parseDeclarationStatement();
+    if (this.at('if')) return this.parseIf();
+    if (this.at('switch')) return this.parseSwitch();
+    if (this.at('loop')) return this.parseLoop();
+    if (this.at('while')) return this.parseWhile();
+    if (this.at('return')) return this.parseReturn();
+    if (this.at('break') || this.at('continue') || this.at('discard')) {
+      const keyword = this.consume();
+      const end = this.expect(';');
+      return Object.freeze({
+        kind: keyword.text as 'break' | 'continue' | 'discard',
+        span: this.span(keyword, end)
+      });
+    }
+    if (this.at('for') || this.at('{') || this.at('continuing'))
+      this.unsupported(`Unsupported statement "${this.current().text}".`);
+    const expression = this.parseExpression();
+    if (this.match('=')) {
+      const value = this.parseExpression();
+      const end = this.expect(';');
+      return Object.freeze({
+        kind: 'assign',
+        target: expression,
+        value,
+        span: this.spanFrom(expression.span, end)
+      });
+    }
+    const end = this.expect(';');
+    return Object.freeze({
+      kind: 'expression',
+      expression,
+      span: this.spanFrom(expression.span, end)
+    });
+  }
+
+  private parseDeclarationStatement(): FluxStatementNode {
+    const start = this.consume();
+    const name = this.expectIdentifier();
+    let type: FluxTypeNode | undefined;
+    let value: FluxExpressionNode | undefined;
+    if (this.match(':')) type = this.parseType();
+    if (this.match('=')) value = this.parseExpression();
+    if (!type && !value) this.unexpected('A declaration requires a type or initializer.', name);
+    const end = this.expect(';');
+    return Object.freeze({
+      kind: 'declare',
+      mutable: start.text === 'var',
+      name: name.text,
+      ...(type ? { type } : {}),
+      ...(value ? { value } : {}),
+      span: this.span(start, end)
+    });
+  }
+
+  private parseIf(): FluxStatementNode {
+    const start = this.expect('if');
+    this.expect('(');
+    const condition = this.parseExpression();
+    this.expect(')');
+    const then = this.parseBlock();
+    let otherwise: readonly FluxStatementNode[] | undefined;
+    if (this.match('else'))
+      otherwise = this.at('if') ? Object.freeze([this.parseIf()]) : this.parseBlock();
+    return Object.freeze({
+      kind: 'if',
+      condition,
+      then,
+      ...(otherwise ? { otherwise } : {}),
+      span: this.span(start, this.previous())
+    });
+  }
+
+  private parseSwitch(): FluxStatementNode {
+    const start = this.expect('switch');
+    this.expect('(');
+    const selector = this.parseExpression();
+    this.expect(')');
+    this.expect('{');
+    const cases: FluxSwitchCaseNode[] = [];
+    while (!this.at('}')) {
+      if (this.at('eof')) this.unexpectedEof('Unterminated switch statement.');
+      const caseStart = this.current();
+      const isDefault = this.match('default');
+      const selectors: FluxExpressionNode[] = [];
+      if (!isDefault) {
+        this.expect('case');
+        do selectors.push(this.parseExpression());
+        while (this.match(','));
+      }
+      this.expect(':');
+      const body = this.at('{') ? this.parseBlock() : this.parseCaseBody();
+      cases.push(
+        Object.freeze({
+          selectors: Object.freeze(selectors),
+          default: isDefault,
+          body,
+          span: this.span(caseStart, this.previous())
+        })
+      );
+    }
+    const end = this.expect('}');
+    return Object.freeze({
+      kind: 'switch',
+      selector,
+      cases: Object.freeze(cases),
+      span: this.span(start, end)
+    });
+  }
+
+  private parseCaseBody(): readonly FluxStatementNode[] {
+    const body: FluxStatementNode[] = [];
+    while (!this.at('case') && !this.at('default') && !this.at('}'))
+      body.push(this.parseStatement());
+    return Object.freeze(body);
+  }
+
+  private parseLoop(): FluxStatementNode {
+    const start = this.expect('loop');
+    this.expect('{');
+    const body: FluxStatementNode[] = [];
+    let continuing: readonly FluxStatementNode[] = Object.freeze([]);
+    while (!this.at('}')) {
+      if (this.at('eof')) this.unexpectedEof('Unterminated loop statement.');
+      if (this.match('continuing')) {
+        continuing = this.parseBlock();
+        break;
+      }
+      body.push(this.parseStatement());
+    }
+    const end = this.expect('}');
+    return Object.freeze({
+      kind: 'loop',
+      body: Object.freeze(body),
+      continuing,
+      span: this.span(start, end)
+    });
+  }
+
+  private parseWhile(): FluxStatementNode {
+    const start = this.expect('while');
+    this.expect('(');
+    const condition = this.parseExpression();
+    this.expect(')');
+    const body = this.parseBlock();
+    return Object.freeze({
+      kind: 'while',
+      condition,
+      body,
+      span: this.span(start, this.previous())
+    });
+  }
+
+  private parseReturn(): FluxStatementNode {
+    const start = this.expect('return');
+    const value = this.at(';') ? undefined : this.parseExpression();
+    const end = this.expect(';');
+    return Object.freeze({
+      kind: 'return',
+      ...(value ? { value } : {}),
+      span: this.span(start, end)
+    });
+  }
+
+  private parseExpression(minimumPrecedence = 0): FluxExpressionNode {
+    let left = this.parseUnary();
+    while (true) {
+      const precedence = BINARY_PRECEDENCE[this.current().text];
+      if (precedence === undefined || precedence < minimumPrecedence) break;
+      const operator = this.consume();
+      const right = this.parseExpression(precedence + 1);
+      left = Object.freeze({
+        kind: 'binary',
+        operator: operator.text,
+        left,
+        right,
+        span: this.spanFrom(left.span, this.previous())
+      });
+    }
+    return left;
+  }
+
+  private parseUnary(): FluxExpressionNode {
+    if (this.at('!') || this.at('-') || this.at('+') || this.at('~')) {
+      const operator = this.consume();
+      const operand = this.parseUnary();
+      return Object.freeze({
+        kind: 'unary',
+        operator: operator.text,
+        operand,
+        span: this.span(operator, this.previous())
+      });
+    }
+    return this.parsePostfix();
+  }
+
+  private parsePostfix(): FluxExpressionNode {
+    let expression = this.parsePrimary();
+    while (true) {
+      if (this.match('.')) {
+        const field = this.expectIdentifier();
+        expression = Object.freeze({
+          kind: 'field',
+          base: expression,
+          field: field.text,
+          span: this.spanFrom(expression.span, field)
+        });
+      } else if (this.match('[')) {
+        const index = this.parseExpression();
+        const end = this.expect(']');
+        expression = Object.freeze({
+          kind: 'index',
+          base: expression,
+          index,
+          span: this.spanFrom(expression.span, end)
+        });
+      } else break;
+    }
+    return expression;
+  }
+
+  private parsePrimary(): FluxExpressionNode {
+    const token = this.current();
+    if (token.kind === 'number') {
+      this.consume();
+      const suffix = token.text.at(-1);
+      const literalType =
+        suffix === 'u'
+          ? 'u32'
+          : suffix === 'i'
+            ? 'i32'
+            : token.text.includes('.') || suffix === 'f'
+              ? 'f32'
+              : 'i32';
+      const normalized = token.text.replace(/[fiu]$/, '');
+      return Object.freeze({
+        kind: 'literal',
+        value: Number(normalized),
+        literalType,
+        span: token.span
+      });
+    }
+    if (token.text === 'true' || token.text === 'false') {
+      this.consume();
+      return Object.freeze({
+        kind: 'literal',
+        value: token.text === 'true',
+        literalType: 'bool',
+        span: token.span
+      });
+    }
+    if (this.match('(')) {
+      const expression = this.parseExpression();
+      this.expect(')');
+      return expression;
+    }
+    if (token.kind !== 'identifier')
+      this.unsupported(`Expected expression, received "${token.text}".`, token);
+    const start = this.consume();
+    const checkpoint = this.index;
+    let typeArguments: readonly FluxTypeNode[] = Object.freeze([]);
+    if (this.at('<')) {
+      try {
+        this.consume();
+        const arguments_: FluxTypeNode[] = [];
+        do arguments_.push(this.parseType());
+        while (this.match(','));
+        this.expect('>');
+        if (!this.at('(')) this.index = checkpoint;
+        else typeArguments = Object.freeze(arguments_);
+      } catch {
+        this.index = checkpoint;
+      }
+    }
+    if (this.match('(')) {
+      const arguments_: FluxExpressionNode[] = [];
+      while (!this.at(')')) {
+        arguments_.push(this.parseExpression());
+        if (!this.match(',')) break;
+      }
+      const end = this.expect(')');
+      return Object.freeze({
+        kind: 'call',
+        callee: start.text,
+        typeArguments,
+        arguments: Object.freeze(arguments_),
+        span: this.span(start, end)
+      });
+    }
+    return Object.freeze({ kind: 'name', name: start.text, span: start.span });
+  }
+
+  private current(): FluxToken {
+    return this.tokens[this.index]!;
+  }
+  private previous(): FluxToken {
+    return this.tokens[Math.max(0, this.index - 1)]!;
+  }
+  private peek(offset: number): FluxToken {
+    return this.tokens[Math.min(this.tokens.length - 1, this.index + offset)]!;
+  }
+  private at(text: string): boolean {
+    return text === 'eof' ? this.current().kind === 'eof' : this.current().text === text;
+  }
+  private consume(): FluxToken {
+    return this.tokens[this.index++]!;
+  }
+  private match(text: string): boolean {
+    if (!this.at(text)) return false;
+    this.index++;
+    return true;
+  }
+  private expect(text: string): FluxToken {
+    if (!this.at(text)) this.unexpected(`Expected "${text}", received "${this.current().text}".`);
+    return this.consume();
+  }
+  private expectIdentifier(): FluxToken {
+    return this.expectKind('identifier');
+  }
+  private expectKind(kind: FluxToken['kind']): FluxToken {
+    if (this.current().kind !== kind)
+      this.unexpected(`Expected ${kind}, received "${this.current().text}".`);
+    return this.consume();
+  }
+  private unsupported(message: string, token = this.current()): never {
+    throw new FluxParseFailure(diagnostic('FLUX_UNSUPPORTED_SYNTAX', message, token.span));
+  }
+  private unexpected(message: string, token = this.current()): never {
+    if (token.kind === 'eof') this.unexpectedEof(message);
+    throw new FluxParseFailure(diagnostic('FLUX_UNSUPPORTED_SYNTAX', message, token.span));
+  }
+  private unexpectedEof(message: string): never {
+    throw new FluxParseFailure(diagnostic('FLUX_UNEXPECTED_EOF', message, this.current().span));
+  }
+  private span(start: FluxToken, end: FluxToken): SourceSpan {
+    return spanAt(
+      this.module.uri,
+      this.module.content,
+      start.start,
+      Math.max(1, end.end - start.start)
+    );
+  }
+  private spanFrom(start: SourceSpan, end: FluxToken): SourceSpan {
+    return Object.freeze({
+      ...start,
+      length: Math.max(start.length, end.end - this.offsetOf(start))
+    });
+  }
+  private offsetOf(span: SourceSpan): number {
+    const lines = this.module.content.split('\n');
+    let offset = 0;
+    for (let line = 1; line < span.line; line++) offset += lines[line - 1]!.length + 1;
+    return offset + span.column - 1;
+  }
+}
+
+const BINARY_PRECEDENCE: Readonly<Record<string, number>> = Object.freeze({
+  '||': 1,
+  '&&': 2,
+  '|': 3,
+  '^': 4,
+  '&': 5,
+  '==': 6,
+  '!=': 6,
+  '<': 7,
+  '<=': 7,
+  '>': 7,
+  '>=': 7,
+  '<<': 8,
+  '>>': 8,
+  '+': 9,
+  '-': 9,
+  '*': 10,
+  '/': 10,
+  '%': 10
+});
+
+function firstSpan(closure: ResolvedShaderSource): SourceSpan {
+  const module =
+    closure.modules.find((value) => value.uri === closure.root.uri) ?? closure.modules[0];
+  return Object.freeze({ uri: module?.uri ?? closure.root.uri, line: 1, column: 1, length: 1 });
+}
+function diagnostic(code: string, message: string, primary: SourceSpan): ShaderDiagnostic {
+  return Object.freeze({
+    severity: 'error',
+    code,
+    message,
+    stage: 'parse',
+    primary,
+    related: Object.freeze([])
+  });
+}

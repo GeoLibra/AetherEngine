@@ -1,0 +1,8 @@
+[package]
+name = "aether-naga-shader-validator"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+naga = { version = "=30.0.0", features = ["wgsl-in", "glsl-out"] }
