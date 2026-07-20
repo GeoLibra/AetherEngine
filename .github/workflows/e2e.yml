@@ -1,0 +1,76 @@
+name: Browser E2E
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      has-projects: ${{ steps.resolve.outputs.has-projects }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Test project resolver
+        run: pnpm vitest run e2e/resolve-projects.test.ts e2e/cli.test.ts
+      - name: Resolve affected projects
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed_paths_file="$(mktemp)"
+          if ! git diff --name-only --diff-filter=ACMR \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}" > "$changed_paths_file"; then
+            : > "$changed_paths_file"
+          fi
+
+          matrix="$(pnpm --silent e2e:resolve < "$changed_paths_file")"
+          has_projects="$(node -e \
+            'const value = JSON.parse(process.argv[1]); process.stdout.write(String(value.include.length > 0));' \
+            "$matrix")"
+          printf 'matrix=%s\nhas-projects=%s\n' "$matrix" "$has_projects" >> "$GITHUB_OUTPUT"
+
+  e2e:
+    needs: resolve
+    if: needs.resolve.outputs.has-projects == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run ${{ matrix.project }}
+        run: pnpm e2e --project=${{ matrix.project }}
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-${{ matrix.project }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
