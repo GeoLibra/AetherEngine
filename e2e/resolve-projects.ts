@@ -19,7 +19,9 @@ export function resolveE2EProjects(paths: readonly string[] | undefined): E2ERes
   for (const path of paths) {
     const normalized = normalizePath(path);
     if (normalized === undefined) {
-      return fallbackResolution([{ path, ruleId: 'invalid-input-fallback' }]);
+      fallback = true;
+      reasons.push({ path, ruleId: 'invalid-input-fallback' });
+      continue;
     }
 
     const rule = E2E_ROUTING_RULES.find(

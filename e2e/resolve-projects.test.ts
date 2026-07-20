@@ -71,4 +71,27 @@ describe('resolveE2EProjects', () => {
       });
     }
   });
+
+  test('reports a reason for every entry when mixed input requires fallback', () => {
+    expect(
+      resolveE2EProjects([
+        'src/platform/browser-host.ts',
+        'src/../platform/browser-host.ts',
+        'src/material/asset.ts',
+        'README.md'
+      ])
+    ).toMatchObject({
+      projects: ['browser-host-smoke', 'webgl2-smoke'],
+      fallback: true,
+      reasons: [
+        { path: 'src/platform/browser-host.ts', ruleId: 'browser-host' },
+        {
+          path: 'src/../platform/browser-host.ts',
+          ruleId: 'invalid-input-fallback'
+        },
+        { path: 'src/material/asset.ts', ruleId: 'unmatched-fallback' },
+        { path: 'README.md', ruleId: 'explicit-no-e2e' }
+      ]
+    });
+  });
 });

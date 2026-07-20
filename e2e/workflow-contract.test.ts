@@ -1,12 +1,14 @@
 import { execFile } from 'node:child_process';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
 const WORKFLOW_PATH = new URL('../.github/workflows/e2e.yml', import.meta.url);
+const REPOSITORY_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
 
@@ -31,7 +33,7 @@ describe('E2E GitHub Actions workflow', () => {
     for (const job of [resolveJob, e2eJob]) {
       expect(job).toContain('uses: actions/checkout@v7');
       expect(job).toContain('uses: pnpm/action-setup@v6');
-      expect(job).toContain('uses: actions/setup-node@v6');
+      expect(job).toContain('uses: actions/setup-node@v7');
     }
     expect(resolveJob).not.toContain('actions/upload-artifact');
     expect(e2eJob).toContain('uses: actions/upload-artifact@v7');
@@ -70,6 +72,9 @@ describe('E2E GitHub Actions workflow', () => {
       fallback: false
     });
     expect(emptyOutputs.hasProjects).toBe('false');
+    expect(outputs.summary).toContain('E2E routing diagnostics');
+    expect(outputs.summary).toContain('src/platform/browser-host.ts');
+    expect(outputs.summary).toContain('browser-host');
   });
 
   test('guards an empty matrix and passes its project through a quoted environment variable', async () => {
@@ -81,7 +86,7 @@ describe('E2E GitHub Actions workflow', () => {
 
     expect(resolveJob).toContain('pnpm vitest run e2e/resolve-projects.test.ts e2e/cli.test.ts');
     expect(resolveJob).toContain('pnpm --silent e2e:resolve');
-    expect(resolveJob).toContain('git diff --name-only --diff-filter=ACMR');
+    expect(resolveJob).toContain('git diff --name-only --no-renames --diff-filter=ACDMRT');
     expect(resolveJob).not.toContain('pnpm exec playwright install');
 
     expect(e2eJob).toContain('needs: resolve');
@@ -98,6 +103,46 @@ describe('E2E GitHub Actions workflow', () => {
     expect(uploadStep).toContain(
       'name: e2e-${{ matrix.project }}-${{ github.run_id }}-${{ github.run_attempt }}'
     );
+  });
+
+  test('routes a deleted browser path even when an ignored README also changes', async () => {
+    const result = await executeResolverAgainstGitHistory(async (directory) => {
+      await writeFile(join(directory, 'src/platform/browser-host.ts'), 'export {};\n');
+      await writeFile(join(directory, 'README.md'), 'before\n');
+      await commitAll(directory, 'base');
+
+      await rm(join(directory, 'src/platform/browser-host.ts'));
+      await writeFile(join(directory, 'README.md'), 'after\n');
+    });
+
+    expect(result.matrix).toEqual({ include: [{ project: 'browser-host-smoke' }] });
+    expect(result.diagnostics).toMatchObject({
+      reasons: [
+        { path: 'README.md', ruleId: 'explicit-no-e2e' },
+        { path: 'src/platform/browser-host.ts', ruleId: 'browser-host' }
+      ],
+      fallback: false
+    });
+  });
+
+  test('routes the old endpoint when a browser path is renamed into ignored documentation', async () => {
+    const result = await executeResolverAgainstGitHistory(async (directory) => {
+      await writeFile(join(directory, 'src/platform/browser-host.ts'), 'export {};\n');
+      await commitAll(directory, 'base');
+
+      await execFileAsync('git', ['mv', 'src/platform/browser-host.ts', 'docs/browser-host.ts'], {
+        cwd: directory
+      });
+    });
+
+    expect(result.matrix).toEqual({ include: [{ project: 'browser-host-smoke' }] });
+    expect(result.diagnostics).toMatchObject({
+      reasons: [
+        { path: 'docs/browser-host.ts', ruleId: 'explicit-no-e2e' },
+        { path: 'src/platform/browser-host.ts', ruleId: 'browser-host' }
+      ],
+      fallback: false
+    });
   });
 });
 
@@ -134,33 +179,45 @@ function extractRunScript(step: string): string {
 
 async function executeResolverStep(
   script: string,
-  resolution: {
-    readonly include: readonly { readonly project: string }[];
-    readonly reasons: readonly { readonly path: string; readonly ruleId: string }[];
-    readonly fallback: boolean;
-  }
+  resolution:
+    | {
+        readonly include: readonly { readonly project: string }[];
+        readonly reasons: readonly { readonly path: string; readonly ruleId: string }[];
+        readonly fallback: boolean;
+      }
+    | undefined,
+  options: {
+    readonly cwd?: string;
+    readonly pathPrefix?: string;
+  } = {}
 ): Promise<{
   readonly matrix: Record<string, unknown>;
   readonly diagnostics: unknown;
   readonly hasProjects: string | undefined;
+  readonly summary: string;
 }> {
   const directory = await mkdtemp(join(tmpdir(), 'aether-e2e-workflow-'));
   temporaryDirectories.push(directory);
   const outputPath = join(directory, 'github-output');
-  await writeExecutable(
-    join(directory, 'git'),
-    "#!/usr/bin/env bash\nprintf 'src/platform/browser-host.ts\\n'\n"
-  );
-  await writeExecutable(
-    join(directory, 'pnpm'),
-    `#!/usr/bin/env bash\nprintf '%s\\n' '${JSON.stringify(resolution)}'\n`
-  );
+  const summaryPath = join(directory, 'github-summary');
+  if (resolution !== undefined) {
+    await writeExecutable(
+      join(directory, 'git'),
+      "#!/usr/bin/env bash\nprintf 'src/platform/browser-host.ts\\n'\n"
+    );
+    await writeExecutable(
+      join(directory, 'pnpm'),
+      `#!/usr/bin/env bash\nprintf '%s\\n' '${JSON.stringify(resolution)}'\n`
+    );
+  }
 
   await execFileAsync('bash', ['-c', script], {
+    cwd: options.cwd,
     env: {
       ...process.env,
-      PATH: `${directory}:${process.env.PATH ?? ''}`,
-      GITHUB_OUTPUT: outputPath
+      PATH: `${options.pathPrefix ?? directory}:${process.env.PATH ?? ''}`,
+      GITHUB_OUTPUT: outputPath,
+      GITHUB_STEP_SUMMARY: summaryPath
     }
   });
 
@@ -177,8 +234,54 @@ async function executeResolverStep(
   return {
     matrix: JSON.parse(values.matrix ?? 'null'),
     diagnostics: JSON.parse(values.diagnostics ?? 'null'),
-    hasProjects: values['has-projects']
+    hasProjects: values['has-projects'],
+    summary: await readFile(summaryPath, 'utf8')
   };
+}
+
+async function executeResolverAgainstGitHistory(
+  change: (directory: string) => Promise<void>
+): Promise<Awaited<ReturnType<typeof executeResolverStep>>> {
+  const directory = await mkdtemp(join(tmpdir(), 'aether-e2e-git-'));
+  temporaryDirectories.push(directory);
+  await execFileAsync('git', ['init', '--quiet'], { cwd: directory });
+  await execFileAsync('git', ['config', 'user.name', 'E2E Contract'], { cwd: directory });
+  await execFileAsync('git', ['config', 'user.email', 'e2e@example.test'], { cwd: directory });
+  await mkdir(join(directory, 'src/platform'), { recursive: true });
+  await mkdir(join(directory, 'docs'), { recursive: true });
+  await change(directory);
+  const baseSha = (
+    await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: directory })
+  ).stdout.trim();
+  await commitAll(directory, 'head');
+  const headSha = (
+    await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: directory })
+  ).stdout.trim();
+
+  const workflow = await readFile(WORKFLOW_PATH, 'utf8');
+  const resolveJob = extractYamlBlock(workflow, '  resolve:');
+  const resolveStep = extractYamlBlock(resolveJob, '      - name: Resolve affected projects');
+  const script = extractRunScript(resolveStep)
+    .replaceAll('${{ github.event.pull_request.base.sha }}', baseSha)
+    .replaceAll('${{ github.event.pull_request.head.sha }}', headSha);
+
+  const shimDirectory = await mkdtemp(join(tmpdir(), 'aether-e2e-pnpm-'));
+  temporaryDirectories.push(shimDirectory);
+  const pnpmPath = (await execFileAsync('which', ['pnpm'])).stdout.trim();
+  await writeExecutable(
+    join(shimDirectory, 'pnpm'),
+    `#!/usr/bin/env bash\ncd '${REPOSITORY_ROOT}'\nexec '${pnpmPath}' "$@"\n`
+  );
+
+  return executeResolverStep(script, undefined, {
+    cwd: directory,
+    pathPrefix: shimDirectory
+  });
+}
+
+async function commitAll(directory: string, message: string): Promise<void> {
+  await execFileAsync('git', ['add', '--all'], { cwd: directory });
+  await execFileAsync('git', ['commit', '--quiet', '-m', message], { cwd: directory });
 }
 
 async function writeExecutable(path: string, contents: string): Promise<void> {
