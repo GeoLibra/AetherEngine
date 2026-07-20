@@ -16,7 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "e2e": "playwright test",
     "e2e:project": "playwright test --project",
-    "e2e:resolve": "vite-node e2e/cli.ts",
+    "e2e:resolve": "vite-node --script e2e/cli.ts",
     "verify:commit": "pnpm run typecheck && pnpm test && pnpm run build && pnpm bench validate && pnpm bench changed"
   },
   "devDependencies": {
