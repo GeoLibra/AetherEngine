@@ -8,7 +8,6 @@ docs/
 webgpu-render-engine/
 downloads/
 .codegraph
-engine/
 benchmark/artifacts/
 .superpowers
 .loops/reports/.digest/
