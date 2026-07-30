@@ -62,4 +62,19 @@ describe('TransientResourcePool', () => {
 
     expect(lost.state).toBe('device-lost');
   });
+
+  test('defers disposal until a retained lease becomes terminal', async () => {
+    const device = new NullDevice({ submissionMode: 'manual' });
+    const pool = new TransientResourcePool(device);
+    const allocation = pool.acquire(BUFFER);
+    const submission = device.queue.submit([]);
+
+    pool.retain(allocation, submission);
+    pool.dispose();
+
+    expect(allocation.state).toBe('live');
+    device.queue.completeNextForTesting();
+    await submission.done;
+    expect(allocation.state).toBe('disposed');
+  });
 });

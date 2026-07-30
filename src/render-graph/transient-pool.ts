@@ -79,7 +79,7 @@ export class TransientResourcePool {
   dispose(): void {
     for (const entry of this.entries.values()) {
       entry.discarded = true;
-      if (!entry.released || entry.submissions.size === 0) this.disposeEntry(entry);
+      if (entry.submissions.size === 0) this.disposeEntry(entry);
     }
     this.reusable.clear();
   }
@@ -87,7 +87,7 @@ export class TransientResourcePool {
   private settle(entry: PoolEntry, submissionId: number, result: SubmissionResult): void {
     if (!entry.submissions.delete(submissionId)) return;
     if (result.status !== 'completed') entry.failed = true;
-    if (entry.released && entry.submissions.size === 0) this.finish(entry);
+    if (entry.submissions.size === 0 && (entry.released || entry.discarded)) this.finish(entry);
   }
 
   private finish(entry: PoolEntry): void {

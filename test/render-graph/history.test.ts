@@ -44,6 +44,22 @@ describe('HistoryRegistry', () => {
     expect(registry.acquire(identity(device))).toMatchObject({ slot: 1, valid: false });
   });
 
+  test('does not rotate when compile, encode, or submit rejects before publication', () => {
+    const device = new NullDevice({ submissionMode: 'manual' });
+    const registry = new HistoryRegistry(device);
+    const acquired = registry.acquire(identity(device));
+
+    for (const stage of ['compile', 'encode', 'submit']) {
+      expect(() => {
+        throw new Error(`${stage} rejected`);
+      }).toThrow(`${stage} rejected`);
+      expect(registry.acquire(identity(device))).toMatchObject({
+        slot: acquired.slot,
+        valid: false
+      });
+    }
+  });
+
   test('marks a completed slot valid once it becomes writable again', async () => {
     const device = new NullDevice({ submissionMode: 'manual' });
     const registry = new HistoryRegistry(device);
@@ -118,6 +134,37 @@ describe('HistoryRegistry', () => {
         })
       )
     ).toThrow('incompatible');
+    expect(() => registry.acquire(identity(device, { sharedScope: '' }))).toThrow('sharedScope');
+  });
+
+  test('keeps structurally distinct view and key identities separate', () => {
+    const device = new NullDevice();
+    const registry = new HistoryRegistry(device);
+    const first = registry.acquire(identity(device, { viewId: 'alpha:key:beta', key: 'gamma' }));
+    const second = registry.acquire(identity(device, { viewId: 'alpha', key: 'beta:key:gamma' }));
+
+    expect(second.handle).not.toBe(first.handle);
+  });
+
+  test('retires invalidated history only after every reader and producer submission is terminal', async () => {
+    const device = new NullDevice({ submissionMode: 'manual' });
+    const registry = new HistoryRegistry(device);
+    const sharedIdentity = identity(device, { slots: 1 });
+    const written = registry.acquire(sharedIdentity);
+    const producer = device.queue.submit([]);
+    registry.publish(sharedIdentity, written.slot, producer);
+    const reader = device.queue.submit([]);
+    registry.retain(sharedIdentity, written.slot, reader);
+
+    registry.invalidate(sharedIdentity);
+
+    expect(written.handle.state).toBe('live');
+    device.queue.completeNextForTesting();
+    await producer.done;
+    expect(written.handle.state).toBe('live');
+    device.queue.completeNextForTesting();
+    await reader.done;
+    expect(written.handle.state).toBe('disposed');
   });
 
   test('does not treat failed or lost submissions as valid history', async () => {

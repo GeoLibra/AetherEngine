@@ -38,7 +38,8 @@ export interface AcquiredHistorySlot {
 
 interface HistorySlot {
   readonly handle: TransientResource;
-  pendingSubmissionId: number | undefined;
+  readonly retainingSubmissionIds: Set<number>;
+  producerSubmissionId: number | undefined;
   valid: boolean;
   invalidationReason: HistoryInvalidationReason | undefined;
   retired: boolean;
@@ -96,11 +97,22 @@ export class HistoryRegistry {
     const record = this.requiredRecord(identity);
     const slot = record.slots[slotIndex];
     if (slot === undefined) throw new Error(`History slot ${slotIndex} does not exist.`);
-    if (slot.pendingSubmissionId !== undefined)
+    if (slot.retainingSubmissionIds.size > 0)
       throw new Error(`History slot ${slotIndex} is still pending.`);
 
-    slot.pendingSubmissionId = submission.id;
+    slot.producerSubmissionId = submission.id;
+    this.retain(identity, slotIndex, submission);
     record.nextSlot = (slotIndex + 1) % record.slots.length;
+  }
+
+  retain(identity: HistoryIdentity, slotIndex: number, submission: RHISubmission): void {
+    const record = this.requiredRecord(identity);
+    const slot = record.slots[slotIndex];
+    if (slot === undefined) throw new Error(`History slot ${slotIndex} does not exist.`);
+    if (slot.retired) throw new Error(`History slot ${slotIndex} is retiring.`);
+    if (slot.retainingSubmissionIds.has(submission.id)) return;
+    // Readers and producers can retire on different submissions, so one terminal set owns safety.
+    slot.retainingSubmissionIds.add(submission.id);
     void submission.done.then(
       (result) => this.settle(record, slot, submission.id, result),
       () => this.settle(record, slot, submission.id, { status: 'failed' })
@@ -145,7 +157,8 @@ export class HistoryRegistry {
       configuration: configurationKey(identity),
       slots: Array.from({ length: identity.slots }, () => ({
         handle: createResource(this.device, identity.descriptor),
-        pendingSubmissionId: undefined,
+        retainingSubmissionIds: new Set(),
+        producerSubmissionId: undefined,
         valid: false,
         invalidationReason: reason,
         retired: false
@@ -169,17 +182,19 @@ export class HistoryRegistry {
     submissionId: number,
     result: SubmissionResult
   ): void {
-    if (slot.pendingSubmissionId !== submissionId) return;
-    slot.pendingSubmissionId = undefined;
-    if (result.status === 'completed' && !record.retired) {
-      slot.valid = true;
-      slot.invalidationReason = undefined;
-    } else {
-      slot.valid = false;
-      slot.invalidationReason =
-        result.status === 'device-lost' ? 'device-lost' : 'submission-failed';
+    if (!slot.retainingSubmissionIds.delete(submissionId)) return;
+    if (slot.producerSubmissionId === submissionId) {
+      slot.producerSubmissionId = undefined;
+      if (result.status === 'completed' && !record.retired) {
+        slot.valid = true;
+        slot.invalidationReason = undefined;
+      } else {
+        slot.valid = false;
+        slot.invalidationReason =
+          result.status === 'device-lost' ? 'device-lost' : 'submission-failed';
+      }
     }
-    if (slot.retired) slot.handle.dispose();
+    if (slot.retired && slot.retainingSubmissionIds.size === 0) slot.handle.dispose();
   }
 
   private retireRecord(record: HistoryRecord): void {
@@ -188,7 +203,7 @@ export class HistoryRegistry {
     for (const slot of record.slots) {
       slot.retired = true;
       slot.valid = false;
-      if (slot.pendingSubmissionId === undefined) slot.handle.dispose();
+      if (slot.retainingSubmissionIds.size === 0) slot.handle.dispose();
     }
   }
 
@@ -205,7 +220,7 @@ function writableSlot(record: HistoryRecord): HistorySlot | undefined {
   for (let offset = 0; offset < record.slots.length; offset += 1) {
     const index = (record.nextSlot + offset) % record.slots.length;
     const slot = record.slots[index];
-    if (slot !== undefined && !slot.retired && slot.pendingSubmissionId === undefined) return slot;
+    if (slot !== undefined && !slot.retired && slot.retainingSubmissionIds.size === 0) return slot;
   }
   return undefined;
 }
@@ -227,6 +242,9 @@ function validateIdentity(identity: HistoryIdentity): void {
     throw new Error('History slot count must be a positive integer.');
   }
   if (identity.key.length === 0) throw new Error('History key must not be empty.');
+  if (identity.sharedScope !== undefined && identity.sharedScope.length === 0) {
+    throw new Error('History sharedScope must not be empty.');
+  }
   if (
     identity.sharedScope === undefined &&
     (identity.viewId === undefined || identity.viewId.length === 0)
@@ -236,11 +254,13 @@ function validateIdentity(identity: HistoryIdentity): void {
 }
 
 function identityKey(identity: HistoryIdentity): string {
-  const scope =
-    identity.sharedScope === undefined
-      ? `view:${identity.viewId}`
-      : `shared:${identity.sharedScope}`;
-  return `${scope}:key:${identity.key}`;
+  return stableValue({
+    scope:
+      identity.sharedScope === undefined
+        ? { kind: 'view', value: identity.viewId }
+        : { kind: 'shared', value: identity.sharedScope },
+    key: identity.key
+  });
 }
 
 function configurationKey(identity: HistoryIdentity): string {
