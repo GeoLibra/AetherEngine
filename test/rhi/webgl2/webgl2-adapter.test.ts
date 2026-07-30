@@ -9,7 +9,9 @@ interface Deferred<T> {
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
   return { promise, resolve };
 }
 
@@ -35,12 +37,18 @@ class NativeContext {
   private readonly loss = deferred<{ reason?: string; message?: string }>();
   readonly lost = this.loss.promise;
   destroyed = 0;
+  readonly clipControlCalls: Array<readonly [string, string]> = [];
 
   lose(reason = 'context-lost', message = 'context reset'): void {
     this.loss.resolve({ reason, message });
   }
 
-  destroy(): void { this.destroyed += 1; }
+  destroy(): void {
+    this.destroyed += 1;
+  }
+  setClipControl(origin: 'lower-left', depth: 'zero-to-one'): void {
+    this.clipControlCalls.push([origin, depth]);
+  }
 }
 
 function adapterConstructor() {
@@ -58,6 +66,7 @@ function adapterConstructor() {
     readonly facts: {
       readonly extensions: ReadonlySet<string>;
       readonly precision: Readonly<Record<string, number>>;
+      readonly clipDepthMode: string;
     };
     requestDevice(request: {
       requiredFeatures: readonly string[];
@@ -79,7 +88,10 @@ describe('WebGL2 adapter capability negotiation', () => {
     const adapter = new (adapterConstructor())(native);
 
     expect(adapter.info).toEqual({
-      name: 'Fake WebGL2', backend: 'webgl2', vendor: 'Mesa', architecture: 'llvmpipe'
+      name: 'Fake WebGL2',
+      backend: 'webgl2',
+      vendor: 'Mesa',
+      architecture: 'llvmpipe'
     });
     expect(adapter.capabilities.backend).toBe('webgl2');
     expect(adapter.capabilities.features.get('compute')?.status).toBe('unsupported');
@@ -88,6 +100,7 @@ describe('WebGL2 adapter capability negotiation', () => {
     expect(adapter.capabilities.limits.uniformBufferOffsetAlignment).toBe(256);
     expect(adapter.capabilities.formats.get('rgba8unorm')?.sampleCounts).toEqual([1, 4]);
     expect(adapter.facts.precision).toEqual({ fragmentHighFloatBits: 23 });
+    expect(adapter.facts.clipDepthMode).toBe('vertex-remap');
     expect([...adapter.facts.extensions]).toEqual(['EXT_disjoint_timer_query_webgl2']);
 
     native.limits.uniformBufferOffsetAlignment = 4;
@@ -98,12 +111,26 @@ describe('WebGL2 adapter capability negotiation', () => {
     expect([...adapter.facts.extensions]).toEqual(['EXT_disjoint_timer_query_webgl2']);
   });
 
+  test('selects zero-to-one clip depth and initializes EXT_clip_control per device', async () => {
+    const native = new NativeContext();
+    native.extensions.add('EXT_clip_control');
+    const adapter = new (adapterConstructor())(native);
+
+    expect(adapter.facts.clipDepthMode).toBe('zero-to-one');
+    await adapter.requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+    expect(native.clipControlCalls).toEqual([['lower-left', 'zero-to-one']]);
+  });
+
   test('rejects unsupported required features and insufficient required limits', async () => {
     const adapter = new (adapterConstructor())(new NativeContext());
 
-    await expect(adapter.requestDevice({
-      requiredFeatures: ['compute'], optionalFeatures: [], requiredLimits: { maxTextureUnits: 32 }
-    })).rejects.toMatchObject({
+    await expect(
+      adapter.requestDevice({
+        requiredFeatures: ['compute'],
+        optionalFeatures: [],
+        requiredLimits: { maxTextureUnits: 32 }
+      })
+    ).rejects.toMatchObject({
       name: 'RHIDeviceRequestError',
       missing: [
         { kind: 'feature', feature: 'compute' },
@@ -116,7 +143,8 @@ describe('WebGL2 adapter capability negotiation', () => {
     const native = new NativeContext();
     const adapter = new (adapterConstructor())(native);
     const device = await adapter.requestDevice({
-      requiredFeatures: ['timestamp-query'], optionalFeatures: ['compute']
+      requiredFeatures: ['timestamp-query'],
+      optionalFeatures: ['compute']
     });
 
     expect(device.capabilities.backend).toBe('webgl2');
@@ -125,7 +153,9 @@ describe('WebGL2 adapter capability negotiation', () => {
 
     native.lose('context-lost', 'browser reset');
     await expect(device.lost).resolves.toEqual({
-      reason: 'context-lost', message: 'browser reset', generation: device.generation
+      reason: 'context-lost',
+      message: 'browser reset',
+      generation: device.generation
     });
     expect(device.state).toBe('lost');
 

@@ -57,12 +57,57 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       ])
     }),
     Object.freeze({
+      id: 'simulation',
+      description:
+        'Animation, VFX, physics, navigation, and other fixed or budgeted simulation paths.',
+      pathPrefixes: Object.freeze([
+        'engine/design/v2/06-simulation/',
+        'src/animation/',
+        'src/vfx/',
+        'src/physics/',
+        'src/navigation/'
+      ])
+    }),
+    Object.freeze({
+      id: 'experience',
+      description: 'Input, UI/text, audio, picking, and user-facing interaction paths.',
+      pathPrefixes: Object.freeze([
+        'engine/design/v2/07-experience/',
+        'src/input/',
+        'src/ui/',
+        'src/audio/',
+        'src/picking/'
+      ])
+    }),
+    Object.freeze({
       id: 'editor',
       description: 'Editor document, command, snapshot, picking, and large-scene workflows.',
-      pathPrefixes: Object.freeze(['engine/design/v2/06-editor/', 'src/editor/'])
+      pathPrefixes: Object.freeze(['engine/design/v2/08-tooling/02-editor.md', 'src/editor/'])
     })
   ]),
   suites: Object.freeze([
+    Object.freeze({
+      id: 'runtime-jobs',
+      description:
+        'Runtime schedule ordering and mixed-class job queue ordering with deterministic reference oracles.',
+      domainIds: Object.freeze(['runtime', 'jobs']),
+      pathPrefixes: Object.freeze([
+        'benchmark/runtime-jobs.bench.ts',
+        'benchmark/runtime-jobs-runner.mjs',
+        'benchmark/runtime-jobs/',
+        'engine/design/v2/01-foundation/03-time-events-commands.md',
+        'engine/design/v2/02-runtime/01-app-plugin.md',
+        'engine/design/v2/02-runtime/03-jobs-workers.md',
+        'src/app/',
+        'src/events/',
+        'src/jobs/',
+        'test/benchmark/runtime-jobs.test.ts'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/runtime-jobs-runner.mjs', '{profile}'])
+      })
+    }),
     Object.freeze({
       id: 'ecs',
       description: 'ECS raw baselines, Aether diagnostic lanes, and competitor adapters.',
@@ -149,6 +194,23 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       command: Object.freeze({
         executable: 'node',
         args: Object.freeze(['benchmark/material-system-runner.mjs', '{profile}'])
+      })
+    }),
+    Object.freeze({
+      id: 'asset-pipeline',
+      description:
+        'Asset demand merge, stable priority, budget admission, streaming scale, and package/cook planning baselines.',
+      domainIds: Object.freeze(['assets']),
+      pathPrefixes: Object.freeze([
+        'benchmark/asset-pipeline.bench.ts',
+        'benchmark/asset-pipeline-runner.mjs',
+        'benchmark/asset-pipeline/',
+        'engine/design/v2/05-assets-scene/',
+        'test/benchmark/asset-pipeline.test.ts'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/asset-pipeline-runner.mjs', '{profile}'])
       })
     })
   ])

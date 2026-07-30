@@ -1,4 +1,5 @@
 import { finalizeWebGL2Shader, type WebGL2ShaderTranslationPort } from '../rhi/webgl2/shader-types';
+import type { WebGL2ClipDepthMode } from '../rhi/webgl2/clip-depth';
 import { emitWgslModule } from './wgsl-emitter';
 import type { ShaderDiagnostic, ShaderModuleIR, ShaderTarget, SourceSpan } from './types';
 import type { ResolvedShaderVariants } from './variant';
@@ -27,6 +28,7 @@ export async function emitShaderBackend(
     translator?: WebGL2ShaderTranslationPort;
     approvedExtensions?: readonly string[];
     capabilities?: readonly string[];
+    webgl2ClipDepthMode?: WebGL2ClipDepthMode;
     entries?: readonly string[];
   }>
 ): Promise<ShaderBackendResult> {
@@ -59,7 +61,8 @@ export async function emitShaderBackend(
           entryPoint: selectedEntry.name,
           constants,
           capabilities: Object.freeze([...(options.capabilities ?? [])]),
-          approvedExtensions: Object.freeze([...(options.approvedExtensions ?? [])])
+          approvedExtensions: Object.freeze([...(options.approvedExtensions ?? [])]),
+          clipDepthMode: options.webgl2ClipDepthMode ?? 'vertex-remap'
         })
       );
       source = finalizeWebGL2Shader(options.translator, translated, {

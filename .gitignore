@@ -13,3 +13,5 @@ benchmark/artifacts/
 .superpowers
 .loops/reports/.digest/
 .worktrees/
+.pnpm-store
+graphify-out

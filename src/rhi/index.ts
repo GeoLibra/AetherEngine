@@ -28,6 +28,7 @@ export {
   WebGPUNativeDeviceRequestError,
   WebGPUNativeOperationError
 } from './contracts/errors';
+export type { WebGL2ClipDepthMode } from './webgl2/clip-depth';
 export type {
   WebGL2AdapterFacts,
   WebGL2NativeContextInfo,

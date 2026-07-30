@@ -165,6 +165,7 @@ export type {
   NullDeviceOptions,
   NullSubmissionMode,
   WebGL2AdapterFacts,
+  WebGL2ClipDepthMode,
   WebGL2NativeContextInfo,
   WebGL2NativeContextLostInfo,
   WebGL2NativeContextPort,

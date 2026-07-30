@@ -2,6 +2,19 @@ name: Browser E2E
 
 on:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Browser E2E project to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - browser-host-smoke
+          - webgl2-smoke
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,11 +31,11 @@ jobs:
       diagnostics: ${{ steps.resolve.outputs.diagnostics }}
       has-projects: ${{ steps.resolve.outputs.has-projects }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
@@ -35,13 +48,32 @@ jobs:
         run: |
           set -euo pipefail
           changed_paths_file="$(mktemp)"
-          if ! git diff --name-only --no-renames --diff-filter=ACDMRT \
-            "${{ github.event.pull_request.base.sha }}" \
-            "${{ github.event.pull_request.head.sha }}" > "$changed_paths_file"; then
-            : > "$changed_paths_file"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            selected_project="${{ github.event.inputs.project }}"
+            case "$selected_project" in
+              all)
+                resolution='{"include":[{"project":"browser-host-smoke"},{"project":"webgl2-smoke"}],"reasons":[{"path":"","ruleId":"manual-all"}],"fallback":true}'
+                ;;
+              browser-host-smoke|webgl2-smoke)
+                resolution="$(node -e 'const project = process.argv[1]; process.stdout.write(JSON.stringify({ include: [{ project }], reasons: [{ path: "", ruleId: "manual-project" }], fallback: false }));' "$selected_project")"
+                ;;
+              *)
+                echo "Unsupported workflow_dispatch project: $selected_project" >&2
+                exit 1
+                ;;
+            esac
+          else
+            base_sha="${{ github.event.pull_request.base.sha || github.event.before }}"
+            head_sha="${{ github.event.pull_request.head.sha || github.sha }}"
+            if ! git diff --name-only --no-renames --diff-filter=ACDMRT \
+              "$base_sha" \
+              "$head_sha" > "$changed_paths_file"; then
+              : > "$changed_paths_file"
+            fi
+            resolution="$(pnpm --silent e2e:resolve < "$changed_paths_file")"
           fi
 
-          resolution="$(pnpm --silent e2e:resolve < "$changed_paths_file")"
           matrix="$(node -e \
             'const value = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify({ include: value.include }));' \
             "$resolution")"
@@ -67,9 +99,9 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
@@ -80,12 +112,13 @@ jobs:
         env:
           E2E_PROJECT: ${{ matrix.project }}
         run: pnpm e2e --project="$E2E_PROJECT"
-      - name: Upload failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v7
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: e2e-${{ matrix.project }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             test-results/
             playwright-report/
           if-no-files-found: ignore
+          retention-days: 7

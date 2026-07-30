@@ -79,6 +79,27 @@ describe('changed-file routing', () => {
     ]);
   });
 
+  test('routes Runtime and Jobs to their shared deterministic suite', () => {
+    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/app/schedule.ts']).suiteIds).toEqual([
+      'runtime-jobs'
+    ]);
+    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/jobs/queue.ts']).suiteIds).toEqual([
+      'runtime-jobs'
+    ]);
+  });
+
+  test('keeps planned Simulation, Experience, and Editor gaps explicit', () => {
+    for (const path of [
+      'src/animation/controller.ts',
+      'src/input/actions.ts',
+      'src/editor/document.ts'
+    ]) {
+      const route = routeChangedFiles(BENCHMARK_MANIFEST, [path]);
+      expect(route.suiteIds).toEqual([]);
+      expect(route.missingDomainIds).toHaveLength(1);
+    }
+  });
+
   test('routes Material-owned paths only to the dedicated material suite', () => {
     for (const path of [
       'engine/design/v2/04-rendering/03-material-system.md',
@@ -129,7 +150,7 @@ describe('framework command planning', () => {
   });
 
   test('renders the requested profile without a shell command string', () => {
-    const suite = BENCHMARK_MANIFEST.suites[0];
+    const suite = BENCHMARK_MANIFEST.suites.find(({ id }) => id === 'ecs');
     if (!suite) throw new Error('Expected the ECS suite.');
 
     expect(renderSuiteCommand(suite, 'standard')).toEqual({

@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, test } from 'vitest';
 
 const WORKFLOW_PATH = new URL('../.github/workflows/e2e.yml', import.meta.url);
+const CI_WORKFLOW_PATH = new URL('../.github/workflows/ci.yml', import.meta.url);
 const REPOSITORY_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
@@ -21,22 +22,28 @@ afterEach(async () => {
 });
 
 describe('E2E GitHub Actions workflow', () => {
-  test('runs for pull requests with ref-scoped cancellation and pinned action majors', async () => {
+  test('runs for pull requests, main pushes, and manual dispatch with stable action majors', async () => {
     const workflow = await readFile(WORKFLOW_PATH, 'utf8');
     const resolveJob = extractYamlBlock(workflow, '  resolve:');
     const e2eJob = extractYamlBlock(workflow, '  e2e:');
 
     expect(workflow).toMatch(/^on:\s*\n\s+pull_request:/m);
+    expect(workflow).toContain('push:\n    branches: [main]');
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain(
+      'options:\n          - all\n          - browser-host-smoke\n          - webgl2-smoke'
+    );
     expect(workflow).toContain('group: ${{ github.workflow }}-${{ github.ref }}');
     expect(workflow).toContain('cancel-in-progress: true');
+    expect(workflow).toContain('permissions:\n  contents: read');
 
     for (const job of [resolveJob, e2eJob]) {
-      expect(job).toContain('uses: actions/checkout@v7');
-      expect(job).toContain('uses: pnpm/action-setup@v6');
-      expect(job).toContain('uses: actions/setup-node@v7');
+      expect(job).toContain('uses: actions/checkout@v4');
+      expect(job).toContain('uses: pnpm/action-setup@v4');
+      expect(job).toContain('uses: actions/setup-node@v4');
     }
     expect(resolveJob).not.toContain('actions/upload-artifact');
-    expect(e2eJob).toContain('uses: actions/upload-artifact@v7');
+    expect(e2eJob).toContain('uses: actions/upload-artifact@v4');
   });
 
   test('publishes an include-only matrix and keeps resolver diagnostics separate', async () => {
@@ -44,8 +51,12 @@ describe('E2E GitHub Actions workflow', () => {
     const resolveJob = extractYamlBlock(workflow, '  resolve:');
     const resolveStep = extractYamlBlock(resolveJob, '      - name: Resolve affected projects');
     const script = extractRunScript(resolveStep)
+      .replaceAll('${{ github.event_name }}', 'pull_request')
+      .replaceAll('${{ github.event.inputs.project }}', '')
       .replaceAll('${{ github.event.pull_request.base.sha }}', 'base-sha')
-      .replaceAll('${{ github.event.pull_request.head.sha }}', 'head-sha');
+      .replaceAll('${{ github.event.pull_request.head.sha }}', 'head-sha')
+      .replaceAll('${{ github.event.pull_request.base.sha || github.event.before }}', 'base-sha')
+      .replaceAll('${{ github.event.pull_request.head.sha || github.sha }}', 'head-sha');
     const outputs = await executeResolverStep(script, {
       include: [{ project: 'browser-host-smoke' }],
       reasons: [{ path: 'src/platform/browser-host.ts', ruleId: 'browser-host' }],
@@ -82,11 +93,19 @@ describe('E2E GitHub Actions workflow', () => {
     const resolveJob = extractYamlBlock(workflow, '  resolve:');
     const e2eJob = extractYamlBlock(workflow, '  e2e:');
     const runStep = extractYamlBlock(e2eJob, '      - name: Run ${{ matrix.project }}');
-    const uploadStep = extractYamlBlock(e2eJob, '      - name: Upload failure artifacts');
+    const uploadStep = extractYamlBlock(e2eJob, '      - name: Upload Playwright artifacts');
 
     expect(resolveJob).toContain('pnpm vitest run e2e/resolve-projects.test.ts e2e/cli.test.ts');
     expect(resolveJob).toContain('pnpm --silent e2e:resolve');
     expect(resolveJob).toContain('git diff --name-only --no-renames --diff-filter=ACDMRT');
+    expect(resolveJob).toContain(
+      'base_sha="${{ github.event.pull_request.base.sha || github.event.before }}"'
+    );
+    expect(resolveJob).toContain(
+      'head_sha="${{ github.event.pull_request.head.sha || github.sha }}"'
+    );
+    expect(resolveJob).toContain('manual-all');
+    expect(resolveJob).toContain('manual-project');
     expect(resolveJob).not.toContain('pnpm exec playwright install');
 
     expect(e2eJob).toContain('needs: resolve');
@@ -98,11 +117,62 @@ describe('E2E GitHub Actions workflow', () => {
     expect(runStep).toContain('run: pnpm e2e --project="$E2E_PROJECT"');
     expect(runStep).not.toContain('--project=${{ matrix.project }}');
 
-    expect(uploadStep).toContain('if: failure()');
-    expect(uploadStep).toContain('uses: actions/upload-artifact@v7');
+    expect(uploadStep).toContain('if: always()');
+    expect(uploadStep).toContain('uses: actions/upload-artifact@v4');
     expect(uploadStep).toContain(
       'name: e2e-${{ matrix.project }}-${{ github.run_id }}-${{ github.run_attempt }}'
     );
+    expect(uploadStep).toContain('retention-days: 7');
+  });
+
+  test('manual dispatch can run all projects or one selected project', async () => {
+    const workflow = await readFile(WORKFLOW_PATH, 'utf8');
+    const resolveJob = extractYamlBlock(workflow, '  resolve:');
+    const resolveStep = extractYamlBlock(resolveJob, '      - name: Resolve affected projects');
+    const allScript = extractRunScript(resolveStep)
+      .replaceAll('${{ github.event_name }}', 'workflow_dispatch')
+      .replaceAll('${{ github.event.inputs.project }}', 'all');
+    const selectedScript = extractRunScript(resolveStep)
+      .replaceAll('${{ github.event_name }}', 'workflow_dispatch')
+      .replaceAll('${{ github.event.inputs.project }}', 'webgl2-smoke');
+
+    const allOutputs = await executeResolverStep(allScript, undefined);
+    const selectedOutputs = await executeResolverStep(selectedScript, undefined);
+
+    expect(allOutputs.matrix).toEqual({
+      include: [{ project: 'browser-host-smoke' }, { project: 'webgl2-smoke' }]
+    });
+    expect(allOutputs.diagnostics).toEqual({
+      reasons: [{ path: '', ruleId: 'manual-all' }],
+      fallback: true
+    });
+    expect(allOutputs.hasProjects).toBe('true');
+
+    expect(selectedOutputs.matrix).toEqual({ include: [{ project: 'webgl2-smoke' }] });
+    expect(selectedOutputs.diagnostics).toEqual({
+      reasons: [{ path: '', ruleId: 'manual-project' }],
+      fallback: false
+    });
+    expect(selectedOutputs.hasProjects).toBe('true');
+  });
+
+  test('CI workflow runs the non-browser quality gate on pull requests, main pushes, and manual dispatch', async () => {
+    const workflow = await readFile(CI_WORKFLOW_PATH, 'utf8');
+
+    expect(workflow).toMatch(/^on:\s*\n\s+pull_request:/m);
+    expect(workflow).toContain('push:\n    branches: [main]');
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain('group: ${{ github.workflow }}-${{ github.ref }}');
+    expect(workflow).toContain('permissions:\n  contents: read');
+    expect(workflow).toContain('uses: actions/checkout@v4');
+    expect(workflow).toContain('uses: pnpm/action-setup@v4');
+    expect(workflow).toContain('uses: actions/setup-node@v4');
+    expect(workflow).toContain('pnpm install --frozen-lockfile');
+    expect(workflow).toContain('pnpm run typecheck');
+    expect(workflow).toContain('pnpm test');
+    expect(workflow).toContain('pnpm run build');
+    expect(workflow).toContain('pnpm bench validate');
+    expect(workflow).toContain('pnpm bench changed');
   });
 
   test('routes a deleted browser path even when an ignored README also changes', async () => {
@@ -262,8 +332,12 @@ async function executeResolverAgainstGitHistory(
   const resolveJob = extractYamlBlock(workflow, '  resolve:');
   const resolveStep = extractYamlBlock(resolveJob, '      - name: Resolve affected projects');
   const script = extractRunScript(resolveStep)
+    .replaceAll('${{ github.event_name }}', 'pull_request')
+    .replaceAll('${{ github.event.inputs.project }}', '')
     .replaceAll('${{ github.event.pull_request.base.sha }}', baseSha)
-    .replaceAll('${{ github.event.pull_request.head.sha }}', headSha);
+    .replaceAll('${{ github.event.pull_request.head.sha }}', headSha)
+    .replaceAll('${{ github.event.pull_request.base.sha || github.event.before }}', baseSha)
+    .replaceAll('${{ github.event.pull_request.head.sha || github.sha }}', headSha);
 
   const shimDirectory = await mkdtemp(join(tmpdir(), 'aether-e2e-pnpm-'));
   temporaryDirectories.push(shimDirectory);

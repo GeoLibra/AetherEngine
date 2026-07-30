@@ -13,6 +13,7 @@ import type {
 } from './shader-types';
 import { finalizeWebGL2Shader, type WebGL2PhysicalBinding } from './shader-types';
 import { WebGL2ProgramCreationError } from './errors';
+import type { WebGL2ClipDepthMode } from './clip-depth';
 
 export class WebGL2RenderPipeline extends WebGL2ResourceBase implements RHIRenderPipeline {
   readonly kind = 'render-pipeline';
@@ -44,6 +45,7 @@ export function createWebGL2RenderPipeline(
   id: number,
   owner: WebGL2DeviceOwner,
   translator: WebGL2ShaderTranslationPort | undefined,
+  clipDepthMode: WebGL2ClipDepthMode,
   descriptor: RHIRenderPipelineDescriptor
 ): WebGL2RenderPipeline {
   if (translator === undefined)
@@ -56,6 +58,7 @@ export function createWebGL2RenderPipeline(
     translator,
     descriptor.vertex.module,
     'vertex',
+    clipDepthMode,
     descriptor.vertex.entryPoint,
     descriptor.vertex.constants
   );
@@ -67,6 +70,7 @@ export function createWebGL2RenderPipeline(
           translator,
           descriptor.fragment.module,
           'fragment',
+          clipDepthMode,
           descriptor.fragment.entryPoint,
           descriptor.fragment.constants
         );
@@ -111,6 +115,7 @@ function translateStage(
   translator: WebGL2ShaderTranslationPort,
   module: RHIShaderModule,
   stage: WebGL2ShaderStage,
+  clipDepthMode: WebGL2ClipDepthMode,
   entryPoint = 'main',
   constants: Readonly<Record<string, number>> = {}
 ) {
@@ -128,7 +133,8 @@ function translateStage(
         .map(([feature]) => feature)
         .sort()
     ),
-    approvedExtensions
+    approvedExtensions,
+    clipDepthMode
   });
   return finalizeWebGL2Shader(translator, result, {
     constants: frozenConstants,
