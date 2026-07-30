@@ -1,6 +1,19 @@
 import { describe, expect, test } from 'vitest';
 import { NullDevice } from '../../src/rhi';
+import { RenderGraphBuilder } from '../../src/render-graph/builder';
+import { compileRenderGraph } from '../../src/render-graph/compiler';
 import { HistoryRegistry, type HistoryIdentity } from '../../src/render-graph/history';
+import type { TextureDescriptor } from '../../src/render-graph/types';
+
+const GRAPH_TEXTURE: TextureDescriptor = Object.freeze({
+  width: 16,
+  height: 16,
+  depthOrArrayLayers: 1,
+  mipLevelCount: 1,
+  sampleCount: 1,
+  format: 'rgba8unorm',
+  usage: Object.freeze(['sampled', 'color-attachment'] as const)
+});
 
 const texture = (width = 32, format = 'rgba8unorm') =>
   Object.freeze({
@@ -44,20 +57,37 @@ describe('HistoryRegistry', () => {
     expect(registry.acquire(identity(device))).toMatchObject({ slot: 1, valid: false });
   });
 
-  test('does not rotate when compile, encode, or submit rejects before publication', () => {
+  test('withholds publication when real compile, encode, and submit paths reject', () => {
     const device = new NullDevice({ submissionMode: 'manual' });
     const registry = new HistoryRegistry(device);
     const acquired = registry.acquire(identity(device));
 
-    for (const stage of ['compile', 'encode', 'submit']) {
-      expect(() => {
-        throw new Error(`${stage} rejected`);
-      }).toThrow(`${stage} rejected`);
-      expect(registry.acquire(identity(device))).toMatchObject({
-        slot: acquired.slot,
-        valid: false
-      });
-    }
+    expect(() =>
+      publishAfterAcceptedSubmission(registry, identity(device), () => {
+        compileRenderGraph(cyclicGraph());
+        return device.queue.submit([]);
+      })
+    ).toThrow(/cycle/i);
+    expectUnpublished(registry, identity(device), acquired);
+
+    expect(() =>
+      publishAfterAcceptedSubmission(registry, identity(device), () => {
+        const encoder = device.createCommandEncoder();
+        encoder.pushDebugGroup('unterminated');
+        return device.queue.submit([encoder.finish()]);
+      })
+    ).toThrow('unclosed debug groups');
+    expectUnpublished(registry, identity(device), acquired);
+
+    expect(() =>
+      publishAfterAcceptedSubmission(registry, identity(device), () => {
+        const commandBuffer = device.createCommandEncoder().finish();
+        commandBuffer.dispose();
+        return device.queue.submit([commandBuffer]);
+      })
+    ).toThrow('has been disposed');
+    expectUnpublished(registry, identity(device), acquired);
+    expect(device.queue.metrics().submitted).toBe(0);
   });
 
   test('marks a completed slot valid once it becomes writable again', async () => {
@@ -185,3 +215,57 @@ describe('HistoryRegistry', () => {
     expect(second.handle.state).toBe('device-lost');
   });
 });
+
+function publishAfterAcceptedSubmission(
+  registry: HistoryRegistry,
+  historyIdentity: HistoryIdentity,
+  submit: () => ReturnType<NullDevice['queue']['submit']>
+): void {
+  const acquired = registry.acquire(historyIdentity);
+  const submission = submit();
+  registry.publish(historyIdentity, acquired.slot, submission);
+}
+
+function expectUnpublished(
+  registry: HistoryRegistry,
+  historyIdentity: HistoryIdentity,
+  initial: ReturnType<HistoryRegistry['acquire']>
+): void {
+  expect(registry.acquire(historyIdentity)).toMatchObject({
+    handle: initial.handle,
+    slot: initial.slot,
+    valid: false,
+    invalidationReason: 'new'
+  });
+}
+
+function cyclicGraph() {
+  const graph = new RenderGraphBuilder();
+  const initial = graph.createTexture(GRAPH_TEXTURE, {
+    origin: {
+      kind: 'imported',
+      initialState: 'sampled',
+      acquire: { kind: 'external-acquire', id: 'history-compile-rejection' }
+    }
+  });
+  let written = initial;
+  graph.addPass({
+    id: 'write-new',
+    setup(pass) {
+      written = pass.writeTexture(initial, 'color-attachment');
+      return written;
+    },
+    run() {}
+  });
+  graph.addPass({
+    id: 'read-old-and-new',
+    setup(pass) {
+      pass.readTexture(initial, 'sampled');
+      pass.readTexture(written, 'sampled');
+      pass.sideEffect('retain compile rejection cycle');
+      return undefined;
+    },
+    run() {}
+  });
+  return graph.build();
+}
