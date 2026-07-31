@@ -3,6 +3,7 @@ import { RenderGraphBuilder, type SurfaceFrameToken } from '../../src/render-gra
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
+  createRenderGraphExecutionPlan,
   type RenderGraphExecutionPlan,
   type RestrictedPassContext
 } from '../../src/render-graph/executor';
@@ -24,7 +25,7 @@ const TEXTURE: TextureDescriptor = {
 
 function compile(builder: RenderGraphBuilder): RenderGraphExecutionPlan {
   const snapshot = builder.build();
-  return { snapshot, compiled: compileRenderGraph(snapshot) };
+  return createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot));
 }
 
 function target(name: string): SurfaceTarget {

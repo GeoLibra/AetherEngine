@@ -6,6 +6,7 @@ export * from './hazards';
 export * from './compiler';
 export * from './lifetimes';
 export * from './debug-ir';
+export * from './execution-plan';
 export * from './transient-pool';
 export * from './history';
 export * from './executor';

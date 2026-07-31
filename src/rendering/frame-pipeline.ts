@@ -1,4 +1,8 @@
 import type { RenderView } from './visibility';
+import {
+  assertRenderGraphExecutionPlan,
+  type RenderGraphExecutionPlan
+} from '../render-graph/executor';
 
 export type RenderSkipReason =
   'surface-suspended' | 'prepare-pending' | 'incompatible-pipeline' | 'missing-resource';
@@ -25,7 +29,7 @@ export interface RenderFrameStageContext {
 /**
  * Declares the structured pipeline execution steps that plugins or backends must implement.
  */
-export interface RenderFrameStages<TPlan = unknown> {
+export interface RenderFrameStages {
   // Parse, build, or fetch GPU-facing resources and cache them.
   prepare(context: RenderFrameStageContext): { hits: number; misses: number; uploadBytes: number };
   // Queue visible items for drawing. Can report reasons for skipped items.
@@ -33,9 +37,9 @@ export interface RenderFrameStages<TPlan = unknown> {
   // Group and sort queued draw items into cache-coherent drawing batches.
   sort(context: RenderFrameStageContext): { batches: number };
   // Build the compiled render graph for transient resource bindings and barriers.
-  build(context: RenderFrameStageContext): TPlan;
+  build(context: RenderFrameStageContext): RenderGraphExecutionPlan;
   // Execute drawing commands via RHI encoder buffers.
-  execute(context: RenderFrameStageContext, plan: TPlan): void;
+  execute(context: RenderFrameStageContext, plan: RenderGraphExecutionPlan): void;
 }
 
 /**
@@ -50,10 +54,10 @@ export interface RenderFrameStages<TPlan = unknown> {
  * 5. `build` generates transient attachments and transitions barriers.
  * 6. `execute` records and dispatches command buffers to the GPU.
  */
-export function runRenderFrame<TPlan>(input: {
+export function runRenderFrame(input: {
   readonly frame: number;
   readonly views: readonly RenderView[];
-  readonly stages: RenderFrameStages<TPlan>;
+  readonly stages: RenderFrameStages;
   readonly extractedEntities: number;
   readonly extractBytes: number;
 }): RenderFrameMetrics {
@@ -84,6 +88,7 @@ export function runRenderFrame<TPlan>(input: {
     const sorted = input.stages.sort(context);
     batches += sorted.batches;
     const plan = input.stages.build(context);
+    assertRenderGraphExecutionPlan(plan);
     input.stages.execute(context, plan);
   }
   return Object.freeze({

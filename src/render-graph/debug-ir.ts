@@ -1,6 +1,10 @@
 import type { RenderGraphSnapshot } from './builder';
 import type { CompiledRenderGraph, CompiledRenderGraphEdge } from './compiler';
 import {
+  createRenderGraphExecutionSchedule,
+  type RenderGraphExecutionStep
+} from './execution-plan';
+import {
   analyzeResourceLifetimes,
   derivePortableTransitions,
   planResourceAliases,
@@ -12,6 +16,7 @@ import {
 
 export interface RenderGraphDebugIROptions extends AliasPlanningOptions {
   readonly submissionIndex?: number;
+  readonly schedule?: readonly RenderGraphExecutionStep[];
 }
 
 export interface RenderGraphDebugPass {
@@ -39,6 +44,7 @@ export interface RenderGraphDebugIR {
   readonly edges: readonly CompiledRenderGraphEdge[];
   readonly order: readonly number[];
   readonly rootPassIds: readonly number[];
+  readonly schedule: readonly RenderGraphExecutionStep[];
   readonly lifetimes: readonly ResourceLifetime[];
   readonly aliasDecisions: readonly AliasDecision[];
   readonly transitions: readonly PortableTransition[];
@@ -100,6 +106,9 @@ export function createRenderGraphDebugIR(
   const edges = Object.freeze(compiled.edges.map((edge) => Object.freeze({ ...edge })));
   const order = Object.freeze([...compiled.order]);
   const rootPassIds = Object.freeze([...compiled.rootPassIds]);
+  const schedule = Object.freeze([
+    ...(options.schedule ?? createRenderGraphExecutionSchedule(compiled))
+  ]);
   const logical = Object.freeze({
     schemaVersion: 1 as const,
     passes: Object.freeze(passes),
@@ -107,6 +116,7 @@ export function createRenderGraphDebugIR(
     edges,
     order,
     rootPassIds,
+    schedule,
     lifetimes,
     transitions,
     compilerCounters: compiled.counters
@@ -123,7 +133,8 @@ export function createRenderGraphDebugIR(
       edges.length +
       lifetimes.length +
       aliasPlan.decisions.length +
-      transitions.length
+      transitions.length +
+      schedule.length
   });
   const withoutChecksum = Object.freeze({
     schemaVersion: 1 as const,
@@ -132,6 +143,7 @@ export function createRenderGraphDebugIR(
     edges,
     order,
     rootPassIds,
+    schedule,
     lifetimes,
     aliasDecisions: aliasPlan.decisions,
     transitions,

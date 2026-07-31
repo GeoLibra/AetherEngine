@@ -152,6 +152,15 @@ describe('RenderSystem facade', () => {
     expect(facade.plan.compiled.culledPasses).toEqual(directCompiled.culledPasses);
     expect(facade.debug).toEqual(createRenderGraphDebugIR(directSnapshot, directCompiled));
     expect(facade.internalNodes.map((node) => node.kind)).toEqual(['prelude', 'submission']);
+    expect(facade.plan.schedule.map((step) => step.kind)).toEqual([
+      'prelude',
+      'pass',
+      'pass',
+      'submission'
+    ]);
+    expect(facade.debug.schedule).toEqual(facade.plan.schedule);
+    expect(facade.internalNodes[0]).toBe(facade.plan.schedule[0]);
+    expect(facade.internalNodes[1]).toBe(facade.plan.schedule.at(-1));
   });
 
   test('instantiates globals once, gives views stable ids, and reuses immutable query snapshots', () => {

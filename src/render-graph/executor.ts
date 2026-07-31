@@ -2,6 +2,20 @@ import type { GraphAccess, GraphTerminal, RenderGraphSnapshot } from './builder'
 import type { CompiledRenderGraph } from './compiler';
 import { createRenderGraphDebugIR, type RenderGraphDebugIR } from './debug-ir';
 import {
+  releaseTransients,
+  safelyDispose,
+  safelyEnd,
+  safelyFinish,
+  safelyReleaseFrame,
+  safelyReleaseTransients,
+  type EndableRenderPass
+} from './executor-cleanup';
+import {
+  requiredScheduledPass,
+  validateRenderGraphExecutionPlan,
+  type RenderGraphExecutionPlan
+} from './execution-plan';
+import {
   allocationFor,
   containsRange,
   freezeCommandStats,
@@ -36,10 +50,14 @@ import type {
 } from '../rhi/contracts';
 import type { RHISurface, RHISurfaceFrame } from '../rhi/contracts/surface';
 
-export interface RenderGraphExecutionPlan {
-  readonly snapshot: RenderGraphSnapshot;
-  readonly compiled: CompiledRenderGraph;
-}
+export {
+  assertRenderGraphExecutionPlan,
+  createRenderGraphExecutionPlan,
+  createRenderGraphExecutionSchedule,
+  requiredScheduledPass,
+  validateRenderGraphExecutionPlan
+} from './execution-plan';
+export type { RenderGraphExecutionPlan, RenderGraphExecutionStep } from './execution-plan';
 
 export interface DeclaredRasterColorAttachment {
   readonly texture: TextureHandle;
@@ -104,10 +122,7 @@ export interface RenderGraphExecution {
   readonly debugIR: RenderGraphExecutionDebug;
 }
 
-interface ActivePass {
-  end(): void;
-}
-
+type ActivePass = EndableRenderPass;
 interface SurfaceBinding {
   readonly frame: RHISurfaceFrame;
   readonly resourceId: number;
@@ -128,49 +143,64 @@ export class RenderGraphExecutor {
     let commandBuffer: RHICommandBuffer | undefined;
     let submission: RHISubmission | undefined;
     let finished = false;
+    let resources: ReadonlyMap<number, RHITexture | RHIBuffer> | undefined;
 
     try {
       this.acquireSurfaceFrames(plan, inputs, frames);
-      validatePlan(plan);
-      const resources = resolveResources(
-        plan.snapshot,
-        plan.compiled,
-        inputs,
-        frames,
-        pool,
-        transientResources
-      );
-      encoder = inputs.device.createCommandEncoder({ label: 'render-graph' });
-
-      for (const pass of plan.compiled.retainedPasses) {
-        const context = new RestrictedContext(
-          pass.accesses,
-          resources,
-          encoder,
-          (next) => {
-            activePass = next;
-          },
-          () => {
-            activePass = undefined;
-          }
-        );
-        pass.run(context.publicContext());
-        if (activePass !== undefined) {
-          throw new Error(
-            `Render graph pass "${pass.id}" must end the active pass encoder before it returns.`
+      validateRenderGraphExecutionPlan(plan);
+      for (const step of plan.schedule) {
+        if (step.kind === 'prelude') {
+          resources = resolveResources(
+            plan.snapshot,
+            plan.compiled,
+            inputs,
+            frames,
+            pool,
+            transientResources
           );
+          encoder = inputs.device.createCommandEncoder({ label: 'render-graph' });
+          continue;
         }
+        if (step.kind === 'pass') {
+          if (encoder === undefined || resources === undefined) {
+            throw new Error('Render graph pass execution requires its prelude boundary.');
+          }
+          const pass = requiredScheduledPass(plan.compiled, step);
+          const context = new RestrictedContext(
+            pass.accesses,
+            resources,
+            encoder,
+            (next) => {
+              activePass = next;
+            },
+            () => {
+              activePass = undefined;
+            }
+          );
+          pass.run(context.publicContext());
+          if (activePass !== undefined) {
+            throw new Error(
+              `Render graph pass "${pass.id}" must end the active pass encoder before it returns.`
+            );
+          }
+          continue;
+        }
+        if (encoder === undefined) {
+          throw new Error('Render graph submission requires its prelude boundary.');
+        }
+        commandBuffer = encoder.finish({ label: 'render-graph' });
+        finished = true;
+        submission = inputs.device.queue.submit([commandBuffer]);
+        releaseTransients(pool, transientResources, submission);
+        if (ownsPool) pool.dispose();
+        this.presentFrames(frames);
       }
-
-      commandBuffer = encoder.finish({ label: 'render-graph' });
-      finished = true;
-      submission = inputs.device.queue.submit([commandBuffer]);
-      releaseTransients(pool, transientResources, submission);
-      if (ownsPool) pool.dispose();
-      this.presentFrames(frames);
+      if (commandBuffer === undefined || submission === undefined) {
+        throw new Error('Render graph execution plan is missing its submission boundary.');
+      }
       const commandStats = freezeCommandStats(commandBuffer.getStats());
       const debug = Object.freeze({
-        ...createRenderGraphDebugIR(plan.snapshot, plan.compiled),
+        ...createRenderGraphDebugIR(plan.snapshot, plan.compiled, { schedule: plan.schedule }),
         commandStats
       });
       return Object.freeze({
@@ -381,17 +411,6 @@ class RestrictedContext implements RestrictedPassContext {
   }
 }
 
-function validatePlan(plan: RenderGraphExecutionPlan): void {
-  if (plan.snapshot.graphId !== plan.compiled.graphId) {
-    throw new Error('Render graph execution plan graph id does not match its compiled schedule.');
-  }
-  const snapshotPasses = new Set(plan.snapshot.passes);
-  for (const pass of plan.compiled.retainedPasses) {
-    if (!snapshotPasses.has(pass))
-      throw new Error('Render graph execution plan references an unknown pass.');
-  }
-}
-
 function resolveResources(
   snapshot: RenderGraphSnapshot,
   compiled: CompiledRenderGraph,
@@ -441,58 +460,4 @@ function collectRetainedResourceIds(compiled: CompiledRenderGraph): ReadonlySet<
     for (const terminal of pass.terminals) resourceIds.add(terminal.handle.resourceId);
   }
   return resourceIds;
-}
-
-function safelyEnd(pass: ActivePass | undefined): void {
-  try {
-    pass?.end();
-  } catch {
-    /* preserve the primary execution failure */
-  }
-}
-
-function safelyFinish(encoder: ReturnType<RHIDevice['createCommandEncoder']>): void {
-  try {
-    encoder.finish({ label: 'render-graph-failed' });
-  } catch {
-    /* preserve the primary execution failure */
-  }
-}
-
-function safelyReleaseFrame(frame: RHISurfaceFrame): void {
-  if (frame.state !== 'acquired') return;
-  try {
-    frame.release();
-  } catch {
-    /* another surface terminal error remains primary */
-  }
-}
-
-function safelyDispose(pool: TransientResourcePool): void {
-  try {
-    pool.dispose();
-  } catch {
-    /* preserve the primary execution failure */
-  }
-}
-
-function releaseTransients(
-  pool: TransientResourcePool,
-  resources: readonly TransientResource[],
-  submission: RHISubmission
-): void {
-  for (const resource of resources) pool.release(resource, submission);
-}
-
-function safelyReleaseTransients(
-  pool: TransientResourcePool,
-  resources: readonly TransientResource[]
-): void {
-  for (const resource of resources) {
-    try {
-      pool.release(resource);
-    } catch {
-      /* preserve the primary execution failure */
-    }
-  }
 }

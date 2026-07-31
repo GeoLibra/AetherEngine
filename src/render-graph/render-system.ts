@@ -1,7 +1,12 @@
 import { RenderGraphBuilder, type PassBuilder } from './builder';
 import { compileRenderGraph } from './compiler';
 import { createRenderGraphDebugIR, type RenderGraphDebugIR } from './debug-ir';
-import type { RenderGraphExecutionPlan, RestrictedPassContext } from './executor';
+import {
+  createRenderGraphExecutionPlan,
+  type RenderGraphExecutionPlan,
+  type RenderGraphExecutionStep,
+  type RestrictedPassContext
+} from './executor';
 import type { RenderPhaseSnapshot } from '../rendering/render-phase';
 import type { RenderQuerySnapshot, RenderQuerySpec } from '../rendering/render-world';
 import type { RenderView } from '../rendering/visibility';
@@ -60,10 +65,10 @@ export interface CompiledRenderSystemInstance<TItem = unknown> {
   readonly query: RenderQuerySnapshot<TItem>;
 }
 
-export interface RenderSystemInternalNode {
-  readonly id: 'render-graph/prelude' | 'render-graph/submission';
-  readonly kind: 'prelude' | 'submission';
-}
+export type RenderSystemInternalNode = Extract<
+  RenderGraphExecutionStep,
+  { readonly kind: 'prelude' | 'submission' }
+>;
 
 export interface CompiledRenderSystems {
   readonly plan: RenderGraphExecutionPlan;
@@ -86,11 +91,6 @@ interface ActiveRenderSystemInstance {
   readonly query: RenderQuerySnapshot<unknown>;
   readonly phases: readonly RenderPhaseSnapshot[];
 }
-
-const INTERNAL_NODES: readonly RenderSystemInternalNode[] = Object.freeze([
-  Object.freeze({ id: 'render-graph/prelude', kind: 'prelude' }),
-  Object.freeze({ id: 'render-graph/submission', kind: 'submission' })
-]);
 
 const EMPTY_QUERY: RenderQuerySnapshot<never> = Object.freeze({
   queryId: 'render-system/empty',
@@ -172,7 +172,7 @@ export function compileRenderSystems(
 
   const snapshot = graph.build();
   const compiled = compileRenderGraph(snapshot);
-  const plan = Object.freeze({ snapshot, compiled });
+  const plan = createRenderGraphExecutionPlan(snapshot, compiled);
   const instances = Object.freeze(
     active.map((instance) =>
       Object.freeze({
@@ -186,9 +186,14 @@ export function compileRenderSystems(
   );
   return Object.freeze({
     plan,
-    debug: createRenderGraphDebugIR(snapshot, compiled),
+    debug: createRenderGraphDebugIR(snapshot, compiled, { schedule: plan.schedule }),
     instances,
-    internalNodes: INTERNAL_NODES
+    internalNodes: Object.freeze(
+      plan.schedule.filter(
+        (step): step is RenderSystemInternalNode =>
+          step.kind === 'prelude' || step.kind === 'submission'
+      )
+    )
   });
 }
 

@@ -3,6 +3,7 @@ import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
+  createRenderGraphExecutionPlan,
   type RenderGraphExecutionPlan,
   type RestrictedPassContext
 } from '../../src/render-graph/executor';
@@ -34,7 +35,7 @@ const DEPTH_TEXTURE: TextureDescriptor = {
 
 function compile(builder: RenderGraphBuilder): RenderGraphExecutionPlan {
   const snapshot = builder.build();
-  return { snapshot, compiled: compileRenderGraph(snapshot) };
+  return createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot));
 }
 
 function importedBuffer(graph: RenderGraphBuilder, id: string) {
@@ -302,6 +303,33 @@ describe('RenderGraphExecutor', () => {
     expect(execution.commandStats.computePasses).toBe(2);
     expect(device.queue.metrics()).toMatchObject({ submitted: 1, pending: 1 });
     device.queue.completeNextForTesting();
+  });
+
+  test('rejects a schedule that omits a retained pass before recording or submitting', () => {
+    const device = new NullDevice({ submissionMode: 'manual' });
+    let ran = false;
+    const graph = new RenderGraphBuilder();
+    graph.addPass({
+      id: 'required',
+      setup(pass) {
+        pass.sideEffect('required');
+        return {};
+      },
+      run() {
+        ran = true;
+      }
+    });
+    const plan = compile(graph);
+    const malformed = Object.freeze({
+      ...plan,
+      schedule: Object.freeze([plan.schedule[0]!, plan.schedule.at(-1)!])
+    });
+
+    expect(() => new RenderGraphExecutor().execute(malformed, { device })).toThrow(
+      /schedule does not match/i
+    );
+    expect(ran).toBe(false);
+    expect(device.queue.metrics().submitted).toBe(0);
   });
 
   test('preserves the callback error while safely closing an active pass encoder', () => {
