@@ -160,9 +160,10 @@ describe('overlay and frame orchestration', () => {
         },
         build: ({ view }) => {
           calls.push(`build:${view.id}`);
+          return { id: `${view.id}:compiled` };
         },
-        execute: ({ view }) => {
-          calls.push(`execute:${view.id}`);
+        execute: ({ view }, plan) => {
+          calls.push(`execute:${view.id}:${plan.id}`);
         }
       }
     });
@@ -171,7 +172,7 @@ describe('overlay and frame orchestration', () => {
       'queue:main',
       'sort:main',
       'build:main',
-      'execute:main',
+      'execute:main:main:compiled',
       'prepare:preview'
     ]);
     expect(metrics).toMatchObject({ prepareHits: 2, phaseItems: 2, batches: 1 });
