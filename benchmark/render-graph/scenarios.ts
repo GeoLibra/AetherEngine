@@ -8,8 +8,13 @@ import type {
 } from './types';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
-import { createRenderGraphDebugIR } from '../../src/render-graph/debug-ir';
-import type { BufferHandle } from '../../src/render-graph/types';
+import {
+  RenderGraphExecutor,
+  createRenderGraphExecutionPlan
+} from '../../src/render-graph/executor';
+import { NullDevice } from '../../src/rhi/null/device';
+import type { BufferHandle, GraphHandle } from '../../src/render-graph/types';
+import type { RHIBuffer } from '../../src/rhi/contracts';
 
 export interface RenderGraphCompilerSemantic {
   readonly orderChecksum: string;
@@ -30,6 +35,9 @@ export interface RenderGraphCompilerCounters {
   readonly aliasGroups: number;
   readonly allocations: number;
   readonly wholeResourceFallbacks: number;
+  /** Actual executor work: one boundary step per plan entry, not a per-pass graph scan. */
+  readonly executionSteps: number;
+  readonly passResolutions: number;
 }
 
 export interface RenderGraphCompilerObservation {
@@ -95,6 +103,12 @@ export function assertRenderGraphScenarioComparison(
       'RenderGraph benchmark uses exact ranges and must not fall back to whole resources.'
     );
   }
+  if (subject.counters.executionSteps !== scenario.workload.passes.length + 2) {
+    throw new Error('RenderGraph executor did not visit the closed-form schedule length.');
+  }
+  if (subject.counters.passResolutions !== scenario.workload.passes.length) {
+    throw new Error('RenderGraph executor did not resolve each retained pass exactly once.');
+  }
 }
 
 function referenceObservation(
@@ -119,7 +133,9 @@ function referenceObservation(
       temporaryIrObjects: 0,
       aliasGroups: 0,
       allocations: 0,
-      wholeResourceFallbacks: 0
+      wholeResourceFallbacks: 0,
+      executionSteps: workload.passes.length + 2,
+      passResolutions: workload.passes.length
     })
   });
 }
@@ -169,7 +185,8 @@ function subjectObservation(workload: RenderGraphWorkload): RenderGraphCompilerO
   }
   const snapshot = graph.build();
   const compiled = compileRenderGraph(snapshot);
-  const debug = createRenderGraphDebugIR(snapshot, compiled);
+  const execution = executeCompiledFixture(snapshot, compiled);
+  const debug = execution.debug;
   const relationships = uniqueRelationships(compiled.edges);
   const oracleRelationships = referenceRelationships(workload);
   const equivalentEdges = equivalentReachability(
@@ -199,8 +216,30 @@ function subjectObservation(workload: RenderGraphWorkload): RenderGraphCompilerO
       temporaryIrObjects: debug.counters.temporaryIrObjects,
       aliasGroups: debug.counters.aliasGroups,
       allocations: debug.counters.allocations,
-      wholeResourceFallbacks: compiled.counters.wholeResourceFallbacks
+      wholeResourceFallbacks: compiled.counters.wholeResourceFallbacks,
+      executionSteps: execution.executionCounters.scheduledSteps,
+      passResolutions: execution.executionCounters.passResolutions
     })
+  });
+}
+
+function executeCompiledFixture(
+  snapshot: ReturnType<RenderGraphBuilder['build']>,
+  compiled: ReturnType<typeof compileRenderGraph>
+) {
+  const device = new NullDevice();
+  const imported = new Map<GraphHandle, RHIBuffer>();
+  for (const resource of snapshot.resources) {
+    if (resource.origin.kind === 'transient') continue;
+    const handle = resource.versions[0]?.handle;
+    if (handle === undefined || resource.kind !== 'buffer') {
+      throw new Error('RenderGraph benchmark executor fixture requires an imported buffer handle.');
+    }
+    imported.set(handle, device.createBuffer({ size: resource.descriptor.size, usage: 0 }));
+  }
+  return new RenderGraphExecutor().execute(createRenderGraphExecutionPlan(snapshot, compiled), {
+    device,
+    resources: imported
   });
 }
 

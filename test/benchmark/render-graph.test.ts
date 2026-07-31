@@ -45,7 +45,9 @@ describe('render graph benchmark oracle', () => {
     expect(subject.counters).toMatchObject({
       passesVisited: 64,
       accessesExamined: 64 * 8,
-      readyOperations: 64 * 2
+      readyOperations: 64 * 2,
+      executionSteps: 64 + 2,
+      passResolutions: 64
     });
     expect(subject.counters.overlapComparisons).toBeGreaterThan(0);
     expect(subject.counters.adjacencyEntries).toBeGreaterThan(0);

@@ -4,7 +4,7 @@ import type { CompiledRenderGraph } from './compiler';
 /** Compiler-owned lifecycle boundaries and retained pass invocations for one graph submission. */
 export type RenderGraphExecutionStep =
   | { readonly kind: 'prelude' }
-  | { readonly kind: 'pass'; readonly passId: number }
+  | { readonly kind: 'pass'; readonly passId: number; readonly retainedPassIndex: number }
   | { readonly kind: 'submission' };
 
 /** The only executable representation accepted by the frame and RHI execution seams. */
@@ -30,7 +30,9 @@ export function createRenderGraphExecutionSchedule(
 ): readonly RenderGraphExecutionStep[] {
   return Object.freeze([
     Object.freeze({ kind: 'prelude' as const }),
-    ...compiled.order.map((passId) => Object.freeze({ kind: 'pass' as const, passId })),
+    ...compiled.order.map((passId, retainedPassIndex) =>
+      Object.freeze({ kind: 'pass' as const, passId, retainedPassIndex })
+    ),
     Object.freeze({ kind: 'submission' as const })
   ]);
 }
@@ -53,25 +55,54 @@ export function assertRenderGraphExecutionPlan(
 
 export function validateRenderGraphExecutionPlan(plan: RenderGraphExecutionPlan): void {
   if (plan.snapshot.graphId !== plan.compiled.graphId) {
-    throw new Error('Render graph execution plan graph id does not match its compiled schedule.');
+    throw nonCanonical('graph id does not match the compiled graph');
   }
   const snapshotPasses = new Set(plan.snapshot.passes);
-  for (const pass of plan.compiled.retainedPasses) {
+  const retainedPasses = plan.compiled.retainedPasses;
+  if (plan.compiled.order.length !== retainedPasses.length) {
+    throw nonCanonical('compiled order and retained pass counts differ');
+  }
+  for (
+    let retainedPassIndex = 0;
+    retainedPassIndex < retainedPasses.length;
+    retainedPassIndex += 1
+  ) {
+    const pass = retainedPasses[retainedPassIndex];
+    const passId = plan.compiled.order[retainedPassIndex];
+    if (pass === undefined || passId !== pass.token.passId) {
+      throw nonCanonical('compiled order does not exactly match retained pass ids');
+    }
     if (!snapshotPasses.has(pass)) {
-      throw new Error('Render graph execution plan references an unknown pass.');
+      throw nonCanonical('retained pass is absent from the graph snapshot');
     }
   }
-  const expected = createRenderGraphExecutionSchedule(plan.compiled);
-  if (
-    plan.schedule.length !== expected.length ||
-    plan.schedule.some(
-      (step, index) =>
-        step.kind !== expected[index]?.kind ||
-        (step.kind === 'pass' &&
-          (expected[index]?.kind !== 'pass' || step.passId !== expected[index].passId))
-    )
-  ) {
-    throw new Error('Render graph execution plan schedule does not match its compiled graph.');
+  const expectedLength = retainedPasses.length + 2;
+  if (!Array.isArray(plan.schedule) || plan.schedule.length !== expectedLength) {
+    throw nonCanonical('schedule length does not match retained passes');
+  }
+  for (let scheduleIndex = 0; scheduleIndex < expectedLength; scheduleIndex += 1) {
+    if (!Object.hasOwn(plan.schedule, scheduleIndex)) {
+      throw nonCanonical('schedule contains a sparse step');
+    }
+    const step = plan.schedule[scheduleIndex];
+    if (scheduleIndex === 0) {
+      if (step?.kind !== 'prelude') throw nonCanonical('schedule must begin with prelude');
+      continue;
+    }
+    if (scheduleIndex === expectedLength - 1) {
+      if (step?.kind !== 'submission') throw nonCanonical('schedule must end with submission');
+      continue;
+    }
+    const retainedPassIndex = scheduleIndex - 1;
+    const pass = retainedPasses[retainedPassIndex];
+    if (
+      step?.kind !== 'pass' ||
+      pass === undefined ||
+      step.passId !== pass.token.passId ||
+      step.retainedPassIndex !== retainedPassIndex
+    ) {
+      throw nonCanonical('schedule pass does not match its retained pass index');
+    }
   }
 }
 
@@ -79,9 +110,15 @@ export function requiredScheduledPass(
   compiled: CompiledRenderGraph,
   step: Extract<RenderGraphExecutionStep, { readonly kind: 'pass' }>
 ): GraphPassDeclaration {
-  const pass = compiled.retainedPasses.find((candidate) => candidate.token.passId === step.passId);
-  if (pass === undefined) {
-    throw new Error('Render graph execution schedule references an unknown pass.');
+  const pass = compiled.retainedPasses[step.retainedPassIndex];
+  if (pass === undefined || pass.token.passId !== step.passId) {
+    throw nonCanonical('scheduled pass cannot be resolved by retained pass index');
   }
   return pass;
+}
+
+function nonCanonical(reason: string): Error {
+  return new Error(
+    `Render graph execution plan is not a canonical render graph execution plan: ${reason}.`
+  );
 }

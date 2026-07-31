@@ -326,7 +326,7 @@ describe('RenderGraphExecutor', () => {
     });
 
     expect(() => new RenderGraphExecutor().execute(malformed, { device })).toThrow(
-      /schedule does not match/i
+      /canonical render graph execution plan/i
     );
     expect(ran).toBe(false);
     expect(device.queue.metrics().submitted).toBe(0);

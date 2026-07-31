@@ -112,12 +112,19 @@ export interface RenderGraphExecutionInputs {
 
 export interface RenderGraphExecutionDebug extends RenderGraphDebugIR {
   readonly commandStats: RHICommandStats;
+  readonly executionCounters: RenderGraphExecutionCounters;
+}
+
+export interface RenderGraphExecutionCounters {
+  readonly scheduledSteps: number;
+  readonly passResolutions: number;
 }
 
 export interface RenderGraphExecution {
   readonly commandBuffer: RHICommandBuffer;
   readonly submission: RHISubmission;
   readonly commandStats: RHICommandStats;
+  readonly executionCounters: RenderGraphExecutionCounters;
   readonly debug: RenderGraphExecutionDebug;
   readonly debugIR: RenderGraphExecutionDebug;
 }
@@ -144,11 +151,15 @@ export class RenderGraphExecutor {
     let submission: RHISubmission | undefined;
     let finished = false;
     let resources: ReadonlyMap<number, RHITexture | RHIBuffer> | undefined;
+    let scheduledSteps = 0;
+    let passResolutions = 0;
 
     try {
       this.acquireSurfaceFrames(plan, inputs, frames);
       validateRenderGraphExecutionPlan(plan);
-      for (const step of plan.schedule) {
+      for (let scheduleIndex = 0; scheduleIndex < plan.schedule.length; scheduleIndex += 1) {
+        const step = plan.schedule[scheduleIndex]!;
+        scheduledSteps++;
         if (step.kind === 'prelude') {
           resources = resolveResources(
             plan.snapshot,
@@ -166,6 +177,7 @@ export class RenderGraphExecutor {
             throw new Error('Render graph pass execution requires its prelude boundary.');
           }
           const pass = requiredScheduledPass(plan.compiled, step);
+          passResolutions++;
           const context = new RestrictedContext(
             pass.accesses,
             resources,
@@ -199,14 +211,17 @@ export class RenderGraphExecutor {
         throw new Error('Render graph execution plan is missing its submission boundary.');
       }
       const commandStats = freezeCommandStats(commandBuffer.getStats());
+      const executionCounters = Object.freeze({ scheduledSteps, passResolutions });
       const debug = Object.freeze({
         ...createRenderGraphDebugIR(plan.snapshot, plan.compiled, { schedule: plan.schedule }),
-        commandStats
+        commandStats,
+        executionCounters
       });
       return Object.freeze({
         commandBuffer,
         submission,
         commandStats,
+        executionCounters,
         debug,
         debugIR: debug
       });

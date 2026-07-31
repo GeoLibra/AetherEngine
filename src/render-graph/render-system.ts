@@ -147,6 +147,8 @@ export function compileRenderSystems(
   const active = instantiate(entries, options, knownIds);
   const graph = new RenderGraphBuilder();
   const incoming = semanticIncoming(active, knownIds);
+  // This only makes setup token availability deterministic. It never runs passes or owns culling:
+  // every relationship is immediately lowered to a RenderGraph semantic edge below.
   const ordered = stableSemanticOrder(active, incoming);
   const passTokens = new Map<string, ReturnType<RenderGraphBuilder['addPass']>>();
 
