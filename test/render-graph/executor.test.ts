@@ -277,7 +277,7 @@ describe('RenderGraphExecutor', () => {
     const graph = new RenderGraphBuilder();
     const imported = importedBuffer(graph, 'culled-import');
     const history = graph.createBuffer(BUFFER, {
-      origin: { kind: 'history', key: 'culled-history', slots: 1 },
+      origin: { kind: 'history', key: 'culled-history', slots: 2 },
       historyValid: true
     });
     const transient = graph.createTexture(TEXTURE);

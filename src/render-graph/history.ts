@@ -392,8 +392,10 @@ function validateIdentity(identity: HistoryIdentity): void {
   if (!Number.isSafeInteger(identity.deviceGeneration) || identity.deviceGeneration < 0) {
     throw new Error('History device generation must be a non-negative integer.');
   }
-  if (!Number.isSafeInteger(identity.slots) || identity.slots < 1) {
-    throw new Error('History slot count must be a positive integer.');
+  if (!Number.isSafeInteger(identity.slots) || identity.slots < 2) {
+    throw new Error(
+      'History requires at least two slots so readable and writable content are distinct.'
+    );
   }
   if (identity.key.length === 0) throw new Error('History key must not be empty.');
   if (identity.sharedScope !== undefined && identity.sharedScope.length === 0) {

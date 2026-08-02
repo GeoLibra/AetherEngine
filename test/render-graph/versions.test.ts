@@ -24,6 +24,15 @@ function mipRange(baseMipLevel: number, mipLevelCount = 1): TextureRange {
 }
 
 describe('render graph resource versions', () => {
+  test('rejects one-slot history origins because previous and next content must be distinct', () => {
+    const graph = new RenderGraphBuilder();
+
+    expect(() =>
+      graph.createTexture(textureDescriptor, {
+        origin: { kind: 'history', key: 'taa/color', slots: 1 }
+      })
+    ).toThrow(/at least two/i);
+  });
   test('whole writes create immutable initialized child versions', () => {
     const graph = new RenderGraphBuilder();
     const texture = graph.createTexture(textureDescriptor);

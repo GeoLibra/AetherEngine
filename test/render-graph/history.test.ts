@@ -44,6 +44,12 @@ function identity(device: NullDevice, changes: Partial<HistoryIdentity> = {}): H
 }
 
 describe('HistoryRegistry', () => {
+  test('rejects a one-slot identity because readable and writable history must be distinct', () => {
+    const device = new NullDevice();
+    const registry = new HistoryRegistry(device);
+
+    expect(() => registry.acquire(identity(device, { slots: 1 }))).toThrow(/at least two/i);
+  });
   test('rejects an identity that names a foreign device generation', () => {
     const device = new NullDevice();
     const foreign = new NullDevice();
@@ -56,7 +62,7 @@ describe('HistoryRegistry', () => {
     const registry = new HistoryRegistry(device);
     const historyIdentity = identity(device, {
       key: 'validity/buffer',
-      slots: 1,
+      slots: 2,
       descriptor: Object.freeze({
         kind: 'buffer',
         descriptor: Object.freeze({ size: 64, usage: 4 })
@@ -67,7 +73,7 @@ describe('HistoryRegistry', () => {
     const history = graph.createBuffer(
       { size: 64, usage: ['copy-src'] },
       {
-        origin: { kind: 'history', key: historyIdentity.key, slots: 1 },
+        origin: { kind: 'history', key: historyIdentity.key, slots: 2 },
         historyValid: true
       }
     );
@@ -97,7 +103,7 @@ describe('HistoryRegistry', () => {
     const registry = new HistoryRegistry(device);
     const historyIdentity = identity(device, {
       key: 'exposure/buffer',
-      slots: 1,
+      slots: 2,
       descriptor: Object.freeze({
         kind: 'buffer',
         descriptor: Object.freeze({ size: 64, usage: 8 })
@@ -145,12 +151,12 @@ describe('HistoryRegistry', () => {
     expect(execution.debug.resources[history.resourceId]?.history).toMatchObject({
       writableSlot: acquired.writable.slot,
       versionSlots: [{ version: 0 }, { version: 1, slot: acquired.writable.slot }],
-      slots: [
+      slots: expect.arrayContaining([
         expect.objectContaining({
           producerSubmissionId: execution.submission.id,
           pendingSubmissionIds: [execution.submission.id]
         })
-      ]
+      ])
     });
     device.queue.completeNextForTesting();
     await execution.submission.done;
@@ -302,7 +308,7 @@ describe('HistoryRegistry', () => {
   test('retires invalidated history only after every reader and producer submission is terminal', async () => {
     const device = new NullDevice({ submissionMode: 'manual' });
     const registry = new HistoryRegistry(device);
-    const sharedIdentity = identity(device, { slots: 1 });
+    const sharedIdentity = identity(device, { slots: 2 });
     const written = registry.acquire(sharedIdentity);
     const producer = device.queue.submit([]);
     registry.publish(sharedIdentity, written, producer);

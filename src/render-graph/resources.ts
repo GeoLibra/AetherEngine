@@ -456,8 +456,8 @@ function cloneAndValidateOrigin(origin: GraphResourceOrigin): GraphResourceOrigi
     });
   }
   if (!origin.key) throw new Error('History render graph resources require a non-empty key.');
-  if (!Number.isSafeInteger(origin.slots) || origin.slots <= 0) {
-    throw new Error('History render graph resources require a positive slot count.');
+  if (!Number.isSafeInteger(origin.slots) || origin.slots < 2) {
+    throw new Error('History render graph resources require at least two distinct slots.');
   }
   return Object.freeze({ ...origin });
 }

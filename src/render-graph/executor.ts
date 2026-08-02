@@ -24,11 +24,23 @@ export type {
   DeclaredRasterPass,
   RestrictedBindGroupDescriptor,
   RestrictedBindGroupEntry,
+  RestrictedBindGroup,
+  RestrictedBindGroupLayout,
   RestrictedBufferSlice,
+  RestrictedComputePipeline,
+  RestrictedComputePipelineDescriptor,
+  RestrictedComputePassEncoder,
   RestrictedPassContext,
+  RestrictedPipelineLayout,
+  RestrictedPipelineLayoutDescriptor,
   RestrictedPortableDevice,
+  RestrictedRenderPipeline,
+  RestrictedRenderPipelineDescriptor,
+  RestrictedRenderPassEncoder,
+  RestrictedSampler,
+  RestrictedShaderModule,
   RestrictedTextureView
-} from './restricted-context';
+} from './restricted-context-types';
 import type { AcquiredHistorySlot, HistoryIdentity, HistoryRegistry } from './history';
 import type { GraphHandle } from './types';
 import type { RenderGraphHistoryDebugBinding } from './debug-ir';
@@ -105,6 +117,7 @@ export class RenderGraphExecutor {
     validateRenderGraphExecutionPlan(plan);
     const frames: SurfaceBinding[] = [];
     const transientResources: TransientResource[] = [];
+    const restrictedContexts: RestrictedContext[] = [];
     const ownsPool = inputs.transientPool === undefined;
     const pool = inputs.transientPool ?? new TransientResourcePool(inputs.device);
     let encoder: ReturnType<RHIDevice['createCommandEncoder']> | undefined;
@@ -145,7 +158,12 @@ export class RenderGraphExecutor {
               activePass = undefined;
             }
           );
-          pass.run(context.publicContext());
+          restrictedContexts.push(context);
+          try {
+            pass.run(context.publicContext());
+          } finally {
+            context.close();
+          }
           if (activePass !== undefined) {
             throw new Error(
               `Render graph pass "${pass.id}" must end the active pass encoder before it returns.`
@@ -159,6 +177,7 @@ export class RenderGraphExecutor {
         commandBuffer = encoder.finish({ label: 'render-graph' });
         finished = true;
         submission = inputs.device.queue.submit([commandBuffer]);
+        for (const context of restrictedContexts) context.retireResources(submission);
         releaseTransients(pool, transientResources, submission);
         commitHistoryBindings(plan, inputs, submission);
         if (ownsPool) pool.dispose();
@@ -190,6 +209,9 @@ export class RenderGraphExecutor {
       safelyEnd(activePass);
       if (encoder !== undefined && !finished) safelyFinish(encoder);
       if (submission === undefined) safelyReleaseTransients(pool, transientResources);
+      if (submission === undefined) {
+        for (const context of restrictedContexts) context.disposeResources();
+      }
       if (submission === undefined) abandonHistoryBindings(plan, inputs);
       if (ownsPool) safelyDispose(pool);
       throw error;

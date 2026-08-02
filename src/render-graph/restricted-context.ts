@@ -1,11 +1,7 @@
 import type { GraphAccess } from './builder';
-import type { GraphRange, TextureGraphRange } from './ranges';
+import type { TextureGraphRange } from './ranges';
 import type { GraphResourceRecord } from './resources';
-import {
-  containsRange,
-  normalizeRequestedRange,
-  toViewDescriptor
-} from './executor-resource-utils';
+import { toViewDescriptor } from './executor-resource-utils';
 import type {
   BufferHandle,
   BufferRange,
@@ -16,109 +12,56 @@ import type {
   TextureUsage
 } from './types';
 import type {
-  GPUColor,
   GPUComputePassDescriptor,
-  GPULoadOp,
-  GPUStoreOp,
   RHIBindGroup,
   RHIBindGroupLayout,
-  GPUBindGroupLayoutDescriptor,
   RHIComputePassEncoder,
   RHIComputePipeline,
   RHIComputePipelineDescriptor,
   RHIDevice,
   RHIPipelineLayout,
-  GPUPipelineLayoutDescriptor,
-  RHIRenderPassEncoder,
   RHIRenderPipeline,
   RHIRenderPipelineDescriptor,
   RHISampler,
-  GPUSamplerDescriptor,
   RHIShaderModule,
-  GPUShaderModuleDescriptor,
+  GPUVertexState,
+  GPUFragmentState,
+  GPUProgrammableStage,
   RHITextureView,
   RHIBuffer,
-  RHITexture
+  RHITexture,
+  RHISubmission
 } from '../rhi/contracts';
 import type { EndableRenderPass } from './executor-cleanup';
-
-export interface DeclaredRasterColorAttachment {
-  readonly texture: TextureHandle;
-  readonly range?: TextureRange;
-  readonly loadOp: GPULoadOp;
-  readonly storeOp: GPUStoreOp;
-  readonly clearValue?: GPUColor;
-}
-
-export interface DeclaredRasterDepthStencilAttachment {
-  readonly texture: TextureHandle;
-  readonly range?: TextureRange;
-  readonly depthLoadOp?: GPULoadOp;
-  readonly depthStoreOp?: GPUStoreOp;
-  readonly depthClearValue?: number;
-  readonly stencilLoadOp?: GPULoadOp;
-  readonly stencilStoreOp?: GPUStoreOp;
-  readonly stencilClearValue?: number;
-}
-
-export interface DeclaredRasterPass {
-  readonly label?: string;
-  readonly colorAttachments: readonly DeclaredRasterColorAttachment[];
-  readonly depthStencilAttachment?: DeclaredRasterDepthStencilAttachment;
-}
-
-export interface RestrictedBindGroupEntry {
-  readonly binding: number;
-  readonly resource: RestrictedTextureView | RestrictedBufferSlice | RHISampler;
-}
-
-export interface RestrictedBindGroupDescriptor {
-  readonly label?: string;
-  readonly layout: RHIBindGroupLayout;
-  readonly entries: readonly RestrictedBindGroupEntry[];
-}
-
-/** Portable creation only: no queue, resource allocation, command encoder, native extension, or destroy. */
-export interface RestrictedPortableDevice {
-  readonly capabilities: RHIDevice['capabilities'];
-  readonly generation: RHIDevice['generation'];
-  readonly state: RHIDevice['state'];
-  readonly lost: RHIDevice['lost'];
-  createSampler(descriptor?: GPUSamplerDescriptor): RHISampler;
-  createShaderModule(descriptor: GPUShaderModuleDescriptor): RHIShaderModule;
-  createBindGroupLayout(descriptor: GPUBindGroupLayoutDescriptor): RHIBindGroupLayout;
-  createPipelineLayout(descriptor: GPUPipelineLayoutDescriptor): RHIPipelineLayout;
-  createBindGroup(descriptor: RestrictedBindGroupDescriptor): RHIBindGroup;
-  createRenderPipeline(descriptor: RHIRenderPipelineDescriptor): RHIRenderPipeline;
-  createComputePipeline(descriptor?: RHIComputePipelineDescriptor): RHIComputePipeline;
-}
-
-/** The only GPU capability visible to a user render-pass callback. */
-export interface RestrictedPassContext {
-  readonly device: RestrictedPortableDevice;
-  texture(handle: TextureHandle, usage: TextureUsage, range?: TextureRange): RestrictedTextureView;
-  buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice;
-  beginRaster(descriptor: DeclaredRasterPass): RHIRenderPassEncoder;
-  beginCompute(descriptor?: GPUComputePassDescriptor): RHIComputePassEncoder;
-  copyBufferToBuffer(
-    source: RestrictedBufferSlice,
-    destination: RestrictedBufferSlice,
-    size?: number
-  ): void;
-}
-
-/** Opaque but usable view capability; only the restricted device can lower it for binding. */
-export interface RestrictedTextureView {
-  readonly kind: 'restricted-texture-view';
-  readonly range: TextureGraphRange;
-}
-
-/** Opaque but usable slice capability; copy and binding lower exactly this declared interval. */
-export interface RestrictedBufferSlice {
-  readonly kind: 'restricted-buffer-slice';
-  readonly offset: number;
-  readonly size: number;
-}
+import {
+  lowerRestrictedComputePipeline,
+  lowerRestrictedRenderPipeline
+} from './restricted-context-lowering';
+import { resolveDeclaredResource } from './restricted-resource-resolution';
+import { RestrictedResourceOwner } from './restricted-resource-owner';
+import type {
+  DeclaredRasterPass,
+  RestrictedBindGroup,
+  RestrictedBindGroupDescriptor,
+  RestrictedBindGroupEntry,
+  RestrictedBindGroupLayout,
+  RestrictedBufferSlice,
+  RestrictedComputePassEncoder,
+  RestrictedComputePipeline,
+  RestrictedComputePipelineDescriptor,
+  RestrictedFragmentState,
+  RestrictedPassContext,
+  RestrictedPipelineLayout,
+  RestrictedPortableDevice,
+  RestrictedProgrammableStage,
+  RestrictedRenderPassEncoder,
+  RestrictedRenderPipeline,
+  RestrictedRenderPipelineDescriptor,
+  RestrictedSampler,
+  RestrictedShaderModule,
+  RestrictedTextureView,
+  RestrictedVertexState
+} from './restricted-context-types';
 
 interface TextureCapability {
   readonly view: RHITextureView;
@@ -138,7 +81,17 @@ export class RestrictedContext implements RestrictedPassContext {
   private activePass: ActivePass | undefined;
   private readonly textureCapabilities = new WeakMap<RestrictedTextureView, TextureCapability>();
   private readonly bufferCapabilities = new WeakMap<RestrictedBufferSlice, BufferCapability>();
-  private readonly bindGroups = new WeakSet<RHIBindGroup>();
+  private readonly samplers = new WeakMap<RestrictedSampler, RHISampler>();
+  private readonly shaderModules = new WeakMap<RestrictedShaderModule, RHIShaderModule>();
+  private readonly bindGroupLayouts = new WeakMap<RestrictedBindGroupLayout, RHIBindGroupLayout>();
+  private readonly pipelineLayouts = new WeakMap<RestrictedPipelineLayout, RHIPipelineLayout>();
+  private readonly bindGroups = new WeakMap<RestrictedBindGroup, RHIBindGroup>();
+  private readonly renderPipelines = new WeakMap<RestrictedRenderPipeline, RHIRenderPipeline>();
+  private readonly computePipelines = new WeakMap<RestrictedComputePipeline, RHIComputePipeline>();
+  private readonly resourceOwner = new RestrictedResourceOwner((action) =>
+    this.requireOpen(action)
+  );
+  private closed = false;
   readonly device: RestrictedPortableDevice;
 
   constructor(
@@ -164,6 +117,11 @@ export class RestrictedContext implements RestrictedPassContext {
     });
   }
 
+  /** Ends the synchronous callback capability window without disposing submission-owned objects. */
+  close(): void {
+    this.closed = true;
+  }
+
   texture(handle: TextureHandle, usage: TextureUsage, range?: TextureRange): RestrictedTextureView {
     this.requireInactive('resolve a texture');
     const resolved = this.requiredTexture(handle, usage, range);
@@ -172,14 +130,21 @@ export class RestrictedContext implements RestrictedPassContext {
       range: resolved.range
     });
     this.textureCapabilities.set(capability, {
-      view: resolved.resource.createView(toViewDescriptor(resolved.range))
+      view: this.resourceOwner.own(resolved.resource.createView(toViewDescriptor(resolved.range)))
     });
     return capability;
   }
 
   buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice {
     this.requireInactive('resolve a buffer');
-    const resolved = this.requiredResource(handle, usage, range);
+    const resolved = resolveDeclaredResource(
+      this.accesses,
+      this.resources,
+      this.resourceRecords,
+      handle,
+      usage,
+      range
+    );
     if (resolved.resource.kind !== 'buffer')
       throw new Error('Render graph buffer handle resolved to a texture.');
     if (resolved.range.kind !== 'buffer') throw new Error('Render graph buffer range is invalid.');
@@ -197,7 +162,7 @@ export class RestrictedContext implements RestrictedPassContext {
     return capability;
   }
 
-  beginRaster(descriptor: DeclaredRasterPass): RHIRenderPassEncoder {
+  beginRaster(descriptor: DeclaredRasterPass): RestrictedRenderPassEncoder {
     this.requireInactive('begin a raster pass');
     const colorAttachments = descriptor.colorAttachments.map((attachment) => ({
       view: this.textureView(attachment.texture, 'color-attachment', attachment.range),
@@ -228,12 +193,14 @@ export class RestrictedContext implements RestrictedPassContext {
         colorAttachments,
         ...(depthStencilAttachment === undefined ? {} : { depthStencilAttachment })
       })
-    );
+    ) as unknown as RestrictedRenderPassEncoder;
   }
 
-  beginCompute(descriptor: GPUComputePassDescriptor = {}): RHIComputePassEncoder {
+  beginCompute(descriptor: GPUComputePassDescriptor = {}): RestrictedComputePassEncoder {
     this.requireInactive('begin a compute pass');
-    return this.track(this.encoder.beginComputePass(descriptor));
+    return this.track(
+      this.encoder.beginComputePass(descriptor)
+    ) as unknown as RestrictedComputePassEncoder;
   }
 
   copyBufferToBuffer(
@@ -263,31 +230,132 @@ export class RestrictedContext implements RestrictedPassContext {
   }
 
   private createPortableDevice(): RestrictedPortableDevice {
-    return Object.freeze({
+    const device: RestrictedPortableDevice = {
       capabilities: this.rhiDevice.capabilities,
       generation: this.rhiDevice.generation,
       state: this.rhiDevice.state,
       lost: this.rhiDevice.lost,
-      createSampler: this.rhiDevice.createSampler.bind(this.rhiDevice),
-      createShaderModule: this.rhiDevice.createShaderModule.bind(this.rhiDevice),
-      createBindGroupLayout: this.rhiDevice.createBindGroupLayout.bind(this.rhiDevice),
-      createPipelineLayout: this.rhiDevice.createPipelineLayout.bind(this.rhiDevice),
+      createSampler: (descriptor) => {
+        this.requireOpen('create a sampler');
+        const raw = this.resourceOwner.own(this.rhiDevice.createSampler(descriptor));
+        const capability = Object.freeze({ kind: 'restricted-sampler' as const });
+        this.samplers.set(capability, raw);
+        return capability;
+      },
+      createShaderModule: (descriptor) => {
+        this.requireOpen('create a shader module');
+        const raw = this.resourceOwner.own(this.rhiDevice.createShaderModule(descriptor));
+        const capability = Object.freeze({ kind: 'restricted-shader-module' as const });
+        this.shaderModules.set(capability, raw);
+        return capability;
+      },
+      createBindGroupLayout: (descriptor) => {
+        const raw = this.resourceOwner.create('create a bind group layout', () =>
+          this.rhiDevice.createBindGroupLayout(descriptor)
+        );
+        const capability = Object.freeze({ kind: 'restricted-bind-group-layout' as const });
+        this.bindGroupLayouts.set(capability, raw);
+        return capability;
+      },
+      createPipelineLayout: (descriptor) => {
+        this.requireOpen('create a pipeline layout');
+        const raw = this.resourceOwner.own(
+          this.rhiDevice.createPipelineLayout({
+            ...(descriptor.label === undefined ? {} : { label: descriptor.label }),
+            bindGroupLayouts: descriptor.bindGroupLayouts.map((layout) =>
+              this.requiredCapability(
+                this.bindGroupLayouts,
+                layout,
+                'Bind group layout is not owned by this render graph pass.'
+              )
+            )
+          })
+        );
+        const capability = Object.freeze({ kind: 'restricted-pipeline-layout' as const });
+        this.pipelineLayouts.set(capability, raw);
+        return capability;
+      },
       createBindGroup: (descriptor: RestrictedBindGroupDescriptor) => {
+        this.requireOpen('create a bind group');
         const entries = descriptor.entries.map((entry) => ({
           binding: entry.binding,
           resource: this.bindingResource(entry.resource)
         }));
-        const bindGroup = this.rhiDevice.createBindGroup({
-          ...(descriptor.label === undefined ? {} : { label: descriptor.label }),
-          layout: descriptor.layout,
-          entries
-        });
-        this.bindGroups.add(bindGroup);
-        return bindGroup;
+        const bindGroup = this.resourceOwner.own(
+          this.rhiDevice.createBindGroup({
+            ...(descriptor.label === undefined ? {} : { label: descriptor.label }),
+            layout: this.requiredCapability(
+              this.bindGroupLayouts,
+              descriptor.layout,
+              'Bind group layout is not owned by this render graph pass.'
+            ),
+            entries
+          })
+        );
+        const capability = Object.freeze({ kind: 'restricted-bind-group' as const });
+        this.bindGroups.set(capability, bindGroup);
+        return capability;
       },
-      createRenderPipeline: this.rhiDevice.createRenderPipeline.bind(this.rhiDevice),
-      createComputePipeline: this.rhiDevice.createComputePipeline.bind(this.rhiDevice)
-    });
+      createRenderPipeline: (descriptor) => {
+        const raw = this.resourceOwner.create('create a render pipeline', () =>
+          this.rhiDevice.createRenderPipeline(
+            lowerRestrictedRenderPipeline(
+              descriptor,
+              (layout) =>
+                this.requiredCapability(
+                  this.pipelineLayouts,
+                  layout,
+                  'Pipeline layout is not owned by this render graph pass.'
+                ),
+              (module) =>
+                this.requiredCapability(
+                  this.shaderModules,
+                  module,
+                  'Shader module is not owned by this render graph pass.'
+                )
+            )
+          )
+        );
+        const capability = Object.freeze({ kind: 'restricted-render-pipeline' as const });
+        this.renderPipelines.set(capability, raw);
+        return capability;
+      },
+      createComputePipeline: (descriptor = {}) => {
+        const raw = this.resourceOwner.create('create a compute pipeline', () =>
+          this.rhiDevice.createComputePipeline(
+            lowerRestrictedComputePipeline(
+              descriptor,
+              (layout) =>
+                this.requiredCapability(
+                  this.pipelineLayouts,
+                  layout,
+                  'Pipeline layout is not owned by this render graph pass.'
+                ),
+              (module) =>
+                this.requiredCapability(
+                  this.shaderModules,
+                  module,
+                  'Shader module is not owned by this render graph pass.'
+                )
+            )
+          )
+        );
+        const capability = Object.freeze({ kind: 'restricted-compute-pipeline' as const });
+        this.computePipelines.set(capability, raw);
+        return capability;
+      }
+    };
+    return Object.freeze(device);
+  }
+
+  /** Transfers pass-local object cleanup to the accepted submission's terminal boundary. */
+  retireResources(submission: RHISubmission): void {
+    this.resourceOwner.retire(submission);
+  }
+
+  /** Cleans up objects created before a submission was accepted. */
+  disposeResources(): void {
+    this.resourceOwner.disposeBeforeSubmit();
   }
 
   private bindingResource(resource: RestrictedBindGroupEntry['resource']) {
@@ -303,7 +371,11 @@ export class RestrictedContext implements RestrictedPassContext {
         throw new Error('Buffer slice is not owned by this render graph pass.');
       return { buffer: capability.buffer, offset: capability.offset, size: capability.size };
     }
-    return resource;
+    return this.requiredCapability(
+      this.samplers,
+      resource,
+      'Sampler is not owned by this render graph pass.'
+    );
   }
 
   private track<T extends ActivePass>(pass: T): T {
@@ -321,16 +393,33 @@ export class RestrictedContext implements RestrictedPassContext {
           };
         }
         if (property === 'setBindGroup') {
-          return (index: number, bindGroup: RHIBindGroup, offsets?: readonly number[]) => {
-            if (!this.bindGroups.has(bindGroup)) {
+          return (index: number, bindGroup: RestrictedBindGroup, offsets?: readonly number[]) => {
+            const rawBindGroup = this.bindGroups.get(bindGroup);
+            if (rawBindGroup === undefined) {
               throw new Error(
                 'Render graph pass can bind only groups created by its restricted device.'
               );
             }
             return (target as unknown as RHIComputePassEncoder).setBindGroup(
               index,
-              bindGroup,
+              rawBindGroup,
               offsets
+            );
+          };
+        }
+        if (property === 'setPipeline') {
+          return (pipeline: RestrictedRenderPipeline | RestrictedComputePipeline) => {
+            const rawPipeline =
+              pipeline.kind === 'restricted-render-pipeline'
+                ? this.renderPipelines.get(pipeline)
+                : this.computePipelines.get(pipeline);
+            if (rawPipeline === undefined) {
+              throw new Error(
+                'Render graph pass can use only pipelines created by its restricted device.'
+              );
+            }
+            return (target as unknown as RHIComputePassEncoder).setPipeline(
+              rawPipeline as RHIComputePipeline
             );
           };
         }
@@ -348,7 +437,14 @@ export class RestrictedContext implements RestrictedPassContext {
     usage: TextureUsage,
     requestedRange: TextureRange | undefined
   ): { readonly resource: RHITexture; readonly range: TextureGraphRange } {
-    const resolved = this.requiredResource(handle, usage, requestedRange);
+    const resolved = resolveDeclaredResource(
+      this.accesses,
+      this.resources,
+      this.resourceRecords,
+      handle,
+      usage,
+      requestedRange
+    );
     if (resolved.resource.kind !== 'texture')
       throw new Error('Render graph texture handle resolved to a buffer.');
     if (resolved.range.kind !== 'texture')
@@ -362,48 +458,7 @@ export class RestrictedContext implements RestrictedPassContext {
     requestedRange: TextureRange | undefined
   ): RHITextureView {
     const resolved = this.requiredTexture(handle, usage, requestedRange);
-    return resolved.resource.createView(toViewDescriptor(resolved.range));
-  }
-
-  private requiredResource(
-    handle: GraphHandle,
-    usage: TextureUsage | BufferUsage,
-    requestedRange: TextureRange | BufferRange | undefined
-  ): { readonly resource: RHITexture | RHIBuffer; readonly range: GraphRange } {
-    const candidates = this.accesses.filter(
-      (candidate) => candidate.handle === handle && candidate.usage === usage
-    );
-    if (candidates.length === 0) {
-      const declared = this.accesses.some((candidate) => candidate.handle === handle);
-      throw new Error(
-        declared
-          ? `Render graph resource usage "${usage}" is not declared for this pass.`
-          : 'Render graph resource is not declared for this pass.'
-      );
-    }
-    const record = this.resourceRecords.get(handle.resourceId);
-    if (record === undefined)
-      throw new Error(`Render graph resource ${handle.resourceId} has no descriptor.`);
-    const range =
-      requestedRange === undefined
-        ? candidates.length === 1
-          ? candidates[0]!.range
-          : undefined
-        : normalizeRequestedRange(handle, requestedRange, record.descriptor);
-    if (range === undefined) {
-      throw new Error(
-        'Render graph resource has multiple declarations; an explicit range is required.'
-      );
-    }
-    if (!candidates.some((candidate) => containsRange(candidate.range, range))) {
-      throw new Error('Render graph resource range is outside this pass declaration.');
-    }
-    const resource = this.resources.get(handle);
-    if (resource === undefined)
-      throw new Error(
-        `Render graph resource ${handle.resourceId} version ${handle.version} has no physical binding.`
-      );
-    return { resource, range };
+    return this.resourceOwner.own(resolved.resource.createView(toViewDescriptor(resolved.range)));
   }
 
   private requiredBufferCapability(
@@ -419,7 +474,23 @@ export class RestrictedContext implements RestrictedPassContext {
   }
 
   private requireInactive(action: string): void {
+    this.requireOpen(action);
     if (this.activePass !== undefined)
       throw new Error(`Cannot ${action} while a render graph pass encoder is active.`);
+  }
+
+  private requireOpen(action: string): void {
+    if (this.closed)
+      throw new Error(`Cannot ${action} after the render graph pass callback ended.`);
+  }
+
+  private requiredCapability<K extends object, V>(
+    capabilities: WeakMap<K, V>,
+    capability: K,
+    message: string
+  ): V {
+    const raw = capabilities.get(capability);
+    if (raw === undefined) throw new Error(message);
+    return raw;
   }
 }
