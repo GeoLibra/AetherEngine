@@ -1,0 +1,783 @@
+{
+  "schemaVersion": 1,
+  "profile": "standard",
+  "seed": 24301,
+  "createdAt": "2026-08-02T04:54:04.256Z",
+  "environment": {
+    "node": "v24.3.0",
+    "v8": "13.6.233.10-node.18",
+    "platform": "darwin",
+    "release": "24.6.0",
+    "architecture": "arm64",
+    "cpu": "Apple M2 Pro",
+    "logicalCpuCount": 10,
+    "totalMemoryBytes": 17179869184
+  },
+  "repository": {
+    "commit": "852cafc936b32083013fb8ea127606a29535f507",
+    "dirty": false
+  },
+  "runner": {
+    "name": "render-graph",
+    "warmupCount": 10,
+    "sampleCount": 30
+  },
+  "submissionSafety": {
+    "pendingSubmissionAttempts": 1,
+    "prematureReuseCount": 0
+  },
+  "coverage": {
+    "scaleAxes": {
+      "passCounts": [
+        16,
+        128,
+        1024
+      ],
+      "resourceCounts": [
+        32,
+        256,
+        2048
+      ]
+    },
+    "workloadFamilies": [
+      {
+        "id": "whole-resource",
+        "status": "pass",
+        "counters": {
+          "timedOracleCases": 2
+        }
+      },
+      {
+        "id": "buffer-range",
+        "status": "pass",
+        "counters": {
+          "edges": 1,
+          "accesses": 2,
+          "wholeResourceFallbacks": 0
+        }
+      },
+      {
+        "id": "texture-subresource",
+        "status": "pass",
+        "counters": {
+          "edges": 1,
+          "overlapComparisons": 1,
+          "wholeResourceFallbacks": 0
+        }
+      },
+      {
+        "id": "linear-chain",
+        "status": "pass",
+        "counters": {
+          "edges": 15
+        }
+      },
+      {
+        "id": "fan-out-fan-in",
+        "status": "pass",
+        "counters": {
+          "edges": 16
+        }
+      },
+      {
+        "id": "culled-branch",
+        "status": "pass",
+        "counters": {
+          "retainedPasses": 1,
+          "culledPasses": 1
+        }
+      },
+      {
+        "id": "aliasable-lifetimes",
+        "status": "pass",
+        "counters": {
+          "logicalResources": 2,
+          "physicalAllocations": 1,
+          "aliasGroups": 1
+        }
+      }
+    ],
+    "largeScale": {
+      "seed": 24301,
+      "passCount": 1024,
+      "resourceCount": 2048,
+      "accessesExamined": 1024,
+      "retainedPasses": 1024,
+      "status": "pass"
+    }
+  },
+  "results": [
+    {
+      "scenarioId": "hazard-compile-v1",
+      "scenarioVersion": 1,
+      "seed": 24301,
+      "scale": {
+        "passCount": 16,
+        "resourceCount": 32,
+        "accessDensity": 0.25,
+        "accessesPerPass": 8
+      },
+      "axes": {
+        "topology": "seeded-hazard-dag",
+        "accessPattern": "whole-buffer"
+      },
+      "reference": {
+        "coldSampleMs": 1.1117920000000083,
+        "coldObservation": {
+          "semantic": {
+            "orderChecksum": "e4de1e85",
+            "edgeChecksum": "e17c1b23",
+            "cullChecksum": "811c9dc5",
+            "lifetimeChecksum": "b78b8503",
+            "retainedPasses": 16,
+            "culledPasses": 0,
+            "aliasChecksumEquivalent": true
+          },
+          "counters": {
+            "passesVisited": 16,
+            "accessesExamined": 128,
+            "overlapComparisons": 7680,
+            "adjacencyEntries": 91,
+            "readyOperations": 32,
+            "temporaryIrObjects": 0,
+            "aliasGroups": 0,
+            "allocations": 0,
+            "wholeResourceFallbacks": 0,
+            "executionSteps": 18,
+            "passResolutions": 16,
+            "versionCount": 32,
+            "transitionCount": 0,
+            "submissionCount": 1,
+            "commandCount": 32,
+            "subresourceKeyCount": 32,
+            "physicalAllocationCount": 0
+          }
+        },
+        "rawSamplesMs": [
+          0.33795899999995527,
+          0.3882080000000201,
+          0.36874999999997726,
+          0.5971250000000055,
+          0.3433340000000271,
+          0.3165829999999801,
+          0.3190000000000168,
+          0.3147920000000113,
+          0.31654200000002675,
+          0.3342079999999896,
+          0.3408329999999751,
+          0.32116600000000517,
+          0.3127080000000433,
+          0.32345900000001393,
+          0.32766599999996515,
+          0.3155830000000037,
+          0.31633300000004283,
+          0.33629099999996015,
+          0.3296250000000214,
+          0.3643329999999878,
+          0.3418749999999591,
+          0.35966700000000174,
+          0.3338340000000244,
+          0.3251250000000141,
+          0.31383399999998574,
+          0.31887499999999136,
+          0.3221659999999815,
+          0.5849999999999795,
+          0.31758300000001327,
+          0.3227080000000342
+        ],
+        "summary": {
+          "count": 30,
+          "min": 0.3127080000000433,
+          "max": 0.5971250000000055,
+          "mean": 0.34883883333333376,
+          "median": 0.3263954999999896,
+          "p95": 0.5849999999999795,
+          "p99": 0.5971250000000055,
+          "mad": 0.00997899999995866,
+          "p90": 0.36874999999997726
+        },
+        "warmObservation": {
+          "semantic": {
+            "orderChecksum": "e4de1e85",
+            "edgeChecksum": "e17c1b23",
+            "cullChecksum": "811c9dc5",
+            "lifetimeChecksum": "b78b8503",
+            "retainedPasses": 16,
+            "culledPasses": 0,
+            "aliasChecksumEquivalent": true
+          },
+          "counters": {
+            "passesVisited": 16,
+            "accessesExamined": 128,
+            "overlapComparisons": 7680,
+            "adjacencyEntries": 91,
+            "readyOperations": 32,
+            "temporaryIrObjects": 0,
+            "aliasGroups": 0,
+            "allocations": 0,
+            "wholeResourceFallbacks": 0,
+            "executionSteps": 18,
+            "passResolutions": 16,
+            "versionCount": 32,
+            "transitionCount": 0,
+            "submissionCount": 1,
+            "commandCount": 32,
+            "subresourceKeyCount": 32,
+            "physicalAllocationCount": 0
+          }
+        }
+      },
+      "subject": {
+        "coldSampleMs": 7.10137499999999,
+        "coldObservation": {
+          "semantic": {
+            "orderChecksum": "e4de1e85",
+            "edgeChecksum": "e17c1b23",
+            "cullChecksum": "811c9dc5",
+            "lifetimeChecksum": "b78b8503",
+            "retainedPasses": 16,
+            "culledPasses": 0,
+            "aliasChecksumEquivalent": true
+          },
+          "counters": {
+            "passesVisited": 16,
+            "accessesExamined": 128,
+            "overlapComparisons": 129,
+            "adjacencyEntries": 84,
+            "readyOperations": 32,
+            "temporaryIrObjects": 415,
+            "aliasGroups": 3,
+            "allocations": 12,
+            "wholeResourceFallbacks": 0,
+            "executionSteps": 18,
+            "passResolutions": 16,
+            "versionCount": 89,
+            "transitionCount": 67,
+            "submissionCount": 1,
+            "commandCount": 32,
+            "subresourceKeyCount": 1,
+            "physicalAllocationCount": 12
+          }
+        },
+        "rawSamplesMs": [
+          2.2423749999999814,
+          2.2553330000000074,
+          2.2377500000000055,
+          2.2615829999999733,
+          2.359291999999982,
+          2.2193750000000136,
+          2.2571250000000305,
+          2.1667080000000283,
+          2.5814169999999876,
+          2.285624999999982,
+          2.342208000000028,
+          2.500249999999994,
+          2.3791249999999877,
+          2.5377920000000245,
+          2.275915999999995,
+          2.1623749999999973,
+          2.143333000000041,
+          2.4074170000000095,
+          2.572166999999979,
+          2.2528749999999604,
+          2.421791999999982,
+          2.2594159999999874,
+          2.366874999999993,
+          2.6322909999999524,
+          2.2700829999999996,
+          2.195959000000016,
+          2.156916000000024,
+          2.217041999999992,
+          2.212792000000036,
+          2.1626249999999914
+        ],
+        "summary": {
+          "count": 30,
+          "min": 2.143333000000041,
+          "max": 2.6322909999999524,
+          "mean": 2.3111943999999993,
+          "median": 2.2604994999999803,
+          "p95": 2.5814169999999876,
+          "p99": 2.6322909999999524,
+          "mad": 0.08774999999999977,
+          "p90": 2.5377920000000245
+        },
+        "warmObservation": {
+          "semantic": {
+            "orderChecksum": "e4de1e85",
+            "edgeChecksum": "e17c1b23",
+            "cullChecksum": "811c9dc5",
+            "lifetimeChecksum": "b78b8503",
+            "retainedPasses": 16,
+            "culledPasses": 0,
+            "aliasChecksumEquivalent": true
+          },
+          "counters": {
+            "passesVisited": 16,
+            "accessesExamined": 128,
+            "overlapComparisons": 129,
+            "adjacencyEntries": 84,
+            "readyOperations": 32,
+            "temporaryIrObjects": 415,
+            "aliasGroups": 3,
+            "allocations": 12,
+            "wholeResourceFallbacks": 0,
+            "executionSteps": 18,
+            "passResolutions": 16,
+            "versionCount": 89,
+            "transitionCount": 67,
+            "submissionCount": 1,
+            "commandCount": 32,
+            "subresourceKeyCount": 1,
+            "physicalAllocationCount": 12
+          }
+        }
+      },
+      "phases": {
+        "compile": {
+          "rawSamplesMs": [
+            1.0753750000000082,
+            1.0615000000000236,
+            1.1075409999999692,
+            1.0894999999999868,
+            1.0855829999999855,
+            1.0950829999999883,
+            1.06820799999997,
+            1.1218339999999785,
+            1.8759589999999662,
+            1.108874999999955,
+            1.0769580000000474,
+            1.0524580000000014,
+            1.0620000000000118,
+            1.0734579999999596,
+            1.0888340000000198,
+            1.061333999999988,
+            1.0684160000000134,
+            1.0613329999999905,
+            1.0694160000000466,
+            1.0522920000000227,
+            1.0495420000000308,
+            1.381083999999987,
+            1.1833750000000123,
+            1.139458999999988,
+            1.094333000000006,
+            1.1336670000000026,
+            1.0796250000000214,
+            1.088374999999985,
+            1.0849159999999642,
+            1.075084000000004
+          ],
+          "summary": {
+            "count": 30,
+            "min": 1.0495420000000308,
+            "max": 1.8759589999999662,
+            "mean": 1.1221805666666644,
+            "median": 1.0822704999999928,
+            "p95": 1.381083999999987,
+            "p99": 1.8759589999999662,
+            "mad": 0.01716650000000186,
+            "p90": 1.139458999999988
+          },
+          "checksum": "66b0756f",
+          "counters": {
+            "passes": 16,
+            "edges": 129,
+            "transitions": 67,
+            "versions": 89
+          }
+        },
+        "execute": {
+          "rawSamplesMs": [
+            0.8455830000000333,
+            0.8562919999999963,
+            0.8442080000000374,
+            0.9024589999999648,
+            0.921957999999961,
+            1.174250000000029,
+            0.8302080000000274,
+            0.8183750000000032,
+            0.821708000000001,
+            0.8947079999999801,
+            0.9180000000000064,
+            0.8559169999999767,
+            0.8830829999999992,
+            0.8629999999999995,
+            0.8146669999999858,
+            0.869041999999979,
+            0.8863329999999792,
+            0.8437079999999924,
+            1.0817499999999995,
+            0.8387500000000045,
+            0.8645840000000362,
+            0.8490409999999997,
+            0.8763749999999959,
+            0.8582499999999982,
+            0.8622080000000096,
+            0.8355000000000246,
+            0.8747079999999983,
+            0.81737499999997,
+            0.8402919999999767,
+            0.8611250000000155
+          ],
+          "summary": {
+            "count": 30,
+            "min": 0.8146669999999858,
+            "max": 1.174250000000029,
+            "mean": 0.8767818999999993,
+            "median": 0.8596875000000068,
+            "p95": 1.0817499999999995,
+            "p99": 1.174250000000029,
+            "mad": 0.020166500000016185,
+            "p90": 0.9180000000000064
+          },
+          "checksum": "15f14e0f",
+          "counters": {
+            "submissions": 1,
+            "commands": 32,
+            "physicalAllocations": 12,
+            "scheduledSteps": 18
+          }
+        }
+      },
+      "correctness": {
+        "status": "pass"
+      }
+    },
+    {
+      "scenarioId": "hazard-compile-v1",
+      "scenarioVersion": 1,
+      "seed": 24302,
+      "scale": {
+        "passCount": 128,
+        "resourceCount": 256,
+        "accessDensity": 0.0625,
+        "accessesPerPass": 16
+      },
+      "axes": {
+        "topology": "seeded-hazard-dag",
+        "accessPattern": "whole-buffer"
+      },
+      "reference": {
+        "coldSampleMs": 71.42791699999992,
+        "coldObservation": {
+          "semantic": {
+            "orderChecksum": "5261fc95",
+            "edgeChecksum": "37f2ceee",
+            "cullChecksum": "811c9dc5",
+            "lifetimeChecksum": "82d84947",
+            "retainedPasses": 128,
+            "culledPasses": 0,
+            "aliasChecksumEquivalent": true
+          },
+          "counters": {
+            "passesVisited": 128,
+            "accessesExamined": 2048,
+            "overlapComparisons": 2080768,
+            "adjacencyEntries": 4461,
+            "readyOperations": 256,
+            "temporaryIrObjects": 0,
+            "aliasGroups": 0,
+            "allocations": 0,
+            "wholeResourceFallbacks": 0,
+            "executionSteps": 130,
+            "passResolutions": 128,
+            "versionCount": 256,
+            "transitionCount": 0,
+            "submissionCount": 1,
+            "commandCount": 256,
+            "subresourceKeyCount": 256,
+            "physicalAllocationCount": 0
+          }
+        },
+        "rawSamplesMs": [
+          67.15029099999992,
+          65.98925000000008,
+          65.5558329999999,
+          68.01145799999995,
+          65.96404100000018,
+          73.51150000000007,
+          66.21383300000025,
+          66.06637500000033,
+          65.87837500000023,
+          65.40045800000007,
+          65.97141699999975,
+          65.82316700000047,
+          65.58308399999987,
+          66.2202500000003,
+          65.94154200000048,
+          66.21112499999981,
+          66.37520900000072,
+          68.54154199999994,
+          66.44425000000047,
+          66.57354200000009,
+          66.19899999999961,
+          68.22087499999998,
+          66.05058400000053,
+          66.22674999999981,
+          65.89437499999985,
+          66.00262500000008,
+          66.10133299999961,
+          66.06466700000055,
+          66.18291700000009,
+          66.34095799999977
+        ],
+        "summary": {
+          "count": 30,
+          "min": 65.40045800000007,
+          "max": 73.51150000000007,
+          "mean": 66.55702086666676,
+          "median": 66.14212499999985,
+          "p95": 68.54154199999994,
+          "p99": 73.51150000000007,
+          "mad": 0.19970799999964584,
+          "p90": 68.01145799999995
+        },
+        "warmObservation": {
+          "semantic": {
+            "orderChecksum": "5261fc95",
+            "edgeChecksum": "37f2ceee",
+            "cullChecksum": "811c9dc5",
+            "lifetimeChecksum": "82d84947",
+            "retainedPasses": 128,
+            "culledPasses": 0,
+            "aliasChecksumEquivalent": true
+          },
+          "counters": {
+            "passesVisited": 128,
+            "accessesExamined": 2048,
+            "overlapComparisons": 2080768,
+            "adjacencyEntries": 4461,
+            "readyOperations": 256,
+            "temporaryIrObjects": 0,
+            "aliasGroups": 0,
+            "allocations": 0,
+            "wholeResourceFallbacks": 0,
+            "executionSteps": 130,
+            "passResolutions": 128,
+            "versionCount": 256,
+            "transitionCount": 0,
+            "submissionCount": 1,
+            "commandCount": 256,
+            "subresourceKeyCount": 256,
+            "physicalAllocationCount": 0
+          }
+        }
+      },
+      "subject": {
+        "coldSampleMs": 117.51191600000004,
+        "coldObservation": {
+          "semantic": {
+            "orderChecksum": "5261fc95",
+            "edgeChecksum": "37f2ceee",
+            "cullChecksum": "811c9dc5",
+            "lifetimeChecksum": "82d84947",
+            "retainedPasses": 128,
+            "culledPasses": 0,
+            "aliasChecksumEquivalent": true
+          },
+          "counters": {
+            "passesVisited": 128,
+            "accessesExamined": 2048,
+            "overlapComparisons": 4876,
+            "adjacencyEntries": 3771,
+            "readyOperations": 256,
+            "temporaryIrObjects": 8195,
+            "aliasGroups": 6,
+            "allocations": 121,
+            "wholeResourceFallbacks": 0,
+            "executionSteps": 130,
+            "passResolutions": 128,
+            "versionCount": 1281,
+            "transitionCount": 1014,
+            "submissionCount": 1,
+            "commandCount": 256,
+            "subresourceKeyCount": 1,
+            "physicalAllocationCount": 121
+          }
+        },
+        "rawSamplesMs": [
+          112.93937499999993,
+          112.56833300000017,
+          113.15370899999971,
+          112.68770799999993,
+          111.56391699999995,
+          117.47762499999999,
+          121.40720800000008,
+          117.08070800000041,
+          114.64074999999957,
+          113.57816700000058,
+          113.543541,
+          114.22791599999982,
+          118.39750000000004,
+          116.24862500000017,
+          113.72375000000011,
+          112.46329199999946,
+          113.55966699999954,
+          117.13441700000021,
+          112.65904099999989,
+          117.3647919999994,
+          113.6332910000001,
+          116.51366700000017,
+          113.3550839999998,
+          114.17075000000023,
+          116.73133299999972,
+          116.07562499999949,
+          113.52283299999999,
+          113.26654099999996,
+          114.68604200000027,
+          111.67299999999977
+        ],
+        "summary": {
+          "count": 30,
+          "min": 111.56391699999995,
+          "max": 121.40720800000008,
+          "mean": 114.66827356666661,
+          "median": 113.6785205000001,
+          "p95": 118.39750000000004,
+          "p99": 121.40720800000008,
+          "mad": 1.013500500000191,
+          "p90": 117.3647919999994
+        },
+        "warmObservation": {
+          "semantic": {
+            "orderChecksum": "5261fc95",
+            "edgeChecksum": "37f2ceee",
+            "cullChecksum": "811c9dc5",
+            "lifetimeChecksum": "82d84947",
+            "retainedPasses": 128,
+            "culledPasses": 0,
+            "aliasChecksumEquivalent": true
+          },
+          "counters": {
+            "passesVisited": 128,
+            "accessesExamined": 2048,
+            "overlapComparisons": 4876,
+            "adjacencyEntries": 3771,
+            "readyOperations": 256,
+            "temporaryIrObjects": 8195,
+            "aliasGroups": 6,
+            "allocations": 121,
+            "wholeResourceFallbacks": 0,
+            "executionSteps": 130,
+            "passResolutions": 128,
+            "versionCount": 1281,
+            "transitionCount": 1014,
+            "submissionCount": 1,
+            "commandCount": 256,
+            "subresourceKeyCount": 1,
+            "physicalAllocationCount": 121
+          }
+        }
+      },
+      "phases": {
+        "compile": {
+          "rawSamplesMs": [
+            50.26891700000124,
+            48.56929200000013,
+            49.226040999999896,
+            54.06145800000013,
+            48.27141699999993,
+            51.25316700000076,
+            49.409333999999944,
+            49.009500000000116,
+            48.68333299999904,
+            47.99970900000153,
+            49.2997919999998,
+            49.00091599999905,
+            49.3207910000001,
+            48.58137499999975,
+            53.17120799999975,
+            52.24095900000066,
+            48.781582999999955,
+            49.4749580000007,
+            49.09291699999994,
+            49.00120799999968,
+            48.65033399999993,
+            49.61079199999949,
+            49.1048750000009,
+            49.6825000000008,
+            51.2300839999989,
+            49.047834000000876,
+            47.9046670000007,
+            48.70024999999987,
+            48.7807499999999,
+            48.085541999998895
+          ],
+          "summary": {
+            "count": 30,
+            "min": 47.9046670000007,
+            "max": 54.06145800000013,
+            "mean": 49.517183433333415,
+            "median": 49.07037550000041,
+            "p95": 53.17120799999975,
+            "p99": 54.06145800000013,
+            "mad": 0.4123120000003837,
+            "p90": 51.25316700000076
+          },
+          "checksum": "e620268b",
+          "counters": {
+            "passes": 128,
+            "edges": 4876,
+            "transitions": 1014,
+            "versions": 1281
+          }
+        },
+        "execute": {
+          "rawSamplesMs": [
+            24.159083000000464,
+            23.787125000000742,
+            23.670625000000655,
+            23.43395799999962,
+            24.084124999999403,
+            24.56029099999978,
+            23.904167000000598,
+            23.949375000000146,
+            23.938916999999492,
+            23.508083000000624,
+            26.54162499999984,
+            23.319084000000657,
+            26.002457999999024,
+            24.533040999998775,
+            23.72783299999901,
+            23.165458999999828,
+            24.010707999999795,
+            23.651582999998936,
+            23.502415999999357,
+            23.20062499999949,
+            23.878458999999566,
+            23.968708000000333,
+            23.818624999999884,
+            23.366667000000234,
+            24.03166600000077,
+            23.754000000000815,
+            23.377958000000945,
+            23.436290999999983,
+            23.402124999998705,
+            23.68787500000144
+          ],
+          "summary": {
+            "count": 30,
+            "min": 23.165458999999828,
+            "max": 26.54162499999984,
+            "mean": 23.912431833333297,
+            "median": 23.77056250000078,
+            "p95": 26.002457999999024,
+            "p99": 26.54162499999984,
+            "mad": 0.2653130000007877,
+            "p90": 24.533040999998775
+          },
+          "checksum": "76b8e67f",
+          "counters": {
+            "submissions": 1,
+            "commands": 256,
+            "physicalAllocations": 121,
+            "scheduledSteps": 130
+          }
+        }
+      },
+      "correctness": {
+        "status": "pass"
+      }
+    }
+  ]
+}
