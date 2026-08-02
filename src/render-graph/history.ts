@@ -29,11 +29,26 @@ export interface HistoryIdentity {
   readonly policy?: string;
 }
 
-export interface AcquiredHistorySlot {
+export interface HistoryReadableSlot {
   readonly handle: TransientResource;
-  readonly valid: boolean;
   readonly slot: number;
+  readonly valid: true;
+  readonly invalidationReason: undefined;
+}
+
+export interface HistoryWritableSlot {
+  readonly handle: TransientResource;
+  readonly slot: number;
+  readonly valid: false;
   readonly invalidationReason: HistoryInvalidationReason | undefined;
+}
+
+/** One frame's explicit previous-content input and distinct reserved next-content output. */
+export interface AcquiredHistorySlot {
+  readonly readable: HistoryReadableSlot | undefined;
+  readonly writable: HistoryWritableSlot;
+  /** Opaque registry-owned reservation identity used to reject stale execution bindings. */
+  readonly reservationId: number;
 }
 
 export interface HistorySlotDebugState {
@@ -51,6 +66,8 @@ interface HistorySlot {
   producerSubmissionId: number | undefined;
   valid: boolean;
   invalidationReason: HistoryInvalidationReason | undefined;
+  publicationOrder: number;
+  reservationId: number | undefined;
   retired: boolean;
 }
 
@@ -59,6 +76,8 @@ interface HistoryRecord {
   readonly configuration: string;
   readonly slots: HistorySlot[];
   nextSlot: number;
+  nextPublicationOrder: number;
+  activeReservationId: number | undefined;
   retired: boolean;
 }
 
@@ -66,6 +85,7 @@ interface HistoryRecord {
 export class HistoryRegistry {
   private readonly records = new Map<string, HistoryRecord>();
   private readonly nextInvalidation = new Map<string, HistoryInvalidationReason>();
+  private nextReservationId = 1;
 
   constructor(private readonly device: RHIDevice) {
     void device.lost.then(() => this.invalidateAll('device-lost'));
@@ -95,26 +115,44 @@ export class HistoryRegistry {
       this.records.set(key, record);
     }
 
-    const slot = writableSlot(record);
-    if (slot === undefined) throw new Error(`History "${identity.key}" has no writable slots.`);
-    return Object.freeze({
-      handle: slot.handle,
-      valid: slot.valid,
-      slot: record.slots.indexOf(slot),
-      invalidationReason: slot.valid ? undefined : slot.invalidationReason
-    });
+    if (record.activeReservationId !== undefined) {
+      return acquisitionFor(record, record.activeReservationId);
+    }
+    const readable = readableSlot(record);
+    const writable = writableSlot(record, readable?.slot);
+    if (writable === undefined) throw new Error(`History "${identity.key}" has no writable slots.`);
+    const reservationId = this.nextReservationId++;
+    writable.slotState.reservationId = reservationId;
+    record.activeReservationId = reservationId;
+    return acquisitionFor(record, reservationId);
   }
 
-  publish(identity: HistoryIdentity, slotIndex: number, submission: RHISubmission): void {
+  publish(
+    identity: HistoryIdentity,
+    acquired: AcquiredHistorySlot,
+    submission: RHISubmission
+  ): void {
     const record = this.requiredRecord(identity);
-    const slot = record.slots[slotIndex];
-    if (slot === undefined) throw new Error(`History slot ${slotIndex} does not exist.`);
+    this.assertAcquiredBinding(identity, acquired);
+    const slotIndex = acquired.writable.slot;
+    const slot = record.slots[slotIndex] as HistorySlot;
     if (slot.retainingSubmissionIds.size > 0)
       throw new Error(`History slot ${slotIndex} is still pending.`);
 
     slot.producerSubmissionId = submission.id;
+    slot.publicationOrder = record.nextPublicationOrder++;
+    slot.valid = true;
+    slot.invalidationReason = undefined;
+    this.releaseReservation(record, acquired.reservationId);
     this.retain(identity, slotIndex, submission);
     record.nextSlot = (slotIndex + 1) % record.slots.length;
+  }
+
+  /** Releases an output reservation when a frame does not submit a new history value. */
+  abandon(identity: HistoryIdentity, acquired: AcquiredHistorySlot): void {
+    const record = this.requiredRecord(identity);
+    this.assertAcquiredBinding(identity, acquired);
+    this.releaseReservation(record, acquired.reservationId);
   }
 
   retain(identity: HistoryIdentity, slotIndex: number, submission: RHISubmission): void {
@@ -172,12 +210,20 @@ export class HistoryRegistry {
   /** Verifies that an execution binding is the exact slot acquired from this registry. */
   assertAcquiredBinding(identity: HistoryIdentity, acquired: AcquiredHistorySlot): void {
     const record = this.requiredRecord(identity);
-    const slot = record.slots[acquired.slot];
+    const writable = record.slots[acquired.writable.slot];
+    const readable = readableSlot(record);
+    const readableMatches =
+      acquired.readable === undefined
+        ? readable === undefined
+        : readable !== undefined &&
+          acquired.readable.slot === readable.slot &&
+          acquired.readable.handle === readable.slotState.handle;
     if (
-      slot === undefined ||
-      slot.handle !== acquired.handle ||
-      slot.valid !== acquired.valid ||
-      (slot.valid ? undefined : slot.invalidationReason) !== acquired.invalidationReason
+      writable === undefined ||
+      writable.handle !== acquired.writable.handle ||
+      writable.reservationId !== acquired.reservationId ||
+      record.activeReservationId !== acquired.reservationId ||
+      !readableMatches
     ) {
       throw new Error('History execution binding does not match its acquired registry slot.');
     }
@@ -206,9 +252,13 @@ export class HistoryRegistry {
         producerSubmissionId: undefined,
         valid: false,
         invalidationReason: reason,
+        publicationOrder: -1,
+        reservationId: undefined,
         retired: false
       })),
       nextSlot: 0,
+      nextPublicationOrder: 0,
+      activeReservationId: undefined,
       retired: false
     };
   }
@@ -229,11 +279,7 @@ export class HistoryRegistry {
   ): void {
     if (!slot.retainingSubmissionIds.delete(submissionId)) return;
     if (slot.producerSubmissionId === submissionId) {
-      slot.producerSubmissionId = undefined;
-      if (result.status === 'completed' && !record.retired) {
-        slot.valid = true;
-        slot.invalidationReason = undefined;
-      } else {
+      if (result.status !== 'completed' || record.retired) {
         slot.valid = false;
         slot.invalidationReason =
           result.status === 'device-lost' ? 'device-lost' : 'submission-failed';
@@ -245,9 +291,11 @@ export class HistoryRegistry {
   private retireRecord(record: HistoryRecord): void {
     if (record.retired) return;
     record.retired = true;
+    record.activeReservationId = undefined;
     for (const slot of record.slots) {
       slot.retired = true;
       slot.valid = false;
+      slot.reservationId = undefined;
       if (slot.retainingSubmissionIds.size === 0) slot.handle.dispose();
     }
   }
@@ -259,15 +307,76 @@ export class HistoryRegistry {
       this.nextInvalidation.set(key, reason);
     }
   }
+
+  private releaseReservation(record: HistoryRecord, reservationId: number): void {
+    const slot = record.slots.find((candidate) => candidate.reservationId === reservationId);
+    if (slot === undefined || record.activeReservationId !== reservationId) {
+      throw new Error('History output reservation is no longer active.');
+    }
+    slot.reservationId = undefined;
+    record.activeReservationId = undefined;
+  }
 }
 
-function writableSlot(record: HistoryRecord): HistorySlot | undefined {
+interface IndexedHistorySlot {
+  readonly slot: number;
+  readonly slotState: HistorySlot;
+}
+
+function readableSlot(record: HistoryRecord): IndexedHistorySlot | undefined {
+  let latest: IndexedHistorySlot | undefined;
+  for (let index = 0; index < record.slots.length; index += 1) {
+    const slot = record.slots[index] as HistorySlot;
+    if (!slot.valid || slot.retired) continue;
+    if (latest === undefined || slot.publicationOrder > latest.slotState.publicationOrder) {
+      latest = { slot: index, slotState: slot };
+    }
+  }
+  return latest;
+}
+
+function writableSlot(
+  record: HistoryRecord,
+  readableSlotIndex: number | undefined
+): IndexedHistorySlot | undefined {
   for (let offset = 0; offset < record.slots.length; offset += 1) {
     const index = (record.nextSlot + offset) % record.slots.length;
     const slot = record.slots[index];
-    if (slot !== undefined && !slot.retired && slot.retainingSubmissionIds.size === 0) return slot;
+    if (
+      slot !== undefined &&
+      index !== readableSlotIndex &&
+      !slot.retired &&
+      slot.reservationId === undefined &&
+      slot.retainingSubmissionIds.size === 0
+    )
+      return { slot: index, slotState: slot };
   }
   return undefined;
+}
+
+function acquisitionFor(record: HistoryRecord, reservationId: number): AcquiredHistorySlot {
+  const writable = record.slots.findIndex((slot) => slot.reservationId === reservationId);
+  const writableState = record.slots[writable];
+  if (writableState === undefined) throw new Error('History output reservation is missing.');
+  const readable = readableSlot(record);
+  return Object.freeze({
+    readable:
+      readable === undefined
+        ? undefined
+        : Object.freeze({
+            handle: readable.slotState.handle,
+            slot: readable.slot,
+            valid: true as const,
+            invalidationReason: undefined
+          }),
+    writable: Object.freeze({
+      handle: writableState.handle,
+      slot: writable,
+      valid: false as const,
+      invalidationReason: writableState.invalidationReason
+    }),
+    reservationId
+  });
 }
 
 function createResource(

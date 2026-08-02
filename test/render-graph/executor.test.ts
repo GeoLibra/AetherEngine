@@ -147,9 +147,15 @@ describe('RenderGraphExecutor', () => {
       'beginCompute',
       'beginRaster',
       'buffer',
+      'copyBufferToBuffer',
+      'device',
       'texture'
     ]);
-    expect((context as unknown as Record<string, unknown>).device).toBeUndefined();
+    expect((context as unknown as Record<string, unknown>).device).toBeDefined();
+    expect((context as unknown as Record<string, unknown>).device).not.toHaveProperty('queue');
+    expect((context as unknown as Record<string, unknown>).device).not.toHaveProperty(
+      'createCommandEncoder'
+    );
     expect((context as unknown as Record<string, unknown>).queue).toBeUndefined();
   });
 

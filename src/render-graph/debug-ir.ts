@@ -15,10 +15,20 @@ import {
 } from './lifetimes';
 import type { HistorySlotDebugState } from './history';
 
+export interface RenderGraphHistoryDebugBinding {
+  readonly readableSlot: number | undefined;
+  readonly writableSlot: number;
+  readonly versionSlots: readonly {
+    readonly version: number;
+    readonly slot: number | undefined;
+  }[];
+  readonly slots: readonly HistorySlotDebugState[];
+}
+
 export interface RenderGraphDebugIROptions extends AliasPlanningOptions {
   readonly submissionIndex?: number;
   readonly schedule?: readonly RenderGraphExecutionStep[];
-  readonly historyStates?: ReadonlyMap<number, HistorySlotDebugState>;
+  readonly historyStates?: ReadonlyMap<number, RenderGraphHistoryDebugBinding>;
 }
 
 export interface RenderGraphDebugPass {
@@ -38,7 +48,7 @@ export interface RenderGraphDebugResource {
   readonly disposition: 'internal' | 'exported' | 'present';
   readonly historyValid: boolean;
   readonly versions: readonly unknown[];
-  readonly history?: HistorySlotDebugState;
+  readonly history?: RenderGraphHistoryDebugBinding;
 }
 
 export interface RenderGraphDebugIR {

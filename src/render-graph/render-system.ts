@@ -152,20 +152,20 @@ export function compileRenderSystems(
   const active = instantiate(entries, options, knownIds);
   const graph = new RenderGraphBuilder();
   const incoming = semanticIncoming(active, knownIds);
-  // This only makes setup token availability deterministic. It never runs passes or owns culling:
-  // every relationship is immediately lowered to a RenderGraph semantic edge below.
-  const ordered = stableSemanticOrder(active, incoming);
-  const passTokens = new Map<string, ReturnType<RenderGraphBuilder['addPass']>>();
+  const passTokens = new Map(
+    active.map((instance) => [instance.instanceId, graph.reservePass(instance.instanceId)])
+  );
 
-  for (const instance of ordered) {
+  for (const instance of active) {
     const setupContext = setupContextFor(instance);
-    const token = graph.addPass<unknown, RestrictedPassContext>({
+    const token = passTokens.get(instance.instanceId);
+    if (token === undefined) throw new Error('Render system pass reservation is missing.');
+    graph.definePass<unknown, RestrictedPassContext>(token, {
       id: instance.instanceId,
       setup(pass) {
         for (const predecessor of incoming.get(instance.instanceId) ?? []) {
           const passToken = passTokens.get(predecessor);
-          if (passToken === undefined)
-            throw new Error('Render system semantic order is incomplete.');
+          if (passToken === undefined) throw new Error('Render system semantic token is missing.');
           pass.after(passToken);
         }
         return instance.descriptor.setup(pass, setupContext);
@@ -174,7 +174,6 @@ export function compileRenderSystems(
         instance.descriptor.run(context, resources, instance.query);
       }
     });
-    passTokens.set(instance.instanceId, token);
   }
 
   const snapshot = graph.build();
@@ -294,45 +293,6 @@ function semanticIncoming(
   return new Map(
     [...incoming].map(([id, predecessors]) => [id, Object.freeze(unique(predecessors))])
   );
-}
-
-function stableSemanticOrder(
-  instances: readonly ActiveRenderSystemInstance[],
-  incoming: ReadonlyMap<string, readonly string[]>
-): readonly ActiveRenderSystemInstance[] {
-  const byId = new Map(instances.map((instance) => [instance.instanceId, instance]));
-  const indegree = new Map(instances.map((instance) => [instance.instanceId, 0]));
-  const outgoing = new Map<string, string[]>();
-  for (const [id, predecessors] of incoming) {
-    indegree.set(id, predecessors.length);
-    for (const predecessor of predecessors) {
-      const targets = outgoing.get(predecessor) ?? [];
-      targets.push(id);
-      outgoing.set(predecessor, targets);
-    }
-  }
-  const ready = instances
-    .filter((instance) => indegree.get(instance.instanceId) === 0)
-    .sort(compareInstances);
-  const order: ActiveRenderSystemInstance[] = [];
-  while (ready.length > 0) {
-    const current = ready.shift() as ActiveRenderSystemInstance;
-    order.push(current);
-    for (const target of outgoing.get(current.instanceId) ?? []) {
-      const next = (indegree.get(target) ?? 0) - 1;
-      indegree.set(target, next);
-      if (next === 0) {
-        const instance = byId.get(target);
-        if (instance === undefined)
-          throw new Error('Render system semantic edge references an unknown instance.');
-        ready.push(instance);
-        ready.sort(compareInstances);
-      }
-    }
-  }
-  if (order.length !== instances.length)
-    throw new Error('Render system semantic constraints contain a cycle.');
-  return order;
 }
 
 function setupContextFor(instance: ActiveRenderSystemInstance): RenderSystemSetupContext<unknown> {
@@ -458,14 +418,4 @@ function assertId(id: string, name: string): void {
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
-}
-
-function compareInstances(
-  first: ActiveRenderSystemInstance,
-  second: ActiveRenderSystemInstance
-): number {
-  return (
-    first.registrationIndex - second.registrationIndex ||
-    first.instanceId.localeCompare(second.instanceId)
-  );
 }

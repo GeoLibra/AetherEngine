@@ -109,7 +109,7 @@ describe('HistoryRegistry', () => {
       { size: 64, usage: ['copy-dst'] },
       {
         origin: { kind: 'history', key: historyIdentity.key, slots: historyIdentity.slots },
-        historyValid: acquired.valid
+        historyValid: acquired.readable !== undefined
       }
     );
     graph.addPass({
@@ -143,9 +143,14 @@ describe('HistoryRegistry', () => {
       pendingSubmissionIds: [execution.submission.id]
     });
     expect(execution.debug.resources[history.resourceId]?.history).toMatchObject({
-      slot: acquired.slot,
-      producerSubmissionId: execution.submission.id,
-      pendingSubmissionIds: [execution.submission.id]
+      writableSlot: acquired.writable.slot,
+      versionSlots: [{ version: 0 }, { version: 1, slot: acquired.writable.slot }],
+      slots: [
+        expect.objectContaining({
+          producerSubmissionId: execution.submission.id,
+          pendingSubmissionIds: [execution.submission.id]
+        })
+      ]
     });
     device.queue.completeNextForTesting();
     await execution.submission.done;
@@ -159,16 +164,25 @@ describe('HistoryRegistry', () => {
     const registry = new HistoryRegistry(device);
     const first = registry.acquire(identity(device));
 
-    expect(first).toMatchObject({ slot: 0, valid: false, invalidationReason: 'new' });
-    expect(registry.acquire(identity(device)).slot).toBe(0);
+    expect(first).toMatchObject({
+      readable: undefined,
+      writable: { slot: 0, valid: false, invalidationReason: 'new' }
+    });
+    expect(registry.acquire(identity(device)).writable.slot).toBe(0);
 
     const submission = device.queue.submit([]);
-    registry.publish(identity(device), first.slot, submission);
+    registry.publish(identity(device), first, submission);
 
-    expect(registry.acquire(identity(device))).toMatchObject({ slot: 1, valid: false });
+    expect(registry.acquire(identity(device))).toMatchObject({
+      readable: { slot: 0, valid: true },
+      writable: { slot: 1, valid: false }
+    });
     device.queue.completeNextForTesting();
     await submission.done;
-    expect(registry.acquire(identity(device))).toMatchObject({ slot: 1, valid: false });
+    expect(registry.acquire(identity(device))).toMatchObject({
+      readable: { slot: 0, valid: true },
+      writable: { slot: 1, valid: false }
+    });
   });
 
   test('withholds publication when real compile, encode, and submit paths reject', () => {
@@ -209,14 +223,17 @@ describe('HistoryRegistry', () => {
     const registry = new HistoryRegistry(device);
     const first = registry.acquire(identity(device));
     const firstSubmission = device.queue.submit([]);
-    registry.publish(identity(device), first.slot, firstSubmission);
+    registry.publish(identity(device), first, firstSubmission);
     const second = registry.acquire(identity(device));
     const secondSubmission = device.queue.submit([]);
-    registry.publish(identity(device), second.slot, secondSubmission);
+    registry.publish(identity(device), second, secondSubmission);
 
     device.queue.completeNextForTesting();
     await firstSubmission.done;
-    expect(registry.acquire(identity(device))).toMatchObject({ slot: 0, valid: true });
+    expect(registry.acquire(identity(device))).toMatchObject({
+      readable: { slot: 1, valid: true },
+      writable: { slot: 0, valid: false }
+    });
   });
 
   test('invalidates only the affected identity for resize, ABI, policy, and view reset', () => {
@@ -229,24 +246,20 @@ describe('HistoryRegistry', () => {
     };
 
     expect(invalidation({ descriptor: texture(64) })).toMatchObject({
-      valid: false,
-      invalidationReason: 'resize'
+      writable: { valid: false, invalidationReason: 'resize' }
     });
     expect(invalidation({ descriptor: texture(32, 'rgba16float') })).toMatchObject({
-      valid: false,
-      invalidationReason: 'abi-changed'
+      writable: { valid: false, invalidationReason: 'abi-changed' }
     });
     expect(invalidation({ policy: 'disabled' })).toMatchObject({
-      valid: false,
-      invalidationReason: 'policy-changed'
+      writable: { valid: false, invalidationReason: 'policy-changed' }
     });
 
     const registry = new HistoryRegistry(device);
     registry.acquire(identity(device, { policy: 'disabled' }));
     registry.invalidateView('main');
     expect(registry.acquire(identity(device, { policy: 'disabled' }))).toMatchObject({
-      valid: false,
-      invalidationReason: 'view-destroyed'
+      writable: { valid: false, invalidationReason: 'view-destroyed' }
     });
   });
 
@@ -256,7 +269,7 @@ describe('HistoryRegistry', () => {
     const left = registry.acquire(identity(device, { viewId: 'left' }));
     const right = registry.acquire(identity(device, { viewId: 'right' }));
 
-    expect(right.handle).not.toBe(left.handle);
+    expect(right.writable.handle).not.toBe(left.writable.handle);
 
     const sharedLeft = registry.acquire(
       identity(device, { viewId: 'left', sharedScope: 'stereo-history' })
@@ -264,7 +277,7 @@ describe('HistoryRegistry', () => {
     const sharedRight = registry.acquire(
       identity(device, { viewId: 'right', sharedScope: 'stereo-history' })
     );
-    expect(sharedRight.handle).toBe(sharedLeft.handle);
+    expect(sharedRight.writable.handle).toBe(sharedLeft.writable.handle);
     expect(() =>
       registry.acquire(
         identity(device, {
@@ -283,7 +296,7 @@ describe('HistoryRegistry', () => {
     const first = registry.acquire(identity(device, { viewId: 'alpha:key:beta', key: 'gamma' }));
     const second = registry.acquire(identity(device, { viewId: 'alpha', key: 'beta:key:gamma' }));
 
-    expect(second.handle).not.toBe(first.handle);
+    expect(second.writable.handle).not.toBe(first.writable.handle);
   });
 
   test('retires invalidated history only after every reader and producer submission is terminal', async () => {
@@ -292,19 +305,19 @@ describe('HistoryRegistry', () => {
     const sharedIdentity = identity(device, { slots: 1 });
     const written = registry.acquire(sharedIdentity);
     const producer = device.queue.submit([]);
-    registry.publish(sharedIdentity, written.slot, producer);
+    registry.publish(sharedIdentity, written, producer);
     const reader = device.queue.submit([]);
-    registry.retain(sharedIdentity, written.slot, reader);
+    registry.retain(sharedIdentity, written.writable.slot, reader);
 
     registry.invalidate(sharedIdentity);
 
-    expect(written.handle.state).toBe('live');
+    expect(written.writable.handle.state).toBe('live');
     device.queue.completeNextForTesting();
     await producer.done;
-    expect(written.handle.state).toBe('live');
+    expect(written.writable.handle.state).toBe('live');
     device.queue.completeNextForTesting();
     await reader.done;
-    expect(written.handle.state).toBe('disposed');
+    expect(written.writable.handle.state).toBe('disposed');
   });
 
   test('does not treat failed or lost submissions as valid history', async () => {
@@ -312,17 +325,20 @@ describe('HistoryRegistry', () => {
     const registry = new HistoryRegistry(device);
     const acquired = registry.acquire(identity(device));
     const failed = device.queue.submit([]);
-    registry.publish(identity(device), acquired.slot, failed);
+    registry.publish(identity(device), acquired, failed);
     device.queue.failNextForTesting(new Error('failed'));
     await failed.done;
 
-    expect(registry.acquire(identity(device))).toMatchObject({ slot: 1, valid: false });
+    expect(registry.acquire(identity(device))).toMatchObject({
+      readable: undefined,
+      writable: { slot: 1, valid: false }
+    });
     const second = registry.acquire(identity(device));
     const lost = device.queue.submit([]);
-    registry.publish(identity(device), second.slot, lost);
+    registry.publish(identity(device), second, lost);
     device.loseForTesting('unknown', 'lost for test');
     await lost.done;
-    expect(second.handle.state).toBe('device-lost');
+    expect(second.writable.handle.state).toBe('device-lost');
   });
 });
 
@@ -333,7 +349,7 @@ function publishAfterAcceptedSubmission(
 ): void {
   const acquired = registry.acquire(historyIdentity);
   const submission = submit();
-  registry.publish(historyIdentity, acquired.slot, submission);
+  registry.publish(historyIdentity, acquired, submission);
 }
 
 function expectUnpublished(
@@ -342,10 +358,13 @@ function expectUnpublished(
   initial: ReturnType<HistoryRegistry['acquire']>
 ): void {
   expect(registry.acquire(historyIdentity)).toMatchObject({
-    handle: initial.handle,
-    slot: initial.slot,
-    valid: false,
-    invalidationReason: 'new'
+    readable: undefined,
+    writable: {
+      handle: initial.writable.handle,
+      slot: initial.writable.slot,
+      valid: false,
+      invalidationReason: 'new'
+    }
   });
 }
 

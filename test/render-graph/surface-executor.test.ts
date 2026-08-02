@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { RenderGraphBuilder, type SurfaceFrameToken } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
@@ -125,6 +125,7 @@ describe('surface-backed RenderGraph execution', () => {
     const token = { kind: 'surface-frame' as const, id: 'main' };
     const invalidDevice = new NullDevice();
     const invalidSurface = configuredSurface(invalidDevice);
+    const invalidAcquire = vi.spyOn(invalidSurface, 'acquire');
     const malformed = presentPlan(token);
     const invalidPlan = { ...malformed, compiled: { ...malformed.compiled, graphId: -1 } };
     expect(() =>
@@ -133,6 +134,7 @@ describe('surface-backed RenderGraph execution', () => {
         surface: invalidSurface
       })
     ).toThrow(/canonical|graph id/i);
+    expect(invalidAcquire).not.toHaveBeenCalled();
     expect(invalidSurface.acquire().status).toBe('success');
 
     const encodeDevice = new NullDevice();

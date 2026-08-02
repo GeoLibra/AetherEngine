@@ -114,6 +114,8 @@ export class RenderGraphBuilder {
   private readonly resources = new ResourceVersionStore(this.graphId);
   private readonly passes: GraphPassDeclaration[] = [];
   private readonly passTokens = new Map<number, PassToken>();
+  private readonly passNamesById = new Map<number, string>();
+  private readonly definedPassIds = new Set<number>();
   private readonly passNames = new Set<string>();
   private readonly terminals: GraphTerminal[] = [];
   private readonly semanticEdges: SemanticEdge[] = [];
@@ -135,15 +137,50 @@ export class RenderGraphBuilder {
   addPass<TResources, TContext = unknown>(
     descriptor: GraphPassDescriptor<TResources, TContext>
   ): PassToken {
+    const token = this.reservePass(descriptor.id);
+    try {
+      return this.definePass(token, descriptor);
+    } catch (error) {
+      this.passTokens.delete(token.passId);
+      this.passNamesById.delete(token.passId);
+      this.passNames.delete(descriptor.id);
+      throw error;
+    }
+  }
+
+  /** Reserves stable registration identity so forward semantic edges need no authoring scheduler. */
+  reservePass(id: string): PassToken {
+    this.assertAuthoring();
+    if (!id.trim()) throw new Error('Render graph pass id must be non-empty.');
+    if (this.passNames.has(id)) {
+      throw new Error(`Render graph pass id "${id}" is already registered.`);
+    }
+    const passId = this.passTokens.size;
+    const token = Object.freeze({ kind: 'pass' as const, graphId: this.graphId, passId });
+    this.passTokens.set(passId, token);
+    this.passNamesById.set(passId, id);
+    this.passNames.add(id);
+    return token;
+  }
+
+  /** Defines one previously reserved node; compilation remains the only topology authority. */
+  definePass<TResources, TContext = unknown>(
+    token: PassToken,
+    descriptor: GraphPassDescriptor<TResources, TContext>
+  ): PassToken {
     this.assertAuthoring();
     validatePassDescriptor(descriptor);
-    if (this.passNames.has(descriptor.id)) {
-      throw new Error(`Render graph pass id "${descriptor.id}" is already registered.`);
+    if (token.graphId !== this.graphId || this.passTokens.get(token.passId) !== token) {
+      throw new Error('Render graph pass definition references a foreign or unknown reservation.');
+    }
+    if (this.passNamesById.get(token.passId) !== descriptor.id) {
+      throw new Error('Render graph pass definition id does not match its reservation.');
+    }
+    if (this.definedPassIds.has(token.passId)) {
+      throw new Error(`Render graph pass id "${descriptor.id}" is already defined.`);
     }
     const run = descriptor.run;
-
-    const passId = this.passes.length;
-    const token = Object.freeze({ kind: 'pass' as const, graphId: this.graphId, passId });
+    const passId = token.passId;
     const passBuilder = new PassBuilderState(this, passId);
     const resourceCheckpoint = this.resources.checkpoint();
     const terminalCheckpoint = [...this.terminals];
@@ -176,13 +213,15 @@ export class RenderGraphBuilder {
       run: (context: unknown) => run(context as TContext, frozenResources as TResources)
     });
     this.passes.push(declaration);
-    this.passTokens.set(passId, token);
-    this.passNames.add(descriptor.id);
+    this.definedPassIds.add(passId);
     return token;
   }
 
   build(): RenderGraphSnapshot {
     this.assertAuthoring();
+    if (this.definedPassIds.size !== this.passTokens.size) {
+      throw new Error('Every reserved render graph pass must be defined before build().');
+    }
     this.phase = 'building';
     for (const terminal of this.terminals) {
       if (terminal.handle.version !== this.resources.currentVersion(terminal.handle)) {

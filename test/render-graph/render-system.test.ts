@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
+import { RenderGraphCycleError } from '../../src/render-graph/compiler';
 import { createRenderGraphDebugIR } from '../../src/render-graph/debug-ir';
 import {
   RenderSystemRegistry,
@@ -48,6 +49,32 @@ function view(id: string): RenderView {
 }
 
 describe('RenderSystem facade', () => {
+  test('reports semantic cycles through the sole RenderGraph compiler', () => {
+    const registry = new RenderSystemRegistry();
+    registry.add({
+      id: 'first',
+      scope: 'global',
+      after: [renderSystemToken('second')],
+      setup(pass) {
+        pass.sideEffect('first');
+        return {};
+      },
+      run() {}
+    });
+    registry.add({
+      id: 'second',
+      scope: 'global',
+      after: [renderSystemToken('first')],
+      setup(pass) {
+        pass.sideEffect('second');
+        return {};
+      },
+      run() {}
+    });
+
+    expect(() => compileRenderSystems(registry, { views: [] })).toThrow(RenderGraphCycleError);
+  });
+
   test('rejects undeclared query fields, mismatched snapshots, and mutable projected items', () => {
     const declared = Object.freeze({ id: Symbol('declared'), name: 'declared' });
     const undeclared = Object.freeze({ id: Symbol('undeclared'), name: 'undeclared' });
@@ -163,8 +190,8 @@ describe('RenderSystem facade', () => {
     ]);
     expect(compiled.edges).toContainEqual({
       kind: 'semantic',
-      fromPassId: 0,
-      toPassId: 1
+      fromPassId: 1,
+      toPassId: 0
     });
   });
 
@@ -202,6 +229,15 @@ describe('RenderSystem facade', () => {
     let facadeOutput: BufferHandle | undefined;
     const registry = new RenderSystemRegistry();
     registry.add({
+      id: 'shade',
+      scope: 'global',
+      setup(pass) {
+        facadeOutput = pass.writeBuffer(pass.createBuffer(BUFFER), 'copy-dst');
+        return facadeOutput;
+      },
+      run() {}
+    });
+    registry.add({
       id: 'finish',
       scope: 'global',
       after: [renderSystemToken('shade')],
@@ -210,15 +246,6 @@ describe('RenderSystem facade', () => {
         pass.readBuffer(facadeOutput!, 'copy-src');
         pass.sideEffect('submit output');
         return {};
-      },
-      run() {}
-    });
-    registry.add({
-      id: 'shade',
-      scope: 'global',
-      setup(pass) {
-        facadeOutput = pass.writeBuffer(pass.createBuffer(BUFFER), 'copy-dst');
-        return facadeOutput;
       },
       run() {}
     });

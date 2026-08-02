@@ -1,4 +1,4 @@
-import type { GraphAccess, GraphTerminal, RenderGraphSnapshot } from './builder';
+import type { GraphTerminal, RenderGraphSnapshot } from './builder';
 import type { CompiledRenderGraph } from './compiler';
 import { createRenderGraphDebugIR, type RenderGraphDebugIR } from './debug-ir';
 import {
@@ -15,43 +15,29 @@ import {
   validateRenderGraphExecutionPlan,
   type RenderGraphExecutionPlan
 } from './execution-plan';
-import {
-  allocationFor,
-  containsRange,
-  freezeCommandStats,
-  normalizeRequestedRange,
-  toViewDescriptor
-} from './executor-resource-utils';
-import type { GraphRange, TextureGraphRange } from './ranges';
+import { allocationFor, freezeCommandStats } from './executor-resource-utils';
 import { TransientResourcePool, type TransientResource } from './transient-pool';
+import { RestrictedContext } from './restricted-context';
+export type {
+  DeclaredRasterColorAttachment,
+  DeclaredRasterDepthStencilAttachment,
+  DeclaredRasterPass,
+  RestrictedBindGroupDescriptor,
+  RestrictedBindGroupEntry,
+  RestrictedBufferSlice,
+  RestrictedPassContext,
+  RestrictedPortableDevice,
+  RestrictedTextureView
+} from './restricted-context';
+import type { AcquiredHistorySlot, HistoryIdentity, HistoryRegistry } from './history';
+import type { GraphHandle } from './types';
+import type { RenderGraphHistoryDebugBinding } from './debug-ir';
 import type {
-  AcquiredHistorySlot,
-  HistoryIdentity,
-  HistoryRegistry,
-  HistorySlotDebugState
-} from './history';
-import type {
-  BufferHandle,
-  BufferRange,
-  BufferUsage,
-  GraphHandle,
-  TextureHandle,
-  TextureRange,
-  TextureUsage
-} from './types';
-import type {
-  GPUColor,
-  GPUComputePassDescriptor,
-  GPULoadOp,
-  GPUStoreOp,
   RHIBuffer,
   RHICommandBuffer,
   RHICommandStats,
-  RHIComputePassEncoder,
   RHIDevice,
-  RHIRenderPassEncoder,
   RHISubmission,
-  RHITextureView,
   RHITexture
 } from '../rhi/contracts';
 import type { RHISurface, RHISurfaceFrame } from '../rhi/contracts/surface';
@@ -64,52 +50,6 @@ export {
   validateRenderGraphExecutionPlan
 } from './execution-plan';
 export type { RenderGraphExecutionPlan, RenderGraphExecutionStep } from './execution-plan';
-
-export interface DeclaredRasterColorAttachment {
-  readonly texture: TextureHandle;
-  readonly range?: TextureRange;
-  readonly loadOp: GPULoadOp;
-  readonly storeOp: GPUStoreOp;
-  readonly clearValue?: GPUColor;
-}
-
-export interface DeclaredRasterDepthStencilAttachment {
-  readonly texture: TextureHandle;
-  readonly range?: TextureRange;
-  readonly depthLoadOp?: GPULoadOp;
-  readonly depthStoreOp?: GPUStoreOp;
-  readonly depthClearValue?: number;
-  readonly stencilLoadOp?: GPULoadOp;
-  readonly stencilStoreOp?: GPUStoreOp;
-  readonly stencilClearValue?: number;
-}
-
-export interface DeclaredRasterPass {
-  readonly label?: string;
-  readonly colorAttachments: readonly DeclaredRasterColorAttachment[];
-  readonly depthStencilAttachment?: DeclaredRasterDepthStencilAttachment;
-}
-
-/** The only GPU capability visible to a user render-pass callback. */
-export interface RestrictedPassContext {
-  texture(handle: TextureHandle, usage: TextureUsage, range?: TextureRange): RestrictedTextureView;
-  buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice;
-  beginRaster(descriptor: DeclaredRasterPass): RHIRenderPassEncoder;
-  beginCompute(descriptor?: GPUComputePassDescriptor): RHIComputePassEncoder;
-}
-
-/** Native texture objects stay private; this immutable capability is restricted to one declared range. */
-export interface RestrictedTextureView {
-  readonly kind: 'restricted-texture-view';
-  readonly range: TextureGraphRange;
-}
-
-/** Opaque range capability; callbacks cannot map, dispose, or escape to the whole RHI buffer. */
-export interface RestrictedBufferSlice {
-  readonly kind: 'restricted-buffer-slice';
-  readonly offset: number;
-  readonly size: number;
-}
 
 export interface RenderGraphHistoryBinding extends AcquiredHistorySlot {
   readonly registry: HistoryRegistry;
@@ -161,6 +101,8 @@ export class RenderGraphExecutor {
     plan: RenderGraphExecutionPlan,
     inputs: RenderGraphExecutionInputs
   ): RenderGraphExecution {
+    // Canonical provenance is pure to validate and must precede acquire, allocation, or recording.
+    validateRenderGraphExecutionPlan(plan);
     const frames: SurfaceBinding[] = [];
     const transientResources: TransientResource[] = [];
     const ownsPool = inputs.transientPool === undefined;
@@ -170,13 +112,12 @@ export class RenderGraphExecutor {
     let commandBuffer: RHICommandBuffer | undefined;
     let submission: RHISubmission | undefined;
     let finished = false;
-    let resources: ReadonlyMap<number, RHITexture | RHIBuffer> | undefined;
+    let resources: ReadonlyMap<GraphHandle, RHITexture | RHIBuffer> | undefined;
     let scheduledSteps = 0;
     let passResolutions = 0;
 
     try {
       this.acquireSurfaceFrames(plan, inputs, frames);
-      validateRenderGraphExecutionPlan(plan);
       for (let scheduleIndex = 0; scheduleIndex < plan.schedule.length; scheduleIndex += 1) {
         const step = plan.schedule[scheduleIndex]!;
         scheduledSteps++;
@@ -194,6 +135,8 @@ export class RenderGraphExecutor {
           const context = new RestrictedContext(
             pass.accesses,
             resources,
+            new Map(plan.snapshot.resources.map((resource) => [resource.resourceId, resource])),
+            inputs.device,
             encoder,
             (next) => {
               activePass = next;
@@ -247,6 +190,7 @@ export class RenderGraphExecutor {
       safelyEnd(activePass);
       if (encoder !== undefined && !finished) safelyFinish(encoder);
       if (submission === undefined) safelyReleaseTransients(pool, transientResources);
+      if (submission === undefined) abandonHistoryBindings(plan, inputs);
       if (ownsPool) safelyDispose(pool);
       throw error;
     } finally {
@@ -300,174 +244,15 @@ export class RenderGraphExecutor {
   }
 }
 
-class RestrictedContext implements RestrictedPassContext {
-  private activePass: ActivePass | undefined;
-
-  constructor(
-    private readonly accesses: readonly GraphAccess[],
-    private readonly resources: ReadonlyMap<number, RHITexture | RHIBuffer>,
-    private readonly encoder: ReturnType<RHIDevice['createCommandEncoder']>,
-    private readonly onBegin: (pass: ActivePass) => void,
-    private readonly onEnd: () => void
-  ) {}
-
-  /** Returns a capability facade so callbacks cannot reach recording internals at runtime. */
-  publicContext(): RestrictedPassContext {
-    return Object.freeze({
-      texture: this.texture.bind(this),
-      buffer: this.buffer.bind(this),
-      beginRaster: this.beginRaster.bind(this),
-      beginCompute: this.beginCompute.bind(this)
-    });
-  }
-
-  texture(handle: TextureHandle, usage: TextureUsage, range?: TextureRange): RestrictedTextureView {
-    this.requireInactive('resolve a texture');
-    const resolved = this.requiredTexture(handle, usage, range);
-    return Object.freeze({ kind: 'restricted-texture-view', range: resolved.range });
-  }
-
-  buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice {
-    this.requireInactive('resolve a buffer');
-    const resolved = this.requiredResource(handle, usage, range);
-    if (resolved.resource.kind !== 'buffer')
-      throw new Error('Render graph buffer handle resolved to a texture.');
-    if (resolved.range.kind !== 'buffer') throw new Error('Render graph buffer range is invalid.');
-    return Object.freeze({
-      kind: 'restricted-buffer-slice',
-      offset: resolved.range.offset,
-      size: resolved.range.size
-    });
-  }
-
-  beginRaster(descriptor: DeclaredRasterPass): RHIRenderPassEncoder {
-    this.requireInactive('begin a raster pass');
-    const colorAttachments = descriptor.colorAttachments.map((attachment) => {
-      const view = this.textureView(attachment.texture, 'color-attachment', attachment.range);
-      return {
-        view,
-        loadOp: attachment.loadOp,
-        storeOp: attachment.storeOp,
-        ...(attachment.clearValue === undefined ? {} : { clearValue: attachment.clearValue })
-      };
-    });
-    const depth = descriptor.depthStencilAttachment;
-    const depthStencilAttachment =
-      depth === undefined
-        ? undefined
-        : {
-            view: this.textureView(depth.texture, 'depth-stencil-attachment', depth.range),
-            ...(depth.depthLoadOp === undefined ? {} : { depthLoadOp: depth.depthLoadOp }),
-            ...(depth.depthStoreOp === undefined ? {} : { depthStoreOp: depth.depthStoreOp }),
-            ...(depth.depthClearValue === undefined
-              ? {}
-              : { depthClearValue: depth.depthClearValue }),
-            ...(depth.stencilLoadOp === undefined ? {} : { stencilLoadOp: depth.stencilLoadOp }),
-            ...(depth.stencilStoreOp === undefined ? {} : { stencilStoreOp: depth.stencilStoreOp }),
-            ...(depth.stencilClearValue === undefined
-              ? {}
-              : { stencilClearValue: depth.stencilClearValue })
-          };
-    const encoder = this.encoder.beginRenderPass({
-      ...(descriptor.label === undefined ? {} : { label: descriptor.label }),
-      colorAttachments,
-      ...(depthStencilAttachment === undefined ? {} : { depthStencilAttachment })
-    });
-    return this.track(encoder);
-  }
-
-  beginCompute(descriptor: GPUComputePassDescriptor = {}): RHIComputePassEncoder {
-    this.requireInactive('begin a compute pass');
-    return this.track(this.encoder.beginComputePass(descriptor));
-  }
-
-  private track<T extends ActivePass>(pass: T): T {
-    const end = pass.end.bind(pass);
-    let ended = false;
-    const tracked = new Proxy(pass, {
-      get: (target, property) => {
-        if (property === 'end') {
-          return () => {
-            if (ended) throw new Error('Render graph pass encoder has already ended.');
-            ended = true;
-            end();
-            this.activePass = undefined;
-            this.onEnd();
-          };
-        }
-        const value = Reflect.get(target, property, target);
-        return typeof value === 'function' ? value.bind(target) : value;
-      }
-    });
-    this.activePass = tracked;
-    this.onBegin(tracked);
-    return tracked;
-  }
-
-  private requiredTexture(
-    handle: TextureHandle,
-    usage: TextureUsage,
-    requestedRange: TextureRange | undefined
-  ): { readonly resource: RHITexture; readonly range: TextureGraphRange } {
-    const resolved = this.requiredResource(handle, usage, requestedRange);
-    if (resolved.resource.kind !== 'texture') {
-      throw new Error('Render graph texture handle resolved to a buffer.');
-    }
-    if (resolved.range.kind !== 'texture')
-      throw new Error('Render graph texture range is invalid.');
-    return { resource: resolved.resource, range: resolved.range };
-  }
-
-  private textureView(
-    handle: TextureHandle,
-    usage: TextureUsage,
-    requestedRange: TextureRange | undefined
-  ): RHITextureView {
-    const resolved = this.requiredTexture(handle, usage, requestedRange);
-    return resolved.resource.createView(toViewDescriptor(resolved.range));
-  }
-
-  private requiredResource(
-    handle: GraphHandle,
-    usage: TextureUsage | BufferUsage,
-    requestedRange: TextureRange | BufferRange | undefined
-  ): { readonly resource: RHITexture | RHIBuffer; readonly range: GraphRange } {
-    const access = this.accesses.find(
-      (candidate) => candidate.handle === handle && candidate.usage === usage
-    );
-    if (access === undefined) {
-      const declared = this.accesses.some((candidate) => candidate.handle === handle);
-      throw new Error(
-        declared
-          ? `Render graph resource usage "${usage}" is not declared for this pass.`
-          : 'Render graph resource is not declared for this pass.'
-      );
-    }
-    const range = normalizeRequestedRange(handle, requestedRange, access.range);
-    if (!containsRange(access.range, range)) {
-      throw new Error('Render graph resource range is outside this pass declaration.');
-    }
-    const resource = this.resources.get(handle.resourceId);
-    if (resource === undefined)
-      throw new Error(`Render graph resource ${handle.resourceId} has no physical binding.`);
-    return { resource, range };
-  }
-
-  private requireInactive(action: string): void {
-    if (this.activePass !== undefined)
-      throw new Error(`Cannot ${action} while a render graph pass encoder is active.`);
-  }
-}
-
 function resolveResources(
   plan: RenderGraphExecutionPlan,
   inputs: RenderGraphExecutionInputs,
   frames: readonly SurfaceBinding[],
   pool: TransientResourcePool,
   transients: TransientResource[]
-): ReadonlyMap<number, RHITexture | RHIBuffer> {
+): ReadonlyMap<GraphHandle, RHITexture | RHIBuffer> {
   const { snapshot, compiled } = plan;
-  const physical = new Map<number, RHITexture | RHIBuffer>();
+  const physical = new Map<GraphHandle, RHITexture | RHIBuffer>();
   const physicalAliases = new Map<number, TransientResource>();
   const frameResources = new Map(
     frames.map((binding) => [binding.resourceId, binding.frame.texture])
@@ -477,7 +262,7 @@ function resolveResources(
     if (!retainedResourceIds.has(resource.resourceId)) continue;
     const frame = frameResources.get(resource.resourceId);
     if (frame !== undefined) {
-      physical.set(resource.resourceId, frame);
+      bindAllVersions(physical, resource, frame);
       continue;
     }
     if (resource.origin.kind === 'transient') {
@@ -495,7 +280,7 @@ function resolveResources(
         physicalAliases.set(decision.allocationId, transient);
         transients.push(transient);
       }
-      physical.set(resource.resourceId, transient);
+      bindAllVersions(physical, resource, transient);
       continue;
     }
     if (resource.origin.kind === 'history') {
@@ -507,7 +292,7 @@ function resolveResources(
         );
       }
       validateHistoryBinding(resource, binding, inputs.device);
-      physical.set(resource.resourceId, binding.handle);
+      bindHistoryVersions(physical, resource, binding);
       continue;
     }
     const imported = inputs.resources?.get(resource.versions[0]?.handle as GraphHandle);
@@ -522,7 +307,7 @@ function resolveResources(
       );
     }
     validatePhysicalBinding(resource, imported, inputs.device);
-    physical.set(resource.resourceId, imported);
+    bindAllVersions(physical, resource, imported);
   }
   return physical;
 }
@@ -542,13 +327,8 @@ function validateHistoryBinding(
   if (binding.identity.deviceGeneration !== device.generation) {
     throw new Error('Render graph history binding belongs to a different device generation.');
   }
-  if (binding.handle.generation !== device.generation) {
-    throw new Error(
-      'Render graph history physical resource belongs to a different device generation.'
-    );
-  }
   binding.registry.assertAcquiredBinding(binding.identity, binding);
-  if (binding.valid !== resource.historyValid) {
+  if ((binding.readable !== undefined) !== resource.historyValid) {
     throw new Error('Render graph history validity does not match the acquired registry slot.');
   }
   if (!descriptorsEqual(allocationFor(resource), binding.identity.descriptor)) {
@@ -556,7 +336,23 @@ function validateHistoryBinding(
       'Render graph history binding descriptor is incompatible with the graph resource.'
     );
   }
-  if (binding.handle.kind !== resource.kind || binding.handle.state !== 'live') {
+  validateHistoryPhysical(resource, binding.writable.handle, device);
+  if (binding.readable !== undefined) {
+    validateHistoryPhysical(resource, binding.readable.handle, device);
+  }
+}
+
+function validateHistoryPhysical(
+  resource: RenderGraphSnapshot['resources'][number],
+  physical: RHITexture | RHIBuffer,
+  device: RHIDevice
+): void {
+  if (physical.generation !== device.generation) {
+    throw new Error(
+      'Render graph history physical resource belongs to a different device generation.'
+    );
+  }
+  if (physical.kind !== resource.kind || physical.state !== 'live') {
     throw new Error('Render graph history binding is not a live resource of the declared kind.');
   }
 }
@@ -642,24 +438,82 @@ function commitHistoryBindings(
         (access) => access.kind === 'write' && access.handle.resourceId === resource.resourceId
       )
     );
-    if (written) binding.registry.publish(binding.identity, binding.slot, submission);
-    else binding.registry.retain(binding.identity, binding.slot, submission);
+    const readPrevious = plan.compiled.retainedPasses.some((pass) =>
+      pass.accesses.some(
+        (access) =>
+          access.kind === 'read' &&
+          access.handle.resourceId === resource.resourceId &&
+          access.handle.version === 0
+      )
+    );
+    if (readPrevious && binding.readable !== undefined) {
+      binding.registry.retain(binding.identity, binding.readable.slot, submission);
+    }
+    if (written) binding.registry.publish(binding.identity, binding, submission);
+    else binding.registry.abandon(binding.identity, binding);
   }
 }
 
 function historyDebugStates(
   plan: RenderGraphExecutionPlan,
   inputs: RenderGraphExecutionInputs
-): ReadonlyMap<number, HistorySlotDebugState> {
-  const states = new Map<number, HistorySlotDebugState>();
+): ReadonlyMap<number, RenderGraphHistoryDebugBinding> {
+  const states = new Map<number, RenderGraphHistoryDebugBinding>();
   for (const resource of retainedHistoryResources(plan)) {
     const binding = inputs.histories?.get(resource.versions[0]?.handle as GraphHandle);
-    const state = binding?.registry
-      .debugState(binding.identity)
-      .find((candidate) => candidate.slot === binding.slot);
-    if (state !== undefined) states.set(resource.resourceId, state);
+    if (binding === undefined) continue;
+    states.set(
+      resource.resourceId,
+      Object.freeze({
+        readableSlot: binding.readable?.slot,
+        writableSlot: binding.writable.slot,
+        versionSlots: Object.freeze(
+          resource.versions.map((version) =>
+            Object.freeze({
+              version: version.version,
+              slot: version.version === 0 ? binding.readable?.slot : binding.writable.slot
+            })
+          )
+        ),
+        slots: binding.registry.debugState(binding.identity)
+      })
+    );
   }
   return states;
+}
+
+function bindAllVersions(
+  physical: Map<GraphHandle, RHITexture | RHIBuffer>,
+  resource: RenderGraphSnapshot['resources'][number],
+  binding: RHITexture | RHIBuffer
+): void {
+  for (const version of resource.versions) physical.set(version.handle, binding);
+}
+
+function bindHistoryVersions(
+  physical: Map<GraphHandle, RHITexture | RHIBuffer>,
+  resource: RenderGraphSnapshot['resources'][number],
+  binding: RenderGraphHistoryBinding
+): void {
+  for (const version of resource.versions) {
+    const slot = version.version === 0 ? binding.readable : binding.writable;
+    if (slot !== undefined) physical.set(version.handle, slot.handle);
+  }
+}
+
+function abandonHistoryBindings(
+  plan: RenderGraphExecutionPlan,
+  inputs: RenderGraphExecutionInputs
+): void {
+  for (const resource of retainedHistoryResources(plan)) {
+    const binding = inputs.histories?.get(resource.versions[0]?.handle as GraphHandle);
+    if (binding === undefined) continue;
+    try {
+      binding.registry.abandon(binding.identity, binding);
+    } catch {
+      // Cleanup is best effort and must not replace the execution failure.
+    }
+  }
 }
 
 function retainedHistoryResources(plan: RenderGraphExecutionPlan) {

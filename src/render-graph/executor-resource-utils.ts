@@ -3,7 +3,15 @@ import { normalizeBufferRange, normalizeTextureRange, type GraphRange } from './
 import type { TextureGraphRange } from './ranges';
 import type { GraphResourceRecord } from './resources';
 import type { TransientAllocationDescriptor } from './transient-pool';
-import type { BufferRange, BufferUsage, GraphHandle, TextureRange, TextureUsage } from './types';
+import type {
+  BufferDescriptor,
+  BufferRange,
+  BufferUsage,
+  GraphHandle,
+  TextureDescriptor,
+  TextureRange,
+  TextureUsage
+} from './types';
 
 export function allocationFor(resource: GraphResourceRecord): TransientAllocationDescriptor {
   if (resource.kind === 'buffer') {
@@ -45,28 +53,16 @@ export function freezeCommandStats(stats: RHICommandStats): RHICommandStats {
 export function normalizeRequestedRange(
   handle: GraphHandle,
   requested: TextureRange | BufferRange | undefined,
-  declared: GraphRange
+  descriptor: TextureDescriptor | BufferDescriptor
 ): GraphRange {
-  if (requested === undefined) return declared;
   if (handle.kind === 'buffer') {
     return normalizeBufferRange(
-      { size: declared.kind === 'buffer' ? declared.end : 0, usage: [] },
+      descriptor as BufferDescriptor,
       requested as BufferRange | undefined
     );
   }
   return normalizeTextureRange(
-    {
-      width: 1,
-      height: 1,
-      depthOrArrayLayers: declared.kind === 'texture' ? declared.arrayLayerEnd : 1,
-      mipLevelCount: declared.kind === 'texture' ? declared.mipLevelEnd : 1,
-      sampleCount: 1,
-      format:
-        declared.kind === 'texture' && declared.aspect !== 'all'
-          ? 'depth24plus-stencil8'
-          : 'rgba8unorm',
-      usage: []
-    },
+    descriptor as TextureDescriptor,
     requested as TextureRange | undefined
   );
 }
