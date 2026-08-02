@@ -45,6 +45,10 @@ describe('render graph Debug IR', () => {
     expect(parsed).toMatchObject({ schemaVersion: 1, logicalChecksum: first.logicalChecksum });
     expect(first.passes[0]).toMatchObject({ id: 'first', retained: true });
     expect(first.resources[0]?.versions).toHaveLength(2);
+    expect(first.resources.map((resource) => resource.disposition)).toEqual([
+      'internal',
+      'exported'
+    ]);
     expect(first.aliasDecisions[1]).toMatchObject({ allocationId: 0 });
     expect(Object.isFrozen(first)).toBe(true);
     expect(Object.isFrozen(first.resources[0]?.versions)).toBe(true);
@@ -58,5 +62,41 @@ describe('render graph Debug IR', () => {
     expect(aliased.aliasDecisions.map((decision) => decision.allocationId)).toEqual([0, 0]);
     expect(unaliased.aliasDecisions.map((decision) => decision.allocationId)).toEqual([0, 1]);
     expect(aliased.checksum).not.toBe(unaliased.checksum);
+  });
+
+  test('derives present disposition from the matching imported surface terminal', () => {
+    const graph = new RenderGraphBuilder();
+    const output = graph.createTexture(
+      {
+        width: 4,
+        height: 4,
+        depthOrArrayLayers: 1,
+        mipLevelCount: 1,
+        sampleCount: 1,
+        format: 'rgba8unorm',
+        usage: ['color-attachment']
+      },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'undefined',
+          acquire: { kind: 'external-acquire', id: 'main' }
+        }
+      }
+    );
+    graph.addPass({
+      id: 'present',
+      setup(pass) {
+        const color = pass.writeTexture(output, 'color-attachment');
+        pass.presentTexture(color, { kind: 'surface-frame', id: 'main' });
+        return color;
+      },
+      run() {}
+    });
+    const snapshot = graph.build();
+
+    expect(
+      createRenderGraphDebugIR(snapshot, compileRenderGraph(snapshot)).resources[0]
+    ).toMatchObject({ disposition: 'present' });
   });
 });

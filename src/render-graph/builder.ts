@@ -277,6 +277,18 @@ export class RenderGraphBuilder {
     this.assertDescriptorUsage(handle, finalState);
   }
 
+  validatePresentBinding(handle: TextureHandle, surfaceFrame: SurfaceFrameToken): void {
+    const origin = this.resources.originFor(handle);
+    if (origin.kind !== 'imported') {
+      throw new Error('Render graph present requires an imported surface texture.');
+    }
+    if (origin.acquire.id !== surfaceFrame.id) {
+      throw new Error(
+        'Render graph present frame token does not match the imported acquire token.'
+      );
+    }
+  }
+
   declareAfter(from: PassToken, toPassId: number): SemanticEdge {
     this.assertAuthoring();
     if (from.graphId !== this.graphId || this.passTokens.get(from.passId) !== from) {
@@ -378,6 +390,7 @@ class PassBuilderState implements PassBuilder {
     if (surfaceFrame.kind !== 'surface-frame' || !surfaceFrame.id) {
       throw new Error('Present terminal requires a valid surface frame token.');
     }
+    this.graph.validatePresentBinding(handle, surfaceFrame);
     const terminal = Object.freeze({
       kind: 'present' as const,
       passId: this.passId,

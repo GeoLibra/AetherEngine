@@ -8,10 +8,12 @@ import {
   assertRenderGraphScenarioComparison,
   createReferenceRenderGraphScenario,
   createRenderGraphCompilerScenario,
+  probeSubmissionSafety,
   type RenderGraphCompilerObservation,
   type RenderGraphCompilerScenario
 } from './scenarios';
 import type { RenderGraphReferenceResult } from './types';
+import { runRenderGraphCoverageEvidence, type RenderGraphCoverageEvidence } from './coverage';
 
 const REFERENCE_SCENARIO_INPUT = Object.freeze({
   seed: 13,
@@ -46,33 +48,50 @@ export const RENDER_GRAPH_BENCHMARK_PROFILES: Readonly<
     warmupCount: 10,
     sampleCount: 30,
     scales: Object.freeze([
-      Object.freeze({ passCount: 64, resourceCount: 64, accessDensity: 0.25 }),
-      Object.freeze({ passCount: 128, resourceCount: 128, accessDensity: 0.125 })
+      Object.freeze({ passCount: 16, resourceCount: 32, accessDensity: 0.25 }),
+      Object.freeze({ passCount: 128, resourceCount: 256, accessDensity: 0.0625 })
     ])
   }),
   nightly: Object.freeze({
     warmupCount: 20,
     sampleCount: 60,
     scales: Object.freeze([
-      Object.freeze({ passCount: 256, resourceCount: 256, accessDensity: 0.125 })
+      Object.freeze({ passCount: 1024, resourceCount: 2048, accessDensity: 0.00390625 })
     ])
   })
 });
 
 interface RenderGraphTimingEvidence {
   readonly coldSampleMs: number;
+  readonly coldObservation: RenderGraphCompilerObservation;
   readonly rawSamplesMs: readonly number[];
-  readonly summary: ReturnType<typeof summarize>;
-  readonly observation: RenderGraphCompilerObservation;
+  readonly summary: ReturnType<typeof summarize> & { readonly p90: number };
+  readonly warmObservation: RenderGraphCompilerObservation;
 }
 
 interface RenderGraphBenchmarkResult {
   readonly scenarioId: 'hazard-compile-v1';
   readonly scenarioVersion: 1;
+  readonly seed: number;
   readonly scale: Readonly<Record<string, number>>;
+  readonly axes: {
+    readonly topology: 'seeded-hazard-dag';
+    readonly accessPattern: 'whole-buffer';
+  };
   readonly reference: RenderGraphTimingEvidence;
   readonly subject: RenderGraphTimingEvidence;
   readonly correctness: { readonly status: 'pass' };
+  readonly phases: {
+    readonly compile: RenderGraphPhaseTimingEvidence;
+    readonly execute: RenderGraphPhaseTimingEvidence;
+  };
+}
+
+interface RenderGraphPhaseTimingEvidence {
+  readonly rawSamplesMs: readonly number[];
+  readonly summary: ReturnType<typeof summarize> & { readonly p90: number };
+  readonly checksum: string;
+  readonly counters: Readonly<Record<string, number>>;
 }
 
 export interface RenderGraphBenchmarkReport {
@@ -87,6 +106,11 @@ export interface RenderGraphBenchmarkReport {
     readonly warmupCount: number;
     readonly sampleCount: number;
   };
+  readonly submissionSafety: {
+    readonly pendingSubmissionAttempts: number;
+    readonly prematureReuseCount: number;
+  };
+  readonly coverage: RenderGraphCoverageEvidence;
   readonly results: readonly RenderGraphBenchmarkResult[];
 }
 
@@ -129,6 +153,8 @@ export function runRenderGraphBenchmark(
       warmupCount: profile.warmupCount,
       sampleCount: profile.sampleCount
     }),
+    submissionSafety: probeSubmissionSafety(),
+    coverage: runRenderGraphCoverageEvidence(),
     results: Object.freeze(results)
   });
   const artifactPath = (options.writeArtifact ?? writeRenderGraphArtifact)(report);
@@ -167,15 +193,50 @@ function measureScenario(
   return Object.freeze({
     scenarioId: scenario.scenarioId,
     scenarioVersion: scenario.scenarioVersion,
+    seed: scenario.workload.options.seed,
     scale: Object.freeze({
       passCount: scenario.workload.options.passCount,
       resourceCount: scenario.workload.options.resourceCount,
       accessDensity: scenario.workload.options.accessDensity,
       accessesPerPass: scenario.workload.accessesPerPass
     }),
-    reference: timingEvidence(coldReferenceMs, referenceSamples, reference),
-    subject: timingEvidence(coldSubjectMs, subjectSamples, subject),
+    axes: Object.freeze({
+      topology: 'seeded-hazard-dag' as const,
+      accessPattern: 'whole-buffer' as const
+    }),
+    reference: timingEvidence(coldReferenceMs, coldReference, referenceSamples, reference),
+    subject: timingEvidence(coldSubjectMs, coldSubject, subjectSamples, subject),
+    phases: Object.freeze({
+      compile: measurePhase(profile, scenario.runSubjectCompilePhase, clock),
+      execute: measurePhase(profile, scenario.runSubjectExecutePhase, clock)
+    }),
     correctness: Object.freeze({ status: 'pass' as const })
+  });
+}
+
+function measurePhase(
+  profile: RenderGraphBenchmarkProfile,
+  operation: RenderGraphCompilerScenario['runSubjectCompilePhase'],
+  clock: () => number
+): RenderGraphPhaseTimingEvidence {
+  for (let index = 0; index < profile.warmupCount; index += 1) operation();
+  const samples: number[] = [];
+  let observation = operation();
+  for (let index = 0; index < profile.sampleCount; index += 1) {
+    const start = clock();
+    observation = operation();
+    const end = clock();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+      throw new Error('RenderGraph phase benchmark clock must be finite and monotonic.');
+    }
+    samples.push(end - start);
+  }
+  const baseSummary = summarize(samples);
+  return Object.freeze({
+    rawSamplesMs: Object.freeze(samples),
+    summary: Object.freeze({ ...baseSummary, p90: percentile(samples, 0.9) }),
+    checksum: observation.checksum,
+    counters: observation.counters
   });
 }
 
@@ -194,15 +255,24 @@ function time(
 
 function timingEvidence(
   coldSampleMs: number,
+  coldObservation: RenderGraphCompilerObservation,
   samples: readonly number[],
-  observation: RenderGraphCompilerObservation
+  warmObservation: RenderGraphCompilerObservation
 ): RenderGraphTimingEvidence {
+  const baseSummary = summarize(samples);
   return Object.freeze({
     coldSampleMs,
+    coldObservation,
     rawSamplesMs: Object.freeze([...samples]),
-    summary: summarize(samples),
-    observation
+    summary: Object.freeze({ ...baseSummary, p90: percentile(samples, 0.9) }),
+    warmObservation
   });
+}
+
+function percentile(samples: readonly number[], fraction: number): number {
+  const sorted = [...samples].sort((left, right) => left - right);
+  const index = Math.max(0, Math.ceil(fraction * sorted.length) - 1);
+  return sorted[index]!;
 }
 
 function writeRenderGraphArtifact(report: RenderGraphBenchmarkReport): string {

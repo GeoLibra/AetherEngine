@@ -50,7 +50,7 @@ describe('render graph culling', () => {
       origin: {
         kind: 'imported',
         initialState: 'color-attachment',
-        acquire: { kind: 'external-acquire', id: 'surface' }
+        acquire: { kind: 'external-acquire', id: 'frame-1' }
       }
     });
 

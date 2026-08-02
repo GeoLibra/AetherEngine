@@ -20,7 +20,7 @@ const TEXTURE: TextureDescriptor = {
   mipLevelCount: 1,
   sampleCount: 1,
   format: 'rgba8unorm',
-  usage: ['color-attachment', 'copy-src']
+  usage: ['color-attachment']
 };
 
 function compile(builder: RenderGraphBuilder): RenderGraphExecutionPlan {
@@ -78,6 +78,35 @@ function presentPlan(token: SurfaceFrameToken, throwDuringRun = false): RenderGr
 }
 
 describe('surface-backed RenderGraph execution', () => {
+  test('rejects a surface frame whose physical descriptor does not match the logical import', () => {
+    const device = new NullDevice();
+    const surface = configuredSurface(device);
+    const graph = new RenderGraphBuilder();
+    const output = graph.createTexture(
+      { ...TEXTURE, width: 8 },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'undefined',
+          acquire: { kind: 'external-acquire', id: 'main' }
+        }
+      }
+    );
+    graph.addPass({
+      id: 'present-incompatible',
+      setup(pass) {
+        const color = pass.writeTexture(output, 'color-attachment');
+        pass.presentTexture(color, { kind: 'surface-frame', id: 'main' });
+        return color;
+      },
+      run() {}
+    });
+
+    expect(() => new RenderGraphExecutor().execute(compile(graph), { device, surface })).toThrow(
+      /descriptor.*incompatible/i
+    );
+    expect(surface.acquire().status).toBe('success');
+  });
   test('returns acquire failure without creating an encoder or terminal frame outcome', () => {
     const device = new NullDevice();
     const surface = configuredSurface(device);
@@ -103,7 +132,7 @@ describe('surface-backed RenderGraph execution', () => {
         device: invalidDevice,
         surface: invalidSurface
       })
-    ).toThrow(/graph id/i);
+    ).toThrow(/canonical|graph id/i);
     expect(invalidSurface.acquire().status).toBe('success');
 
     const encodeDevice = new NullDevice();

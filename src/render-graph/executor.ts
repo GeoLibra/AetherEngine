@@ -25,6 +25,12 @@ import {
 import type { GraphRange, TextureGraphRange } from './ranges';
 import { TransientResourcePool, type TransientResource } from './transient-pool';
 import type {
+  AcquiredHistorySlot,
+  HistoryIdentity,
+  HistoryRegistry,
+  HistorySlotDebugState
+} from './history';
+import type {
   BufferHandle,
   BufferRange,
   BufferUsage,
@@ -87,7 +93,7 @@ export interface DeclaredRasterPass {
 /** The only GPU capability visible to a user render-pass callback. */
 export interface RestrictedPassContext {
   texture(handle: TextureHandle, usage: TextureUsage, range?: TextureRange): RestrictedTextureView;
-  buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RHIBuffer;
+  buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice;
   beginRaster(descriptor: DeclaredRasterPass): RHIRenderPassEncoder;
   beginCompute(descriptor?: GPUComputePassDescriptor): RHIComputePassEncoder;
 }
@@ -98,10 +104,24 @@ export interface RestrictedTextureView {
   readonly range: TextureGraphRange;
 }
 
+/** Opaque range capability; callbacks cannot map, dispose, or escape to the whole RHI buffer. */
+export interface RestrictedBufferSlice {
+  readonly kind: 'restricted-buffer-slice';
+  readonly offset: number;
+  readonly size: number;
+}
+
+export interface RenderGraphHistoryBinding extends AcquiredHistorySlot {
+  readonly registry: HistoryRegistry;
+  readonly identity: HistoryIdentity;
+}
+
 export interface RenderGraphExecutionInputs {
   readonly device: RHIDevice;
   /** Physical resources for imported and history graph resources, keyed by their version-zero handle. */
   readonly resources?: ReadonlyMap<GraphHandle, RHITexture | RHIBuffer>;
+  /** Acquired registry slots, keyed by the history resource's version-zero handle. */
+  readonly histories?: ReadonlyMap<GraphHandle, RenderGraphHistoryBinding>;
   /** Single-surface convenience for plans with one present terminal. */
   readonly surface?: RHISurface;
   /** Explicit surface selection for plans containing more than one frame token. */
@@ -161,14 +181,7 @@ export class RenderGraphExecutor {
         const step = plan.schedule[scheduleIndex]!;
         scheduledSteps++;
         if (step.kind === 'prelude') {
-          resources = resolveResources(
-            plan.snapshot,
-            plan.compiled,
-            inputs,
-            frames,
-            pool,
-            transientResources
-          );
+          resources = resolveResources(plan, inputs, frames, pool, transientResources);
           encoder = inputs.device.createCommandEncoder({ label: 'render-graph' });
           continue;
         }
@@ -204,6 +217,7 @@ export class RenderGraphExecutor {
         finished = true;
         submission = inputs.device.queue.submit([commandBuffer]);
         releaseTransients(pool, transientResources, submission);
+        commitHistoryBindings(plan, inputs, submission);
         if (ownsPool) pool.dispose();
         this.presentFrames(frames);
       }
@@ -213,7 +227,10 @@ export class RenderGraphExecutor {
       const commandStats = freezeCommandStats(commandBuffer.getStats());
       const executionCounters = Object.freeze({ scheduledSteps, passResolutions });
       const debug = Object.freeze({
-        ...createRenderGraphDebugIR(plan.snapshot, plan.compiled, { schedule: plan.schedule }),
+        ...createRenderGraphDebugIR(plan.snapshot, plan.compiled, {
+          schedule: plan.schedule,
+          historyStates: historyDebugStates(plan, inputs)
+        }),
         commandStats,
         executionCounters
       });
@@ -263,7 +280,18 @@ export class RenderGraphExecutor {
       if (acquired.status !== 'success') {
         throw new Error(`Render graph surface acquisition failed: ${acquired.status}.`);
       }
+      const resource = plan.snapshot.resources[terminal.handle.resourceId];
+      if (
+        resource?.kind !== 'texture' ||
+        resource.origin.kind !== 'imported' ||
+        resource.origin.acquire.id !== terminal.surfaceFrame.id
+      ) {
+        throw new Error(
+          'Render graph present terminal does not match an imported surface acquire.'
+        );
+      }
       frames.push({ frame: acquired.frame, resourceId: terminal.handle.resourceId });
+      validatePhysicalBinding(resource, acquired.frame.texture, inputs.device);
     }
   }
 
@@ -299,12 +327,17 @@ class RestrictedContext implements RestrictedPassContext {
     return Object.freeze({ kind: 'restricted-texture-view', range: resolved.range });
   }
 
-  buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RHIBuffer {
+  buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice {
     this.requireInactive('resolve a buffer');
     const resolved = this.requiredResource(handle, usage, range);
     if (resolved.resource.kind !== 'buffer')
       throw new Error('Render graph buffer handle resolved to a texture.');
-    return resolved.resource;
+    if (resolved.range.kind !== 'buffer') throw new Error('Render graph buffer range is invalid.');
+    return Object.freeze({
+      kind: 'restricted-buffer-slice',
+      offset: resolved.range.offset,
+      size: resolved.range.size
+    });
   }
 
   beginRaster(descriptor: DeclaredRasterPass): RHIRenderPassEncoder {
@@ -427,14 +460,15 @@ class RestrictedContext implements RestrictedPassContext {
 }
 
 function resolveResources(
-  snapshot: RenderGraphSnapshot,
-  compiled: CompiledRenderGraph,
+  plan: RenderGraphExecutionPlan,
   inputs: RenderGraphExecutionInputs,
   frames: readonly SurfaceBinding[],
   pool: TransientResourcePool,
   transients: TransientResource[]
 ): ReadonlyMap<number, RHITexture | RHIBuffer> {
+  const { snapshot, compiled } = plan;
   const physical = new Map<number, RHITexture | RHIBuffer>();
+  const physicalAliases = new Map<number, TransientResource>();
   const frameResources = new Map(
     frames.map((binding) => [binding.resourceId, binding.frame.texture])
   );
@@ -447,9 +481,33 @@ function resolveResources(
       continue;
     }
     if (resource.origin.kind === 'transient') {
-      const transient = pool.acquire(allocationFor(resource));
-      transients.push(transient);
+      const decision = plan.aliases.decisions.find(
+        (candidate) => candidate.resourceId === resource.resourceId
+      );
+      if (decision?.allocationId === null || decision === undefined) {
+        throw new Error(
+          `Render graph transient resource ${resource.resourceId} has no allocation.`
+        );
+      }
+      let transient = physicalAliases.get(decision.allocationId);
+      if (transient === undefined) {
+        transient = pool.acquire(allocationFor(resource));
+        physicalAliases.set(decision.allocationId, transient);
+        transients.push(transient);
+      }
       physical.set(resource.resourceId, transient);
+      continue;
+    }
+    if (resource.origin.kind === 'history') {
+      const handle = resource.versions[0]?.handle as GraphHandle;
+      const binding = inputs.histories?.get(handle);
+      if (binding === undefined) {
+        throw new Error(
+          `Render graph history resource ${resource.resourceId} requires an acquired history binding.`
+        );
+      }
+      validateHistoryBinding(resource, binding, inputs.device);
+      physical.set(resource.resourceId, binding.handle);
       continue;
     }
     const imported = inputs.resources?.get(resource.versions[0]?.handle as GraphHandle);
@@ -463,9 +521,152 @@ function resolveResources(
         `Render graph resource ${resource.resourceId} physical binding kind does not match.`
       );
     }
+    validatePhysicalBinding(resource, imported, inputs.device);
     physical.set(resource.resourceId, imported);
   }
   return physical;
+}
+
+function validateHistoryBinding(
+  resource: RenderGraphSnapshot['resources'][number],
+  binding: RenderGraphHistoryBinding,
+  device: RHIDevice
+): void {
+  if (
+    resource.origin.kind !== 'history' ||
+    binding.identity.key !== resource.origin.key ||
+    binding.identity.slots !== resource.origin.slots
+  ) {
+    throw new Error('Render graph history binding identity does not match its logical origin.');
+  }
+  if (binding.identity.deviceGeneration !== device.generation) {
+    throw new Error('Render graph history binding belongs to a different device generation.');
+  }
+  if (binding.handle.generation !== device.generation) {
+    throw new Error(
+      'Render graph history physical resource belongs to a different device generation.'
+    );
+  }
+  binding.registry.assertAcquiredBinding(binding.identity, binding);
+  if (binding.valid !== resource.historyValid) {
+    throw new Error('Render graph history validity does not match the acquired registry slot.');
+  }
+  if (!descriptorsEqual(allocationFor(resource), binding.identity.descriptor)) {
+    throw new Error(
+      'Render graph history binding descriptor is incompatible with the graph resource.'
+    );
+  }
+  if (binding.handle.kind !== resource.kind || binding.handle.state !== 'live') {
+    throw new Error('Render graph history binding is not a live resource of the declared kind.');
+  }
+}
+
+function validatePhysicalBinding(
+  resource: RenderGraphSnapshot['resources'][number],
+  physical: RHITexture | RHIBuffer,
+  device: RHIDevice
+): void {
+  if (physical.kind !== resource.kind || physical.state !== 'live') {
+    throw new Error('Render graph physical binding is not a live resource of the declared kind.');
+  }
+  if (physical.generation !== device.generation) {
+    throw new Error('Render graph physical binding belongs to a different device generation.');
+  }
+  const actual =
+    physical.kind === 'buffer'
+      ? { kind: 'buffer' as const, descriptor: physical.descriptor }
+      : { kind: 'texture' as const, descriptor: physical.descriptor };
+  if (!descriptorsEqual(allocationFor(resource), actual)) {
+    throw new Error(
+      'Render graph physical binding descriptor is incompatible with the graph resource.'
+    );
+  }
+}
+
+function descriptorsEqual(
+  expected: ReturnType<typeof allocationFor>,
+  actual: ReturnType<typeof allocationFor>
+): boolean {
+  if (expected.kind !== actual.kind) return false;
+  if (expected.kind === 'buffer' && actual.kind === 'buffer') {
+    return (
+      expected.descriptor.size === actual.descriptor.size &&
+      expected.descriptor.usage === actual.descriptor.usage
+    );
+  }
+  if (expected.kind === 'texture' && actual.kind === 'texture') {
+    const left = normalizedExtent(expected.descriptor.size);
+    const right = normalizedExtent(actual.descriptor.size);
+    return (
+      left.width === right.width &&
+      left.height === right.height &&
+      left.depthOrArrayLayers === right.depthOrArrayLayers &&
+      expected.descriptor.format === actual.descriptor.format &&
+      expected.descriptor.usage === actual.descriptor.usage &&
+      (expected.descriptor.mipLevelCount ?? 1) === (actual.descriptor.mipLevelCount ?? 1) &&
+      (expected.descriptor.sampleCount ?? 1) === (actual.descriptor.sampleCount ?? 1)
+    );
+  }
+  return false;
+}
+
+function normalizedExtent(size: RHITexture['descriptor']['size']): {
+  width: number;
+  height: number;
+  depthOrArrayLayers: number;
+} {
+  if (typeof size === 'number') return { width: size, height: 1, depthOrArrayLayers: 1 };
+  if (Array.isArray(size)) {
+    return { width: size[0] ?? 1, height: size[1] ?? 1, depthOrArrayLayers: size[2] ?? 1 };
+  }
+  const extent = size as { width: number; height?: number; depthOrArrayLayers?: number };
+  return {
+    width: extent.width,
+    height: extent.height ?? 1,
+    depthOrArrayLayers: extent.depthOrArrayLayers ?? 1
+  };
+}
+
+function commitHistoryBindings(
+  plan: RenderGraphExecutionPlan,
+  inputs: RenderGraphExecutionInputs,
+  submission: RHISubmission
+): void {
+  for (const resource of retainedHistoryResources(plan)) {
+    const handle = resource.versions[0]?.handle as GraphHandle;
+    const binding = inputs.histories?.get(handle);
+    if (binding === undefined)
+      throw new Error('Render graph history binding disappeared before submit.');
+    const written = plan.compiled.retainedPasses.some((pass) =>
+      pass.accesses.some(
+        (access) => access.kind === 'write' && access.handle.resourceId === resource.resourceId
+      )
+    );
+    if (written) binding.registry.publish(binding.identity, binding.slot, submission);
+    else binding.registry.retain(binding.identity, binding.slot, submission);
+  }
+}
+
+function historyDebugStates(
+  plan: RenderGraphExecutionPlan,
+  inputs: RenderGraphExecutionInputs
+): ReadonlyMap<number, HistorySlotDebugState> {
+  const states = new Map<number, HistorySlotDebugState>();
+  for (const resource of retainedHistoryResources(plan)) {
+    const binding = inputs.histories?.get(resource.versions[0]?.handle as GraphHandle);
+    const state = binding?.registry
+      .debugState(binding.identity)
+      .find((candidate) => candidate.slot === binding.slot);
+    if (state !== undefined) states.set(resource.resourceId, state);
+  }
+  return states;
+}
+
+function retainedHistoryResources(plan: RenderGraphExecutionPlan) {
+  const retained = collectRetainedResourceIds(plan.compiled);
+  return plan.snapshot.resources.filter(
+    (resource) => resource.origin.kind === 'history' && retained.has(resource.resourceId)
+  );
 }
 
 function collectRetainedResourceIds(compiled: CompiledRenderGraph): ReadonlySet<number> {

@@ -18,6 +18,41 @@ const bufferDescriptor: BufferDescriptor = {
 };
 
 describe('render graph pass declarations', () => {
+  test('requires present to target the matching imported surface acquire', () => {
+    const transientGraph = new RenderGraphBuilder();
+    const transient = transientGraph.createTexture(textureDescriptor);
+    expect(() =>
+      transientGraph.addPass({
+        id: 'invalid-present',
+        setup(pass) {
+          const output = pass.writeTexture(transient, 'color-attachment');
+          pass.presentTexture(output, { kind: 'surface-frame', id: 'main' });
+          return output;
+        },
+        run() {}
+      })
+    ).toThrow(/present.*imported/i);
+
+    const importedGraph = new RenderGraphBuilder();
+    const imported = importedGraph.createTexture(textureDescriptor, {
+      origin: {
+        kind: 'imported',
+        initialState: 'undefined',
+        acquire: { kind: 'external-acquire', id: 'main' }
+      }
+    });
+    expect(() =>
+      importedGraph.addPass({
+        id: 'mismatched-present',
+        setup(pass) {
+          const output = pass.writeTexture(imported, 'color-attachment');
+          pass.presentTexture(output, { kind: 'surface-frame', id: 'other' });
+          return output;
+        },
+        run() {}
+      })
+    ).toThrow(/frame token.*acquire token/i);
+  });
   test('stores setup declarations without executing the run callback', () => {
     const graph = new RenderGraphBuilder();
     const texture = graph.createTexture(textureDescriptor);

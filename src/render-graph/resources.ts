@@ -194,6 +194,10 @@ export class ResourceVersionStore {
     return this.resourceFor(handle).descriptor;
   }
 
+  originFor(handle: GraphHandle): GraphResourceOrigin {
+    return this.resourceFor(handle).origin;
+  }
+
   snapshot(): readonly GraphResourceRecord[] {
     return Object.freeze(
       this.resources.map((resource) => {

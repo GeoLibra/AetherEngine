@@ -1,4 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import {
+  RenderGraphExecutor,
+  createRenderGraphExecutionPlan
+} from '../../src/render-graph/executor';
 import { NullDevice } from '../../src/rhi';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
@@ -40,6 +44,116 @@ function identity(device: NullDevice, changes: Partial<HistoryIdentity> = {}): H
 }
 
 describe('HistoryRegistry', () => {
+  test('rejects an identity that names a foreign device generation', () => {
+    const device = new NullDevice();
+    const foreign = new NullDevice();
+    const registry = new HistoryRegistry(device);
+
+    expect(() => registry.acquire(identity(foreign))).toThrow(/device generation/i);
+  });
+  test('rejects execution when graph history validity disagrees with the acquired slot', () => {
+    const device = new NullDevice();
+    const registry = new HistoryRegistry(device);
+    const historyIdentity = identity(device, {
+      key: 'validity/buffer',
+      slots: 1,
+      descriptor: Object.freeze({
+        kind: 'buffer',
+        descriptor: Object.freeze({ size: 64, usage: 4 })
+      })
+    });
+    const acquired = registry.acquire(historyIdentity);
+    const graph = new RenderGraphBuilder();
+    const history = graph.createBuffer(
+      { size: 64, usage: ['copy-src'] },
+      {
+        origin: { kind: 'history', key: historyIdentity.key, slots: 1 },
+        historyValid: true
+      }
+    );
+    graph.addPass({
+      id: 'history-reader',
+      setup(pass) {
+        pass.readBuffer(history, 'copy-src');
+        pass.sideEffect('read history');
+        return undefined;
+      },
+      run() {}
+    });
+    const snapshot = graph.build();
+
+    expect(() =>
+      new RenderGraphExecutor().execute(
+        createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot)),
+        {
+          device,
+          histories: new Map([[history, { ...acquired, registry, identity: historyIdentity }]])
+        }
+      )
+    ).toThrow(/history validity/i);
+  });
+  test('publishes an executed history producer and exposes pending submission state in Debug IR', async () => {
+    const device = new NullDevice({ submissionMode: 'manual' });
+    const registry = new HistoryRegistry(device);
+    const historyIdentity = identity(device, {
+      key: 'exposure/buffer',
+      slots: 1,
+      descriptor: Object.freeze({
+        kind: 'buffer',
+        descriptor: Object.freeze({ size: 64, usage: 8 })
+      })
+    });
+    const acquired = registry.acquire(historyIdentity);
+    const graph = new RenderGraphBuilder();
+    const history = graph.createBuffer(
+      { size: 64, usage: ['copy-dst'] },
+      {
+        origin: { kind: 'history', key: historyIdentity.key, slots: historyIdentity.slots },
+        historyValid: acquired.valid
+      }
+    );
+    graph.addPass({
+      id: 'history-producer',
+      setup(pass) {
+        const output = pass.writeBuffer(history, 'copy-dst');
+        pass.sideEffect('publish history');
+        return { output };
+      },
+      run() {}
+    });
+    const snapshot = graph.build();
+    const plan = createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot));
+
+    const execution = new RenderGraphExecutor().execute(plan, {
+      device,
+      histories: new Map([
+        [
+          history,
+          {
+            ...acquired,
+            registry,
+            identity: historyIdentity
+          }
+        ]
+      ])
+    });
+
+    expect(registry.debugState(historyIdentity)[0]).toMatchObject({
+      producerSubmissionId: execution.submission.id,
+      pendingSubmissionIds: [execution.submission.id]
+    });
+    expect(execution.debug.resources[history.resourceId]?.history).toMatchObject({
+      slot: acquired.slot,
+      producerSubmissionId: execution.submission.id,
+      pendingSubmissionIds: [execution.submission.id]
+    });
+    device.queue.completeNextForTesting();
+    await execution.submission.done;
+    expect(registry.debugState(historyIdentity)[0]).toMatchObject({
+      valid: true,
+      pendingSubmissionIds: []
+    });
+  });
   test('publishes and rotates only after an accepted submission', async () => {
     const device = new NullDevice({ submissionMode: 'manual' });
     const registry = new HistoryRegistry(device);
@@ -105,7 +219,7 @@ describe('HistoryRegistry', () => {
     expect(registry.acquire(identity(device))).toMatchObject({ slot: 0, valid: true });
   });
 
-  test('invalidates only the affected identity for generation, resize, ABI, policy, and view reset', () => {
+  test('invalidates only the affected identity for resize, ABI, policy, and view reset', () => {
     const device = new NullDevice();
     const base = identity(device);
     const invalidation = (changes: Partial<HistoryIdentity>) => {
@@ -114,10 +228,6 @@ describe('HistoryRegistry', () => {
       return registry.acquire(identity(device, changes));
     };
 
-    expect(invalidation({ deviceGeneration: device.generation + 1 })).toMatchObject({
-      valid: false,
-      invalidationReason: 'generation-changed'
-    });
     expect(invalidation({ descriptor: texture(64) })).toMatchObject({
       valid: false,
       invalidationReason: 'resize'

@@ -36,6 +36,15 @@ export interface AcquiredHistorySlot {
   readonly invalidationReason: HistoryInvalidationReason | undefined;
 }
 
+export interface HistorySlotDebugState {
+  readonly slot: number;
+  readonly valid: boolean;
+  readonly invalidationReason: HistoryInvalidationReason | undefined;
+  readonly producerSubmissionId: number | undefined;
+  readonly pendingSubmissionIds: readonly number[];
+  readonly pendingRetirement: boolean;
+}
+
 interface HistorySlot {
   readonly handle: TransientResource;
   readonly retainingSubmissionIds: Set<number>;
@@ -64,6 +73,9 @@ export class HistoryRegistry {
 
   acquire(identity: HistoryIdentity): AcquiredHistorySlot {
     validateIdentity(identity);
+    if (identity.deviceGeneration !== this.device.generation) {
+      throw new Error('History identity belongs to a different device generation.');
+    }
     const key = identityKey(identity);
     let record = this.records.get(key);
     const configuration = configurationKey(identity);
@@ -136,6 +148,39 @@ export class HistoryRegistry {
 
   reset(identity: HistoryIdentity): void {
     this.invalidate(identity);
+  }
+
+  /** Stable native-object-free state for execution Debug IR and capture tooling. */
+  debugState(identity: HistoryIdentity): readonly HistorySlotDebugState[] {
+    const record = this.requiredRecord(identity);
+    return Object.freeze(
+      record.slots.map((slot, index) =>
+        Object.freeze({
+          slot: index,
+          valid: slot.valid,
+          invalidationReason: slot.invalidationReason,
+          producerSubmissionId: slot.producerSubmissionId,
+          pendingSubmissionIds: Object.freeze(
+            [...slot.retainingSubmissionIds].sort((a, b) => a - b)
+          ),
+          pendingRetirement: slot.retired && slot.retainingSubmissionIds.size > 0
+        })
+      )
+    );
+  }
+
+  /** Verifies that an execution binding is the exact slot acquired from this registry. */
+  assertAcquiredBinding(identity: HistoryIdentity, acquired: AcquiredHistorySlot): void {
+    const record = this.requiredRecord(identity);
+    const slot = record.slots[acquired.slot];
+    if (
+      slot === undefined ||
+      slot.handle !== acquired.handle ||
+      slot.valid !== acquired.valid ||
+      (slot.valid ? undefined : slot.invalidationReason) !== acquired.invalidationReason
+    ) {
+      throw new Error('History execution binding does not match its acquired registry slot.');
+    }
   }
 
   invalidateView(viewId: string): void {

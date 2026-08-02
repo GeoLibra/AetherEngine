@@ -13,10 +13,12 @@ import {
   type PortableTransition,
   type ResourceLifetime
 } from './lifetimes';
+import type { HistorySlotDebugState } from './history';
 
 export interface RenderGraphDebugIROptions extends AliasPlanningOptions {
   readonly submissionIndex?: number;
   readonly schedule?: readonly RenderGraphExecutionStep[];
+  readonly historyStates?: ReadonlyMap<number, HistorySlotDebugState>;
 }
 
 export interface RenderGraphDebugPass {
@@ -33,8 +35,10 @@ export interface RenderGraphDebugResource {
   readonly kind: 'texture' | 'buffer';
   readonly descriptor: unknown;
   readonly origin: unknown;
+  readonly disposition: 'internal' | 'exported' | 'present';
   readonly historyValid: boolean;
   readonly versions: readonly unknown[];
+  readonly history?: HistorySlotDebugState;
 }
 
 export interface RenderGraphDebugIR {
@@ -81,12 +85,13 @@ export function createRenderGraphDebugIR(
       sideEffects: Object.freeze([...pass.sideEffects])
     });
   });
-  const resources = snapshot.resources.map((resource) =>
+  const logicalResources = snapshot.resources.map((resource) =>
     Object.freeze({
       resourceId: resource.resourceId,
       kind: resource.kind,
       descriptor: resource.descriptor,
       origin: resource.origin,
+      disposition: dispositionFor(snapshot, resource.resourceId),
       historyValid: resource.historyValid,
       versions: Object.freeze(
         resource.versions.map((version) =>
@@ -103,6 +108,13 @@ export function createRenderGraphDebugIR(
       )
     })
   );
+  const resources: RenderGraphDebugResource[] = logicalResources.map((resource) => {
+    const history = options.historyStates?.get(resource.resourceId);
+    return Object.freeze({
+      ...resource,
+      ...(history === undefined ? {} : { history })
+    });
+  });
   const edges = Object.freeze(compiled.edges.map((edge) => Object.freeze({ ...edge })));
   const order = Object.freeze([...compiled.order]);
   const rootPassIds = Object.freeze([...compiled.rootPassIds]);
@@ -112,7 +124,7 @@ export function createRenderGraphDebugIR(
   const logical = Object.freeze({
     schemaVersion: 1 as const,
     passes: Object.freeze(passes),
-    resources: Object.freeze(resources),
+    resources: Object.freeze(logicalResources),
     edges,
     order,
     rootPassIds,
@@ -128,8 +140,8 @@ export function createRenderGraphDebugIR(
     allocations: aliasPlan.allocationCount,
     temporaryIrObjects:
       passes.length +
-      resources.length +
-      resources.reduce((sum, resource) => sum + resource.versions.length, 0) +
+      logicalResources.length +
+      logicalResources.reduce((sum, resource) => sum + resource.versions.length, 0) +
       edges.length +
       lifetimes.length +
       aliasPlan.decisions.length +
@@ -139,7 +151,7 @@ export function createRenderGraphDebugIR(
   const withoutChecksum = Object.freeze({
     schemaVersion: 1 as const,
     passes: logical.passes,
-    resources: logical.resources,
+    resources: Object.freeze(resources),
     edges,
     order,
     rootPassIds,
@@ -155,6 +167,17 @@ export function createRenderGraphDebugIR(
 
 export function toRenderGraphDebugJSON(plan: RenderGraphDebugIR): string {
   return JSON.stringify(plan);
+}
+
+function dispositionFor(
+  snapshot: RenderGraphSnapshot,
+  resourceId: number
+): RenderGraphDebugResource['disposition'] {
+  const terminal = snapshot.terminals.find(
+    (candidate) => candidate.handle.resourceId === resourceId
+  );
+  if (terminal === undefined) return 'internal';
+  return terminal.kind === 'present' ? 'present' : 'exported';
 }
 
 function checksum(value: string): string {

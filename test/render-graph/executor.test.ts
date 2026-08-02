@@ -58,6 +58,47 @@ class CountingTransientPool extends TransientResourcePool {
 }
 
 describe('RenderGraphExecutor', () => {
+  test('rejects incompatible or foreign imported physical bindings before recording', () => {
+    const device = new NullDevice();
+    const graph = new RenderGraphBuilder();
+    const imported = importedBuffer(graph, 'incompatible');
+    graph.addPass({
+      id: 'consume',
+      setup(pass) {
+        pass.readBuffer(imported, 'uniform');
+        pass.sideEffect('consume import');
+        return undefined;
+      },
+      run() {}
+    });
+    const incompatible = device.createBuffer({ size: 64, usage: 1 });
+    const plan = compile(graph);
+
+    expect(() =>
+      new RenderGraphExecutor().execute(plan, {
+        device,
+        resources: new Map([[imported, incompatible]])
+      })
+    ).toThrow(/descriptor.*incompatible/i);
+
+    const otherDevice = new NullDevice();
+    const foreign = device.createBuffer({ size: 64, usage: 76 });
+    expect(() =>
+      new RenderGraphExecutor().execute(plan, {
+        device: otherDevice,
+        resources: new Map([[imported, foreign]])
+      })
+    ).toThrow(/device generation/i);
+
+    const disposed = otherDevice.createBuffer({ size: 64, usage: 76 });
+    disposed.dispose();
+    expect(() =>
+      new RenderGraphExecutor().execute(plan, {
+        device: otherDevice,
+        resources: new Map([[imported, disposed]])
+      })
+    ).toThrow(/not a live resource/i);
+  });
   test('resolves only this pass declared textures and buffers with their declared usage and range', () => {
     const device = new NullDevice();
     const graph = new RenderGraphBuilder();
@@ -81,7 +122,9 @@ describe('RenderGraphExecutor', () => {
         expect(
           passContext.buffer(resources.constants, 'uniform', { offset: 0, size: 16 })
         ).toMatchObject({
-          kind: 'buffer'
+          kind: 'restricted-buffer-slice',
+          offset: 0,
+          size: 16
         });
         passContext
           .beginRaster({
@@ -91,7 +134,7 @@ describe('RenderGraphExecutor', () => {
       }
     });
 
-    const imported = device.createBuffer({ label: 'constants', size: 64, usage: 1 });
+    const imported = device.createBuffer({ label: 'constants', size: 64, usage: 76 });
     const execution = new RenderGraphExecutor().execute(compile(graph), {
       device,
       resources: new Map([[buffer, imported]])
@@ -130,8 +173,8 @@ describe('RenderGraphExecutor', () => {
         ).toThrow(/range/i);
       }
     });
-    const firstPhysical = device.createBuffer({ size: 64, usage: 1 });
-    const secondPhysical = device.createBuffer({ size: 64, usage: 1 });
+    const firstPhysical = device.createBuffer({ size: 64, usage: 76 });
+    const secondPhysical = device.createBuffer({ size: 64, usage: 76 });
 
     new RenderGraphExecutor().execute(compile(graph), {
       device,
@@ -201,7 +244,7 @@ describe('RenderGraphExecutor', () => {
     const physical = device.createTexture({
       size: { width: 4, height: 4, depthOrArrayLayers: 2 },
       format: 'depth24plus-stencil8',
-      usage: 1,
+      usage: 20,
       mipLevelCount: 2
     });
     const createView = physical.createView.bind(physical);
@@ -256,6 +299,32 @@ describe('RenderGraphExecutor', () => {
     new RenderGraphExecutor().execute(compile(graph), { device, transientPool: pool });
 
     expect(pool.acquisitions).toBe(0);
+  });
+
+  test('executes a compatible alias plan with one physical transient allocation', () => {
+    const device = new NullDevice();
+    const pool = new CountingTransientPool(device);
+    const graph = new RenderGraphBuilder();
+    const first = graph.createBuffer(BUFFER);
+    const second = graph.createBuffer(BUFFER);
+    for (const [id, handle] of [
+      ['first', first],
+      ['second', second]
+    ] as const) {
+      graph.addPass({
+        id,
+        setup(pass) {
+          const output = pass.writeBuffer(handle, 'copy-dst');
+          pass.sideEffect(id);
+          return { output };
+        },
+        run() {}
+      });
+    }
+
+    new RenderGraphExecutor().execute(compile(graph), { device, transientPool: pool });
+
+    expect(pool.acquisitions).toBe(1);
   });
 
   test('requires a callback to end each pass encoder before it returns', () => {

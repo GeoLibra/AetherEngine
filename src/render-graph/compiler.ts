@@ -5,6 +5,8 @@ import {
   type RenderGraphHazardEdge
 } from './hazards';
 
+const COMPILED_RENDER_GRAPHS = new WeakMap<object, RenderGraphSnapshot>();
+
 export interface RenderGraphSemanticEdge {
   readonly kind: 'semantic';
   readonly fromPassId: number;
@@ -99,7 +101,7 @@ export function compileRenderGraph(snapshot: RenderGraphSnapshot): CompiledRende
       )
   );
 
-  return Object.freeze({
+  const compiled = Object.freeze({
     graphId: snapshot.graphId,
     retainedPasses,
     order: Object.freeze(order),
@@ -116,6 +118,23 @@ export function compileRenderGraph(snapshot: RenderGraphSnapshot): CompiledRende
       edgeCount: edges.length
     })
   });
+  COMPILED_RENDER_GRAPHS.set(compiled, snapshot);
+  return compiled;
+}
+
+/** @internal Execution-plan construction rejects caller-forged compiler lookalikes. */
+export function isCompiledRenderGraph(value: unknown): value is CompiledRenderGraph {
+  return typeof value === 'object' && value !== null && COMPILED_RENDER_GRAPHS.has(value);
+}
+
+/** @internal A compiler result is executable only with the exact snapshot it validated. */
+export function isCompiledRenderGraphForSnapshot(
+  value: unknown,
+  snapshot: RenderGraphSnapshot
+): value is CompiledRenderGraph {
+  return (
+    typeof value === 'object' && value !== null && COMPILED_RENDER_GRAPHS.get(value) === snapshot
+  );
 }
 
 function toCompiledSemanticEdge(edge: SemanticEdge): RenderGraphSemanticEdge {

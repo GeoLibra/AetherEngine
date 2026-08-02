@@ -55,6 +55,13 @@ describe('render graph benchmark oracle', () => {
     expect(subject.counters.aliasGroups).toBeGreaterThanOrEqual(0);
     expect(subject.counters.allocations).toBeGreaterThan(0);
     expect(subject.counters.wholeResourceFallbacks).toBe(0);
+    expect(subject.semantic.aliasChecksumEquivalent).toBe(true);
+    expect(subject.counters.versionCount).toBeGreaterThan(32);
+    expect(subject.counters.transitionCount).toBeGreaterThan(0);
+    expect(subject.counters.submissionCount).toBe(1);
+    expect(subject.counters.commandCount).toBe(64 * 2);
+    expect(subject.counters.subresourceKeyCount).toBeGreaterThan(0);
+    expect(subject.counters.physicalAllocationCount).toBe(subject.counters.allocations);
   });
 
   test('publishes schema-versioned smoke evidence with raw cold and warm samples', () => {
@@ -76,6 +83,14 @@ describe('render graph benchmark oracle', () => {
 
     expect(result.artifactPath).toBe('/tmp/render-graph-smoke.json');
     expect(result.report).toMatchObject({ schemaVersion: 1, profile: 'smoke' });
+    expect(result.report.submissionSafety).toEqual({
+      pendingSubmissionAttempts: 1,
+      prematureReuseCount: 0
+    });
+    expect(result.report.results[0]).toMatchObject({
+      seed: 23,
+      axes: { topology: 'seeded-hazard-dag', accessPattern: 'whole-buffer' }
+    });
     expect(result.report.results[0]?.reference.rawSamplesMs).toHaveLength(
       RENDER_GRAPH_BENCHMARK_PROFILES.smoke.sampleCount
     );
@@ -84,5 +99,34 @@ describe('render graph benchmark oracle', () => {
     );
     expect(result.report.results[0]?.reference.coldSampleMs).toBe(1);
     expect(result.report.results[0]?.subject.coldSampleMs).toBe(1);
+    expect(result.report.results[0]?.subject.coldObservation).toBeDefined();
+    expect(result.report.results[0]?.subject.warmObservation).toBeDefined();
+    expect(result.report.results[0]?.subject.summary.p90).toBe(1);
+    expect(result.report.results[0]?.phases.compile.rawSamplesMs).toHaveLength(
+      RENDER_GRAPH_BENCHMARK_PROFILES.smoke.sampleCount
+    );
+    expect(result.report.results[0]?.phases.execute.counters).toMatchObject({
+      submissions: 1,
+      commands: 16
+    });
+    expect(result.report.coverage.scaleAxes).toEqual({
+      passCounts: [16, 128, 1024],
+      resourceCounts: [32, 256, 2048]
+    });
+    expect(result.report.coverage.workloadFamilies.map((family) => family.id)).toEqual([
+      'whole-resource',
+      'buffer-range',
+      'texture-subresource',
+      'linear-chain',
+      'fan-out-fan-in',
+      'culled-branch',
+      'aliasable-lifetimes'
+    ]);
+    expect(result.report.coverage.largeScale).toMatchObject({
+      passCount: 1024,
+      resourceCount: 2048,
+      accessesExamined: 1024,
+      status: 'pass'
+    });
   });
 });

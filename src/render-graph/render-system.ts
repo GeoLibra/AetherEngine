@@ -8,7 +8,12 @@ import {
   type RestrictedPassContext
 } from './executor';
 import type { RenderPhaseSnapshot } from '../rendering/render-phase';
-import type { RenderQuerySnapshot, RenderQuerySpec } from '../rendering/render-world';
+import type {
+  RenderFieldToken,
+  RenderEntityView,
+  RenderQuerySnapshot,
+  RenderQuerySpec
+} from '../rendering/render-world';
 import type { RenderView } from '../rendering/visibility';
 
 export type RenderSystemScope = 'global' | 'per-view';
@@ -256,8 +261,8 @@ function queryFor(
       `Render system "${descriptor.id}" requires an immutable query snapshot source.`
     );
   }
-  const snapshot = source.query(descriptor.query);
-  assertFrozenSnapshot(snapshot, descriptor.id);
+  const snapshot = source.query(guardQuerySpec(descriptor.query));
+  assertFrozenSnapshot(snapshot, descriptor.id, descriptor.query.id);
   cache.set(descriptor.query.id, snapshot);
   return snapshot;
 }
@@ -382,9 +387,68 @@ function assertKnownToken(token: RenderSystemToken, knownIds: ReadonlySet<string
   }
 }
 
-function assertFrozenSnapshot(snapshot: RenderQuerySnapshot<unknown>, systemId: string): void {
+function guardQuerySpec(spec: RenderQuerySpec<unknown>): RenderQuerySpec<unknown> {
+  const declared = new Set(spec.reads);
+  return Object.freeze({
+    ...spec,
+    reads: Object.freeze([...spec.reads]),
+    ...(spec.with === undefined ? {} : { with: Object.freeze([...spec.with]) }),
+    ...(spec.without === undefined ? {} : { without: Object.freeze([...spec.without]) }),
+    project(view: RenderEntityView) {
+      return spec.project(
+        Object.freeze({
+          entity: view.entity,
+          get<T>(field: RenderFieldToken<T>): T | undefined {
+            if (!declared.has(field)) {
+              throw new Error(
+                `Render query "${spec.id}" attempted to read undeclared field "${field.name}".`
+              );
+            }
+            return view.get(field);
+          }
+        })
+      );
+    }
+  });
+}
+
+function assertFrozenSnapshot(
+  snapshot: RenderQuerySnapshot<unknown>,
+  systemId: string,
+  queryId: string
+): void {
   if (!Object.isFrozen(snapshot) || !Object.isFrozen(snapshot.items)) {
     throw new Error(`Render system "${systemId}" received a mutable query snapshot.`);
+  }
+  if (snapshot.queryId !== queryId) {
+    throw new Error(
+      `Render system "${systemId}" received snapshot "${snapshot.queryId}" for query "${queryId}".`
+    );
+  }
+  for (const item of snapshot.items) assertDeepImmutable(item, systemId, new WeakSet<object>());
+}
+
+function assertDeepImmutable(value: unknown, systemId: string, visited: WeakSet<object>): void {
+  if (typeof value === 'function') {
+    throw new Error(`Render system "${systemId}" received a mutable query projection function.`);
+  }
+  if (typeof value !== 'object' || value === null || visited.has(value)) return;
+  const prototype = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+    throw new Error(`Render system "${systemId}" received a mutable query projection container.`);
+  }
+  if (!Object.isFrozen(value)) {
+    throw new Error(`Render system "${systemId}" received a mutable query projection item.`);
+  }
+  visited.add(value);
+  for (const key of Reflect.ownKeys(value)) {
+    const property = Object.getOwnPropertyDescriptor(value, key);
+    if (property?.get !== undefined || property?.set !== undefined) {
+      throw new Error(`Render system "${systemId}" received a mutable query projection accessor.`);
+    }
+    if (property !== undefined && 'value' in property) {
+      assertDeepImmutable(property.value, systemId, visited);
+    }
   }
 }
 

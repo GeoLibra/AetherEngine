@@ -9,7 +9,11 @@ import {
   type RenderSystemDescriptor
 } from '../../src/render-graph/render-system';
 import type { BufferHandle, BufferDescriptor } from '../../src/render-graph/types';
-import type { RenderQuerySnapshot, RenderQuerySpec } from '../../src/rendering/render-world';
+import type {
+  RenderEntityView,
+  RenderQuerySnapshot,
+  RenderQuerySpec
+} from '../../src/rendering/render-world';
 import type { RenderEntityId } from '../../src/rendering/render-world';
 import type { RenderView } from '../../src/rendering/visibility';
 
@@ -44,6 +48,91 @@ function view(id: string): RenderView {
 }
 
 describe('RenderSystem facade', () => {
+  test('rejects undeclared query fields, mismatched snapshots, and mutable projected items', () => {
+    const declared = Object.freeze({ id: Symbol('declared'), name: 'declared' });
+    const undeclared = Object.freeze({ id: Symbol('undeclared'), name: 'undeclared' });
+    const guardedQuery: RenderQuerySpec<unknown> = Object.freeze({
+      id: 'guarded',
+      reads: Object.freeze([declared]),
+      project: (entity: RenderEntityView) => entity.get(undeclared)
+    });
+    const registry = new RenderSystemRegistry();
+    registry.add({
+      id: 'guarded',
+      scope: 'global',
+      query: guardedQuery,
+      setup(pass) {
+        pass.sideEffect('guarded');
+        return undefined;
+      },
+      run() {}
+    });
+    expect(() =>
+      compileRenderSystems(registry, {
+        views: [],
+        snapshots: {
+          query(spec) {
+            spec.project({
+              entity: 1 as RenderEntityId,
+              get: <T>() => 'secret' as T
+            });
+            return Object.freeze({
+              queryId: spec.id,
+              renderRevision: 1,
+              items: Object.freeze([])
+            });
+          }
+        }
+      })
+    ).toThrow(/undeclared field/i);
+
+    expect(() =>
+      compileRenderSystems(registry, {
+        views: [],
+        snapshots: {
+          query: () =>
+            Object.freeze({
+              queryId: 'wrong',
+              renderRevision: 1,
+              items: Object.freeze([])
+            })
+        }
+      })
+    ).toThrow(/snapshot.*query/i);
+
+    expect(() =>
+      compileRenderSystems(registry, {
+        views: [],
+        snapshots: {
+          query: () =>
+            Object.freeze({
+              queryId: 'guarded',
+              renderRevision: 1,
+              items: Object.freeze([{}])
+            })
+        }
+      })
+    ).toThrow(/mutable query projection item/i);
+
+    const hidden = Symbol('hidden');
+    const mutableNested = {};
+    const frozenWithHiddenMutable = Object.freeze(
+      Object.defineProperty({}, hidden, { value: mutableNested, enumerable: false })
+    );
+    expect(() =>
+      compileRenderSystems(registry, {
+        views: [],
+        snapshots: {
+          query: () =>
+            Object.freeze({
+              queryId: 'guarded',
+              renderRevision: 1,
+              items: Object.freeze([frozenWithHiddenMutable])
+            })
+        }
+      })
+    ).toThrow(/mutable query projection item/i);
+  });
   test('lowers before constraints into the same graph semantic edge', () => {
     const registry = new RenderSystemRegistry();
     registry.add({

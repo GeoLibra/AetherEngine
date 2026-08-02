@@ -27,7 +27,51 @@ function planWithTwoPasses(calls: string[]): RenderGraphExecutionPlan {
 }
 
 describe('RenderGraphExecutionPlan validation', () => {
+  test('rejects forged compiled data passed through the exported plan factory', () => {
+    const calls: string[] = [];
+    const canonical = planWithTwoPasses(calls);
+    const forged = Object.freeze({
+      ...canonical.compiled,
+      retainedPasses: Object.freeze([]),
+      order: Object.freeze([]),
+      edges: Object.freeze([]),
+      rootPassIds: Object.freeze([])
+    });
+
+    expect(() => createRenderGraphExecutionPlan(canonical.snapshot, forged)).toThrow(
+      /compiled graph provenance/i
+    );
+  });
+
+  test('rejects a compiler result paired with a cloned snapshot sharing its graph id', () => {
+    const canonical = planWithTwoPasses([]);
+    const clonedSnapshot = Object.freeze({
+      ...canonical.snapshot,
+      resources: Object.freeze([...canonical.snapshot.resources])
+    });
+
+    expect(() => createRenderGraphExecutionPlan(clonedSnapshot, canonical.compiled)).toThrow(
+      /compiled graph provenance/i
+    );
+  });
+
   test.each([
+    {
+      name: 'a structurally consistent forged empty compiled plan',
+      mutate(plan: RenderGraphExecutionPlan) {
+        return Object.freeze({
+          ...plan,
+          compiled: Object.freeze({
+            ...plan.compiled,
+            retainedPasses: Object.freeze([]),
+            order: Object.freeze([]),
+            edges: Object.freeze([]),
+            rootPassIds: Object.freeze([])
+          }),
+          schedule: Object.freeze([{ kind: 'prelude' as const }, { kind: 'submission' as const }])
+        });
+      }
+    },
     {
       name: 'a sparse pass slot',
       mutate(plan: RenderGraphExecutionPlan) {

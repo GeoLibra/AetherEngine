@@ -1,5 +1,12 @@
 import type { GraphPassDeclaration, RenderGraphSnapshot } from './builder';
-import type { CompiledRenderGraph } from './compiler';
+import {
+  isCompiledRenderGraph,
+  isCompiledRenderGraphForSnapshot,
+  type CompiledRenderGraph
+} from './compiler';
+import { analyzeResourceLifetimes, planResourceAliases, type ResourceAliasPlan } from './lifetimes';
+
+const CANONICAL_EXECUTION_PLANS = new WeakSet<object>();
 
 /** Compiler-owned lifecycle boundaries and retained pass invocations for one graph submission. */
 export type RenderGraphExecutionStep =
@@ -11,6 +18,7 @@ export type RenderGraphExecutionStep =
 export interface RenderGraphExecutionPlan {
   readonly snapshot: RenderGraphSnapshot;
   readonly compiled: CompiledRenderGraph;
+  readonly aliases: ResourceAliasPlan;
   readonly schedule: readonly RenderGraphExecutionStep[];
 }
 
@@ -18,11 +26,17 @@ export function createRenderGraphExecutionPlan(
   snapshot: RenderGraphSnapshot,
   compiled: CompiledRenderGraph
 ): RenderGraphExecutionPlan {
-  return Object.freeze({
+  if (!isCompiledRenderGraphForSnapshot(compiled, snapshot)) {
+    throw nonCanonical('compiled graph provenance does not match the snapshot');
+  }
+  const plan = Object.freeze({
     snapshot,
     compiled,
+    aliases: planResourceAliases(snapshot, analyzeResourceLifetimes(snapshot, compiled)),
     schedule: createRenderGraphExecutionSchedule(compiled)
   });
+  CANONICAL_EXECUTION_PLANS.add(plan);
+  return plan;
 }
 
 export function createRenderGraphExecutionSchedule(
@@ -46,14 +60,25 @@ export function assertRenderGraphExecutionPlan(
     value === null ||
     !('snapshot' in value) ||
     !('compiled' in value) ||
+    !('aliases' in value) ||
     !('schedule' in value) ||
-    !Array.isArray(value.schedule)
+    !Array.isArray(value.schedule) ||
+    !CANONICAL_EXECUTION_PLANS.has(value)
   ) {
     throw new Error('Render frame stages must return a compiled render graph plan.');
   }
 }
 
 export function validateRenderGraphExecutionPlan(plan: RenderGraphExecutionPlan): void {
+  if (!CANONICAL_EXECUTION_PLANS.has(plan)) {
+    throw nonCanonical('plan provenance was not created by the RenderGraph compiler boundary');
+  }
+  if (!isCompiledRenderGraph(plan.compiled)) {
+    throw nonCanonical('compiled graph provenance was not created by the RenderGraph compiler');
+  }
+  if (!isCompiledRenderGraphForSnapshot(plan.compiled, plan.snapshot)) {
+    throw nonCanonical('compiled graph provenance does not match the exact snapshot');
+  }
   if (plan.snapshot.graphId !== plan.compiled.graphId) {
     throw nonCanonical('graph id does not match the compiled graph');
   }
