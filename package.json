@@ -9,21 +9,28 @@
     "dev": "vite --host 127.0.0.1",
     "test": "vitest run",
     "bench": "vite-node benchmark/framework/cli.ts",
+    "bench:validate": "pnpm bench validate",
+    "bench:changed": "pnpm bench changed",
+    "bench:all": "pnpm bench all",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "format:staged": "node scripts/check-staged-format.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "e2e": "playwright test",
+    "e2e:project": "playwright test --project",
+    "e2e:resolve": "vite-node --script e2e/cli.ts",
     "verify:commit": "pnpm run typecheck && pnpm test && pnpm run build && pnpm bench validate && pnpm bench changed"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^26.0.1",
     "bitecs": "0.4.0",
     "koota": "0.6.6",
+    "prettier": "^3.6.2",
     "typescript": "^5.5.4",
     "vite": "^5.4.11",
     "vite-node": "^2.1.4",
-    "vitest": "^2.1.4",
-    "prettier": "^3.6.2"
+    "vitest": "^2.1.4"
   }
 }

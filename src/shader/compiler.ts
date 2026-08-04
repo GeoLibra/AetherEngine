@@ -6,6 +6,7 @@ import { createShaderBindingManifest } from './layout';
 import { resolveShaderSource } from './source';
 import { resolveShaderVariants } from './variant';
 import type { WebGL2ShaderTranslationPort } from '../rhi/webgl2/shader-types';
+import type { WebGL2ClipDepthMode } from '../rhi/webgl2/clip-depth';
 import type {
   ShaderBindingRequirement,
   ShaderBindingManifest,
@@ -63,6 +64,7 @@ export class ShaderCompiler {
       validators: Partial<Record<ShaderTarget, ShaderBackendValidator>>;
       webgl2Translator?: WebGL2ShaderTranslationPort;
       approvedWebGL2Extensions?: readonly string[];
+      webgl2ClipDepthMode?: WebGL2ClipDepthMode;
       versions: Readonly<{ compiler: number; ir: number; abi: number; backend: number }>;
     }>
   ) {}
@@ -148,6 +150,10 @@ export class ShaderCompiler {
       translator:
         request.target === 'glsl300es' && this.options.webgl2Translator
           ? `${this.options.webgl2Translator.translatorId}@${this.options.webgl2Translator.version}`
+          : undefined,
+      webgl2ClipDepthMode:
+        request.target === 'glsl300es'
+          ? (this.options.webgl2ClipDepthMode ?? 'vertex-remap')
           : undefined
     });
     const key = stableHash(fingerprint);
@@ -174,6 +180,9 @@ export class ShaderCompiler {
         ? { approvedExtensions: this.options.approvedWebGL2Extensions }
         : {}),
       capabilities: request.capabilities,
+      ...(this.options.webgl2ClipDepthMode
+        ? { webgl2ClipDepthMode: this.options.webgl2ClipDepthMode }
+        : {}),
       entries: request.entries
     });
     if (!emitted.ok)

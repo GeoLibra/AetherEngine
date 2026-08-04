@@ -10,6 +10,7 @@ interface TranslationInput {
   readonly stage: 'vertex' | 'fragment';
   readonly entryPoint: string;
   readonly constants: Readonly<Record<string, number>>;
+  readonly clipDepthMode: 'zero-to-one' | 'vertex-remap';
 }
 
 class Translator {
@@ -20,7 +21,8 @@ class Translator {
     this.calls.push({
       stage: input.stage,
       entryPoint: input.entryPoint,
-      constants: { ...input.constants }
+      constants: { ...input.constants },
+      clipDepthMode: input.clipDepthMode
     });
     return {
       source: `void ${input.entryPoint}() {}`,
@@ -145,8 +147,18 @@ describe('WebGL2 shader, binding, and pipeline lowering', () => {
     constants.QUALITY = 9;
 
     expect(translator.calls).toEqual([
-      { stage: 'vertex', entryPoint: 'vsMain', constants: { QUALITY: 2 } },
-      { stage: 'fragment', entryPoint: 'fsMain', constants: {} }
+      {
+        stage: 'vertex',
+        entryPoint: 'vsMain',
+        constants: { QUALITY: 2 },
+        clipDepthMode: 'vertex-remap'
+      },
+      {
+        stage: 'fragment',
+        entryPoint: 'fsMain',
+        constants: {},
+        clipDepthMode: 'vertex-remap'
+      }
     ]);
     expect(native.programs).toHaveLength(1);
     expect(native.programs[0]?.vertexSource).toMatch(/^#version 300 es/);

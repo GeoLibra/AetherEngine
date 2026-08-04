@@ -1,9 +1,6 @@
-import type {
-  AdapterCapabilities,
-  FeatureSupport,
-  RHIFeature
-} from '../contracts/capability';
+import type { AdapterCapabilities, FeatureSupport, RHIFeature } from '../contracts/capability';
 import { createCapabilitySnapshot, RHI_FEATURES } from '../core/capabilities';
+import { selectWebGL2ClipDepthMode } from './clip-depth';
 import type { WebGL2AdapterFacts, WebGL2NativeContextPort } from './native-types';
 
 const TIMER_QUERY_EXTENSION = 'EXT_disjoint_timer_query_webgl2';
@@ -32,12 +29,14 @@ export function createWebGL2Capabilities(native: WebGL2NativeContextPort): Adapt
 export function createWebGL2Facts(native: WebGL2NativeContextPort): WebGL2AdapterFacts {
   return Object.freeze({
     extensions: new ReadonlySetSnapshot(native.extensions),
-    precision: Object.freeze({ ...native.precision })
+    precision: Object.freeze({ ...native.precision }),
+    clipDepthMode: selectWebGL2ClipDepthMode(native.extensions)
   });
 }
 
 function unsupportedFeatureReason(feature: RHIFeature): string {
-  if (feature === 'timestamp-query') return `WebGL2 extension ${TIMER_QUERY_EXTENSION} is unavailable.`;
+  if (feature === 'timestamp-query')
+    return `WebGL2 extension ${TIMER_QUERY_EXTENSION} is unavailable.`;
   return `Portable RHI feature ${feature} is not provided by the WebGL2 backend.`;
 }
 
@@ -49,12 +48,24 @@ class ReadonlySetSnapshot<T> implements ReadonlySet<T> {
     Object.freeze(this);
   }
 
-  get size(): number { return this.valuesSet.size; }
-  has(value: T): boolean { return this.valuesSet.has(value); }
-  entries(): SetIterator<[T, T]> { return this.valuesSet.entries(); }
-  keys(): SetIterator<T> { return this.valuesSet.keys(); }
-  values(): SetIterator<T> { return this.valuesSet.values(); }
-  [Symbol.iterator](): SetIterator<T> { return this.valuesSet[Symbol.iterator](); }
+  get size(): number {
+    return this.valuesSet.size;
+  }
+  has(value: T): boolean {
+    return this.valuesSet.has(value);
+  }
+  entries(): SetIterator<[T, T]> {
+    return this.valuesSet.entries();
+  }
+  keys(): SetIterator<T> {
+    return this.valuesSet.keys();
+  }
+  values(): SetIterator<T> {
+    return this.valuesSet.values();
+  }
+  [Symbol.iterator](): SetIterator<T> {
+    return this.valuesSet[Symbol.iterator]();
+  }
   forEach(callbackfn: (value: T, value2: T, set: ReadonlySet<T>) => void, thisArg?: unknown): void {
     this.valuesSet.forEach((value) => callbackfn.call(thisArg, value, value, this));
   }

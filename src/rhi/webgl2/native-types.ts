@@ -1,5 +1,6 @@
 import type { FormatCapabilities, RHILimits } from '../contracts/capability';
 import type { GPUTextureFormat } from '../contracts/webgpu';
+import type { WebGL2ClipDepthMode } from './clip-depth';
 import type { WebGL2BindingManifestEntry } from './shader-types';
 
 export type WebGL2NativeLimits = RHILimits;
@@ -50,18 +51,50 @@ export interface WebGL2NativeContextPort {
   endRenderPass?(): void;
   setRasterState?(state: Readonly<Record<string, unknown>>): void;
   setDepthStencilState?(state: Readonly<Record<string, unknown>>): void;
-  setViewport?(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void;
+  setClipControl?(origin: 'lower-left', depth: 'zero-to-one'): void;
+  setViewport?(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    minDepth: number,
+    maxDepth: number
+  ): void;
   setScissorRect?(x: number, y: number, width: number, height: number): void;
   bindVertexBuffer?(slot: number, buffer: WebGL2NativeObject, offset: number, size?: number): void;
-  bindIndexBuffer?(buffer: WebGL2NativeObject, indexFormat: string, offset: number, size?: number): void;
-  bindUniformBuffer?(binding: number, buffer: WebGL2NativeObject, offset: number, size: number): void;
+  bindIndexBuffer?(
+    buffer: WebGL2NativeObject,
+    indexFormat: string,
+    offset: number,
+    size?: number
+  ): void;
+  bindUniformBuffer?(
+    binding: number,
+    buffer: WebGL2NativeObject,
+    offset: number,
+    size: number
+  ): void;
   bindTexture?(unit: number, texture: WebGL2NativeObject): void;
   bindSampler?(unit: number, sampler: WebGL2NativeObject): void;
-  draw?(vertexCount: number, instanceCount: number, firstVertex: number, firstInstance: number): void;
-  drawIndexed?(indexCount: number, instanceCount: number, firstIndex: number, baseVertex: number, firstInstance: number): void;
+  draw?(
+    vertexCount: number,
+    instanceCount: number,
+    firstVertex: number,
+    firstInstance: number
+  ): void;
+  drawIndexed?(
+    indexCount: number,
+    instanceCount: number,
+    firstIndex: number,
+    baseVertex: number,
+    firstInstance: number
+  ): void;
   copyBufferToBuffer?(
-    source: WebGL2NativeObject, sourceOffset: number,
-    destination: WebGL2NativeObject, destinationOffset: number, size: number
+    source: WebGL2NativeObject,
+    sourceOffset: number,
+    destination: WebGL2NativeObject,
+    destinationOffset: number,
+    size: number
   ): void;
   copyTextureToTexture?(
     source: Readonly<Record<string, unknown>>,
@@ -97,4 +130,5 @@ export interface WebGL2NativeContextPort {
 export interface WebGL2AdapterFacts {
   readonly extensions: ReadonlySet<string>;
   readonly precision: Readonly<Record<string, number>>;
+  readonly clipDepthMode: WebGL2ClipDepthMode;
 }

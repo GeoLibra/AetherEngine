@@ -1,0 +1,124 @@
+name: Browser E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Browser E2E project to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - browser-host-smoke
+          - webgl2-smoke
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      diagnostics: ${{ steps.resolve.outputs.diagnostics }}
+      has-projects: ${{ steps.resolve.outputs.has-projects }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Test project resolver
+        run: pnpm vitest run e2e/resolve-projects.test.ts e2e/cli.test.ts
+      - name: Resolve affected projects
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed_paths_file="$(mktemp)"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            selected_project="${{ github.event.inputs.project }}"
+            case "$selected_project" in
+              all)
+                resolution='{"include":[{"project":"browser-host-smoke"},{"project":"webgl2-smoke"}],"reasons":[{"path":"","ruleId":"manual-all"}],"fallback":true}'
+                ;;
+              browser-host-smoke|webgl2-smoke)
+                resolution="$(node -e 'const project = process.argv[1]; process.stdout.write(JSON.stringify({ include: [{ project }], reasons: [{ path: "", ruleId: "manual-project" }], fallback: false }));' "$selected_project")"
+                ;;
+              *)
+                echo "Unsupported workflow_dispatch project: $selected_project" >&2
+                exit 1
+                ;;
+            esac
+          else
+            base_sha="${{ github.event.pull_request.base.sha || github.event.before }}"
+            head_sha="${{ github.event.pull_request.head.sha || github.sha }}"
+            if ! git diff --name-only --no-renames --diff-filter=ACDMRT \
+              "$base_sha" \
+              "$head_sha" > "$changed_paths_file"; then
+              : > "$changed_paths_file"
+            fi
+            resolution="$(pnpm --silent e2e:resolve < "$changed_paths_file")"
+          fi
+
+          matrix="$(node -e \
+            'const value = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify({ include: value.include }));' \
+            "$resolution")"
+          diagnostics="$(node -e \
+            'const value = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify({ reasons: value.reasons, fallback: value.fallback }));' \
+            "$resolution")"
+          pretty_diagnostics="$(node -e \
+            'const value = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify(value, null, 2));' \
+            "$diagnostics")"
+          has_projects="$(node -e \
+            'const value = JSON.parse(process.argv[1]); process.stdout.write(String(value.include.length > 0));' \
+            "$matrix")"
+          printf 'matrix=%s\ndiagnostics=%s\nhas-projects=%s\n' \
+            "$matrix" "$diagnostics" "$has_projects" >> "$GITHUB_OUTPUT"
+          printf '### E2E routing diagnostics\n\n```json\n%s\n```\n' \
+            "$pretty_diagnostics" >> "$GITHUB_STEP_SUMMARY"
+
+  e2e:
+    needs: resolve
+    if: needs.resolve.outputs.has-projects == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run ${{ matrix.project }}
+        env:
+          E2E_PROJECT: ${{ matrix.project }}
+        run: pnpm e2e --project="$E2E_PROJECT"
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.project }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7

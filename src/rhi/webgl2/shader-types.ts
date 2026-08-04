@@ -1,3 +1,5 @@
+import type { WebGL2ClipDepthMode } from './clip-depth';
+
 export type WebGL2ShaderStage = 'vertex' | 'fragment';
 export type WebGL2BindingKind = 'uniform-buffer' | 'texture' | 'sampler';
 
@@ -36,6 +38,7 @@ export interface WebGL2ShaderTranslationPort {
       constants: Readonly<Record<string, number>>;
       capabilities: readonly string[];
       approvedExtensions: readonly string[];
+      clipDepthMode: WebGL2ClipDepthMode;
     }>
   ): WebGL2TranslatedShader;
 }
