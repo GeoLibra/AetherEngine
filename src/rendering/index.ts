@@ -10,3 +10,4 @@ export * from './material-bindings';
 export * from './pipeline-resolver';
 export * from './material-cache';
 export * from './material-resolution';
+export * from '../render-graph';

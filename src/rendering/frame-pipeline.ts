@@ -1,4 +1,8 @@
 import type { RenderView } from './visibility';
+import {
+  assertRenderGraphExecutionPlan,
+  type RenderGraphExecutionPlan
+} from '../render-graph/executor';
 
 export type RenderSkipReason =
   'surface-suspended' | 'prepare-pending' | 'incompatible-pipeline' | 'missing-resource';
@@ -33,9 +37,9 @@ export interface RenderFrameStages {
   // Group and sort queued draw items into cache-coherent drawing batches.
   sort(context: RenderFrameStageContext): { batches: number };
   // Build the compiled render graph for transient resource bindings and barriers.
-  build(context: RenderFrameStageContext): void;
+  build(context: RenderFrameStageContext): RenderGraphExecutionPlan;
   // Execute drawing commands via RHI encoder buffers.
-  execute(context: RenderFrameStageContext): void;
+  execute(context: RenderFrameStageContext, plan: RenderGraphExecutionPlan): void;
 }
 
 /**
@@ -83,8 +87,9 @@ export function runRenderFrame(input: {
     for (const reason of queued.skipped ?? []) skipped[reason]++;
     const sorted = input.stages.sort(context);
     batches += sorted.batches;
-    input.stages.build(context);
-    input.stages.execute(context);
+    const plan = input.stages.build(context);
+    assertRenderGraphExecutionPlan(plan);
+    input.stages.execute(context, plan);
   }
   return Object.freeze({
     extractedEntities: input.extractedEntities,

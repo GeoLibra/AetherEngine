@@ -11,6 +11,9 @@ import {
   type RenderEntityId,
   type RenderView
 } from '../../src/rendering';
+import { RenderGraphBuilder } from '../../src/render-graph/builder';
+import { compileRenderGraph } from '../../src/render-graph/compiler';
+import { createRenderGraphExecutionPlan } from '../../src/render-graph/executor';
 import type { RHISubmission, SubmissionResult } from '../../src/rhi';
 
 const entity = (value: number) => value as RenderEntityId;
@@ -21,6 +24,12 @@ const key: PreparedVariantKey = {
   featurePolicyKey: 'desktop',
   abiVersion: '1'
 };
+
+function framePlan() {
+  const graph = new RenderGraphBuilder();
+  const snapshot = graph.build();
+  return createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot));
+}
 
 describe('prepared asset lifecycle', () => {
   test('waits for both leases and typed submissions before destroying a retired asset', async () => {
@@ -111,6 +120,39 @@ describe('visibility and render phases', () => {
 });
 
 describe('overlay and frame orchestration', () => {
+  test('rejects a missing compiled graph plan before execution can rebuild it', () => {
+    let executed = false;
+    const activeView: RenderView = {
+      id: 'main',
+      camera: entity(1),
+      surface: 'main',
+      viewport: { x: 0, y: 0, width: 1, height: 1 },
+      layerMask: 1,
+      featurePolicyKey: 'test',
+      historyKey: 'main-history',
+      containsSphere: () => true
+    };
+
+    expect(() =>
+      runRenderFrame({
+        frame: 1,
+        views: [activeView],
+        extractedEntities: 0,
+        extractBytes: 0,
+        stages: {
+          prepare: () => ({ hits: 0, misses: 0, uploadBytes: 0 }),
+          queue: () => ({ items: 0 }),
+          sort: () => ({ batches: 0 }),
+          build: () => undefined as never,
+          execute: () => {
+            executed = true;
+          }
+        }
+      })
+    ).toThrow(/compiled render graph plan/i);
+    expect(executed).toBe(false);
+  });
+
   test('reconciles isolated keyed scopes and reports deterministic truncation', () => {
     const overlays = new OverlayReconciler();
     const policy = {
@@ -130,6 +172,7 @@ describe('overlay and frame orchestration', () => {
 
   test('prepares every view but skips graph execution for suspended surfaces and records metrics', () => {
     const calls: string[] = [];
+    const compiledPlan = framePlan();
     const makeView = (id: string, width: number): RenderView => ({
       id,
       camera: entity(id.length),
@@ -160,9 +203,11 @@ describe('overlay and frame orchestration', () => {
         },
         build: ({ view }) => {
           calls.push(`build:${view.id}`);
+          return compiledPlan;
         },
-        execute: ({ view }) => {
-          calls.push(`execute:${view.id}`);
+        execute: ({ view }, plan) => {
+          expect(plan).toBe(compiledPlan);
+          calls.push(`execute:${view.id}:compiled`);
         }
       }
     });
@@ -171,7 +216,7 @@ describe('overlay and frame orchestration', () => {
       'queue:main',
       'sort:main',
       'build:main',
-      'execute:main',
+      'execute:main:compiled',
       'prepare:preview'
     ]);
     expect(metrics).toMatchObject({ prepareHits: 2, phaseItems: 2, batches: 1 });
