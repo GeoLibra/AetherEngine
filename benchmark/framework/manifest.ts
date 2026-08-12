@@ -215,6 +215,27 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       })
     }),
     Object.freeze({
+      id: 'camera-visibility',
+      description:
+        'Camera projection validation and deterministic CPU sphere/AABB frustum visibility.',
+      domainIds: Object.freeze(['rendering']),
+      pathPrefixes: Object.freeze([
+        'benchmark/camera-visibility.bench.ts',
+        'benchmark/camera-visibility-runner.mjs',
+        'benchmark/camera-visibility/',
+        'engine/design/v2/04-rendering/05-camera-visibility.md',
+        'src/rendering/camera.ts',
+        'src/rendering/visibility.ts',
+        'src/math/frustum.ts',
+        'test/rendering/camera-visibility.test.ts',
+        'test/benchmark/camera-visibility.test.ts'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/camera-visibility-runner.mjs', '{profile}'])
+      })
+    }),
+    Object.freeze({
       id: 'asset-pipeline',
       description:
         'Asset demand merge, stable priority, budget admission, streaming scale, and package/cook planning baselines.',

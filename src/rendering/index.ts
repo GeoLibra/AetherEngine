@@ -4,6 +4,7 @@ export * from './persistent-entity-map';
 export * from './prepared-assets';
 export * from './render-phase';
 export * from './visibility';
+export * from './camera';
 export * from './overlay-reconciler';
 export * from './frame-pipeline';
 export * from './material-bindings';
