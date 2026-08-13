@@ -20,6 +20,7 @@ import type {
   RHIComputePipelineDescriptor,
   RHIDevice,
   RHIPipelineLayout,
+  RHIRenderPassEncoder,
   RHIRenderPipeline,
   RHIRenderPipelineDescriptor,
   RHISampler,
@@ -423,6 +424,43 @@ export class RestrictedContext implements RestrictedPassContext {
             );
           };
         }
+        if (property === 'setVertexBuffer') {
+          return (slot: number, buffer: RestrictedBufferSlice, offset = 0, size?: number) => {
+            const binding = this.boundBuffer(buffer, 'vertex', offset, size);
+            return (target as unknown as RHIRenderPassEncoder).setVertexBuffer(
+              slot, binding.buffer, binding.offset, binding.size
+            );
+          };
+        }
+        if (property === 'setIndexBuffer') {
+          return (
+            buffer: RestrictedBufferSlice,
+            format: 'uint16' | 'uint32',
+            offset = 0,
+            size?: number
+          ) => {
+            const binding = this.boundBuffer(buffer, 'index', offset, size);
+            return (target as unknown as RHIRenderPassEncoder).setIndexBuffer(
+              binding.buffer, format, binding.offset, binding.size
+            );
+          };
+        }
+        if (property === 'drawIndirect') {
+          return (buffer: RestrictedBufferSlice, offset: number) => {
+            const binding = this.boundBuffer(buffer, 'indirect', offset);
+            return (target as unknown as RHIRenderPassEncoder).drawIndirect(
+              binding.buffer, binding.offset
+            );
+          };
+        }
+        if (property === 'dispatchWorkgroupsIndirect') {
+          return (buffer: RestrictedBufferSlice, offset: number) => {
+            const binding = this.boundBuffer(buffer, 'indirect', offset);
+            return (target as unknown as RHIComputePassEncoder).dispatchWorkgroupsIndirect(
+              binding.buffer, binding.offset
+            );
+          };
+        }
         const value = Reflect.get(target, property, target);
         return typeof value === 'function' ? value.bind(target) : value;
       }
@@ -430,6 +468,25 @@ export class RestrictedContext implements RestrictedPassContext {
     this.activePass = tracked;
     this.onBegin(tracked);
     return tracked;
+  }
+
+  private boundBuffer(
+    capability: RestrictedBufferSlice,
+    usage: 'vertex' | 'index' | 'indirect',
+    relativeOffset: number,
+    requestedSize?: number
+  ): { readonly buffer: RHIBuffer; readonly offset: number; readonly size: number } {
+    const binding = this.bufferCapabilities.get(capability);
+    if (binding === undefined) throw new Error('Buffer slice is not owned by this render graph pass.');
+    if (binding.usage !== usage) throw new Error(`Render graph buffer slice requires ${usage} usage.`);
+    if (!Number.isSafeInteger(relativeOffset) || relativeOffset < 0 || relativeOffset > binding.size) {
+      throw new Error('Render graph buffer binding offset is outside the declared slice.');
+    }
+    const size = requestedSize ?? binding.size - relativeOffset;
+    if (!Number.isSafeInteger(size) || size < 0 || relativeOffset + size > binding.size) {
+      throw new Error('Render graph buffer binding size is outside the declared slice.');
+    }
+    return { buffer: binding.buffer, offset: binding.offset + relativeOffset, size };
   }
 
   private requiredTexture(

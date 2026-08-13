@@ -27,6 +27,18 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         deviceScaleFactor: 1
       }
+    },
+    {
+      name: 'webgpu-render',
+      testMatch: 'webgpu-render.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chrome',
+        deviceScaleFactor: 1,
+        launchOptions: {
+          args: ['--enable-unsafe-webgpu']
+        }
+      }
     }
   ],
   webServer: {

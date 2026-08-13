@@ -13,10 +13,17 @@ describe('resolveE2EProjects', () => {
     expect(resolveE2EProjects(['src/rhi/webgl2/device.ts']).projects).toEqual(['webgl2-smoke']);
   });
 
+  test('routes browser WebGPU implementation changes to the WebGPU render project', () => {
+    expect(resolveE2EProjects(['src/rhi/webgpu/browser/device-port.ts']).projects).toEqual([
+      'webgpu-render'
+    ]);
+  });
+
   test('routes E2E infrastructure changes to every smoke project in stable order', () => {
     expect(resolveE2EProjects(['playwright.config.ts']).projects).toEqual([
       'browser-host-smoke',
-      'webgl2-smoke'
+      'webgl2-smoke',
+      'webgpu-render'
     ]);
   });
 
@@ -43,7 +50,7 @@ describe('resolveE2EProjects', () => {
         'src/platform/browser-host.ts',
         'e2e/spec.ts'
       ]).projects
-    ).toEqual(['browser-host-smoke', 'webgl2-smoke']);
+    ).toEqual(['browser-host-smoke', 'webgl2-smoke', 'webgpu-render']);
   });
 
   test('reports normalized paths and routing rules', () => {
@@ -65,7 +72,7 @@ describe('resolveE2EProjects', () => {
       'src/../platform/browser-host.ts'
     ]) {
       expect(resolveE2EProjects([path])).toMatchObject({
-        projects: ['browser-host-smoke', 'webgl2-smoke'],
+        projects: ['browser-host-smoke', 'webgl2-smoke', 'webgpu-render'],
         fallback: true,
         reasons: [{ path, ruleId: 'invalid-input-fallback' }]
       });
@@ -81,7 +88,7 @@ describe('resolveE2EProjects', () => {
         'README.md'
       ])
     ).toMatchObject({
-      projects: ['browser-host-smoke', 'webgl2-smoke'],
+      projects: ['browser-host-smoke', 'webgl2-smoke', 'webgpu-render'],
       fallback: true,
       reasons: [
         { path: 'src/platform/browser-host.ts', ruleId: 'browser-host' },
