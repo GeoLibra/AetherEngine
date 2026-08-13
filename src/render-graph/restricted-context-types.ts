@@ -126,18 +126,27 @@ export type RestrictedComputePipelineDescriptor = Omit<
 
 export type RestrictedRenderPassEncoder = Omit<
   RHIRenderPassEncoder,
-  'setBindGroup' | 'setPipeline'
+  'setBindGroup' | 'setPipeline' | 'setVertexBuffer' | 'setIndexBuffer' | 'drawIndirect'
 > & {
   setBindGroup(index: number, bindGroup: RestrictedBindGroup, offsets?: readonly number[]): void;
   setPipeline(pipeline: RestrictedRenderPipeline): void;
+  setVertexBuffer(slot: number, buffer: RestrictedBufferSlice, offset?: number, size?: number): void;
+  setIndexBuffer(
+    buffer: RestrictedBufferSlice,
+    format: 'uint16' | 'uint32',
+    offset?: number,
+    size?: number
+  ): void;
+  drawIndirect(buffer: RestrictedBufferSlice, offset: number): void;
 };
 
 export type RestrictedComputePassEncoder = Omit<
   RHIComputePassEncoder,
-  'setBindGroup' | 'setPipeline'
+  'setBindGroup' | 'setPipeline' | 'dispatchWorkgroupsIndirect'
 > & {
   setBindGroup(index: number, bindGroup: RestrictedBindGroup, offsets?: readonly number[]): void;
   setPipeline(pipeline: RestrictedComputePipeline): void;
+  dispatchWorkgroupsIndirect(buffer: RestrictedBufferSlice, offset: number): void;
 };
 
 /** Portable creation only: no queue, allocation, encoder, native extension, or destroy. */

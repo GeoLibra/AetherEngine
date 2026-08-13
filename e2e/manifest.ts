@@ -20,6 +20,17 @@ export const E2E_ROUTING_RULES = Object.freeze([
     projects: E2E_PROJECTS
   },
   {
+    id: 'browser-webgpu',
+    prefixes: Object.freeze([
+      'src/rhi/webgpu/browser/',
+      'test/rhi/webgpu/webgpu-browser',
+      'src/platform/browser-graphics',
+      'test/platform/platform-browser-graphics'
+    ]),
+    exact: Object.freeze(['engine/design/v2/03-platform/03-webgpu-backend.md']),
+    projects: Object.freeze(['webgpu-render'] as const)
+  },
+  {
     id: 'browser-host',
     prefixes: Object.freeze(['src/platform/', 'test/platform/']),
     exact: Object.freeze(['engine/design/v2/03-platform/01-host-window-surface.md']),
