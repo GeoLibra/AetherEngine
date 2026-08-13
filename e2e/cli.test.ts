@@ -34,7 +34,11 @@ describe('createMatrixOutput', () => {
 
   test('fails open to every project for blank input', () => {
     expect(createMatrixOutput('')).toMatchObject({
-      include: [{ project: 'browser-host-smoke' }, { project: 'webgl2-smoke' }],
+      include: [
+        { project: 'browser-host-smoke' },
+        { project: 'webgl2-smoke' },
+        { project: 'webgpu-render' }
+      ],
       fallback: true
     });
   });
@@ -53,7 +57,11 @@ describe('runCli', () => {
 
     expect(stdout).toBe(`${JSON.stringify(createMatrixOutput(''))}\n`);
     expect(JSON.parse(stdout)).toMatchObject({
-      include: [{ project: 'browser-host-smoke' }, { project: 'webgl2-smoke' }],
+      include: [
+        { project: 'browser-host-smoke' },
+        { project: 'webgl2-smoke' },
+        { project: 'webgpu-render' }
+      ],
       fallback: true
     });
   });
