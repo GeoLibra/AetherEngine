@@ -90,6 +90,11 @@ export function buildPackedStaticBvh(
   });
 }
 
+/**
+ * Traverses packed BVH nodes using hierarchical plane-mask propagation:
+ * - BVH structure enables batch culling of entire out-of-frustum subtrees.
+ * - Plane Mask avoids redundant plane tests by clearing bits for planes fully containing parent nodes.
+ */
 export function traversePackedStaticBvh(
   bvh: PackedStaticBvh,
   view: RenderView,

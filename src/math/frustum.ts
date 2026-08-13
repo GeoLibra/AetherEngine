@@ -9,10 +9,16 @@ export interface FrustumClassification {
   readonly planeTests: number;
 }
 
+/**
+ * Core visibility culling workflow:
+ * - Gribb-Hartmann extracts frustum planes from the View-Projection matrix.
+ * - Plane Mask propagation avoids redundant plane tests across hierarchical bounding volumes.
+ * - Provides spatial classification primitives (point, sphere, AABB) for acceleration structures.
+ */
 export class Frustum {
   private constructor(readonly planes: readonly Plane[]) {}
 
-  // Gribb–Hartmann
+  /** Uses the Gribb–Hartmann algorithm to extract frustum planes from a View-Projection matrix. */
   static fromViewProjection(matrix: ArrayLike<number>): Frustum {
     const row0 = row(matrix, 0);
     const row1 = row(matrix, 1);
