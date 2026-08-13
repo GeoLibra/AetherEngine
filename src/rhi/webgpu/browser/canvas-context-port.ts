@@ -6,6 +6,8 @@ import type {
 import { BrowserWebGPUTexturePort, type BrowserWebGPUDeviceOwner } from './resource-port';
 import { getBrowserWebGPUDeviceOwner, unwrapBrowserWebGPUDevice } from './device-port';
 
+const GPU_TEXTURE_USAGE_RENDER_ATTACHMENT = 0x10;
+
 export function createBrowserWebGPUCanvasContextPort(
   nativeContext: object,
   onFailure?: (stage: 'surface' | 'context', cause: unknown) => void
@@ -54,7 +56,7 @@ function lowerCanvasConfiguration(
   return Object.freeze({
     device: nativeDevice,
     format: configuration.format,
-    usage: 1 << 4,
+    usage: GPU_TEXTURE_USAGE_RENDER_ATTACHMENT,
     alphaMode: configuration.alphaMode,
     colorSpace: configuration.colorSpace
   });
