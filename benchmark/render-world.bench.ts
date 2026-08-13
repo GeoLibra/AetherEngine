@@ -1,15 +1,21 @@
 import { bench, expect } from 'vitest';
-import { RenderWorld, defineExtractorToken, defineRenderField } from '../src/rendering';
+import {
+  RenderExtractorRegistryBuilder,
+  RenderWorld,
+  defineExtractorToken,
+  defineRenderField
+} from '../src/rendering';
 
 const Position = defineRenderField<[number, number, number]>('position');
 const Visible = defineRenderField<boolean>('visible');
 const Scene = defineExtractorToken('benchmark-scene', [Position, Visible]);
+const extractorPlan = new RenderExtractorRegistryBuilder().registerExtractor(Scene).build();
 
 for (const size of [100, 1_000, 10_000]) {
   bench(
     `publishes ${size} render entities with deterministic diff`,
     () => {
-      const world = new RenderWorld({ requiredFields: [Position], extractors: [Scene] });
+      const world = new RenderWorld({ requiredFields: [Position], extractorPlan });
       const first = world.beginExtract(1, 0);
       for (let index = 0; index < size; index++) {
         const entity = first.mapEntity(index);
@@ -24,7 +30,7 @@ for (const size of [100, 1_000, 10_000]) {
   );
 }
 
-const incrementalWorld = new RenderWorld({ requiredFields: [Position], extractors: [Scene] });
+const incrementalWorld = new RenderWorld({ requiredFields: [Position], extractorPlan });
 const initial = incrementalWorld.beginExtract(1, 0);
 for (let index = 0; index < 10_000; index++) {
   initial.draft(Scene).upsert(initial.mapEntity(index), Position, [index, 0, 0]);

@@ -156,12 +156,9 @@ export class RenderWorld {
     options: {
       readonly requiredFields?: readonly RenderFieldToken<unknown>[];
       readonly extractorPlan?: RenderExtractorPlan;
-      /** @deprecated Prefer a plan built by RenderExtractorRegistryBuilder. */
-      readonly extractors?: readonly AnyExtractorToken[];
     } = {}
   ) {
-    this.extractorPlan =
-      options.extractorPlan ?? RenderExtractorPlan.compile(options.extractors ?? []);
+    this.extractorPlan = options.extractorPlan ?? RenderExtractorPlan.compile([]);
     this.options = options;
     const diff = frozenDiff(0, 0, []);
     this.root = { revision: 0, snapshot: PersistentEntityMap.empty, diff, leases: 0 };

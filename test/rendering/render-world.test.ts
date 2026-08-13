@@ -14,8 +14,21 @@ const Selected = defineRenderTag('selected');
 const Hidden = defineRenderTag('hidden');
 const extractor = defineExtractorToken('scene', [Transform, Visible, Selected, Hidden]);
 
+type Equal<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2
+    ? true
+    : false;
+type Expect<Value extends true> = Value;
+type RenderWorldOptions = NonNullable<ConstructorParameters<typeof RenderWorld>[0]>;
+type RenderWorldOptionKeys = Expect<
+  Equal<keyof RenderWorldOptions, 'requiredFields' | 'extractorPlan'>
+>;
+
+const exactRenderWorldOptions: RenderWorldOptionKeys = true;
+
 function createWorld(requiredFields: readonly ReturnType<typeof defineRenderField>[] = []) {
-  return new RenderWorld({ requiredFields, extractors: [extractor] });
+  const extractorPlan = new RenderExtractorRegistryBuilder().registerExtractor(extractor).build();
+  return new RenderWorld({ requiredFields, extractorPlan });
 }
 
 function publish(
@@ -29,6 +42,10 @@ function publish(
 }
 
 describe('RenderWorld', () => {
+  test('keeps constructor options exact', () => {
+    expect(exactRenderWorldOptions).toBe(true);
+  });
+
   test('publishes generation-safe mapped entities and coalesced fields', () => {
     const world = createWorld([Transform]);
     const source = 1001 as never;
@@ -173,7 +190,11 @@ describe('RenderWorld', () => {
   test('does not compare unchanged fields while deriving an incremental diff', () => {
     const Opaque = defineRenderField<{ readonly toJSON: () => never }>('opaque');
     const opaqueExtractor = defineExtractorToken('opaque', [Opaque]);
-    const world = new RenderWorld({ extractors: [extractor, opaqueExtractor] });
+    const extractorPlan = new RenderExtractorRegistryBuilder()
+      .registerExtractor(extractor)
+      .registerExtractor(opaqueExtractor)
+      .build();
+    const world = new RenderWorld({ extractorPlan });
     publish(world, 1, (tx) =>
       tx.draft(opaqueExtractor).upsert(tx.mapEntity('opaque'), Opaque, {
         toJSON: () => {
@@ -275,7 +296,9 @@ describe('RenderWorld', () => {
   test('rejects duplicate owners without a complete arbitrator', () => {
     const A = defineExtractorToken('a', [Visible]);
     const B = defineExtractorToken('b', [Visible]);
-    expect(() => new RenderWorld({ extractors: [A, B] })).toThrow('no arbitrator');
+    expect(() =>
+      new RenderExtractorRegistryBuilder().registerExtractor(A).registerExtractor(B).build()
+    ).toThrow('no arbitrator');
     expect(() =>
       new RenderExtractorRegistryBuilder()
         .registerExtractor(A)
