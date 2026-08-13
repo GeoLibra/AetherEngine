@@ -11,6 +11,9 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
     detail: {
       generation: expect.any(Number),
       surfaceGeneration: 1,
+      format: 'bgra8unorm',
+      colorSpace: 'srgb',
+      alphaMode: 'opaque',
       renderPasses: 1,
       drawCalls: 1,
       indexedDrawCalls: 1,

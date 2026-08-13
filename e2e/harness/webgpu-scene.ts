@@ -48,6 +48,9 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
       detail: Object.freeze({
         generation: session.device.generation,
         surfaceGeneration: session.surface.generation,
+        format: session.surface.configuration?.format,
+        colorSpace: session.surface.configuration?.colorSpace,
+        alphaMode: session.surface.configuration?.alphaMode,
         renderPasses: execution.commandStats.renderPasses,
         drawCalls: execution.commandStats.draw.drawCalls,
         indexedDrawCalls: execution.commandStats.draw.indexedDrawCalls,
