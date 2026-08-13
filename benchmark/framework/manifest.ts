@@ -30,6 +30,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       id: 'rhi',
       description: 'RHI validation, command lowering, uploads, state caches, and submission.',
       pathPrefixes: Object.freeze([
+        'engine/design/v2/03-platform/01-host-window-surface.md',
         'engine/design/v2/03-platform/02-rhi-contract.md',
         'engine/design/v2/03-platform/03-webgpu-backend.md',
         'engine/design/v2/03-platform/04-webgl2-backend.md',
@@ -134,6 +135,10 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       pathPrefixes: Object.freeze([
         'benchmark/rhi-command.bench.ts',
         'benchmark/rhi-command-runner.mjs',
+        'engine/design/v2/03-platform/01-host-window-surface.md',
+        'engine/design/v2/03-platform/02-rhi-contract.md',
+        'engine/design/v2/03-platform/03-webgpu-backend.md',
+        'engine/design/v2/03-platform/04-webgl2-backend.md',
         'src/rhi/',
         'test/rhi/'
       ]),
@@ -235,6 +240,25 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       command: Object.freeze({
         executable: 'node',
         args: Object.freeze(['benchmark/camera-visibility-runner.mjs', '{profile}'])
+      })
+    }),
+    Object.freeze({
+      id: 'lighting-shadow',
+      description:
+        'Deterministic CPU light-list assignment, bounded overflow, and independent scalar correctness evidence.',
+      domainIds: Object.freeze(['rendering']),
+      pathPrefixes: Object.freeze([
+        'benchmark/lighting-shadow.bench.ts',
+        'benchmark/lighting-shadow-runner.mjs',
+        'benchmark/lighting-shadow/',
+        'engine/design/v2/04-rendering/06-lighting-shadow.md',
+        'src/rendering/lighting/',
+        'test/rendering/lighting-shadow.test.ts',
+        'test/benchmark/lighting-shadow.test.ts'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/lighting-shadow-runner.mjs', '{profile}'])
       })
     }),
     Object.freeze({
