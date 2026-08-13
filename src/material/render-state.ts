@@ -41,13 +41,7 @@ export function resolveMaterialRenderState(
   phaseContext: MaterialRenderPhaseContext,
   techniqueOverride?: MaterialTechnique
 ): ResolvedMaterialRenderState {
-  const legacySurface =
-    assetIntent.blendMode === 'opaque' ||
-    assetIntent.blendMode === 'alpha-mask' ||
-    assetIntent.blendMode === 'transparent'
-      ? assetIntent.blendMode
-      : undefined;
-  const surface = assetIntent.surface ?? legacySurface ?? 'opaque';
+  const surface = assetIntent.surface ?? 'opaque';
   if (surface === 'alpha-mask' && phaseContext.phase === 'transparent') {
     return conflict('Alpha-mask material intent cannot be resolved in the transparent phase.');
   }
@@ -56,7 +50,7 @@ export function resolveMaterialRenderState(
     depthTest: assetIntent.depthTest ?? true,
     depthWrite: assetIntent.depthWrite ?? true,
     colorWrite: assetIntent.colorWrite ?? true,
-    cullMode: assetIntent.cullMode ?? (assetIntent.doubleSided === true ? 'none' : 'back'),
+    cullMode: assetIntent.cullMode ?? 'back',
     blend: assetIntent.blend
   };
   if (phaseContext.phase === 'transparent') {

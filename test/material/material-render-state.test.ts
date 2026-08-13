@@ -15,6 +15,20 @@ import {
 const forward = createMaterialTechniqueRole('forward');
 const shadow = createMaterialTechniqueRole('shadow');
 
+type Equal<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2
+    ? true
+    : false;
+type Expect<Value extends true> = Value;
+type MaterialRenderStateIntentKeys = Expect<
+  Equal<
+    keyof MaterialRenderStateIntent,
+    'surface' | 'depthTest' | 'depthWrite' | 'colorWrite' | 'cullMode' | 'blend'
+  >
+>;
+
+const exactMaterialRenderStateIntent: MaterialRenderStateIntentKeys = true;
+
 function overrideTechnique(
   passRole = forward,
   renderStateOverride: MaterialTechnique['renderStateOverride'] = {}
@@ -40,6 +54,10 @@ function overrideTechnique(
 }
 
 describe('Material render-state resolution', () => {
+  test('keeps material render-state intent exact', () => {
+    expect(exactMaterialRenderStateIntent).toBe(true);
+  });
+
   test('preserves alpha-mask semantics in its requested non-transparent phase', () => {
     const result = resolveMaterialRenderState(
       { surface: 'alpha-mask', cullMode: 'back' },

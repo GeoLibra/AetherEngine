@@ -203,10 +203,7 @@ export interface MaterialBlendIntent {
 }
 
 export interface MaterialRenderStateIntent {
-  readonly [key: string]: unknown;
   readonly surface?: MaterialSurfaceKind;
-  readonly blendMode?: string;
-  readonly doubleSided?: boolean;
   readonly depthTest?: boolean;
   readonly depthWrite?: boolean;
   readonly colorWrite?: boolean;

@@ -51,7 +51,7 @@ export function createPbrAsset<const D extends MaterialFieldDefinitions = PbrDef
     version,
     schema: options.schema ?? (PbrSchema as unknown as MaterialSchema<D>),
     techniques: options.techniques ?? [],
-    renderState: { blendMode: 'opaque', doubleSided: false }
+    renderState: { surface: 'opaque', cullMode: 'back' }
   });
 }
 

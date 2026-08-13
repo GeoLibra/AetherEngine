@@ -302,13 +302,7 @@ function resolveReferenceRenderState(
   }>,
   technique?: MaterialTechnique
 ) {
-  const legacySurface =
-    intent.blendMode === 'opaque' ||
-    intent.blendMode === 'alpha-mask' ||
-    intent.blendMode === 'transparent'
-      ? intent.blendMode
-      : undefined;
-  const surface = intent.surface ?? legacySurface ?? 'opaque';
+  const surface = intent.surface ?? 'opaque';
   if (surface === 'alpha-mask' && phaseContext.phase === 'transparent') {
     return Object.freeze({
       status: 'conflict' as const,
@@ -328,7 +322,7 @@ function resolveReferenceRenderState(
     depthTest: intent.depthTest ?? true,
     depthWrite: intent.depthWrite ?? true,
     colorWrite: intent.colorWrite ?? true,
-    cullMode: intent.cullMode ?? (intent.doubleSided === true ? 'none' : 'back'),
+    cullMode: intent.cullMode ?? 'back',
     blend: intent.blend
   };
   if (phaseContext.phase === 'transparent') {

@@ -267,7 +267,10 @@ describe('immutable material assets and instances', () => {
       version: 7,
       schema,
       techniques,
-      renderState: { blendMode: 'opaque', nested: { colorWrite: true } }
+      renderState: {
+        surface: 'opaque',
+        blend: { color: 'source-over', alpha: 'source-over' }
+      }
     });
     const resolved = resolveMaterialAsset(
       { assetId: asset.id, payloadVersion: asset.version },
@@ -302,9 +305,7 @@ describe('immutable material assets and instances', () => {
         asset.techniques[0]!.compatibility as unknown as { requiredFeatures: string[] }
       ).requiredFeatures.push('x')
     ).toThrow();
-    expect(
-      () => ((asset.renderState.nested as { colorWrite: boolean }).colorWrite = false)
-    ).toThrow();
+    expect(() => ((asset.renderState.blend as { color: string }).color = 'replace')).toThrow();
     expect(resolved.reference).toEqual({ assetId: 'material.immutable', payloadVersion: 7 });
     expect(Object.isFrozen(asset)).toBe(true);
     expect(Object.isFrozen(asset.techniques)).toBe(true);

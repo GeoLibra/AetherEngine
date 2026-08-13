@@ -263,7 +263,7 @@ describe('material Task 1 review regressions', () => {
     const fabricatedAsset = {
       ...asset,
       techniques: [],
-      renderState: { blendMode: 'mutable' }
+      renderState: { surface: 'transparent' }
     } as typeof asset;
     const reference = { assetId: asset.id, payloadVersion: asset.version };
     const fabricatedResolution = { reference, asset };
