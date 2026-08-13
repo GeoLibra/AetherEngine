@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,11 @@ const CI_WORKFLOW_PATH = new URL('../.github/workflows/ci.yml', import.meta.url)
 const REPOSITORY_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
+const GIT_LOCAL_ENVIRONMENT_VARIABLES = (
+  await execFileAsync('git', ['rev-parse', '--local-env-vars'])
+).stdout
+  .trim()
+  .split('\n');
 
 afterEach(async () => {
   await Promise.all(
@@ -205,9 +210,7 @@ describe('E2E GitHub Actions workflow', () => {
       await writeFile(join(directory, 'src/platform/browser-host.ts'), 'export {};\n');
       await commitAll(directory, 'base');
 
-      await execFileAsync('git', ['mv', 'src/platform/browser-host.ts', 'docs/browser-host.ts'], {
-        cwd: directory
-      });
+      await isolatedGit(directory, ['mv', 'src/platform/browser-host.ts', 'docs/browser-host.ts']);
     });
 
     expect(result.matrix).toEqual({ include: [{ project: 'browser-host-smoke' }] });
@@ -319,19 +322,20 @@ async function executeResolverAgainstGitHistory(
 ): Promise<Awaited<ReturnType<typeof executeResolverStep>>> {
   const directory = await mkdtemp(join(tmpdir(), 'aether-e2e-git-'));
   temporaryDirectories.push(directory);
-  await execFileAsync('git', ['init', '--quiet'], { cwd: directory });
-  await execFileAsync('git', ['config', 'user.name', 'E2E Contract'], { cwd: directory });
-  await execFileAsync('git', ['config', 'user.email', 'e2e@example.test'], { cwd: directory });
+  await isolatedGit(directory, ['init', '--quiet']);
+  const repositoryRoot = await realpath(
+    (await isolatedGit(directory, ['rev-parse', '--show-toplevel'])).stdout.trim()
+  );
+  if (repositoryRoot !== (await realpath(directory)))
+    throw new Error('Temporary Git history escaped its test directory.');
+  await isolatedGit(directory, ['config', '--local', 'user.name', 'E2E Contract']);
+  await isolatedGit(directory, ['config', '--local', 'user.email', 'e2e@example.test']);
   await mkdir(join(directory, 'src/platform'), { recursive: true });
   await mkdir(join(directory, 'docs'), { recursive: true });
   await change(directory);
-  const baseSha = (
-    await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: directory })
-  ).stdout.trim();
+  const baseSha = (await isolatedGit(directory, ['rev-parse', 'HEAD'])).stdout.trim();
   await commitAll(directory, 'head');
-  const headSha = (
-    await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: directory })
-  ).stdout.trim();
+  const headSha = (await isolatedGit(directory, ['rev-parse', 'HEAD'])).stdout.trim();
 
   const workflow = await readFile(WORKFLOW_PATH, 'utf8');
   const resolveJob = extractYamlBlock(workflow, '  resolve:');
@@ -359,8 +363,15 @@ async function executeResolverAgainstGitHistory(
 }
 
 async function commitAll(directory: string, message: string): Promise<void> {
-  await execFileAsync('git', ['add', '--all'], { cwd: directory });
-  await execFileAsync('git', ['commit', '--quiet', '-m', message], { cwd: directory });
+  await isolatedGit(directory, ['add', '--all']);
+  await isolatedGit(directory, ['commit', '--quiet', '-m', message]);
+}
+
+function isolatedGit(directory: string, args: readonly string[]) {
+  const environment = { ...process.env };
+  for (const key of GIT_LOCAL_ENVIRONMENT_VARIABLES) delete environment[key];
+  environment.GIT_CEILING_DIRECTORIES = dirname(directory);
+  return execFileAsync('git', ['-C', directory, ...args], { env: environment });
 }
 
 async function writeExecutable(path: string, contents: string): Promise<void> {
