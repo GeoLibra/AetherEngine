@@ -14,6 +14,8 @@ export interface BrowserGPUCanvasContext {
 
 export interface BrowserWebGPUCanvas {
   getContext(contextId: 'webgpu'): unknown;
+  width?: number;
+  height?: number;
 }
 
 export interface BrowserWebGPUGlobalObject {

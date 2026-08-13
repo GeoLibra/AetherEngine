@@ -38,6 +38,15 @@ export {
 } from './app/utils';
 export { Schedule } from './app/schedule';
 export { BrowserRunner, HeadlessRunner } from './app/runner';
+export { createBrowserGraphics, BrowserGraphicsBootstrapError } from './platform';
+export type {
+  BrowserGraphicsAttempt,
+  BrowserGraphicsLoss,
+  BrowserGraphicsOptions,
+  BrowserGraphicsSession,
+  BrowserSurfaceOptions,
+  PhysicalSize
+} from './platform';
 export type {
   AnimationFrameHost,
   AppExit,

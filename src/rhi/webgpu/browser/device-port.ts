@@ -24,6 +24,8 @@ import { createBrowserWebGPUCommandEncoderPort } from './command-port';
 import { createBrowserWebGPUQueuePort } from './queue-port';
 
 let nextBrowserDeviceGeneration = 1;
+const nativeDevices = new WeakMap<WebGPUNativeDevicePort, object>();
+const deviceOwners = new WeakMap<WebGPUNativeDevicePort, BrowserWebGPUDeviceOwner>();
 
 const DESCRIPTOR_KEYS = Object.freeze({
   sampler: Object.freeze([
@@ -51,7 +53,7 @@ export function createBrowserWebGPUDevicePort(
   });
   const nativeQueue = requireObject(Reflect.get(nativeDevice, 'queue'), 'GPUQueue');
 
-  return {
+  const port: WebGPUNativeDevicePort = {
     lost: normalizeLostPromise(Reflect.get(nativeDevice, 'lost')),
     queue: createBrowserWebGPUQueuePort(nativeQueue, owner),
     destroy(): void { callOptional(nativeDevice, 'destroy'); },
@@ -114,6 +116,23 @@ export function createBrowserWebGPUDevicePort(
       return () => { callRequired(nativeDevice, 'removeEventListener', ['uncapturederror', listener]); };
     }
   };
+  nativeDevices.set(port, nativeDevice);
+  deviceOwners.set(port, owner);
+  return port;
+}
+
+export function unwrapBrowserWebGPUDevice(device: WebGPUNativeDevicePort): object {
+  const native = nativeDevices.get(device);
+  if (native === undefined) throw new Error('WebGPU device was not created by the browser device port.');
+  return native;
+}
+
+export function getBrowserWebGPUDeviceOwner(
+  device: WebGPUNativeDevicePort
+): BrowserWebGPUDeviceOwner {
+  const owner = deviceOwners.get(device);
+  if (owner === undefined) throw new Error('WebGPU device was not created by the browser device port.');
+  return owner;
 }
 
 export function lowerBrowserDeviceRequest(
