@@ -3,6 +3,14 @@ export type { NullDeviceOptions } from './null/device';
 export type { NullSubmissionMode } from './null/queue';
 export { NullAdapter } from './null/adapter';
 export { WebGPUAdapter } from './webgpu/adapter';
+export { getBrowserWebGPUEnvironment } from './webgpu/browser';
+export type {
+  BrowserGPUCanvasContext,
+  BrowserWebGPU,
+  BrowserWebGPUCanvas,
+  BrowserWebGPUEnvironment,
+  BrowserWebGPUGlobalObject
+} from './webgpu/browser';
 export { WebGL2Adapter } from './webgl2/adapter';
 export {
   NativeDawnAdapter,
