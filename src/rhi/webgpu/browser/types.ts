@@ -3,6 +3,11 @@ export interface BrowserWebGPU {
   getPreferredCanvasFormat?(): string;
 }
 
+export interface BrowserWebGPUAdapterRequestOptions {
+  readonly powerPreference?: 'low-power' | 'high-performance';
+  readonly forceFallbackAdapter?: boolean;
+}
+
 export interface BrowserGPUCanvasContext {
   configure(configuration: unknown): void;
 }

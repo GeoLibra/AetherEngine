@@ -4,9 +4,11 @@ export type { NullSubmissionMode } from './null/queue';
 export { NullAdapter } from './null/adapter';
 export { WebGPUAdapter } from './webgpu/adapter';
 export { getBrowserWebGPUEnvironment } from './webgpu/browser';
+export { requestBrowserWebGPUAdapter } from './webgpu/browser';
 export type {
   BrowserGPUCanvasContext,
   BrowserWebGPU,
+  BrowserWebGPUAdapterRequestOptions,
   BrowserWebGPUCanvas,
   BrowserWebGPUEnvironment,
   BrowserWebGPUGlobalObject
