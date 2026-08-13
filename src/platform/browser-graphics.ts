@@ -1,8 +1,6 @@
 import { WebGPUAdapter } from '../rhi/webgpu/adapter';
 import { WebGPUSurface } from '../rhi/webgpu/surface';
-import {
-  createBrowserWebGPUCanvasContextPort
-} from '../rhi/webgpu/browser/canvas-context-port';
+import { createBrowserWebGPUCanvasContextPort } from '../rhi/webgpu/browser/canvas-context-port';
 import {
   getBrowserWebGPUEnvironment,
   requestBrowserWebGPUAdapter,
@@ -25,14 +23,16 @@ export async function createBrowserGraphics(
   validateSize(options.surface);
   const preference = options.preference ?? ['webgpu', 'webgl2'];
   if (!preference.includes('webgpu')) {
-    throw unavailable([attempt('webgl2', 'environment', 'unsupported', 'WebGL2 backend is not implemented yet.')]);
+    throw unavailable([
+      attempt('webgl2', 'environment', 'unsupported', 'WebGL2 backend is not implemented yet.')
+    ]);
   }
 
   let environment;
   try {
-    environment = options.environment ?? getBrowserWebGPUEnvironment(
-      globalThis as unknown as BrowserWebGPUGlobalObject
-    );
+    environment =
+      options.environment ??
+      getBrowserWebGPUEnvironment(globalThis as unknown as BrowserWebGPUGlobalObject);
   } catch (cause) {
     throw unavailable([attempt('webgpu', 'environment', 'unavailable', messageOf(cause))]);
   }
@@ -41,7 +41,9 @@ export async function createBrowserGraphics(
     ...(options.powerPreference === undefined ? {} : { powerPreference: options.powerPreference })
   });
   if (nativeAdapter === null) {
-    throw unavailable([attempt('webgpu', 'adapter', 'unavailable', 'navigator.gpu.requestAdapter() returned null.')]);
+    throw unavailable([
+      attempt('webgpu', 'adapter', 'unavailable', 'navigator.gpu.requestAdapter() returned null.')
+    ]);
   }
 
   const adapter = new WebGPUAdapter(nativeAdapter);
@@ -56,13 +58,40 @@ export async function createBrowserGraphics(
   const nativeContext = environment.getCanvasContext(options.canvas);
   if (nativeContext === null) {
     device.destroy();
-    throw unavailable([attempt('webgpu', 'context', 'failure', 'Target canvas did not return a WebGPU context.')]);
+    throw unavailable([
+      attempt('webgpu', 'context', 'failure', 'Target canvas did not return a WebGPU context.')
+    ]);
   }
 
   const target: SurfaceTarget = Object.freeze({ id: Symbol('browser-canvas'), kind: 'canvas' });
+  let resolveLost!: (loss: BrowserGraphicsLoss) => void;
+  let lossSettled = false;
+  const lost = new Promise<BrowserGraphicsLoss>((resolve) => {
+    resolveLost = resolve;
+  });
+  let surfaceGeneration = 1;
+  const settleLoss = (
+    stage: BrowserGraphicsLoss['stage'],
+    reason: string,
+    generation: number
+  ): void => {
+    if (lossSettled) return;
+    lossSettled = true;
+    resolveLost(
+      Object.freeze({
+        backend: 'webgpu',
+        stage,
+        reason,
+        generation,
+        recreationAllowed: reason !== 'destroyed'
+      })
+    );
+  };
   const surface = new WebGPUSurface(
     target,
-    createBrowserWebGPUCanvasContextPort(nativeContext)
+    createBrowserWebGPUCanvasContextPort(nativeContext, (stage, cause) => {
+      settleLoss(stage, messageOf(cause), surfaceGeneration);
+    })
   );
   let configuration = createConfiguration(options, environment.gpu.getPreferredCanvasFormat?.());
   let windowGeneration = 1;
@@ -76,13 +105,7 @@ export async function createBrowserGraphics(
   }
 
   let destroyed = false;
-  const lost = device.lost.then((info): BrowserGraphicsLoss => Object.freeze({
-    backend: 'webgpu',
-    stage: 'device',
-    reason: info.reason,
-    generation: info.generation,
-    recreationAllowed: info.reason !== 'destroyed'
-  }));
+  void device.lost.then((info) => settleLoss('device', info.reason, info.generation));
 
   return Object.freeze({
     backend: 'webgpu' as const,
@@ -96,6 +119,7 @@ export async function createBrowserGraphics(
       if (size.width === configuration.width && size.height === configuration.height) return;
       configuration = Object.freeze({ ...configuration, width: size.width, height: size.height });
       windowGeneration += 1;
+      surfaceGeneration = windowGeneration;
       setCanvasExtent(options.canvas, size);
       surface.configure(device, configuration, windowGeneration);
     },
@@ -129,7 +153,10 @@ function createConfiguration(
 }
 
 function validateSize(size: PhysicalSize): void {
-  for (const [name, value] of [['width', size.width], ['height', size.height]] as const) {
+  for (const [name, value] of [
+    ['width', size.width],
+    ['height', size.height]
+  ] as const) {
     if (!Number.isInteger(value) || value < 0) {
       throw new TypeError(`Browser surface ${name} must be a non-negative integer.`);
     }

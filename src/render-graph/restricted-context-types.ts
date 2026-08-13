@@ -16,6 +16,7 @@ import type {
   RHIRenderPipelineDescriptor
 } from '../rhi/contracts';
 import type { TextureGraphRange } from './ranges';
+import type { PreparedRenderPipelineToken } from './prepared-resources';
 import type {
   BufferHandle,
   BufferRange,
@@ -130,7 +131,12 @@ export type RestrictedRenderPassEncoder = Omit<
 > & {
   setBindGroup(index: number, bindGroup: RestrictedBindGroup, offsets?: readonly number[]): void;
   setPipeline(pipeline: RestrictedRenderPipeline): void;
-  setVertexBuffer(slot: number, buffer: RestrictedBufferSlice, offset?: number, size?: number): void;
+  setVertexBuffer(
+    slot: number,
+    buffer: RestrictedBufferSlice,
+    offset?: number,
+    size?: number
+  ): void;
   setIndexBuffer(
     buffer: RestrictedBufferSlice,
     format: 'uint16' | 'uint32',
@@ -171,6 +177,7 @@ export interface RestrictedPassContext {
   readonly device: RestrictedPortableDevice;
   texture(handle: TextureHandle, usage: TextureUsage, range?: TextureRange): RestrictedTextureView;
   buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice;
+  renderPipeline(token: PreparedRenderPipelineToken): RestrictedRenderPipeline;
   beginRaster(descriptor: DeclaredRasterPass): RestrictedRenderPassEncoder;
   beginCompute(descriptor?: GPUComputePassDescriptor): RestrictedComputePassEncoder;
   copyBufferToBuffer(

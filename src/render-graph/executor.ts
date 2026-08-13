@@ -18,6 +18,7 @@ import {
 import { allocationFor, freezeCommandStats } from './executor-resource-utils';
 import { TransientResourcePool, type TransientResource } from './transient-pool';
 import { RestrictedContext } from './restricted-context';
+import type { PreparedRenderPipelineBindings } from './prepared-resources';
 export type {
   DeclaredRasterColorAttachment,
   DeclaredRasterDepthStencilAttachment,
@@ -80,6 +81,8 @@ export interface RenderGraphExecutionInputs {
   readonly surfaces?: ReadonlyMap<string, RHISurface>;
   /** A shared pool maintains transient reuse only after the submission terminates. */
   readonly transientPool?: TransientResourcePool;
+  /** Externally owned pipelines prepared before surface acquisition. */
+  readonly preparedRenderPipelines?: PreparedRenderPipelineBindings;
 }
 
 export interface RenderGraphExecutionDebug extends RenderGraphDebugIR {
@@ -115,6 +118,7 @@ export class RenderGraphExecutor {
   ): RenderGraphExecution {
     // Canonical provenance is pure to validate and must precede acquire, allocation, or recording.
     validateRenderGraphExecutionPlan(plan);
+    validatePreparedRenderPipelines(inputs);
     const frames: SurfaceBinding[] = [];
     const transientResources: TransientResource[] = [];
     const restrictedContexts: RestrictedContext[] = [];
@@ -150,6 +154,7 @@ export class RenderGraphExecutor {
             resources,
             new Map(plan.snapshot.resources.map((resource) => [resource.resourceId, resource])),
             inputs.device,
+            inputs.preparedRenderPipelines ?? new Map(),
             encoder,
             (next) => {
               activePass = next;
@@ -263,6 +268,22 @@ export class RenderGraphExecutor {
 
   private presentFrames(frames: readonly SurfaceBinding[]): void {
     for (const binding of frames) binding.frame.present();
+  }
+}
+
+function validatePreparedRenderPipelines(inputs: RenderGraphExecutionInputs): void {
+  for (const [token, pipeline] of inputs.preparedRenderPipelines ?? []) {
+    if (token.kind !== 'prepared-render-pipeline-token') {
+      throw new TypeError('Prepared render pipeline binding has an invalid token.');
+    }
+    if (pipeline.state !== 'live') {
+      throw new Error(`Prepared render pipeline "${token.name}" is not a live resource.`);
+    }
+    if (pipeline.generation !== inputs.device.generation) {
+      throw new Error(
+        `Prepared render pipeline "${token.name}" belongs to another device generation.`
+      );
+    }
   }
 }
 

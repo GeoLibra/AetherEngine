@@ -3,6 +3,7 @@ import {
   RenderGraphExecutor,
   compileRenderGraph,
   createBrowserGraphics,
+  createPreparedRenderPipelineToken,
   createRenderGraphExecutionPlan,
   type BrowserGraphicsSession,
   type RestrictedPassContext
@@ -10,13 +11,11 @@ import {
 
 const WIDTH = 640;
 const HEIGHT = 360;
+const TRIANGLE_PIPELINE = createPreparedRenderPipelineToken('webgpu-triangle');
+const CUBE_PIPELINE = createPreparedRenderPipelineToken('webgpu-cube');
 const INDEX_DATA = new Uint16Array([
-  0, 1, 2, 2, 1, 3,
-  4, 6, 5, 5, 6, 7,
-  0, 2, 4, 4, 2, 6,
-  1, 5, 3, 3, 5, 7,
-  2, 3, 6, 6, 3, 7,
-  0, 4, 1, 1, 4, 5
+  0, 1, 2, 2, 1, 3, 4, 6, 5, 5, 6, 7, 0, 2, 4, 4, 2, 6, 1, 5, 3, 3, 5, 7, 2, 3, 6, 6, 3, 7, 0, 4, 1,
+  1, 4, 5
 ]);
 
 export interface WebGPUSceneResult {
@@ -38,9 +37,10 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
     usage: (1 << 4) | (1 << 3)
   });
   session.device.queue.writeBuffer(indexBuffer, 0, INDEX_DATA);
+  const prepared = prepareScenePipelines(session);
 
   try {
-    const execution = executeScene(session, indexBuffer);
+    const execution = executeScene(session, indexBuffer, prepared);
     await execution.submission.done;
     const fastPath = fastPathMetrics(session.device);
     const diagnostics = diagnosticMessages(session);
@@ -59,37 +59,46 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
         diagnostics
       }),
       async destroy(): Promise<void> {
+        prepared.dispose();
         indexBuffer.dispose();
         await session.destroy();
       }
     });
   } catch (error) {
+    prepared.dispose();
     indexBuffer.dispose();
     await session.destroy();
     throw error;
   }
 }
 
-function executeScene(session: BrowserGraphicsSession, indexBuffer: ReturnType<BrowserGraphicsSession['device']['createBuffer']>) {
+function executeScene(
+  session: BrowserGraphicsSession,
+  indexBuffer: ReturnType<BrowserGraphicsSession['device']['createBuffer']>,
+  prepared: ReturnType<typeof prepareScenePipelines>
+) {
   const configuration = session.surface.configuration;
   if (configuration === undefined) throw new Error('WebGPU surface is not configured.');
   const graph = new RenderGraphBuilder();
   const surfaceToken = { kind: 'surface-frame' as const, id: 'webgpu-main' };
-  const surfaceColor = graph.createTexture({
-    width: configuration.width,
-    height: configuration.height,
-    depthOrArrayLayers: 1,
-    mipLevelCount: 1,
-    sampleCount: 1,
-    format: configuration.format,
-    usage: ['color-attachment']
-  }, {
-    origin: {
-      kind: 'imported',
-      initialState: 'undefined',
-      acquire: { kind: 'external-acquire', id: surfaceToken.id }
+  const surfaceColor = graph.createTexture(
+    {
+      width: configuration.width,
+      height: configuration.height,
+      depthOrArrayLayers: 1,
+      mipLevelCount: 1,
+      sampleCount: 1,
+      format: configuration.format,
+      usage: ['color-attachment']
+    },
+    {
+      origin: {
+        kind: 'imported',
+        initialState: 'undefined',
+        acquire: { kind: 'external-acquire', id: surfaceToken.id }
+      }
     }
-  });
+  );
   const depth = graph.createTexture({
     width: configuration.width,
     height: configuration.height,
@@ -99,13 +108,16 @@ function executeScene(session: BrowserGraphicsSession, indexBuffer: ReturnType<B
     format: 'depth24plus',
     usage: ['depth-stencil-attachment']
   });
-  const indices = graph.createBuffer({ size: INDEX_DATA.byteLength, usage: ['index', 'copy-dst'] }, {
-    origin: {
-      kind: 'imported',
-      initialState: 'index',
-      acquire: { kind: 'external-acquire', id: 'cube-indices' }
+  const indices = graph.createBuffer(
+    { size: INDEX_DATA.byteLength, usage: ['index', 'copy-dst'] },
+    {
+      origin: {
+        kind: 'imported',
+        initialState: 'index',
+        acquire: { kind: 'external-acquire', id: 'cube-indices' }
+      }
     }
-  });
+  );
   graph.addPass({
     id: 'clear-triangle-indexed-cube',
     setup(pass) {
@@ -116,7 +128,7 @@ function executeScene(session: BrowserGraphicsSession, indexBuffer: ReturnType<B
       return { color, depthAttachment, index };
     },
     run(context: RestrictedPassContext, resources) {
-      recordScene(context, resources, configuration.format);
+      recordScene(context, resources);
     }
   });
   const snapshot = graph.build();
@@ -124,41 +136,32 @@ function executeScene(session: BrowserGraphicsSession, indexBuffer: ReturnType<B
   return new RenderGraphExecutor().execute(plan, {
     device: session.device,
     surface: session.surface,
-    resources: new Map([[indices, indexBuffer]])
+    resources: new Map([[indices, indexBuffer]]),
+    preparedRenderPipelines: prepared.pipelines
   });
 }
 
 function recordScene(
   context: RestrictedPassContext,
-  resources: { readonly color: Parameters<RestrictedPassContext['texture']>[0]; readonly depthAttachment: Parameters<RestrictedPassContext['texture']>[0]; readonly index: Parameters<RestrictedPassContext['buffer']>[0] },
-  format: string
+  resources: {
+    readonly color: Parameters<RestrictedPassContext['texture']>[0];
+    readonly depthAttachment: Parameters<RestrictedPassContext['texture']>[0];
+    readonly index: Parameters<RestrictedPassContext['buffer']>[0];
+  }
 ): void {
-  const emptyLayout = context.device.createBindGroupLayout({ entries: [] });
-  const pipelineLayout = context.device.createPipelineLayout({ bindGroupLayouts: [emptyLayout] });
-  const triangleShader = context.device.createShaderModule({ code: TRIANGLE_SHADER });
-  const cubeShader = context.device.createShaderModule({ code: CUBE_SHADER });
-  const trianglePipeline = context.device.createRenderPipeline({
-    layout: pipelineLayout,
-    vertex: { module: triangleShader, entryPoint: 'vs_main' },
-    fragment: { module: triangleShader, entryPoint: 'fs_main', targets: [{ format }] },
-    depthStencil: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'always' }
-  });
-  const cubePipeline = context.device.createRenderPipeline({
-    layout: pipelineLayout,
-    vertex: { module: cubeShader, entryPoint: 'vs_main' },
-    fragment: { module: cubeShader, entryPoint: 'fs_main', targets: [{ format }] },
-    primitive: { cullMode: 'back', frontFace: 'ccw' },
-    depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' }
-  });
+  const trianglePipeline = context.renderPipeline(TRIANGLE_PIPELINE);
+  const cubePipeline = context.renderPipeline(CUBE_PIPELINE);
   const index = context.buffer(resources.index, 'index');
   const pass = context.beginRaster({
     label: 'webgpu-conformance-scene',
-    colorAttachments: [{
-      texture: resources.color,
-      loadOp: 'clear',
-      storeOp: 'store',
-      clearValue: { r: 0.025, g: 0.04, b: 0.08, a: 1 }
-    }],
+    colorAttachments: [
+      {
+        texture: resources.color,
+        loadOp: 'clear',
+        storeOp: 'store',
+        clearValue: { r: 0.025, g: 0.04, b: 0.08, a: 1 }
+      }
+    ],
     depthStencilAttachment: {
       texture: resources.depthAttachment,
       depthLoadOp: 'clear',
@@ -174,7 +177,45 @@ function recordScene(
   pass.end();
 }
 
-function fastPathMetrics(device: BrowserGraphicsSession['device']): { readonly nativeQueueSubmits: number } {
+function prepareScenePipelines(session: BrowserGraphicsSession) {
+  const format = session.surface.configuration?.format;
+  if (format === undefined) throw new Error('WebGPU surface is not configured.');
+  const emptyLayout = session.device.createBindGroupLayout({ entries: [] });
+  const pipelineLayout = session.device.createPipelineLayout({ bindGroupLayouts: [emptyLayout] });
+  const triangleShader = session.device.createShaderModule({ code: TRIANGLE_SHADER });
+  const cubeShader = session.device.createShaderModule({ code: CUBE_SHADER });
+  const trianglePipeline = session.device.createRenderPipeline({
+    layout: pipelineLayout,
+    vertex: { module: triangleShader, entryPoint: 'vs_main' },
+    fragment: { module: triangleShader, entryPoint: 'fs_main', targets: [{ format }] },
+    depthStencil: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'always' }
+  });
+  const cubePipeline = session.device.createRenderPipeline({
+    layout: pipelineLayout,
+    vertex: { module: cubeShader, entryPoint: 'vs_main' },
+    fragment: { module: cubeShader, entryPoint: 'fs_main', targets: [{ format }] },
+    primitive: { cullMode: 'back', frontFace: 'ccw' },
+    depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' }
+  });
+  return Object.freeze({
+    pipelines: new Map([
+      [TRIANGLE_PIPELINE, trianglePipeline],
+      [CUBE_PIPELINE, cubePipeline]
+    ]),
+    dispose(): void {
+      cubePipeline.dispose();
+      trianglePipeline.dispose();
+      cubeShader.dispose();
+      triangleShader.dispose();
+      pipelineLayout.dispose();
+      emptyLayout.dispose();
+    }
+  });
+}
+
+function fastPathMetrics(device: BrowserGraphicsSession['device']): {
+  readonly nativeQueueSubmits: number;
+} {
   const metrics = Reflect.get(device, 'fastPathMetrics');
   if (typeof metrics !== 'function') throw new Error('WebGPU fast-path metrics are unavailable.');
   return Reflect.apply(metrics, device, []) as { readonly nativeQueueSubmits: number };
