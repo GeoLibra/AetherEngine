@@ -1,0 +1,68 @@
+import type {
+  WebGPUNativeCanvasContextPort,
+  WebGPUNativeSurfaceAcquireResult,
+  WebGPUNativeSurfaceConfiguration
+} from '../native-types';
+import { BrowserWebGPUTexturePort, type BrowserWebGPUDeviceOwner } from './resource-port';
+import { getBrowserWebGPUDeviceOwner, unwrapBrowserWebGPUDevice } from './device-port';
+
+export function createBrowserWebGPUCanvasContextPort(
+  nativeContext: object
+): WebGPUNativeCanvasContextPort {
+  let owner: BrowserWebGPUDeviceOwner | undefined;
+  return {
+    configure(configuration): void {
+      const nativeDevice = unwrapBrowserWebGPUDevice(configuration.device);
+      owner = getBrowserWebGPUDeviceOwner(configuration.device);
+      callRequired(nativeContext, 'configure', [lowerCanvasConfiguration(configuration, nativeDevice)]);
+    },
+    getCurrentTexture(): WebGPUNativeSurfaceAcquireResult {
+      if (owner === undefined) return Object.freeze({ status: 'outdated' });
+      try {
+        const texture = requireObject(
+          callRequired(nativeContext, 'getCurrentTexture', []),
+          'GPUCanvasContext.getCurrentTexture()'
+        );
+        return Object.freeze({
+          status: 'success',
+          texture: new BrowserWebGPUTexturePort(owner, texture)
+        });
+      } catch {
+        return Object.freeze({ status: 'outdated' });
+      }
+    },
+    unconfigure(): void {
+      owner = undefined;
+      callOptional(nativeContext, 'unconfigure');
+    }
+  };
+}
+
+function lowerCanvasConfiguration(
+  configuration: WebGPUNativeSurfaceConfiguration,
+  nativeDevice: object
+): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    device: nativeDevice,
+    format: configuration.format,
+    usage: 1 << 4,
+    alphaMode: configuration.alphaMode,
+    colorSpace: configuration.colorSpace
+  });
+}
+
+function callRequired(target: object, key: string, args: readonly unknown[]): unknown {
+  const method = Reflect.get(target, key);
+  if (typeof method !== 'function') throw new TypeError(`GPUCanvasContext does not implement ${key}().`);
+  return Reflect.apply(method, target, args);
+}
+
+function callOptional(target: object, key: string): void {
+  const method = Reflect.get(target, key);
+  if (typeof method === 'function') Reflect.apply(method, target, []);
+}
+
+function requireObject(value: unknown, label: string): object {
+  if (typeof value !== 'object' || value === null) throw new TypeError(`${label} is not an object.`);
+  return value;
+}

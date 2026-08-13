@@ -45,7 +45,9 @@ export class WebGPUSurface implements RHISurface {
     }
 
     const snapshot = Object.freeze({ ...configuration });
-    device.configureSurface(this.context, snapshot);
+    if (snapshot.width > 0 && snapshot.height > 0) {
+      device.configureSurface(this.context, snapshot);
+    }
     this.activeFrame?.abandon();
     this.activeFrame = undefined;
     this.currentDevice = device;
