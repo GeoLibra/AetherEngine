@@ -7,14 +7,22 @@ import { BrowserWebGPUTexturePort, type BrowserWebGPUDeviceOwner } from './resou
 import { getBrowserWebGPUDeviceOwner, unwrapBrowserWebGPUDevice } from './device-port';
 
 export function createBrowserWebGPUCanvasContextPort(
-  nativeContext: object
+  nativeContext: object,
+  onFailure?: (stage: 'surface' | 'context', cause: unknown) => void
 ): WebGPUNativeCanvasContextPort {
   let owner: BrowserWebGPUDeviceOwner | undefined;
   return {
     configure(configuration): void {
-      const nativeDevice = unwrapBrowserWebGPUDevice(configuration.device);
-      owner = getBrowserWebGPUDeviceOwner(configuration.device);
-      callRequired(nativeContext, 'configure', [lowerCanvasConfiguration(configuration, nativeDevice)]);
+      try {
+        const nativeDevice = unwrapBrowserWebGPUDevice(configuration.device);
+        owner = getBrowserWebGPUDeviceOwner(configuration.device);
+        callRequired(nativeContext, 'configure', [
+          lowerCanvasConfiguration(configuration, nativeDevice)
+        ]);
+      } catch (cause) {
+        onFailure?.('context', cause);
+        throw cause;
+      }
     },
     getCurrentTexture(): WebGPUNativeSurfaceAcquireResult {
       if (owner === undefined) return Object.freeze({ status: 'outdated' });
@@ -27,8 +35,9 @@ export function createBrowserWebGPUCanvasContextPort(
           status: 'success',
           texture: new BrowserWebGPUTexturePort(owner, texture)
         });
-      } catch {
-        return Object.freeze({ status: 'outdated' });
+      } catch (cause) {
+        onFailure?.('surface', cause);
+        return Object.freeze({ status: 'lost' });
       }
     },
     unconfigure(): void {
@@ -53,7 +62,8 @@ function lowerCanvasConfiguration(
 
 function callRequired(target: object, key: string, args: readonly unknown[]): unknown {
   const method = Reflect.get(target, key);
-  if (typeof method !== 'function') throw new TypeError(`GPUCanvasContext does not implement ${key}().`);
+  if (typeof method !== 'function')
+    throw new TypeError(`GPUCanvasContext does not implement ${key}().`);
   return Reflect.apply(method, target, args);
 }
 
@@ -63,6 +73,7 @@ function callOptional(target: object, key: string): void {
 }
 
 function requireObject(value: unknown, label: string): object {
-  if (typeof value !== 'object' || value === null) throw new TypeError(`${label} is not an object.`);
+  if (typeof value !== 'object' || value === null)
+    throw new TypeError(`${label} is not an object.`);
   return value;
 }

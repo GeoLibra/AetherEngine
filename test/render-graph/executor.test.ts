@@ -7,6 +7,7 @@ import {
   type RenderGraphExecutionPlan,
   type RestrictedPassContext
 } from '../../src/render-graph/executor';
+import { createPreparedRenderPipelineToken } from '../../src/render-graph/prepared-resources';
 import { NullDevice } from '../../src/rhi/null/device';
 import { TransientResourcePool } from '../../src/render-graph/transient-pool';
 import type { TransientAllocationDescriptor } from '../../src/render-graph/transient-pool';
@@ -58,6 +59,30 @@ class CountingTransientPool extends TransientResourcePool {
 }
 
 describe('RenderGraphExecutor', () => {
+  test('exposes externally prepared render pipelines through typed pass capabilities', () => {
+    const device = new NullDevice();
+    const pipeline = device.createRenderPipeline({ label: 'prepared' });
+    const token = createPreparedRenderPipelineToken('main');
+    const graph = new RenderGraphBuilder();
+    let resolved: unknown;
+    graph.addPass({
+      id: 'prepared-pipeline',
+      setup(pass) {
+        pass.sideEffect('record');
+      },
+      run(context: RestrictedPassContext) {
+        resolved = context.renderPipeline(token);
+      }
+    });
+
+    new RenderGraphExecutor().execute(compile(graph), {
+      device,
+      preparedRenderPipelines: new Map([[token, pipeline]])
+    });
+
+    expect(resolved).toMatchObject({ kind: 'restricted-render-pipeline' });
+  });
+
   test('rejects incompatible or foreign imported physical bindings before recording', () => {
     const device = new NullDevice();
     const graph = new RenderGraphBuilder();
@@ -149,6 +174,7 @@ describe('RenderGraphExecutor', () => {
       'buffer',
       'copyBufferToBuffer',
       'device',
+      'renderPipeline',
       'texture'
     ]);
     expect((context as unknown as Record<string, unknown>).device).toBeDefined();

@@ -34,6 +34,10 @@ import type {
   RHISubmission
 } from '../rhi/contracts';
 import type { EndableRenderPass } from './executor-cleanup';
+import type {
+  PreparedRenderPipelineBindings,
+  PreparedRenderPipelineToken
+} from './prepared-resources';
 import {
   lowerRestrictedComputePipeline,
   lowerRestrictedRenderPipeline
@@ -100,6 +104,7 @@ export class RestrictedContext implements RestrictedPassContext {
     private readonly resources: ReadonlyMap<GraphHandle, RHITexture | RHIBuffer>,
     private readonly resourceRecords: ReadonlyMap<number, GraphResourceRecord>,
     private readonly rhiDevice: RHIDevice,
+    private readonly preparedRenderPipelines: PreparedRenderPipelineBindings,
     private readonly encoder: ReturnType<RHIDevice['createCommandEncoder']>,
     private readonly onBegin: (pass: ActivePass) => void,
     private readonly onEnd: () => void
@@ -112,10 +117,21 @@ export class RestrictedContext implements RestrictedPassContext {
       device: this.device,
       texture: this.texture.bind(this),
       buffer: this.buffer.bind(this),
+      renderPipeline: this.renderPipeline.bind(this),
       beginRaster: this.beginRaster.bind(this),
       beginCompute: this.beginCompute.bind(this),
       copyBufferToBuffer: this.copyBufferToBuffer.bind(this)
     });
+  }
+
+  renderPipeline(token: PreparedRenderPipelineToken): RestrictedRenderPipeline {
+    this.requireInactive('resolve a prepared render pipeline');
+    const raw = this.preparedRenderPipelines.get(token);
+    if (raw === undefined)
+      throw new Error(`Prepared render pipeline "${token.name}" is not bound.`);
+    const capability = Object.freeze({ kind: 'restricted-render-pipeline' as const });
+    this.renderPipelines.set(capability, raw);
+    return capability;
   }
 
   /** Ends the synchronous callback capability window without disposing submission-owned objects. */
@@ -428,7 +444,10 @@ export class RestrictedContext implements RestrictedPassContext {
           return (slot: number, buffer: RestrictedBufferSlice, offset = 0, size?: number) => {
             const binding = this.boundBuffer(buffer, 'vertex', offset, size);
             return (target as unknown as RHIRenderPassEncoder).setVertexBuffer(
-              slot, binding.buffer, binding.offset, binding.size
+              slot,
+              binding.buffer,
+              binding.offset,
+              binding.size
             );
           };
         }
@@ -441,7 +460,10 @@ export class RestrictedContext implements RestrictedPassContext {
           ) => {
             const binding = this.boundBuffer(buffer, 'index', offset, size);
             return (target as unknown as RHIRenderPassEncoder).setIndexBuffer(
-              binding.buffer, format, binding.offset, binding.size
+              binding.buffer,
+              format,
+              binding.offset,
+              binding.size
             );
           };
         }
@@ -449,7 +471,8 @@ export class RestrictedContext implements RestrictedPassContext {
           return (buffer: RestrictedBufferSlice, offset: number) => {
             const binding = this.boundBuffer(buffer, 'indirect', offset);
             return (target as unknown as RHIRenderPassEncoder).drawIndirect(
-              binding.buffer, binding.offset
+              binding.buffer,
+              binding.offset
             );
           };
         }
@@ -457,7 +480,8 @@ export class RestrictedContext implements RestrictedPassContext {
           return (buffer: RestrictedBufferSlice, offset: number) => {
             const binding = this.boundBuffer(buffer, 'indirect', offset);
             return (target as unknown as RHIComputePassEncoder).dispatchWorkgroupsIndirect(
-              binding.buffer, binding.offset
+              binding.buffer,
+              binding.offset
             );
           };
         }
@@ -477,9 +501,15 @@ export class RestrictedContext implements RestrictedPassContext {
     requestedSize?: number
   ): { readonly buffer: RHIBuffer; readonly offset: number; readonly size: number } {
     const binding = this.bufferCapabilities.get(capability);
-    if (binding === undefined) throw new Error('Buffer slice is not owned by this render graph pass.');
-    if (binding.usage !== usage) throw new Error(`Render graph buffer slice requires ${usage} usage.`);
-    if (!Number.isSafeInteger(relativeOffset) || relativeOffset < 0 || relativeOffset > binding.size) {
+    if (binding === undefined)
+      throw new Error('Buffer slice is not owned by this render graph pass.');
+    if (binding.usage !== usage)
+      throw new Error(`Render graph buffer slice requires ${usage} usage.`);
+    if (
+      !Number.isSafeInteger(relativeOffset) ||
+      relativeOffset < 0 ||
+      relativeOffset > binding.size
+    ) {
       throw new Error('Render graph buffer binding offset is outside the declared slice.');
     }
     const size = requestedSize ?? binding.size - relativeOffset;

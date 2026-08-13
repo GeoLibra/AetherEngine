@@ -33,6 +33,7 @@ describe('E2E GitHub Actions workflow', () => {
     expect(workflow).toContain(
       'options:\n          - all\n          - browser-host-smoke\n          - webgl2-smoke'
     );
+    expect(workflow).toContain('          - webgpu-render');
     expect(workflow).toContain('group: ${{ github.workflow }}-${{ github.ref }}');
     expect(workflow).toContain('cancel-in-progress: true');
     expect(workflow).toContain('permissions:\n  contents: read');
@@ -140,7 +141,11 @@ describe('E2E GitHub Actions workflow', () => {
     const selectedOutputs = await executeResolverStep(selectedScript, undefined);
 
     expect(allOutputs.matrix).toEqual({
-      include: [{ project: 'browser-host-smoke' }, { project: 'webgl2-smoke' }]
+      include: [
+        { project: 'browser-host-smoke' },
+        { project: 'webgl2-smoke' },
+        { project: 'webgpu-render' }
+      ]
     });
     expect(allOutputs.diagnostics).toEqual({
       reasons: [{ path: '', ruleId: 'manual-all' }],
