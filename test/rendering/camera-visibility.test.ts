@@ -7,10 +7,41 @@ import {
   createCpuVisibilityView,
   extractView,
   CameraViewError,
-  type RenderEntityId
+  type RenderEntityId,
+  type RenderView,
+  type VisibilityCandidate
 } from '../../src/rendering';
 
 const entity = (value: number) => value as RenderEntityId;
+type Equal<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2
+    ? true
+    : false;
+type Expect<Value extends true> = Value;
+
+type RenderViewKeys = Expect<
+  Equal<
+    keyof RenderView,
+    | 'id'
+    | 'camera'
+    | 'surface'
+    | 'viewport'
+    | 'layerMask'
+    | 'featurePolicyKey'
+    | 'historyKey'
+    | 'viewRevision'
+    | 'frustum'
+    | 'viewMatrix'
+  >
+>;
+type VisibilityCandidateKeys = Expect<
+  Equal<
+    keyof VisibilityCandidate,
+    'entity' | 'enabled' | 'layerMask' | 'bounds' | 'boundsRevision' | 'lod' | 'visibilityFlags'
+  >
+>;
+
+const exactVisibilityContracts: readonly [RenderViewKeys, VisibilityCandidateKeys] = [true, true];
 
 describe('camera extraction', () => {
   test('uses physical pixels and publishes matching inverse matrices', () => {
@@ -134,6 +165,10 @@ describe('CPU visibility', () => {
     frustum,
     viewMatrix: Mat4.identity()
   };
+
+  test('keeps the public visibility contracts exact', () => {
+    expect(exactVisibilityContracts).toEqual([true, true]);
+  });
 
   test('conservatively filters sphere/AABB bounds and publishes stable items', () => {
     const result = computeVisibility(view, [

@@ -10,11 +10,7 @@ export interface VisibilityCandidate {
   readonly entity: RenderEntityId;
   readonly enabled?: boolean;
   readonly layerMask: number;
-  readonly bounds?: WorldBounds;
-  /** @deprecated Use bounds. Retained for source compatibility. */
-  readonly center?: Vec3;
-  /** @deprecated Use bounds. Retained for source compatibility. */
-  readonly radius?: number;
+  readonly bounds: WorldBounds;
   readonly boundsRevision?: number;
   readonly lod?: number;
   readonly visibilityFlags?: number;
@@ -31,8 +27,6 @@ export interface RenderView {
   readonly viewRevision?: number;
   readonly frustum?: Frustum;
   readonly viewMatrix?: ArrayLike<number>;
-  /** @deprecated Supply frustum for plane-tested visibility. */
-  readonly containsSphere?: (center: Vec3, radius: number) => boolean;
 }
 
 export interface VisibleItem {
@@ -82,7 +76,7 @@ export function computeVisibility(
       layerRejected++;
       continue;
     }
-    const bounds = resolveBounds(candidate);
+    const bounds = candidate.bounds;
     let visible = true;
     if (view.frustum) {
       const result =
@@ -91,8 +85,6 @@ export function computeVisibility(
           : view.frustum.classifyAabb(bounds.min, bounds.max, ALL_FRUSTUM_PLANES);
       planeTests += result.planeTests;
       visible = result.intersection !== 'outside';
-    } else if (view.containsSphere && bounds.kind === 'sphere') {
-      visible = view.containsSphere(bounds.center, bounds.radius);
     } else {
       conservativeFallbackRetained++;
     }
@@ -153,13 +145,6 @@ export function createCpuVisibilityView(
     frustum: Frustum.fromViewProjection(extracted.unjitteredViewProjection),
     viewMatrix: extracted.view
   });
-}
-
-function resolveBounds(candidate: VisibilityCandidate): WorldBounds {
-  if (candidate.bounds) return candidate.bounds;
-  if (candidate.center && candidate.radius !== undefined)
-    return { kind: 'sphere', center: candidate.center, radius: candidate.radius };
-  throw new Error(`Visibility candidate ${candidate.entity} has no bounds.`);
 }
 
 function boundsDepthRange(

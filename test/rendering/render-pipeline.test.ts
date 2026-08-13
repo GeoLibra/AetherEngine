@@ -15,6 +15,7 @@ import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import { createRenderGraphExecutionPlan } from '../../src/render-graph/executor';
 import type { RHISubmission, SubmissionResult } from '../../src/rhi';
+import { Frustum, Mat4 } from '../../src/math';
 
 const entity = (value: number) => value as RenderEntityId;
 const key: PreparedVariantKey = {
@@ -66,15 +67,27 @@ describe('visibility and render phases', () => {
     layerMask: 1,
     featurePolicyKey: 'desktop',
     historyKey: 'main-history',
-    containsSphere: (center) => center[0] >= 0
+    frustum: Frustum.fromViewProjection(Mat4.perspective(Math.PI / 2, 1, 0.1, 10))
   };
 
   test('isolates visibility by view and layer policy', () => {
     expect(
       computeVisibility(view, [
-        { entity: entity(2), layerMask: 1, center: [1, 0, 0], radius: 1 },
-        { entity: entity(1), layerMask: 2, center: [1, 0, 0], radius: 1 },
-        { entity: entity(3), layerMask: 1, center: [-1, 0, 0], radius: 1 }
+        {
+          entity: entity(2),
+          layerMask: 1,
+          bounds: { kind: 'sphere', center: [0, 0, -2], radius: 0.25 }
+        },
+        {
+          entity: entity(1),
+          layerMask: 2,
+          bounds: { kind: 'sphere', center: [0, 0, -2], radius: 0.25 }
+        },
+        {
+          entity: entity(3),
+          layerMask: 1,
+          bounds: { kind: 'sphere', center: [20, 0, -2], radius: 0.25 }
+        }
       ]).entities
     ).toEqual([entity(2)]);
   });
@@ -129,8 +142,7 @@ describe('overlay and frame orchestration', () => {
       viewport: { x: 0, y: 0, width: 1, height: 1 },
       layerMask: 1,
       featurePolicyKey: 'test',
-      historyKey: 'main-history',
-      containsSphere: () => true
+      historyKey: 'main-history'
     };
 
     expect(() =>
@@ -180,8 +192,7 @@ describe('overlay and frame orchestration', () => {
       viewport: { x: 0, y: 0, width, height: 10 },
       layerMask: 1,
       featurePolicyKey: id,
-      historyKey: `${id}-history`,
-      containsSphere: () => true
+      historyKey: `${id}-history`
     });
     const metrics = runRenderFrame({
       frame: 1,

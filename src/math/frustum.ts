@@ -12,6 +12,7 @@ export interface FrustumClassification {
 export class Frustum {
   private constructor(readonly planes: readonly Plane[]) {}
 
+  // Gribb–Hartmann
   static fromViewProjection(matrix: ArrayLike<number>): Frustum {
     const row0 = row(matrix, 0);
     const row1 = row(matrix, 1);
@@ -58,11 +59,28 @@ export class Frustum {
   }
 
   classifyAabb(min: Vec3, max: Vec3, planeMask = ALL_FRUSTUM_PLANES): FrustumClassification {
+    return this.classifyAabbValues(min[0], min[1], min[2], max[0], max[1], max[2], planeMask);
+  }
+
+  classifyAabbValues(
+    minX: number,
+    minY: number,
+    minZ: number,
+    maxX: number,
+    maxY: number,
+    maxZ: number,
+    planeMask = ALL_FRUSTUM_PLANES
+  ): FrustumClassification {
     if (
-      min.some(
-        (value, index) =>
-          !Number.isFinite(value) || !Number.isFinite(max[index]!) || value > max[index]!
-      )
+      !Number.isFinite(minX) ||
+      !Number.isFinite(minY) ||
+      !Number.isFinite(minZ) ||
+      !Number.isFinite(maxX) ||
+      !Number.isFinite(maxY) ||
+      !Number.isFinite(maxZ) ||
+      minX > maxX ||
+      minY > maxY ||
+      minZ > maxZ
     ) {
       throw new Error('AABB min/max must be finite and ordered.');
     }
@@ -75,16 +93,16 @@ export class Frustum {
       const { normal, distance } = this.planes[index]!;
       const [x, y, z] = normal;
       const positiveDistance =
-        x * (x >= 0 ? max[0] : min[0]) +
-        y * (y >= 0 ? max[1] : min[1]) +
-        z * (z >= 0 ? max[2] : min[2]) +
+        x * (x >= 0 ? maxX : minX) +
+        y * (y >= 0 ? maxY : minY) +
+        z * (z >= 0 ? maxZ : minZ) +
         distance;
       if (positiveDistance < 0)
         return { intersection: 'outside', planeMask: remaining, planeTests: tests };
       const negativeDistance =
-        x * (x >= 0 ? min[0] : max[0]) +
-        y * (y >= 0 ? min[1] : max[1]) +
-        z * (z >= 0 ? min[2] : max[2]) +
+        x * (x >= 0 ? minX : maxX) +
+        y * (y >= 0 ? minY : maxY) +
+        z * (z >= 0 ? minZ : maxZ) +
         distance;
       if (negativeDistance >= 0) remaining &= ~bit;
     }

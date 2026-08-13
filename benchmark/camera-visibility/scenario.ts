@@ -1,7 +1,11 @@
 import { Frustum, Mat4 } from '../../src/math';
 import {
   computeVisibility,
+  buildPackedStaticBvh,
+  linearCullSpatialEntries,
+  StaticBvhSpatialIndex,
   type RenderEntityId,
+  type SpatialEntry,
   type VisibilityCandidate
 } from '../../src/rendering';
 
@@ -30,6 +34,135 @@ export function createVisibilityCandidates(
       });
     })
   );
+}
+
+export function createSpatialEntries(
+  count: number,
+  seed = 17,
+  distribution: 'uniform' | 'clustered' | 'collinear' = 'uniform',
+  dynamicRatio = 0
+): readonly SpatialEntry[] {
+  const candidates = createVisibilityCandidates(count, seed, 'mixed');
+  return Object.freeze(
+    candidates.map((candidate, index) => {
+      const source = candidate.bounds!;
+      const center =
+        source.kind === 'sphere'
+          ? source.center
+          : ([
+              (source.min[0] + source.max[0]) * 0.5,
+              (source.min[1] + source.max[1]) * 0.5,
+              (source.min[2] + source.max[2]) * 0.5
+            ] as const);
+      const radius =
+        source.kind === 'sphere' ? source.radius : (source.max[0] - source.min[0]) * 0.5;
+      const placed =
+        distribution === 'clustered'
+          ? ([center[0] * 0.15, center[1] * 0.15, -8 + center[2] * 0.05] as const)
+          : distribution === 'collinear'
+            ? ([index * 0.02 - count * 0.01, 0, -8] as const)
+            : center;
+      return Object.freeze({
+        renderEntity: candidate.entity,
+        boundsRevision: index < Math.floor(count * dynamicRatio) ? 2 : 1,
+        bounds:
+          index % 2 === 0
+            ? { kind: 'sphere' as const, center: placed, radius }
+            : {
+                kind: 'aabb' as const,
+                min: [placed[0] - radius, placed[1] - radius, placed[2] - radius] as const,
+                max: [placed[0] + radius, placed[1] + radius, placed[2] + radius] as const
+              },
+        layerMask: candidate.layerMask,
+        enabled: true,
+        insertionOrder: index
+      });
+    })
+  );
+}
+
+export function runSpatialSubject(entries: readonly SpatialEntry[]) {
+  const prepared = prepareSpatialQuery(entries);
+  const result = prepared.query();
+  return Object.freeze({
+    ...result,
+    referenceEntities: prepared.referenceEntities,
+    snapshot: prepared.snapshot
+  });
+}
+
+export function buildSpatialSubject(entries: readonly SpatialEntry[]) {
+  return buildPackedStaticBvh(entries, { leafSize: 8, maxDepth: 32 });
+}
+
+export function prepareSpatialQuery(entries: readonly SpatialEntry[]) {
+  const view = createBenchmarkView();
+  const index = publishSpatialIndex(entries);
+  const reference = linearCullSpatialEntries(view, entries);
+  return Object.freeze({
+    query: () => index.query(view, entries),
+    referenceEntities: Object.freeze(reference.map((entry) => entry.renderEntity)),
+    snapshot: index.snapshot()
+  });
+}
+
+export function prepareDynamicSpatialQuery(entries: readonly SpatialEntry[], dynamicRatio: number) {
+  const view = createBenchmarkView();
+  const index = publishSpatialIndex(entries);
+  const dynamicCount = Math.floor(entries.length * dynamicRatio);
+  const current = entries.map((entry, position) =>
+    position < dynamicCount
+      ? Object.freeze({
+          ...entry,
+          boundsRevision: entry.boundsRevision + 1,
+          bounds: moveBounds(entry.bounds, 0.125)
+        })
+      : entry
+  );
+  index.queueDesired(current, 2);
+  const reference = linearCullSpatialEntries(view, current);
+  return Object.freeze({
+    query: () => index.query(view, current),
+    referenceEntities: Object.freeze(reference.map((entry) => entry.renderEntity))
+  });
+}
+
+function publishSpatialIndex(entries: readonly SpatialEntry[]): StaticBvhSpatialIndex {
+  const index = new StaticBvhSpatialIndex({ leafSize: 8, maxDepth: 32 });
+  index.queueDesired(entries, 1);
+  index.applyBudget({
+    maxDesiredEntries: entries.length,
+    maxBuildOperations: Number.MAX_SAFE_INTEGER
+  });
+  index.publishReady();
+  return index;
+}
+
+function moveBounds(bounds: SpatialEntry['bounds'], offset: number): SpatialEntry['bounds'] {
+  return bounds.kind === 'sphere'
+    ? {
+        kind: 'sphere',
+        center: [bounds.center[0] + offset, bounds.center[1], bounds.center[2]],
+        radius: bounds.radius
+      }
+    : {
+        kind: 'aabb',
+        min: [bounds.min[0] + offset, bounds.min[1], bounds.min[2]],
+        max: [bounds.max[0] + offset, bounds.max[1], bounds.max[2]]
+      };
+}
+
+function createBenchmarkView() {
+  return {
+    id: 'bench',
+    camera: 0 as RenderEntityId,
+    surface: 'headless',
+    viewport: { x: 0, y: 0, width: 1920, height: 1080 },
+    layerMask: 1,
+    featurePolicyKey: 'static-bvh-delta@1',
+    historyKey: 'bench',
+    frustum: Frustum.fromViewProjection(Mat4.perspective(Math.PI / 2, 16 / 9, 0.1, 50))
+  };
 }
 
 export function runVisibilitySubject(candidates: readonly VisibilityCandidate[]) {

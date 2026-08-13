@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
   createVisibilityCandidates,
+  createSpatialEntries,
+  prepareDynamicSpatialQuery,
+  runSpatialSubject,
   runVisibilityReference,
   runVisibilitySubject
 } from '../../benchmark/camera-visibility/scenario';
@@ -18,5 +21,25 @@ describe('camera visibility benchmark oracle', () => {
       });
       expect(subject.counters.planeTests).toBeGreaterThan(subject.counters.retained);
     }
+  });
+
+  test('keeps the packed BVH subject exact with the current-entry linear oracle', () => {
+    const entries = createSpatialEntries(1_000, 41, 'clustered', 0.01);
+    const result = runSpatialSubject(entries);
+
+    expect(result.entities).toEqual(result.referenceEntities);
+    expect(result.counters.visitedNodes).toBeGreaterThan(0);
+    expect(result.counters.indexedCandidates).toBeGreaterThan(0);
+    expect(result.snapshot.nodeCount).toBeGreaterThan(1);
+    expect(result.snapshot.checksum).toBeTypeOf('number');
+  });
+
+  test('keeps dynamic delta queries exact after the static snapshot is published', () => {
+    const prepared = prepareDynamicSpatialQuery(createSpatialEntries(1_000, 43, 'clustered'), 0.1);
+    const result = prepared.query();
+
+    expect(result.entities).toEqual(prepared.referenceEntities);
+    expect(result.counters.fallbackCandidates).toBe(100);
+    expect(result.counters.staleIndexedSkipped).toBeGreaterThan(0);
   });
 });

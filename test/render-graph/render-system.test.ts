@@ -43,8 +43,7 @@ function view(id: string): RenderView {
     viewport: Object.freeze({ x: 0, y: 0, width: 16, height: 16 }),
     layerMask: 1,
     featurePolicyKey: 'test',
-    historyKey: `${id}/history`,
-    containsSphere: () => true
+    historyKey: `${id}/history`
   });
 }
 

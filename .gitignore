@@ -14,3 +14,4 @@ benchmark/artifacts/
 .worktrees/
 .pnpm-store
 graphify-out
+.DS_Store

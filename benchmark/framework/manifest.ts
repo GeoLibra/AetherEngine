@@ -226,8 +226,10 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'engine/design/v2/04-rendering/05-camera-visibility.md',
         'src/rendering/camera.ts',
         'src/rendering/visibility.ts',
+        'src/rendering/visibility/',
         'src/math/frustum.ts',
         'test/rendering/camera-visibility.test.ts',
+        'test/rendering/spatial-index.test.ts',
         'test/benchmark/camera-visibility.test.ts'
       ]),
       command: Object.freeze({
