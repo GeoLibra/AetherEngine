@@ -20,6 +20,8 @@ import {
   unwrapBrowserWebGPUResource,
   type BrowserWebGPUDeviceOwner
 } from './resource-port';
+import { createBrowserWebGPUCommandEncoderPort } from './command-port';
+import { createBrowserWebGPUQueuePort } from './queue-port';
 
 let nextBrowserDeviceGeneration = 1;
 
@@ -51,25 +53,7 @@ export function createBrowserWebGPUDevicePort(
 
   return {
     lost: normalizeLostPromise(Reflect.get(nativeDevice, 'lost')),
-    queue: {
-      submit(commandBuffers): void {
-        callRequired(nativeQueue, 'submit', [commandBuffers.map((buffer) => unwrapBrowserWebGPUResource(buffer, owner))]);
-      },
-      async onSubmittedWorkDone(): Promise<void> {
-        await callRequired(nativeQueue, 'onSubmittedWorkDone', []);
-      },
-      writeBuffer(buffer, offset, data): void {
-        callRequired(nativeQueue, 'writeBuffer', [unwrapBrowserWebGPUResource(buffer, owner), offset, data]);
-      },
-      writeTexture(destination, data, dataLayout, size): void {
-        callRequired(nativeQueue, 'writeTexture', [
-          lowerBrowserDescriptor(destination, Object.keys(destination), (value) => lowerResource(value, owner)),
-          data,
-          dataLayout,
-          size
-        ]);
-      }
-    },
+    queue: createBrowserWebGPUQueuePort(nativeQueue, owner),
     destroy(): void { callOptional(nativeDevice, 'destroy'); },
     createBuffer(descriptor): WebGPUNativeResourcePort {
       const lowered = lowerBrowserBufferDescriptor(descriptor);
@@ -112,6 +96,9 @@ export function createBrowserWebGPUDevicePort(
     },
     async createComputePipelineAsync(descriptor): Promise<WebGPUNativeResourcePort> {
       return createResourceAsync(nativeDevice, owner, 'createComputePipelineAsync', descriptor, DESCRIPTOR_KEYS.computePipeline);
+    },
+    createCommandEncoder(descriptor) {
+      return createBrowserWebGPUCommandEncoderPort(nativeDevice, owner, descriptor);
     },
     pushErrorScope(filter): void { callRequired(nativeDevice, 'pushErrorScope', [filter]); },
     async popErrorScope(): Promise<WebGPUNativeErrorPort | null> {
