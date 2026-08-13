@@ -88,6 +88,19 @@ describe('changed-file routing', () => {
     ]);
   });
 
+  test('routes browser graphics contracts and adapters to the RHI suite', () => {
+    for (const path of [
+      'engine/design/v2/03-platform/01-host-window-surface.md',
+      'engine/design/v2/03-platform/02-rhi-contract.md',
+      'engine/design/v2/03-platform/03-webgpu-backend.md',
+      'engine/design/v2/03-platform/04-webgl2-backend.md',
+      'src/rhi/webgpu/browser/device-port.ts',
+      'src/rhi/webgl2/browser/context-port.ts'
+    ]) {
+      expect(routeChangedFiles(BENCHMARK_MANIFEST, [path]).suiteIds).toEqual(['rhi']);
+    }
+  });
+
   test('keeps planned Simulation, Experience, and Editor gaps explicit', () => {
     for (const path of [
       'src/animation/controller.ts',

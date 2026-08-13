@@ -30,6 +30,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       id: 'rhi',
       description: 'RHI validation, command lowering, uploads, state caches, and submission.',
       pathPrefixes: Object.freeze([
+        'engine/design/v2/03-platform/01-host-window-surface.md',
         'engine/design/v2/03-platform/02-rhi-contract.md',
         'engine/design/v2/03-platform/03-webgpu-backend.md',
         'engine/design/v2/03-platform/04-webgl2-backend.md',
@@ -134,6 +135,10 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       pathPrefixes: Object.freeze([
         'benchmark/rhi-command.bench.ts',
         'benchmark/rhi-command-runner.mjs',
+        'engine/design/v2/03-platform/01-host-window-surface.md',
+        'engine/design/v2/03-platform/02-rhi-contract.md',
+        'engine/design/v2/03-platform/03-webgpu-backend.md',
+        'engine/design/v2/03-platform/04-webgl2-backend.md',
         'src/rhi/',
         'test/rhi/'
       ]),
