@@ -4,6 +4,7 @@ export { DynamicPluginHost, type DynamicPluginHostOptions } from './host';
 export { createDynamicPluginInventory } from './inventory';
 export { planCapabilityAuthorization, validateDynamicPluginManifest } from './manifest';
 export { DynamicPluginMessageGuard, validateDynamicPluginMessageEnvelope } from './messages';
+export { DynamicPluginHostService, createDynamicPluginHostPlugin } from './plugin';
 export { DynamicPluginScope } from './scope';
 export type {
   CapabilityId,

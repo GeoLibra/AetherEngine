@@ -131,6 +131,7 @@ export {
 } from './app/time';
 export type { FixedOverrunPolicy, TimePolicyOptions } from './app/time-types';
 export * from './jobs';
+export * from './dynamic-plugins';
 export * from './platform';
 export * from './native-runtime';
 export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
