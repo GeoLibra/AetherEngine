@@ -2,6 +2,7 @@ import { bench, expect } from 'vitest';
 import {
   NullDevice,
   WebGL2Adapter,
+  WebGL2BrowserSurface,
   WebGPUAdapter,
   type WebGL2NativeContextLostInfo,
   type WebGPUNativeAdapterPort,
@@ -28,6 +29,23 @@ class WebGL2BenchmarkContext {
   }
   createTexture(): object {
     return {};
+  }
+}
+
+class WebGL2SurfaceBenchmarkContext extends WebGL2BenchmarkContext {
+  textureCreates = 0;
+  textureDeletes = 0;
+  presents = 0;
+
+  override createTexture(): object {
+    this.textureCreates += 1;
+    return { texture: this.textureCreates };
+  }
+  deleteTexture(): void {
+    this.textureDeletes += 1;
+  }
+  presentSurfaceTexture(): void {
+    this.presents += 1;
   }
 }
 
@@ -115,6 +133,11 @@ const webgl2Device = await new WebGL2AdapterConstructor(new WebGL2BenchmarkConte
     optionalFeatures: []
   }
 );
+const webgl2SurfaceContext = new WebGL2SurfaceBenchmarkContext();
+const webgl2SurfaceDevice = await new WebGL2AdapterConstructor(webgl2SurfaceContext).requestDevice({
+  requiredFeatures: [],
+  optionalFeatures: []
+});
 const webgl2Color = webgl2Device.createTexture({ size: [8, 8], format: 'rgba8unorm', usage: 16 });
 const webgl2ColorView = webgl2Color.createView();
 const webgpuDevice = await new WebGPUAdapter(new WebGPUBenchmarkAdapter()).requestDevice({
@@ -123,6 +146,42 @@ const webgpuDevice = await new WebGPUAdapter(new WebGPUBenchmarkAdapter()).reque
 });
 const webgpuColor = webgpuDevice.createTexture({ size: [8, 8], format: 'rgba8unorm', usage: 16 });
 const webgpuColorView = webgpuColor.createView();
+
+bench(
+  'reuses one native WebGL2 surface backing across 1000 logical frame leases',
+  () => {
+    const surface = new WebGL2BrowserSurface({ id: Symbol('benchmark-canvas'), kind: 'canvas' });
+    surface.configure(
+      webgl2SurfaceDevice,
+      {
+        format: 'rgba8unorm',
+        colorSpace: 'srgb',
+        alphaMode: 'opaque',
+        width: 1280,
+        height: 720,
+        presentMode: 'fifo'
+      },
+      1
+    );
+    const createsBefore = webgl2SurfaceContext.textureCreates;
+    const deletesBefore = webgl2SurfaceContext.textureDeletes;
+    const presentsBefore = webgl2SurfaceContext.presents;
+    let previousTexture: object | undefined;
+    for (let index = 0; index < COMMAND_BUFFER_COUNT; index++) {
+      const acquired = surface.acquire();
+      if (acquired.status !== 'success') throw new Error('Expected a benchmark surface frame.');
+      expect(acquired.frame.texture).not.toBe(previousTexture);
+      previousTexture = acquired.frame.texture;
+      acquired.frame.present();
+    }
+    expect(webgl2SurfaceContext.textureCreates - createsBefore).toBe(1);
+    expect(webgl2SurfaceContext.textureDeletes - deletesBefore).toBe(0);
+    expect(webgl2SurfaceContext.presents - presentsBefore).toBe(COMMAND_BUFFER_COUNT);
+    surface.dispose();
+    expect(webgl2SurfaceContext.textureDeletes - deletesBefore).toBe(1);
+  },
+  { iterations: 1, warmupIterations: 0 }
+);
 
 bench(
   'records and submits 1000 deterministic command buffers',

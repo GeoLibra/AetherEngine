@@ -294,7 +294,7 @@ async function executeResolverStep(
   await execFileAsync('bash', ['-c', script], {
     cwd: options.cwd,
     env: {
-      ...process.env,
+      ...isolatedGitEnvironment(),
       PATH: `${options.pathPrefix ?? directory}:${process.env.PATH ?? ''}`,
       GITHUB_OUTPUT: outputPath,
       GITHUB_STEP_SUMMARY: summaryPath
@@ -370,10 +370,15 @@ async function commitAll(directory: string, message: string): Promise<void> {
 }
 
 function isolatedGit(directory: string, args: readonly string[]) {
-  const environment = { ...process.env };
-  for (const key of GIT_LOCAL_ENVIRONMENT_VARIABLES) delete environment[key];
+  const environment = isolatedGitEnvironment();
   environment.GIT_CEILING_DIRECTORIES = dirname(directory);
   return execFileAsync('git', ['-C', directory, ...args], { env: environment });
+}
+
+function isolatedGitEnvironment(): NodeJS.ProcessEnv {
+  const environment = { ...process.env };
+  for (const key of GIT_LOCAL_ENVIRONMENT_VARIABLES) delete environment[key];
+  return environment;
 }
 
 async function writeExecutable(path: string, contents: string): Promise<void> {

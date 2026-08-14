@@ -17,6 +17,7 @@ export class WebGL2BrowserSurface implements RHISurface {
   private currentConfiguration: RHISurfaceConfiguration | undefined;
   private device: WebGL2Device | undefined;
   private activeFrame: WebGL2SurfaceFrame | undefined;
+  private backingTexture: RHITexture | undefined;
 
   constructor(readonly target: SurfaceTarget) {}
   get state(): RHISurfaceState {
@@ -43,6 +44,7 @@ export class WebGL2BrowserSurface implements RHISurface {
     validateExtent(configuration.height, 'height');
     this.activeFrame?.abandon();
     this.activeFrame = undefined;
+    this.disposeBackingTexture();
     this.device = device;
     this.currentConfiguration = Object.freeze({ ...configuration });
     this.currentGeneration += 1;
@@ -59,12 +61,15 @@ export class WebGL2BrowserSurface implements RHISurface {
     if (this.activeFrame !== undefined) return Object.freeze({ status: 'timeout' });
     if (configuration.width === 0 || configuration.height === 0)
       return Object.freeze({ status: 'zero-extent' });
-    const texture = device.createSurfaceTexture({
+    const descriptor = {
       label: `webgl2-surface-${this.currentGeneration}`,
-      size: [configuration.width, configuration.height],
-      format: configuration.format === 'bgra8unorm' ? 'rgba8unorm' : configuration.format,
+      size: [configuration.width, configuration.height] as const,
+      format:
+        configuration.format === 'bgra8unorm' ? ('rgba8unorm' as const) : configuration.format,
       usage: 0x13
-    });
+    };
+    this.backingTexture ??= device.createSurfaceBackingTexture(descriptor);
+    const texture = device.createSurfaceTextureLease(this.backingTexture);
     const frame = new WebGL2SurfaceFrame(texture, this.currentGeneration, device, () => {
       if (this.activeFrame === frame) this.activeFrame = undefined;
     });
@@ -76,9 +81,15 @@ export class WebGL2BrowserSurface implements RHISurface {
     if (this.currentState === 'disposed') return;
     this.activeFrame?.abandon();
     this.activeFrame = undefined;
+    this.disposeBackingTexture();
     this.device = undefined;
     this.currentConfiguration = undefined;
     this.currentState = 'disposed';
+  }
+
+  private disposeBackingTexture(): void {
+    this.backingTexture?.dispose();
+    this.backingTexture = undefined;
   }
 }
 

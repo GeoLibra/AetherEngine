@@ -13,25 +13,33 @@ export function createBrowserWebGL2ProgramPort(
   const reflections = new WeakMap<object, readonly WebGL2BindingManifestEntry[]>();
   return {
     createProgram(descriptor) {
-      const vertex = compile(
-        gl,
-        constant(gl, 'VERTEX_SHADER'),
-        requiredString(descriptor, 'vertexSource')
-      );
-      const fragment = compile(
-        gl,
-        constant(gl, 'FRAGMENT_SHADER'),
-        requiredString(descriptor, 'fragmentSource')
-      );
-      const program = glObject(gl, 'createProgram');
+      const vertexSource = requiredString(descriptor, 'vertexSource');
+      const fragmentSource = requiredString(descriptor, 'fragmentSource');
+      const vertex = compile(gl, constant(gl, 'VERTEX_SHADER'), vertexSource, 'vertex');
+      let fragment: object;
       try {
+        fragment = compile(gl, constant(gl, 'FRAGMENT_SHADER'), fragmentSource, 'fragment');
+      } catch (error) {
+        glCall(gl, 'deleteShader', [vertex]);
+        throw error;
+      }
+      let program: object | undefined;
+      try {
+        program = glObject(gl, 'createProgram');
         glCall(gl, 'attachShader', [program, vertex]);
         glCall(gl, 'attachShader', [program, fragment]);
         glCall(gl, 'linkProgram', [program]);
         if (glCall(gl, 'getProgramParameter', [program, constant(gl, 'LINK_STATUS')]) !== true)
           throw new Error(
-            String(glCall(gl, 'getProgramInfoLog', [program]) ?? 'WebGL2 program link failed.')
+            formatProgramLinkError(
+              String(glCall(gl, 'getProgramInfoLog', [program]) ?? 'No driver log.'),
+              vertexSource,
+              fragmentSource
+            )
           );
+      } catch (error) {
+        if (program !== undefined) glCall(gl, 'deleteProgram', [program]);
+        throw error;
       } finally {
         glCall(gl, 'deleteShader', [vertex]);
         glCall(gl, 'deleteShader', [fragment]);
@@ -57,16 +65,36 @@ export function createBrowserWebGL2ProgramPort(
   };
 }
 
-function compile(gl: BrowserWebGL2Object, type: number, source: string): object {
+function compile(
+  gl: BrowserWebGL2Object,
+  type: number,
+  source: string,
+  stage: 'vertex' | 'fragment'
+): object {
   const shader = glObject(gl, 'createShader', [type]);
   glCall(gl, 'shaderSource', [shader, source]);
   glCall(gl, 'compileShader', [shader]);
   if (glCall(gl, 'getShaderParameter', [shader, constant(gl, 'COMPILE_STATUS')]) !== true) {
     const log = glCall(gl, 'getShaderInfoLog', [shader]);
     glCall(gl, 'deleteShader', [shader]);
-    throw new Error(String(log ?? 'WebGL2 shader compilation failed.'));
+    throw new Error(formatShaderError(stage, String(log ?? 'No driver log.'), source));
   }
   return shader;
+}
+
+function formatShaderError(stage: 'vertex' | 'fragment', log: string, source: string): string {
+  return `WebGL2 ${stage} shader compilation failed:\n${log}\n--- Generated source ---\n${numberSource(source)}`;
+}
+
+function formatProgramLinkError(log: string, vertexSource: string, fragmentSource: string): string {
+  return `WebGL2 program link failed:\n${log}\n--- vertex generated source ---\n${numberSource(vertexSource)}\n--- fragment generated source ---\n${numberSource(fragmentSource)}`;
+}
+
+function numberSource(source: string): string {
+  return source
+    .split('\n')
+    .map((line, index) => `${String(index + 1).padStart(4, ' ')} | ${line}`)
+    .join('\n');
 }
 
 function requiredString(value: Readonly<Record<string, unknown>>, name: string): string {

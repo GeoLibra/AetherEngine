@@ -20,21 +20,31 @@ export function createBrowserWebGL2FramebufferPort(
 > {
   return {
     createFramebuffer(descriptor) {
+      validateAttachmentExtents(descriptor, textureFacts);
       const framebuffer = glObject(gl, 'createFramebuffer');
       glCall(gl, 'bindFramebuffer', [constant(gl, 'FRAMEBUFFER'), framebuffer]);
       const colors = descriptor.colorAttachments;
+      const drawBuffers: number[] = [];
       if (Array.isArray(colors))
         colors.forEach((attachment, index) => {
           const texture = attachmentView(attachment);
           requireTexture(textureFacts, texture);
+          const attachmentPoint = constant(gl, 'COLOR_ATTACHMENT0') + index;
           glCall(gl, 'framebufferTexture2D', [
             constant(gl, 'FRAMEBUFFER'),
-            constant(gl, 'COLOR_ATTACHMENT0') + index,
+            attachmentPoint,
             constant(gl, 'TEXTURE_2D'),
             texture,
             0
           ]);
+          drawBuffers.push(attachmentPoint);
         });
+      if (drawBuffers.length > 0) {
+        glCall(gl, 'drawBuffers', [drawBuffers]);
+      } else {
+        glCall(gl, 'drawBuffers', [[constant(gl, 'NONE')]]);
+        glCall(gl, 'readBuffer', [constant(gl, 'NONE')]);
+      }
       const depth = descriptor.depthStencilAttachment;
       if (typeof depth === 'object' && depth !== null) {
         const texture = attachmentView(depth);
@@ -43,7 +53,7 @@ export function createBrowserWebGL2FramebufferPort(
           constant(gl, 'FRAMEBUFFER'),
           constant(
             gl,
-            facts.format.includes('stencil') ? 'DEPTH_STENCIL_ATTACHMENT' : 'DEPTH_ATTACHMENT'
+            facts.aspect === 'depth-stencil' ? 'DEPTH_STENCIL_ATTACHMENT' : 'DEPTH_ATTACHMENT'
           ),
           constant(gl, 'TEXTURE_2D'),
           texture,
@@ -80,6 +90,34 @@ export function createBrowserWebGL2FramebufferPort(
       glCall(gl, 'deleteVertexArray', [vertexArray]);
     }
   };
+}
+
+function validateAttachmentExtents(
+  descriptor: Readonly<Record<string, unknown>>,
+  textureFacts: WeakMap<object, BrowserWebGL2TextureFacts>
+): void {
+  let expected: BrowserWebGL2TextureFacts | undefined;
+  const validate = (attachment: unknown): void => {
+    const facts = requireTexture(textureFacts, attachmentView(attachment));
+    if (expected === undefined) {
+      expected = facts;
+      return;
+    }
+    if (facts.width !== expected.width || facts.height !== expected.height) {
+      throw new Error(
+        `WebGL2 framebuffer attachment extent mismatch: expected ${expected.width}x${expected.height}, received ${facts.width}x${facts.height}.`
+      );
+    }
+  };
+  if (Array.isArray(descriptor.colorAttachments)) {
+    for (const attachment of descriptor.colorAttachments) validate(attachment);
+  }
+  if (
+    typeof descriptor.depthStencilAttachment === 'object' &&
+    descriptor.depthStencilAttachment !== null
+  ) {
+    validate(descriptor.depthStencilAttachment);
+  }
 }
 
 function configureVertexArray(

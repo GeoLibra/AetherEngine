@@ -15,8 +15,11 @@ class SurfaceContext {
   readonly lost = new Promise<WebGL2NativeContextLostInfo>(() => {});
   readonly presented: unknown[][] = [];
   readonly deleted: object[] = [];
+  readonly created: object[] = [];
   createTexture(): object {
-    return {};
+    const texture = { id: this.created.length + 1 };
+    this.created.push(texture);
+    return texture;
   }
   deleteTexture(texture: object): void {
     this.deleted.push(texture);
@@ -54,7 +57,21 @@ describe('browser WebGL2 surface', () => {
     acquired.frame.present();
     expect(native.presented[0]?.slice(1)).toEqual([32, 20]);
     expect(() => acquired.frame.present()).toThrow(/no longer acquired/i);
-    expect(native.deleted).toHaveLength(1);
+
+    const next = surface.acquire();
+    if (next.status !== 'success') throw new Error('Expected a second frame.');
+    expect(next.frame.texture).not.toBe(acquired.frame.texture);
+    next.frame.present();
+    expect(native.created).toHaveLength(1);
+    expect(native.deleted).toHaveLength(0);
+
+    surface.configure(device, { ...configuration, width: 64, height: 40 }, 3);
+    expect(native.deleted).toEqual([native.created[0]]);
+    const resized = surface.acquire();
+    if (resized.status !== 'success') throw new Error('Expected a resized frame.');
+    resized.frame.release();
+    expect(native.created).toHaveLength(2);
     surface.dispose();
+    expect(native.deleted).toEqual(native.created);
   });
 });

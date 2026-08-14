@@ -142,8 +142,20 @@ export class WebGL2Device implements RHIDevice {
       descriptor
     );
   }
-  createSurfaceTexture(descriptor: RHITextureDescriptor): RHITexture {
+  createSurfaceBackingTexture(descriptor: RHITextureDescriptor): RHITexture {
     return this.createTexture(descriptor);
+  }
+  createSurfaceTextureLease(backing: RHITexture): RHITexture {
+    const texture = assertWebGL2Resource(backing, this.owner);
+    if (!(texture instanceof WebGL2Texture))
+      throw new Error('WebGL2 surface backing must be a WebGL2 texture.');
+    return new WebGL2Texture(
+      this.allocateId(),
+      this.owner,
+      getWebGL2Handle(texture, this.owner),
+      texture.descriptor,
+      false
+    );
   }
   presentSurfaceTexture(texture: RHITexture): void {
     assertWebGL2Resource(texture, this.owner);

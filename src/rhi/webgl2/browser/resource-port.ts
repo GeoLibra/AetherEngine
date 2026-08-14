@@ -7,6 +7,7 @@ export interface BrowserWebGL2TextureFacts {
   readonly width: number;
   readonly height: number;
   readonly format: string;
+  readonly aspect: 'color' | 'depth' | 'depth-stencil';
 }
 
 export function createBrowserWebGL2ResourcePort(
@@ -41,14 +42,20 @@ export function createBrowserWebGL2ResourcePort(
       const height = requiredNumber(size, 'height');
       const texture = glObject(gl, 'createTexture');
       glCall(gl, 'bindTexture', [constant(gl, 'TEXTURE_2D'), texture]);
+      const format = textureFormat(gl, descriptor.format);
       glCall(gl, 'texStorage2D', [
         constant(gl, 'TEXTURE_2D'),
         optionalNumber(descriptor, 'mipLevelCount') ?? 1,
-        textureFormat(gl, descriptor.format),
+        format.internalFormat,
         width,
         height
       ]);
-      textureFacts.set(texture, { width, height, format: String(descriptor.format) });
+      textureFacts.set(texture, {
+        width,
+        height,
+        format: String(descriptor.format),
+        aspect: format.aspect
+      });
       return texture;
     },
     deleteTexture(texture): void {
@@ -75,11 +82,16 @@ export function createBrowserWebGL2ResourcePort(
   };
 }
 
-function textureFormat(gl: BrowserWebGL2Object, value: unknown): number {
-  if (value === 'rgba8unorm') return constant(gl, 'RGBA8');
-  if (value === 'depth24plus') return constant(gl, 'DEPTH_COMPONENT24');
-  if (value === 'depth24plus-stencil8') return constant(gl, 'DEPTH24_STENCIL8');
-  if (value === 'rgba16float') return constant(gl, 'RGBA16F');
+function textureFormat(
+  gl: BrowserWebGL2Object,
+  value: unknown
+): { readonly internalFormat: number; readonly aspect: BrowserWebGL2TextureFacts['aspect'] } {
+  if (value === 'rgba8unorm') return { internalFormat: constant(gl, 'RGBA8'), aspect: 'color' };
+  if (value === 'depth24plus')
+    return { internalFormat: constant(gl, 'DEPTH_COMPONENT24'), aspect: 'depth' };
+  if (value === 'depth24plus-stencil8')
+    return { internalFormat: constant(gl, 'DEPTH24_STENCIL8'), aspect: 'depth-stencil' };
+  if (value === 'rgba16float') return { internalFormat: constant(gl, 'RGBA16F'), aspect: 'color' };
   throw new Error(`Unsupported WebGL2 texture format: ${String(value)}.`);
 }
 

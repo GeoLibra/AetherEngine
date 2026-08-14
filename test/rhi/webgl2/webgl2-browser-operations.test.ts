@@ -154,6 +154,86 @@ describe('browser WebGL2 native operations', () => {
     );
   });
 
+  test('routes every MRT color attachment through drawBuffers', () => {
+    const gl = new FakeOperationsGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+    const first = port.createTexture?.({
+      size: { width: 8, height: 8, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10
+    });
+    const second = port.createTexture?.({
+      size: { width: 8, height: 8, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10
+    });
+    if (first === undefined || second === undefined) throw new Error('Missing MRT textures.');
+    gl.calls.length = 0;
+
+    port.createFramebuffer?.({
+      colorAttachments: [
+        { view: first, loadOp: 'load', storeOp: 'store' },
+        { view: second, loadOp: 'load', storeOp: 'store' }
+      ]
+    });
+
+    expect(gl.calls).toContainEqual([
+      'drawBuffers',
+      [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT0 + 1]
+    ]);
+  });
+
+  test('configures a depth-only framebuffer and lowers its viewport from the depth extent', () => {
+    const gl = new FakeOperationsGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+    const depth = port.createTexture?.({
+      size: { width: 80, height: 100, depthOrArrayLayers: 1 },
+      format: 'depth24plus',
+      usage: 0x10
+    });
+    if (depth === undefined) throw new Error('Missing depth texture.');
+    const descriptor = {
+      colorAttachments: [],
+      depthStencilAttachment: { view: depth, depthLoadOp: 'load', depthStoreOp: 'store' }
+    };
+    gl.calls.length = 0;
+
+    port.createFramebuffer?.(descriptor);
+    port.beginRenderPass?.(descriptor);
+    port.setViewport?.(2, 10, 20, 30, 0, 1);
+
+    expect(gl.calls).toEqual(
+      expect.arrayContaining([
+        ['drawBuffers', [gl.NONE]],
+        ['readBuffer', gl.NONE],
+        ['viewport', 2, 60, 20, 30]
+      ])
+    );
+  });
+
+  test('rejects framebuffer attachments with inconsistent extents', () => {
+    const gl = new FakeOperationsGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+    const color = port.createTexture?.({
+      size: { width: 80, height: 100, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10
+    });
+    const depth = port.createTexture?.({
+      size: { width: 80, height: 64, depthOrArrayLayers: 1 },
+      format: 'depth24plus',
+      usage: 0x10
+    });
+    if (color === undefined || depth === undefined) throw new Error('Missing attachments.');
+
+    expect(() =>
+      port.createFramebuffer?.({
+        colorAttachments: [{ view: color, loadOp: 'load', storeOp: 'store' }],
+        depthStencilAttachment: { view: depth, depthLoadOp: 'load', depthStoreOp: 'store' }
+      })
+    ).toThrow(/attachment extent mismatch.*80x100.*80x64/i);
+  });
+
   test('lowers baseline 2D texture uploads and buffer-texture copies without readback', () => {
     const gl = new FakeOperationsGL();
     const port = createBrowserWebGL2OperationPort(gl);
@@ -258,6 +338,7 @@ class FakeOperationsGL {
   readonly DYNAMIC_DRAW = 0x88e8;
   readonly TEXTURE_2D = 0x0de1;
   readonly RGBA8 = 0x8058;
+  readonly DEPTH_COMPONENT24 = 0x81a6;
   readonly TEXTURE_MIN_FILTER = 0x2801;
   readonly TEXTURE_MAG_FILTER = 0x2800;
   readonly LINEAR = 0x2601;
@@ -273,6 +354,8 @@ class FakeOperationsGL {
   readonly FRAMEBUFFER = 0x8d40;
   readonly FRAMEBUFFER_COMPLETE = 0x8cd5;
   readonly COLOR_ATTACHMENT0 = 0x8ce0;
+  readonly NONE = 0;
+  readonly DEPTH_ATTACHMENT = 0x8d00;
   readonly PIXEL_PACK_BUFFER = 0x88eb;
   readonly PIXEL_UNPACK_BUFFER = 0x88ec;
   readonly RGBA = 0x1908;
@@ -345,6 +428,12 @@ class FakeOperationsGL {
   }
   framebufferTexture2D(...args: unknown[]): void {
     this.calls.push(['framebufferTexture2D', ...args]);
+  }
+  drawBuffers(...args: unknown[]): void {
+    this.calls.push(['drawBuffers', ...args]);
+  }
+  readBuffer(...args: unknown[]): void {
+    this.calls.push(['readBuffer', ...args]);
   }
   checkFramebufferStatus(): number {
     return this.FRAMEBUFFER_COMPLETE;

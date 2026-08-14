@@ -26,11 +26,20 @@ export function createBrowserWebGL2RenderPort(
   let indexOffset = 0;
   return {
     beginRenderPass(descriptor): void {
+      framebufferHeight = undefined;
       const attachments = descriptor.colorAttachments;
       if (Array.isArray(attachments)) {
         const first = attachments[0];
         if (typeof first === 'object' && first !== null) {
           const view = Reflect.get(first, 'view');
+          if (typeof view === 'object' && view !== null)
+            framebufferHeight = textureFacts.get(view)?.height;
+        }
+      }
+      if (framebufferHeight === undefined) {
+        const depth = descriptor.depthStencilAttachment;
+        if (typeof depth === 'object' && depth !== null) {
+          const view = Reflect.get(depth, 'view');
           if (typeof view === 'object' && view !== null)
             framebufferHeight = textureFacts.get(view)?.height;
         }
