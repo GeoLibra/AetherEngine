@@ -61,7 +61,17 @@ export class DynamicPluginScope {
     let quiesced = false;
     const failures: PluginDiagnosticSnapshot[] = [];
     try {
-      quiesced = await this.options.quiescence.wait(pending, this.options.quiescenceTimeoutMs);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), this.options.quiescenceTimeoutMs);
+      });
+      quiesced = await Promise.race([
+        this.options.quiescence.wait(pending, this.options.quiescenceTimeoutMs),
+        timeout
+      ]);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
     } catch (cause) {
       quiesced = false;
       failures.push(this.quiescenceFailure(cause));
@@ -69,7 +79,14 @@ export class DynamicPluginScope {
 
     for (let index = this.cleanups.length - 1; index >= 0; index--) {
       try {
-        await this.cleanups[index]?.();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, this.options.quiescenceTimeoutMs);
+        });
+        await Promise.race([Promise.resolve(this.cleanups[index]?.()), timeout]);
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
       } catch (cause) {
         failures.push(this.cleanupFailure(cause));
       }

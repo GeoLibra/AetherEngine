@@ -4,9 +4,11 @@ export function createDynamicPluginInventory(
   entries: Iterable<DynamicPluginInventoryEntry>
 ): readonly DynamicPluginInventoryEntry[] {
   return Object.freeze(
-    [...entries]
-      .map(copyInventoryEntry)
-      .sort((left, right) => inventoryKey(left).localeCompare(inventoryKey(right)))
+    [...entries].map(copyInventoryEntry).sort((left, right) => {
+      const a = inventoryKey(left);
+      const b = inventoryKey(right);
+      return a < b ? -1 : a > b ? 1 : 0;
+    })
   );
 }
 

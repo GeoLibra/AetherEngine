@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DynamicCapabilityBroker,
+  DynamicPluginHost,
+  pluginActivationId
+} from '../../src/dynamic-plugins';
+import {
   PanelToken,
   createHost,
   definition,
@@ -106,6 +111,62 @@ describe('DynamicPluginHost lifecycle', () => {
     expect(inventory[0]?.phase).toBe('failed');
     expect(inventory[0]?.diagnostic?.code).toBe('DYNAMIC_PLUGIN_ACTIVATION_TIMEOUT');
     expect(diagnostics.map((d) => d.code)).toContain('DYNAMIC_PLUGIN_ACTIVATION_TIMEOUT');
+  });
+
+  it('completes destroy within deadline even when active plugin quiescence hangs forever', async () => {
+    const panels = panelRegistry();
+    let activation = 0;
+    const broker = new DynamicCapabilityBroker('editor');
+    broker.register(panels.provider);
+    const host = new DynamicPluginHost({
+      hostKind: 'editor',
+      broker,
+      verifier: { verify: () => true },
+      policy: { authorize: () => 'granted' },
+      quiescence: {
+        wait: () => new Promise(() => undefined) // never resolves
+      },
+      quiescenceTimeoutMs: 50,
+      mintActivationId: () => pluginActivationId(`act-${++activation}`)
+    });
+
+    host.define(
+      definition('active-hanging-quiescence', ({ capabilities }) => {
+        capabilities.get(PanelToken).add('active-panel');
+      })
+    );
+
+    await host.activate(pluginId, version('active-hanging-quiescence'));
+    expect(host.current(pluginId)?.phase).toBe('active');
+
+    // host.destroy() must complete within quiescenceTimeoutMs (50ms)
+    const diagnostics = await host.destroy();
+
+    expect(host.current(pluginId)).toBeUndefined();
+    expect(host.inventory()[0]?.phase).toBe('failed-to-quiesce');
+  });
+
+  it('reports live pendingWork and preserves deterministic sorted inventory', async () => {
+    const panels = panelRegistry();
+    const host = createHost(panels.provider);
+    const pendingTask = deferred<void>();
+
+    host.define(
+      definition('worker', ({ track }) => {
+        track(pendingTask.promise);
+      })
+    );
+
+    await host.activate(pluginId, version('worker'));
+
+    expect(host.current(pluginId)?.pendingWork).toBe(1);
+    expect(host.inventory()[0]?.pendingWork).toBe(1);
+
+    pendingTask.resolve();
+    await Promise.resolve();
+
+    expect(host.current(pluginId)?.pendingWork).toBe(0);
+    expect(host.inventory()[0]?.pendingWork).toBe(0);
   });
 });
 
