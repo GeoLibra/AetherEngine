@@ -107,17 +107,17 @@ describe('shader variants and backend output', () => {
     });
   });
 
-  test('requires an approved translator and rejects translator-owned directives', async () => {
+  test('uses the typed GLSL emitter by default and rejects translator-owned directives', async () => {
     const variants = resolveShaderVariants(dimensions, {}, new Set());
     if (!variants.ok) throw new Error('Expected variants');
     const validator = { validate: async () => [] };
 
-    await expect(
-      emitShaderBackend(ir, { target: 'glsl300es', variants, validator })
-    ).resolves.toMatchObject({
-      ok: false,
-      diagnostics: [{ code: 'SHADER_TRANSLATOR_MISSING' }]
-    });
+    const typed = await emitShaderBackend(ir, { target: 'glsl300es', variants, validator });
+    expect(typed).toMatchObject({ ok: true });
+    if (typed.ok) {
+      expect(typed.source).toContain('// Aether typed GLSL ES emitter 1');
+      expect(typed.source).toContain('void main()');
+    }
 
     const invalid = translator();
     invalid.translate = () => ({

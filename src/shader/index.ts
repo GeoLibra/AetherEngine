@@ -14,3 +14,5 @@ export * from './graph';
 export * from './cache';
 export * from './fallback';
 export * from './compiler';
+export * from './backends/glsl-binding-fusion';
+export * from './backends/glsl-es';
