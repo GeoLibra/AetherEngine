@@ -70,3 +70,36 @@ export interface DynamicCapabilityPlan {
   readonly granted: readonly DynamicCapabilityRequest[];
   readonly deniedOptional: readonly DynamicCapabilityRequest[];
 }
+
+export type PluginRetractionReason =
+  'user-request' | 'version-update' | 'policy-revoked' | 'activation-rollback' | 'host-shutdown';
+
+export interface PluginDiagnosticSnapshot {
+  readonly code: string;
+  readonly phase: DynamicPluginPhase;
+  readonly message: string;
+  readonly fields: Readonly<Record<string, string | number | boolean>>;
+}
+
+export interface PluginCleanupReport {
+  readonly activationId: PluginActivationId;
+  readonly terminalPhase: 'inactive' | 'failed-to-quiesce';
+  readonly removedRegistrations: number;
+  readonly cancelledWork: number;
+  readonly failures: readonly PluginDiagnosticSnapshot[];
+}
+
+export type DynamicPluginCleanup = () => void | Promise<void>;
+
+export interface DynamicPluginQuiescencePort {
+  wait(pending: readonly Promise<unknown>[], timeoutMs: number): Promise<boolean>;
+}
+
+export interface DynamicPluginScopeOptions {
+  readonly pluginId: DynamicPluginId;
+  readonly versionId: PluginVersionId;
+  readonly activationId: PluginActivationId;
+  readonly hostKind: DynamicPluginHostKind;
+  readonly quiescence: DynamicPluginQuiescencePort;
+  readonly quiescenceTimeoutMs: number;
+}

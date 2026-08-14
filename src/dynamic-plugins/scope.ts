@@ -1,0 +1,86 @@
+import type {
+  DynamicPluginCleanup,
+  DynamicPluginScopeOptions,
+  PluginCleanupReport,
+  PluginDiagnosticSnapshot,
+  PluginRetractionReason
+} from './types';
+
+export class DynamicPluginScope {
+  readonly signal: AbortSignal;
+
+  private readonly controller = new AbortController();
+  private readonly cleanups: DynamicPluginCleanup[] = [];
+  private readonly pending = new Set<Promise<unknown>>();
+  private disposal: Promise<PluginCleanupReport> | undefined;
+
+  constructor(private readonly options: DynamicPluginScopeOptions) {
+    this.signal = this.controller.signal;
+  }
+
+  get pendingWork(): number {
+    return this.pending.size;
+  }
+
+  own(cleanup: DynamicPluginCleanup): void {
+    this.assertActive();
+    this.cleanups.push(cleanup);
+  }
+
+  track(work: Promise<unknown>): void {
+    this.assertActive();
+    this.pending.add(work);
+    const remove = () => {
+      this.pending.delete(work);
+    };
+    void work.then(remove, remove);
+  }
+
+  dispose(reason: PluginRetractionReason): Promise<PluginCleanupReport> {
+    this.disposal ??= this.performDisposal(reason);
+    return this.disposal;
+  }
+
+  private async performDisposal(reason: PluginRetractionReason): Promise<PluginCleanupReport> {
+    this.controller.abort(reason);
+    const pending = Object.freeze([...this.pending]);
+    const quiesced = await this.options.quiescence.wait(pending, this.options.quiescenceTimeoutMs);
+    const failures: PluginDiagnosticSnapshot[] = [];
+
+    for (let index = this.cleanups.length - 1; index >= 0; index--) {
+      try {
+        await this.cleanups[index]?.();
+      } catch (cause) {
+        failures.push(this.cleanupFailure(cause));
+      }
+    }
+
+    return Object.freeze({
+      activationId: this.options.activationId,
+      terminalPhase: quiesced ? 'inactive' : 'failed-to-quiesce',
+      removedRegistrations: this.cleanups.length,
+      cancelledWork: pending.length,
+      failures: Object.freeze(failures)
+    });
+  }
+
+  private cleanupFailure(cause: unknown): PluginDiagnosticSnapshot {
+    return Object.freeze({
+      code: 'DYNAMIC_PLUGIN_CLEANUP_FAILED',
+      phase: 'retracting',
+      message: cause instanceof Error ? cause.message : String(cause),
+      fields: Object.freeze({
+        pluginId: this.options.pluginId,
+        versionId: this.options.versionId,
+        activationId: this.options.activationId,
+        hostKind: this.options.hostKind
+      })
+    });
+  }
+
+  private assertActive(): void {
+    if (this.disposal) {
+      throw new Error('activation-retracted: dynamic plugin scope is disposing.');
+    }
+  }
+}

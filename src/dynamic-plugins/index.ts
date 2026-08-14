@@ -1,5 +1,6 @@
 export { dynamicPluginId, pluginActivationId, pluginVersionId } from './ids';
 export { planCapabilityAuthorization, validateDynamicPluginManifest } from './manifest';
+export { DynamicPluginScope } from './scope';
 export type {
   CapabilityId,
   DynamicCapabilityDescriptor,
@@ -11,7 +12,12 @@ export type {
   DynamicPluginManifest,
   DynamicPluginPhase,
   DynamicPluginPolicy,
+  DynamicPluginQuiescencePort,
+  DynamicPluginScopeOptions,
   DynamicPluginVersionVerifier,
+  PluginCleanupReport,
+  PluginDiagnosticSnapshot,
   PluginActivationId,
+  PluginRetractionReason,
   PluginVersionId
 } from './types';
