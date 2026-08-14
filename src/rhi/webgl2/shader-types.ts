@@ -17,11 +17,18 @@ export interface WebGL2PhysicalBinding {
   readonly slot: number;
 }
 
+export interface WebGL2ProgramBinding {
+  readonly kind: 'uniform-buffer' | 'combined-sampler';
+  readonly name: string;
+  readonly slot: number;
+}
+
 export interface WebGL2TranslatedShader {
   readonly source: string;
   readonly bindings: readonly WebGL2BindingManifestEntry[];
   readonly targetAbiFingerprint: string;
   readonly physicalBindings: readonly WebGL2PhysicalBinding[];
+  readonly programBindings: readonly WebGL2ProgramBinding[];
   readonly requiredExtensions: readonly string[];
   readonly sourceMap: readonly Readonly<{ generatedLine: number; authoredLine: number }>[];
   readonly translatorFingerprint: string;
@@ -67,6 +74,7 @@ export function finalizeWebGL2Shader(
       throw new Error(`WebGL2 extension "${extension}" is not approved.`);
   }
   validatePhysicalBindings(translated.bindings, translated.physicalBindings);
+  validateProgramBindings(translated.programBindings);
   const defines = Object.entries(input.constants)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([name, value]) => {
@@ -88,7 +96,8 @@ export function finalizeWebGL2Shader(
     translated.targetAbiFingerprint,
     source,
     canonicalBindings(translated.bindings),
-    canonicalPhysicalBindings(translated.physicalBindings)
+    canonicalPhysicalBindings(translated.physicalBindings),
+    canonicalProgramBindings(translated.programBindings)
   ].join('\n');
   return Object.freeze({
     ...translated,
@@ -105,6 +114,19 @@ export function finalizeWebGL2Shader(
   });
 }
 
+function validateProgramBindings(bindings: readonly WebGL2ProgramBinding[]): void {
+  const interfaces = new Set<string>();
+  for (const binding of bindings) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(binding.name))
+      throw new Error(`Invalid WebGL2 program binding name "${binding.name}".`);
+    if (!Number.isSafeInteger(binding.slot) || binding.slot < 0)
+      throw new Error(`Invalid WebGL2 program binding slot ${binding.slot}.`);
+    const key = `${binding.kind}:${binding.name}`;
+    if (interfaces.has(key)) throw new Error(`Duplicate WebGL2 program binding ${key}.`);
+    interfaces.add(key);
+  }
+}
+
 function validatePhysicalBindings(
   logical: readonly WebGL2BindingManifestEntry[],
   physical: readonly WebGL2PhysicalBinding[]
@@ -112,7 +134,7 @@ function validatePhysicalBindings(
   const keys = new Set<string>();
   const slots = new Set<string>();
   for (const binding of physical) {
-    const key = `${binding.group}:${binding.binding}:${binding.kind}`;
+    const key = `${binding.group}:${binding.binding}:${binding.kind}:${binding.slot}`;
     if (keys.has(key)) throw new Error(`Duplicate WebGL2 physical binding ${key}.`);
     keys.add(key);
     const slot = `${binding.kind}:${binding.slot}`;
@@ -120,13 +142,19 @@ function validatePhysicalBindings(
     slots.add(slot);
   }
   for (const binding of logical) {
-    const key = `${binding.group}:${binding.binding}:${binding.kind}`;
-    if (!keys.has(key)) throw new Error(`WebGL2 logical binding ${key} has no physical slot.`);
+    const prefix = `${binding.group}:${binding.binding}:${binding.kind}:`;
+    if (![...keys].some((key) => key.startsWith(prefix)))
+      throw new Error(`WebGL2 logical binding ${prefix.slice(0, -1)} has no physical slot.`);
   }
-  if (keys.size !== logical.length) {
-    throw new Error(
-      'WebGL2 physical binding manifest contains entries absent from the logical manifest.'
-    );
+  const logicalKeys = new Set(
+    logical.map((binding) => `${binding.group}:${binding.binding}:${binding.kind}`)
+  );
+  for (const binding of physical) {
+    const key = `${binding.group}:${binding.binding}:${binding.kind}`;
+    if (!logicalKeys.has(key))
+      throw new Error(
+        'WebGL2 physical binding manifest contains entries absent from the logical manifest.'
+      );
   }
 }
 
@@ -140,6 +168,13 @@ function canonicalBindings(bindings: readonly WebGL2BindingManifestEntry[]): str
 function canonicalPhysicalBindings(bindings: readonly WebGL2PhysicalBinding[]): string {
   return bindings
     .map((entry) => `${entry.group}:${entry.binding}:${entry.kind}:${entry.slot}`)
+    .sort()
+    .join(',');
+}
+
+function canonicalProgramBindings(bindings: readonly WebGL2ProgramBinding[]): string {
+  return bindings
+    .map((entry) => `${entry.kind}:${entry.name}:${entry.slot}`)
     .sort()
     .join(',');
 }

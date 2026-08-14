@@ -8,6 +8,7 @@ import { WebGL2ResourceBase, assertWebGL2Resource } from './resource';
 import type { WebGL2DeviceOwner } from './resource-types';
 import type {
   WebGL2BindingManifestEntry,
+  WebGL2ProgramBinding,
   WebGL2ShaderStage,
   WebGL2ShaderTranslationPort
 } from './shader-types';
@@ -79,7 +80,11 @@ export function createWebGL2RenderPipeline(
     vertex.physicalBindings,
     fragment?.physicalBindings ?? []
   );
-  validateBindingLimits(owner, bindings);
+  const programBindings = mergeProgramBindings(
+    vertex.programBindings,
+    fragment?.programBindings ?? []
+  );
+  validateBindingLimits(owner, bindings, physicalBindings);
   const create = owner.native.createProgram;
   if (create === undefined)
     throw new Error('Native WebGL2 context does not support program creation.');
@@ -91,7 +96,8 @@ export function createWebGL2RenderPipeline(
         label: descriptor.label,
         vertexSource: vertex.source,
         fragmentSource: fragment?.source,
-        bindings
+        bindings,
+        programBindings
       })
     );
   } catch (cause) {
@@ -108,6 +114,25 @@ export function createWebGL2RenderPipeline(
     );
   }
   return new WebGL2RenderPipeline(id, owner, program, descriptor, bindings, physicalBindings);
+}
+
+function mergeProgramBindings(
+  first: readonly WebGL2ProgramBinding[],
+  second: readonly WebGL2ProgramBinding[]
+): readonly WebGL2ProgramBinding[] {
+  const merged = new Map<string, WebGL2ProgramBinding>();
+  for (const entry of [...first, ...second]) {
+    const key = `${entry.kind}:${entry.name}`;
+    const previous = merged.get(key);
+    if (previous !== undefined && previous.slot !== entry.slot)
+      throw new Error(`WebGL2 program binding conflicts at ${key}.`);
+    merged.set(key, Object.freeze({ ...entry }));
+  }
+  return Object.freeze(
+    [...merged.values()].sort(
+      (left, right) => left.kind.localeCompare(right.kind) || left.name.localeCompare(right.name)
+    )
+  );
 }
 
 function translateStage(
@@ -148,11 +173,7 @@ function mergePhysicalBindings(
 ): readonly WebGL2PhysicalBinding[] {
   const merged = new Map<string, WebGL2PhysicalBinding>();
   for (const entry of [...first, ...second]) {
-    const key = `${entry.group}:${entry.binding}:${entry.kind}`;
-    const previous = merged.get(key);
-    if (previous !== undefined && previous.slot !== entry.slot) {
-      throw new Error(`WebGL2 physical binding conflicts at ${key}.`);
-    }
+    const key = `${entry.group}:${entry.binding}:${entry.kind}:${entry.slot}`;
     merged.set(key, Object.freeze({ ...entry }));
   }
   return Object.freeze([...merged.values()]);
@@ -180,7 +201,8 @@ function mergeBindings(
 
 function validateBindingLimits(
   owner: WebGL2DeviceOwner,
-  bindings: readonly WebGL2BindingManifestEntry[]
+  bindings: readonly WebGL2BindingManifestEntry[],
+  physicalBindings: readonly WebGL2PhysicalBinding[]
 ): void {
   const uniformCount = bindings.filter((entry) => entry.kind === 'uniform-buffer').length;
   const textureCount = bindings.filter((entry) => entry.kind === 'texture').length;
@@ -193,6 +215,16 @@ function validateBindingLimits(
     throw new Error(
       `WebGL2 pipeline requires ${textureCount} textures, limit is ${owner.native.limits.maxTextureUnits ?? 0}.`
     );
+  }
+  for (const binding of physicalBindings) {
+    const limit =
+      binding.kind === 'uniform-buffer'
+        ? (owner.native.limits.maxUniformBufferBindings ?? 0)
+        : (owner.native.limits.maxTextureUnits ?? 0);
+    if (binding.slot >= limit) {
+      const resource = binding.kind === 'uniform-buffer' ? 'uniform-buffer' : 'texture';
+      throw new Error(`WebGL2 physical ${resource} slot ${binding.slot} exceeds limit ${limit}.`);
+    }
   }
 }
 
