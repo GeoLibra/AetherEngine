@@ -170,3 +170,35 @@ export interface DynamicPluginInventoryEntry {
   readonly pendingWork: number;
   readonly diagnostic?: PluginDiagnosticSnapshot;
 }
+
+export interface DynamicPluginMessageEnvelope<T> {
+  readonly schemaVersion: number;
+  readonly pluginId: DynamicPluginId;
+  readonly versionId: PluginVersionId;
+  readonly activationId: PluginActivationId;
+  readonly requestId: string;
+  readonly payloadBytes: number;
+  readonly payload: T;
+}
+
+export interface DynamicPluginMessageValidationOptions {
+  readonly maxPayloadBytes: number;
+}
+
+export interface DynamicPluginMessageGuardOptions extends DynamicPluginMessageValidationOptions {
+  readonly maxTrackedRequests: number;
+}
+
+export interface DynamicPluginMessageMetrics {
+  readonly accepted: number;
+  readonly staleResults: number;
+  readonly invalid: number;
+  readonly duplicateTerminal: number;
+}
+
+export type DynamicPluginMessageAdmission =
+  | Readonly<{ accepted: true }>
+  | Readonly<{
+      accepted: false;
+      reason: 'stale-activation' | 'invalid-message' | 'duplicate-terminal';
+    }>;

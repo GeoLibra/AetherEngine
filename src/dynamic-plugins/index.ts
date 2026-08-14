@@ -3,6 +3,7 @@ export { dynamicPluginId, pluginActivationId, pluginVersionId } from './ids';
 export { DynamicPluginHost, type DynamicPluginHostOptions } from './host';
 export { createDynamicPluginInventory } from './inventory';
 export { planCapabilityAuthorization, validateDynamicPluginManifest } from './manifest';
+export { DynamicPluginMessageGuard, validateDynamicPluginMessageEnvelope } from './messages';
 export { DynamicPluginScope } from './scope';
 export type {
   CapabilityId,
@@ -22,6 +23,11 @@ export type {
   DynamicPluginActivationContext,
   DynamicPluginInventoryEntry,
   DynamicPluginManifest,
+  DynamicPluginMessageAdmission,
+  DynamicPluginMessageEnvelope,
+  DynamicPluginMessageGuardOptions,
+  DynamicPluginMessageMetrics,
+  DynamicPluginMessageValidationOptions,
   DynamicPluginPhase,
   DynamicPluginPolicy,
   DynamicPluginQuiescencePort,
