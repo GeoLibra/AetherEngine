@@ -73,6 +73,22 @@ describe('dynamic plugin manifest contracts', () => {
     expect(plan.deniedOptional).toEqual([optional]);
     expect(Object.isFrozen(plan.deniedOptional)).toBe(true);
   });
+
+  it('rejects missing or invalid artifact hashes', () => {
+    expect(() =>
+      validateDynamicPluginManifest(
+        manifestWith({ artifactHashes: null as unknown as Record<string, string> }),
+        acceptingVerifier
+      )
+    ).toThrow(/artifact hash/i);
+
+    expect(() =>
+      validateDynamicPluginManifest(
+        manifestWith({ artifactHashes: { 'bundle.js': '' } }),
+        acceptingVerifier
+      )
+    ).toThrow(/must not be empty/i);
+  });
 });
 
 function capabilityRequest(id: string, required: boolean): DynamicCapabilityRequest {
@@ -86,6 +102,7 @@ function manifestWith(overrides: Partial<DynamicPluginManifest> = {}): DynamicPl
     versionId: pluginVersionId('sha256:version-1'),
     hosts: Object.freeze([{ kind: 'editor', required: true }] satisfies DynamicPluginHostRequest[]),
     capabilities: Object.freeze([]),
+    artifactHashes: Object.freeze({ 'bundle.js': 'sha256:abcd' }),
     ...overrides
   });
 }

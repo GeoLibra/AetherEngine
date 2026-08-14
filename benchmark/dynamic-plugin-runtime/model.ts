@@ -33,7 +33,7 @@ export function runDynamicPluginReference(
 
   return Object.freeze({
     currentVersions: Object.freeze(Array.from({ length: input.plugins }, () => 2)),
-    snapshotCopies: input.plugins * 2,
+    snapshotCopies: input.plugins * 4,
     cleanupInvocations: input.plugins * input.contributionsPerPlugin,
     reverseCleanupViolations: 0,
     staleAccepted: 0
@@ -123,7 +123,7 @@ export async function runDynamicPluginAether(
       versionId: version1,
       activationId: previous.activationId,
       requestId: `stale-${pluginIndex}`,
-      payloadBytes: 0,
+      payloadBytes: 4,
       payload: null
     });
     if (guard.metrics().staleResults !== 1) {
@@ -134,7 +134,7 @@ export async function runDynamicPluginAether(
 
   return Object.freeze({
     currentVersions: Object.freeze(currentVersions),
-    snapshotCopies: input.plugins * 2,
+    snapshotCopies: host.metrics().snapshotCopies,
     cleanupInvocations,
     reverseCleanupViolations,
     staleAccepted
@@ -188,7 +188,8 @@ function benchmarkDefinition(
         version: BenchmarkContributionToken.version,
         required: true
       }
-    ])
+    ]),
+    artifactHashes: Object.freeze({ 'bundle.js': 'sha256:0000000000000000' })
   });
   return Object.freeze({ manifest, activate });
 }

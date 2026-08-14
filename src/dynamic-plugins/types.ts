@@ -58,6 +58,11 @@ export interface DynamicPluginManifest {
   readonly versionId: PluginVersionId;
   readonly hosts: readonly DynamicPluginHostRequest[];
   readonly capabilities: readonly DynamicCapabilityRequest[];
+  readonly artifactHashes: Readonly<Record<string, string>>;
+}
+
+export interface DynamicPluginHostMetrics {
+  readonly snapshotCopies: number;
 }
 
 export interface DynamicPluginVersionVerifier {

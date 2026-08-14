@@ -59,6 +59,28 @@ describe('DynamicPluginHost lifecycle', () => {
     expect(host.inventory()[0]?.phase).toBe('failed');
     expect(host.inventory()[0]?.diagnostic?.message).toBe('boom');
   });
+
+  it('aborts and rolls back staging activation when host is destroyed in-flight', async () => {
+    const panels = panelRegistry();
+    const host = createHost(panels.provider);
+    const gate = deferred<void>();
+    host.define(
+      definition('slow', async ({ capabilities }) => {
+        capabilities.get(PanelToken).add('panel-staging');
+        await gate.promise;
+      })
+    );
+
+    const activationPromise = host.activate(pluginId, version('slow'));
+    const destroyPromise = host.destroy();
+
+    gate.resolve();
+    await destroyPromise;
+    await expect(activationPromise).rejects.toThrow(/destroyed/i);
+
+    expect(panels.visible()).toEqual([]);
+    expect(host.current(pluginId)).toBeUndefined();
+  });
 });
 
 function deferred<T>() {

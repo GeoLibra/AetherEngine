@@ -36,7 +36,8 @@ export function definition(
     hosts: Object.freeze([{ kind: 'editor', required: true }] satisfies DynamicPluginHostRequest[]),
     capabilities: Object.freeze([
       { id: PanelToken.id, version: PanelToken.version, required: true }
-    ])
+    ]),
+    artifactHashes: Object.freeze({ 'index.js': 'sha256:fixture' })
   });
   return Object.freeze({ manifest, activate });
 }

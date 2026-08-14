@@ -20,15 +20,6 @@ export function validateDynamicPluginMessageEnvelope<T = unknown>(
     throw new Error('Dynamic plugin message schema requires a non-empty request ID.');
   }
   if (
-    typeof value.payloadBytes !== 'number' ||
-    !Number.isFinite(value.payloadBytes) ||
-    !Number.isInteger(value.payloadBytes) ||
-    value.payloadBytes < 0 ||
-    value.payloadBytes > options.maxPayloadBytes
-  ) {
-    throw new Error('Dynamic plugin message payload metadata exceeds its size budget.');
-  }
-  if (
     typeof value.pluginId !== 'string' ||
     typeof value.versionId !== 'string' ||
     typeof value.activationId !== 'string' ||
@@ -37,14 +28,26 @@ export function validateDynamicPluginMessageEnvelope<T = unknown>(
     throw new Error('Dynamic plugin message schema has invalid identity or payload fields.');
   }
 
+  const { bytes, payload } = validateAndComputePayload<T>(value.payload, options.maxPayloadBytes);
+
+  if (
+    typeof value.payloadBytes === 'number' &&
+    (!Number.isFinite(value.payloadBytes) ||
+      !Number.isInteger(value.payloadBytes) ||
+      value.payloadBytes < 0 ||
+      value.payloadBytes > options.maxPayloadBytes)
+  ) {
+    throw new Error('Dynamic plugin message payload metadata exceeds its size budget.');
+  }
+
   return Object.freeze({
     schemaVersion: 1,
     pluginId: dynamicPluginId(value.pluginId),
     versionId: pluginVersionId(value.versionId),
     activationId: pluginActivationId(value.activationId),
     requestId: value.requestId.trim(),
-    payloadBytes: value.payloadBytes,
-    payload: value.payload as T
+    payloadBytes: bytes,
+    payload
   });
 }
 
@@ -118,4 +121,81 @@ export class DynamicPluginMessageGuard<T> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function validateAndComputePayload<T>(
+  payload: unknown,
+  maxBytes: number
+): { bytes: number; payload: T } {
+  assertSerializable(payload);
+  let serialized: string;
+  try {
+    const json = JSON.stringify(payload);
+    if (json === undefined && payload !== undefined) {
+      throw new Error('Dynamic plugin message payload is not serializable.');
+    }
+    serialized = json ?? 'null';
+  } catch {
+    throw new Error('Dynamic plugin message payload is not serializable.');
+  }
+
+  const bytes = new TextEncoder().encode(serialized).byteLength;
+  if (bytes > maxBytes) {
+    throw new Error(
+      `Dynamic plugin message payload size ${bytes} exceeds budget of ${maxBytes} bytes.`
+    );
+  }
+
+  const parsed = JSON.parse(serialized) as T;
+  deepFreeze(parsed);
+  return { bytes, payload: parsed };
+}
+
+function assertSerializable(value: unknown, seen = new Set<unknown>()): void {
+  if (value === null || value === undefined) {
+    return;
+  }
+  const type = typeof value;
+  if (type === 'function' || type === 'symbol' || type === 'bigint') {
+    throw new Error('Dynamic plugin message payload contains non-serializable type.');
+  }
+  if (type === 'object') {
+    if (seen.has(value)) {
+      throw new Error('Dynamic plugin message payload contains circular reference.');
+    }
+    seen.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        assertSerializable(item, seen);
+      }
+    } else {
+      const proto = Object.getPrototypeOf(value);
+      if (proto !== null && proto !== Object.prototype) {
+        throw new Error('Dynamic plugin message payload contains non-serializable class instance.');
+      }
+      for (const key of Object.keys(value)) {
+        const val = (value as Record<string, unknown>)[key];
+        if (
+          typeof val === 'function' ||
+          typeof val === 'symbol' ||
+          typeof val === 'bigint' ||
+          typeof val === 'undefined'
+        ) {
+          throw new Error('Dynamic plugin message payload contains non-serializable type.');
+        }
+        assertSerializable(val, seen);
+      }
+    }
+  }
+}
+
+function deepFreeze<U>(value: U): U {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  Object.freeze(value);
+  for (const key of Object.keys(value)) {
+    deepFreeze((value as Record<string, unknown>)[key]);
+  }
+  return value;
 }

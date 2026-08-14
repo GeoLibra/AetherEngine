@@ -18,6 +18,7 @@ export type {
   DynamicCapabilitySession,
   DynamicCapabilityToken,
   DynamicPluginHostKind,
+  DynamicPluginHostMetrics,
   DynamicPluginHostRequest,
   DynamicPluginId,
   DynamicPluginDefinition,

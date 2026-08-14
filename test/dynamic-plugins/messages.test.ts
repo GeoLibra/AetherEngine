@@ -29,19 +29,36 @@ describe('dynamic plugin message admission', () => {
     expect(guard.metrics().staleResults).toBe(1);
   });
 
-  it('rejects invalid schema and oversized payload metadata', () => {
+  it('rejects invalid schema, oversized payload metadata, forged payloadBytes, and non-serializable payloads', () => {
     expect(() =>
       validateDynamicPluginMessageEnvelope(
         { ...envelope(), schemaVersion: 2 },
         { maxPayloadBytes: 1_024 }
       )
     ).toThrow(/message schema/i);
+
     expect(() =>
       validateDynamicPluginMessageEnvelope(
         { ...envelope(), payloadBytes: 1_025 },
         { maxPayloadBytes: 1_024 }
       )
     ).toThrow(/payload/i);
+
+    // Forged payloadBytes: 0 with 10KB real payload must fail when maxPayloadBytes is small
+    expect(() =>
+      validateDynamicPluginMessageEnvelope(
+        { ...envelope(), payloadBytes: 0, payload: { value: 'x'.repeat(100) } },
+        { maxPayloadBytes: 10 }
+      )
+    ).toThrow(/budget/i);
+
+    // Non-serializable payload (function) must fail
+    expect(() =>
+      validateDynamicPluginMessageEnvelope(
+        { ...envelope(), payload: { fn: () => undefined } },
+        { maxPayloadBytes: 1_024 }
+      )
+    ).toThrow(/non-serializable/i);
   });
 
   it('accepts one current terminal result and rejects its duplicate', () => {

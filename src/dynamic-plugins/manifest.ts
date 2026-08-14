@@ -23,6 +23,7 @@ export function validateDynamicPluginManifest(
 
   assertUniqueHosts(manifest);
   assertValidCapabilities(manifest);
+  assertValidArtifactHashes(manifest);
   if (!verifier.verify(manifest)) {
     throw new Error('Dynamic plugin version verification failed.');
   }
@@ -94,5 +95,20 @@ function assertValidCapabilities(manifest: DynamicPluginManifest): void {
       );
     }
     seen.add(key);
+  }
+}
+
+function assertValidArtifactHashes(manifest: DynamicPluginManifest): void {
+  if (typeof manifest.artifactHashes !== 'object' || manifest.artifactHashes === null) {
+    throw new Error('Dynamic plugin manifest artifact hashes must be an object.');
+  }
+  const entries = Object.entries(manifest.artifactHashes);
+  for (const [file, hash] of entries) {
+    if (typeof file !== 'string' || file.trim().length === 0) {
+      throw new Error('Dynamic plugin artifact hash filename must not be empty.');
+    }
+    if (typeof hash !== 'string' || hash.trim().length === 0) {
+      throw new Error(`Dynamic plugin artifact hash for ${file} must not be empty.`);
+    }
   }
 }

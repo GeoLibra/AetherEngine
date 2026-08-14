@@ -53,6 +53,25 @@ describe('DynamicPluginScope', () => {
     expect(() => scope.track(Promise.resolve())).toThrow(/activation-retracted/i);
     await disposal;
   });
+
+  it('handles quiescence rejection, marks failed-to-quiesce, and still runs cleanups', async () => {
+    const order: string[] = [];
+    const scope = createScope({
+      wait: async () => {
+        throw new Error('quiescence network error');
+      }
+    });
+    scope.own(() => {
+      order.push('cleanup-1');
+    });
+
+    const report = await scope.dispose('version-update');
+
+    expect(report.terminalPhase).toBe('failed-to-quiesce');
+    expect(order).toEqual(['cleanup-1']);
+    expect(report.failures.map((f) => f.code)).toContain('DYNAMIC_PLUGIN_QUIESCENCE_FAILED');
+    expect(report.failures[0]?.message).toBe('quiescence network error');
+  });
 });
 
 function createScope(quiescence: DynamicPluginQuiescencePort): DynamicPluginScope {

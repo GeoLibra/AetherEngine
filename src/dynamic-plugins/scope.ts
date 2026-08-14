@@ -44,16 +44,28 @@ export class DynamicPluginScope {
     void work.then(remove, remove);
   }
 
+  abort(reason?: unknown): void {
+    if (!this.controller.signal.aborted) {
+      this.controller.abort(reason);
+    }
+  }
+
   dispose(reason: PluginRetractionReason): Promise<PluginCleanupReport> {
     this.disposal ??= this.performDisposal(reason);
     return this.disposal;
   }
 
   private async performDisposal(reason: PluginRetractionReason): Promise<PluginCleanupReport> {
-    this.controller.abort(reason);
+    this.abort(reason);
     const pending = Object.freeze([...this.pending]);
-    const quiesced = await this.options.quiescence.wait(pending, this.options.quiescenceTimeoutMs);
+    let quiesced = false;
     const failures: PluginDiagnosticSnapshot[] = [];
+    try {
+      quiesced = await this.options.quiescence.wait(pending, this.options.quiescenceTimeoutMs);
+    } catch (cause) {
+      quiesced = false;
+      failures.push(this.quiescenceFailure(cause));
+    }
 
     for (let index = this.cleanups.length - 1; index >= 0; index--) {
       try {
@@ -69,6 +81,20 @@ export class DynamicPluginScope {
       removedRegistrations: this.cleanups.length,
       cancelledWork: pending.length,
       failures: Object.freeze(failures)
+    });
+  }
+
+  private quiescenceFailure(cause: unknown): PluginDiagnosticSnapshot {
+    return Object.freeze({
+      code: 'DYNAMIC_PLUGIN_QUIESCENCE_FAILED',
+      phase: 'retracting',
+      message: cause instanceof Error ? cause.message : String(cause),
+      fields: Object.freeze({
+        pluginId: this.options.pluginId,
+        versionId: this.options.versionId,
+        activationId: this.options.activationId,
+        hostKind: this.options.hostKind
+      })
     });
   }
 

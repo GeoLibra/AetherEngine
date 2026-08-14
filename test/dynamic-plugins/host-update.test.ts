@@ -1,4 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import {
+  DynamicCapabilityBroker,
+  DynamicPluginHost,
+  pluginActivationId
+} from '../../src/dynamic-plugins';
 import { createHost, definition, panelRegistry, pluginId, version } from './host-fixture';
 
 describe('DynamicPluginHost updates', () => {
@@ -46,5 +51,44 @@ describe('DynamicPluginHost updates', () => {
     expect(host.inventory()[0]?.phase).toBe('inactive');
     await host.destroy();
     await expect(host.activate(pluginId, version('v1'))).rejects.toThrow(/destroyed/i);
+  });
+
+  it('maintains new version current when previous version fails quiescence', async () => {
+    const panels = panelRegistry();
+    let activation = 0;
+    const broker = new DynamicCapabilityBroker('editor');
+    broker.register(panels.provider);
+    const host = new DynamicPluginHost({
+      hostKind: 'editor',
+      broker,
+      verifier: { verify: () => true },
+      policy: { authorize: () => 'granted' },
+      quiescence: {
+        wait: async () => {
+          throw new Error('quiescence failed during update');
+        }
+      },
+      quiescenceTimeoutMs: 50,
+      mintActivationId: () => pluginActivationId(`act-${++activation}`)
+    });
+
+    host.define(
+      definition('v1', ({ capabilities }) => {
+        capabilities.get(panels.provider.token).add('v1');
+      })
+    );
+    host.define(
+      definition('v2', ({ capabilities }) => {
+        capabilities.get(panels.provider.token).add('v2');
+      })
+    );
+
+    await host.activate(pluginId, version('v1'));
+    // Activating v2 commits v2, even though retracting v1 encounters quiescence failure
+    const entry = await host.activate(pluginId, version('v2'));
+
+    expect(entry.versionId).toBe(version('v2'));
+    expect(host.current(pluginId)?.versionId).toBe(version('v2'));
+    expect(panels.visible()).toEqual(['v2']);
   });
 });
