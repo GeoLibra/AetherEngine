@@ -102,6 +102,7 @@ class CapabilitySession implements DynamicCapabilitySession {
   readonly resolver: DynamicCapabilityResolver;
 
   private state: 'staging' | 'committed' | 'rolled-back' = 'staging';
+  private readonly committedCleanups: Array<() => Promise<void>> = [];
 
   constructor(
     private readonly opened: readonly OpenedCapability[],
@@ -131,7 +132,10 @@ class CapabilitySession implements DynamicCapabilitySession {
       lease.commit();
     }
     for (const { lease } of this.opened) {
-      this.scope.own(() => lease.rollback());
+      let cleanup: Promise<void> | undefined;
+      const runOnce = () => (cleanup ??= Promise.resolve(lease.rollback()));
+      this.committedCleanups.push(runOnce);
+      this.scope.own(runOnce);
     }
     this.state = 'committed';
   }
@@ -143,6 +147,25 @@ class CapabilitySession implements DynamicCapabilitySession {
     }
     this.state = 'rolled-back';
     await rollbackOpened(this.opened);
+  }
+
+  async retract(): Promise<void> {
+    if (this.state === 'staging') {
+      await this.rollback();
+      return;
+    }
+    if (this.state === 'rolled-back') return;
+    const failures: unknown[] = [];
+    for (let index = this.committedCleanups.length - 1; index >= 0; index--) {
+      try {
+        await this.committedCleanups[index]?.();
+      } catch (cause) {
+        failures.push(cause);
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'Dynamic capability retraction failed.');
+    }
   }
 }
 

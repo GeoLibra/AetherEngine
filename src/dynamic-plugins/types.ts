@@ -139,4 +139,34 @@ export interface DynamicCapabilitySession {
   readonly resolver: DynamicCapabilityResolver;
   commit(): void;
   rollback(): Promise<void>;
+  retract(): Promise<void>;
+}
+
+export interface DynamicPluginActivationContext {
+  readonly pluginId: DynamicPluginId;
+  readonly versionId: PluginVersionId;
+  readonly activationId: PluginActivationId;
+  readonly hostKind: DynamicPluginHostKind;
+  readonly signal: AbortSignal;
+  readonly capabilities: DynamicCapabilityResolver;
+  own(cleanup: DynamicPluginCleanup): void;
+  track(work: Promise<unknown>): void;
+}
+
+export interface DynamicPluginDefinition {
+  readonly manifest: DynamicPluginManifest;
+  activate(context: DynamicPluginActivationContext): void | Promise<void>;
+}
+
+export interface DynamicPluginInventoryEntry {
+  readonly pluginId: DynamicPluginId;
+  readonly versionId: PluginVersionId;
+  readonly activationId?: PluginActivationId;
+  readonly hostKind: DynamicPluginHostKind;
+  readonly phase: DynamicPluginPhase;
+  readonly grantedCapabilities: readonly CapabilityId[];
+  readonly deniedOptionalCapabilities: readonly CapabilityId[];
+  readonly contributionCounts: Readonly<Record<string, number>>;
+  readonly pendingWork: number;
+  readonly diagnostic?: PluginDiagnosticSnapshot;
 }
