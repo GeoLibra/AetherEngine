@@ -38,6 +38,11 @@ export function createBrowserWebGL2ContextPort(
   const lost = new Promise<{ reason?: string; message?: string }>((resolve) => {
     resolveLost = resolve;
   });
+  let resolveRestored!: () => void;
+  let restoreSettled = false;
+  const restored = new Promise<void>((resolve) => {
+    resolveRestored = resolve;
+  });
   const onLost = (event: unknown): void => {
     if (settled) return;
     settled = true;
@@ -46,7 +51,14 @@ export function createBrowserWebGL2ContextPort(
     const message = stringProperty(event, 'statusMessage');
     resolveLost({ reason: 'context-lost', ...(message === undefined ? {} : { message }) });
   };
+  const onRestored = (): void => {
+    if (!settled || restoreSettled) return;
+    initializeWebGL2StateDefaults(gl);
+    restoreSettled = true;
+    resolveRestored();
+  };
   canvas.addEventListener('webglcontextlost', onLost);
+  canvas.addEventListener('webglcontextrestored', onRestored);
   return {
     ...createBrowserWebGL2OperationPort(gl),
     info: contextInfo(gl),
@@ -55,8 +67,10 @@ export function createBrowserWebGL2ContextPort(
     formats: queryWebGL2Formats(gl, extensions),
     precision: queryWebGL2Precision(gl),
     lost,
+    restored,
     destroy(): void {
       canvas.removeEventListener('webglcontextlost', onLost);
+      canvas.removeEventListener('webglcontextrestored', onRestored);
     }
   };
 }

@@ -30,6 +30,7 @@ export interface WebGL2NativeContextPort {
   readonly formats: ReadonlyMap<GPUTextureFormat, FormatCapabilities>;
   readonly precision: Readonly<Record<string, number>>;
   readonly lost: Promise<WebGL2NativeContextLostInfo>;
+  readonly restored?: Promise<void>;
   createBuffer?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
   createTexture?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
   createSampler?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
