@@ -26,6 +26,8 @@ export interface PackedStaticBvh {
   readonly packedBytes: number;
 }
 
+const NO_SPATIAL_ENTRIES: readonly SpatialEntry[] = Object.freeze([]);
+
 interface BuildNode {
   index?: number;
   bounds: readonly [number, number, number, number, number, number];
@@ -299,7 +301,7 @@ function emptyPackedBvh(): PackedStaticBvh {
     metadata: new Uint32Array(),
     entityIds: new Uint32Array(),
     boundsRevisions: new Uint32Array(),
-    entries: Object.freeze([]),
+    entries: NO_SPATIAL_ENTRIES,
     nodeCount: 0,
     rootNode: null,
     checksum: 2166136261,

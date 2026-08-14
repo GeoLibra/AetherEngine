@@ -43,6 +43,8 @@ const INTEGER_VECTOR_LENGTHS: Partial<Record<ComponentFieldType, number>> = {
   ivec3: 3
 };
 
+const NO_TAG_COMPONENT_FIELDS: readonly [] = Object.freeze([]);
+
 const VIEW_ACCESSOR = Symbol('ComponentView.accessor');
 const VIEW_MARK_CHANGED = Symbol('ComponentView.markChanged');
 
@@ -164,7 +166,7 @@ export function defineTagComponent(definition: TagComponentDefinition): TagCompo
     kind: 'component' as const,
     name: definition.name,
     storage: 'tag' as const,
-    fields: Object.freeze([]) as readonly []
+    fields: NO_TAG_COMPONENT_FIELDS
   });
 }
 

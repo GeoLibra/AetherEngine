@@ -11,6 +11,9 @@ import { reflectBindingEntry } from './binding-reflection';
 import type { ShaderDiagnostic, ShaderModuleIR, ShaderTarget, SourceSpan } from './types';
 import type { ResolvedShaderVariants } from './variant';
 
+const NO_SHADER_DIAGNOSTICS: readonly ShaderDiagnostic[] = Object.freeze([]);
+const NO_RELATED_SPANS: readonly SourceSpan[] = Object.freeze([]);
+
 export interface ShaderBackendValidationIssue {
   readonly line: number;
   readonly column: number;
@@ -99,14 +102,14 @@ export async function emitShaderBackend(
           primary:
             ir.entryPoints[0]?.span ??
             Object.freeze({ uri: 'shader://generated', line: 1, column: 1, length: 1 }),
-          related: Object.freeze([]),
+          related: NO_RELATED_SPANS,
           backendLog: message
         })
       ])
     });
   }
   if (issues.length === 0)
-    return Object.freeze({ ok: true, source, diagnostics: Object.freeze([]) });
+    return Object.freeze({ ok: true, source, diagnostics: NO_SHADER_DIAGNOSTICS });
   const primary =
     ir.entryPoints[0]?.span ??
     Object.freeze({ uri: 'shader://generated', line: 1, column: 1, length: 1 });
@@ -186,7 +189,7 @@ function failure(code: string, message: string, primary: SourceSpan): ShaderBack
         message,
         stage: 'emit',
         primary,
-        related: Object.freeze([])
+        related: NO_RELATED_SPANS
       })
     ])
   });
@@ -201,7 +204,7 @@ function backendDiagnostic(
     message: issue.message,
     stage: 'backend-validation',
     primary: authored,
-    related: Object.freeze([]),
+    related: NO_RELATED_SPANS,
     ...(issue.log ? { backendLog: issue.log } : {})
   });
 }

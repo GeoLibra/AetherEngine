@@ -25,6 +25,8 @@ export interface InitializationInterval {
   readonly producerPassId: number | null;
 }
 
+const NO_INITIALIZATION_INTERVALS: readonly InitializationInterval[] = Object.freeze([]);
+
 export interface ResourceVersionRecord {
   readonly version: number;
   readonly handle: GraphHandle;
@@ -280,7 +282,7 @@ function initialIntervals(
   const initialized =
     (origin.kind === 'imported' && origin.initialState !== 'undefined') ||
     (origin.kind === 'history' && historyValid);
-  if (!initialized) return Object.freeze([]);
+  if (!initialized) return NO_INITIALIZATION_INTERVALS;
   return Object.freeze(
     atomizeRange(fullRange, format).map((range) =>
       Object.freeze({ range, sourceVersion: 0, producerPassId: null })

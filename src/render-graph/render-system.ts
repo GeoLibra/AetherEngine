@@ -97,10 +97,11 @@ interface ActiveRenderSystemInstance {
   readonly phases: readonly RenderPhaseSnapshot[];
 }
 
+const EMPTY_QUERY_ITEMS: readonly never[] = Object.freeze([]);
 const EMPTY_QUERY: RenderQuerySnapshot<never> = Object.freeze({
   queryId: 'render-system/empty',
   renderRevision: 0,
-  items: Object.freeze([])
+  items: EMPTY_QUERY_ITEMS
 });
 
 /** Creates a stable semantic token without creating a second scheduling domain. */

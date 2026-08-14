@@ -23,6 +23,11 @@ import type {
   SourceSpan
 } from './types';
 
+const NO_ATTRIBUTES: readonly FluxAttribute[] = Object.freeze([]);
+const NO_CONTINUING_STATEMENTS: readonly FluxStatementNode[] = Object.freeze([]);
+const NO_TYPE_ARGUMENTS: readonly FluxTypeNode[] = Object.freeze([]);
+const NO_RELATED_SPANS: readonly SourceSpan[] = Object.freeze([]);
+
 export interface ShaderParseResult {
   readonly ir?: ShaderModuleIR;
   readonly diagnostics: readonly ShaderDiagnostic[];
@@ -222,7 +227,7 @@ class FluxParser {
     }
     this.expect(')');
     let returnType: FluxTypeNode | undefined;
-    let returnAttributes: readonly FluxAttribute[] = Object.freeze([]);
+    let returnAttributes: readonly FluxAttribute[] = NO_ATTRIBUTES;
     if (this.match('->')) {
       returnAttributes = this.parseAttributes();
       returnType = this.parseType();
@@ -420,7 +425,7 @@ class FluxParser {
     const start = this.expect('loop');
     this.expect('{');
     const body: FluxStatementNode[] = [];
-    let continuing: readonly FluxStatementNode[] = Object.freeze([]);
+    let continuing: readonly FluxStatementNode[] = NO_CONTINUING_STATEMENTS;
     while (!this.at('}')) {
       if (this.at('eof')) this.unexpectedEof('Unterminated loop statement.');
       if (this.match('continuing')) {
@@ -559,7 +564,7 @@ class FluxParser {
       this.unsupported(`Expected expression, received "${token.text}".`, token);
     const start = this.consume();
     const checkpoint = this.index;
-    let typeArguments: readonly FluxTypeNode[] = Object.freeze([]);
+    let typeArguments: readonly FluxTypeNode[] = NO_TYPE_ARGUMENTS;
     if (this.at('<')) {
       try {
         this.consume();
@@ -688,6 +693,6 @@ function diagnostic(code: string, message: string, primary: SourceSpan): ShaderD
     message,
     stage: 'parse',
     primary,
-    related: Object.freeze([])
+    related: NO_RELATED_SPANS
   });
 }

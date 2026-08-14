@@ -24,6 +24,7 @@ export type FluxLexResult = Readonly<{
 
 const TWO_CHARACTER_SYMBOLS = new Set(['->', '==', '!=', '<=', '>=', '&&', '||', '<<', '>>']);
 const ONE_CHARACTER_SYMBOLS = new Set('{}()[]<>,;:.@=+-*/%!&|^~');
+const NO_RELATED_SPANS: readonly SourceSpan[] = Object.freeze([]);
 
 /**
  * Performs lexical analysis on FluxSL source text.
@@ -150,6 +151,6 @@ function makeDiagnostic(code: string, message: string, primary: SourceSpan): Sha
     message,
     stage: 'parse',
     primary,
-    related: Object.freeze([])
+    related: NO_RELATED_SPANS
   });
 }

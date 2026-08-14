@@ -15,6 +15,17 @@ import {
 } from './host-fixture';
 
 describe('DynamicPluginHost lifecycle', () => {
+  it('fails fast when destroyed state is missing its destruction promise', () => {
+    const panels = panelRegistry();
+    const host = createHost(panels.provider);
+    Object.assign(host as unknown as { destroyed: boolean; destruction?: Promise<unknown> }, {
+      destroyed: true,
+      destruction: undefined
+    });
+
+    expect(() => host.destroy()).toThrow(/missing its destruction promise/i);
+  });
+
   it('enumerates a frozen source-free definition before activation', () => {
     const panels = panelRegistry();
     const host = createHost(panels.provider);

@@ -47,6 +47,8 @@ interface ActivationRecord {
   session?: DynamicCapabilitySession;
 }
 
+const NO_CAPABILITIES: readonly string[] = Object.freeze([]);
+
 export class DynamicPluginHost {
   private readonly definitions = new Map<string, DynamicPluginDefinition>();
   private readonly definitionEntries = new Map<string, DynamicPluginInventoryEntry>();
@@ -77,8 +79,8 @@ export class DynamicPluginHost {
         versionId: stored.manifest.versionId,
         hostKind: this.options.hostKind,
         phase: 'defined',
-        grantedCapabilities: Object.freeze([]),
-        deniedOptionalCapabilities: Object.freeze([]),
+        grantedCapabilities: NO_CAPABILITIES,
+        deniedOptionalCapabilities: NO_CAPABILITIES,
         contributionCounts: Object.freeze({}),
         pendingWork: 0
       })
@@ -163,7 +165,10 @@ export class DynamicPluginHost {
 
   destroy(): Promise<readonly PluginDiagnosticSnapshot[]> {
     if (this.destroyed) {
-      return this.destruction ?? Promise.resolve(Object.freeze([]));
+      if (this.destruction === undefined) {
+        throw new Error('Destroyed DynamicPluginHost is missing its destruction promise.');
+      }
+      return this.destruction;
     }
     this.destroyed = true;
     for (const scope of this.inFlightScopes) {
@@ -194,8 +199,8 @@ export class DynamicPluginHost {
       activationId,
       hostKind: this.options.hostKind,
       phase: 'validating',
-      grantedCapabilities: Object.freeze([]),
-      deniedOptionalCapabilities: Object.freeze([]),
+      grantedCapabilities: NO_CAPABILITIES,
+      deniedOptionalCapabilities: NO_CAPABILITIES,
       contributionCounts: Object.freeze({}),
       pendingWork: 0,
       scope

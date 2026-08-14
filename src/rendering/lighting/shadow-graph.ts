@@ -26,6 +26,8 @@ export type ShadowDepthPassRecorder = (
   pass: ShadowDepthPassRecord
 ) => void;
 
+const NO_SHADOW_PASSES: readonly PassToken[] = Object.freeze([]);
+
 /**
  * Declares accepted shadow requests as independent depth array-layer writes. The physical backend
  * may later map those layers to atlas tiles; the graph remains the sole ordering authority.
@@ -42,7 +44,7 @@ export function declareShadowDepthPasses(
   if (requests.length === 0) {
     return Object.freeze({
       texture: undefined,
-      passes: Object.freeze([]),
+      passes: NO_SHADOW_PASSES,
       layerByRequestKey: new Map()
     });
   }
