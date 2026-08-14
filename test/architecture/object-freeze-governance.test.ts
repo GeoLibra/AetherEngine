@@ -64,7 +64,13 @@ function isNamedEmptySnapshot(node: ts.CallExpression): boolean {
   ) {
     return false;
   }
-  return (declaration.parent.flags & ts.NodeFlags.Const) !== 0;
+  const declarationList = declaration.parent;
+  return (
+    ts.isVariableDeclarationList(declarationList) &&
+    (declarationList.flags & ts.NodeFlags.Const) !== 0 &&
+    ts.isVariableStatement(declarationList.parent) &&
+    ts.isSourceFile(declarationList.parent.parent)
+  );
 }
 
 function findFreezeCalls(
@@ -89,6 +95,25 @@ function findFreezeCalls(
   return results;
 }
 
+function findInlineEmptySnapshots(sourceText: string): string[] {
+  const source = ts.createSourceFile('snippet.ts', sourceText, ts.ScriptTarget.Latest, true);
+  const results: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      isFreezeCall(node) &&
+      node.arguments.length === 1 &&
+      ts.isArrayLiteralExpression(node.arguments[0]!) &&
+      node.arguments[0]!.elements.length === 0 &&
+      !isNamedEmptySnapshot(node)
+    ) {
+      results.push(sourceLocation('snippet.ts', source, node));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return results;
+}
+
 function isNewExpressionFor(names: ReadonlySet<string>) {
   return (argument: ts.Expression): boolean =>
     ts.isNewExpression(argument) &&
@@ -97,6 +122,13 @@ function isNewExpressionFor(names: ReadonlySet<string>) {
 }
 
 describe('Object.freeze governance', () => {
+  test('allows only module-owned named empty snapshots', () => {
+    expect(findInlineEmptySnapshots('const NO_VALUES = Object.freeze([]);')).toEqual([]);
+    expect(
+      findInlineEmptySnapshots('function build() { const NO_VALUES = Object.freeze([]); }')
+    ).toHaveLength(1);
+  });
+
   test('does not freeze inline empty arrays', () => {
     expect(
       findFreezeCalls(

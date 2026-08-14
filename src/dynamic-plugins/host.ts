@@ -164,19 +164,15 @@ export class DynamicPluginHost {
   }
 
   destroy(): Promise<readonly PluginDiagnosticSnapshot[]> {
-    if (this.destroyed) {
-      if (this.destruction === undefined) {
-        throw new Error('Destroyed DynamicPluginHost is missing its destruction promise.');
-      }
+    if (this.destruction !== undefined) {
       return this.destruction;
     }
+
+    const completion = createDeferred<readonly PluginDiagnosticSnapshot[]>();
+    this.destruction = completion.promise;
     this.destroyed = true;
-    for (const scope of this.inFlightScopes) {
-      scope.abort('host-shutdown');
-    }
-    const destruction = this.performDestroy();
-    this.destruction = destruction;
-    return destruction;
+    void this.performDestroy().then(completion.resolve, completion.reject);
+    return completion.promise;
   }
 
   private async performActivation(
@@ -515,4 +511,18 @@ function withTimeout<T, U>(
     }),
     timeout
   ]);
+}
+
+function createDeferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+  readonly reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }

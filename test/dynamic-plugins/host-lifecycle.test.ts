@@ -15,15 +15,23 @@ import {
 } from './host-fixture';
 
 describe('DynamicPluginHost lifecycle', () => {
-  it('fails fast when destroyed state is missing its destruction promise', () => {
+  it('returns the shared destruction promise when an abort listener re-enters destroy', async () => {
     const panels = panelRegistry();
     const host = createHost(panels.provider);
-    Object.assign(host as unknown as { destroyed: boolean; destruction?: Promise<unknown> }, {
-      destroyed: true,
-      destruction: undefined
-    });
+    let reentrantDestroy: ReturnType<DynamicPluginHost['destroy']> | undefined;
+    host.define(
+      definition('reentrant-destroy', ({ signal }) => {
+        signal.addEventListener('abort', () => {
+          reentrantDestroy = host.destroy();
+        });
+      })
+    );
 
-    expect(() => host.destroy()).toThrow(/missing its destruction promise/i);
+    await host.activate(pluginId, version('reentrant-destroy'));
+    const destroy = host.destroy();
+
+    expect(reentrantDestroy).toBe(destroy);
+    await expect(destroy).resolves.toEqual([]);
   });
 
   it('enumerates a frozen source-free definition before activation', () => {
