@@ -1,7 +1,7 @@
 import type { FormatCapabilities } from '../../contracts/capability';
 import type { GPUTextureFormat } from '../../contracts/webgpu';
 import type { WebGL2NativeLimits } from '../native-types';
-import type { BrowserWebGL2Context } from './types';
+import type { BrowserWebGL2Context, BrowserWebGL2Object } from './types';
 
 export function queryWebGL2Extensions(gl: BrowserWebGL2Context): ReadonlySet<string> {
   return new Set(gl.getSupportedExtensions() ?? []);
@@ -74,8 +74,8 @@ function precision(gl: BrowserWebGL2Context, shader: string): number {
   );
 }
 
-export function constant(gl: BrowserWebGL2Context, name: string): number {
-  const value = gl[name];
+export function constant(gl: BrowserWebGL2Object, name: string): number {
+  const value = Reflect.get(gl, name);
   if (typeof value !== 'number') throw new Error(`WebGL2 context does not expose ${name}.`);
   return value;
 }

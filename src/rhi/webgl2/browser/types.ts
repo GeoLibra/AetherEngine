@@ -12,8 +12,9 @@ export interface BrowserWebGL2ContextOptions {
   readonly powerPreference?: 'default' | 'high-performance' | 'low-power';
 }
 
-export interface BrowserWebGL2Context {
-  readonly [name: string]: unknown;
+export type BrowserWebGL2Object = object;
+
+export interface BrowserWebGL2Context extends BrowserWebGL2Object {
   getSupportedExtensions(): string[] | null;
   getParameter(parameter: number): unknown;
   getShaderPrecisionFormat(

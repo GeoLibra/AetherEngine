@@ -7,6 +7,7 @@ import {
   constant
 } from './capability-query';
 import { initializeWebGL2StateDefaults } from './state-defaults';
+import { createBrowserWebGL2OperationPort } from './operation-port';
 import type {
   BrowserWebGL2Canvas,
   BrowserWebGL2Context,
@@ -47,6 +48,7 @@ export function createBrowserWebGL2ContextPort(
   };
   canvas.addEventListener('webglcontextlost', onLost);
   return {
+    ...createBrowserWebGL2OperationPort(gl),
     info: contextInfo(gl),
     extensions,
     limits: queryWebGL2Limits(gl),
