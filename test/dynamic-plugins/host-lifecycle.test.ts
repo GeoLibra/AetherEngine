@@ -220,6 +220,29 @@ describe('DynamicPluginHost lifecycle', () => {
       expect(entry.phase).toBe('failed-to-quiesce');
     }
   });
+
+  it('aggregates and preserves all cleanup failures in diagnostics returned by destroy()', async () => {
+    const panels = panelRegistry();
+    const host = createHost(panels.provider);
+
+    host.define(
+      definition('multi-failure', ({ own }) => {
+        own(() => {
+          throw new Error('cleanup error 1');
+        });
+        own(() => {
+          throw new Error('cleanup error 2');
+        });
+      })
+    );
+
+    await host.activate(pluginId, version('multi-failure'));
+    const diagnostics = await host.destroy();
+
+    const messages = diagnostics.map((d) => d.message);
+    expect(messages).toContain('cleanup error 1');
+    expect(messages).toContain('cleanup error 2');
+  });
 });
 
 function deferred<T>() {

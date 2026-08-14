@@ -84,28 +84,39 @@ export class DynamicPluginScope {
     let allCleanupsSucceeded = true;
 
     for (let index = this.cleanups.length - 1; index >= 0; index--) {
-      const msLeft = remainingMs();
-      if (msLeft <= 0) {
-        allCleanupsSucceeded = false;
-        failures.push(this.cleanupTimeoutFailure(index));
-        continue;
-      }
-
       try {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const timeout = new Promise<typeof TIMEOUT_TOKEN>((resolve) => {
-          timer = setTimeout(() => resolve(TIMEOUT_TOKEN), msLeft);
-        });
-        const result = await Promise.race([
-          Promise.resolve(this.cleanups[index]?.()).then(() => 'success' as const),
-          timeout
-        ]);
-        if (timer !== undefined) {
-          clearTimeout(timer);
-        }
-        if (result === TIMEOUT_TOKEN) {
-          allCleanupsSucceeded = false;
-          failures.push(this.cleanupTimeoutFailure(index));
+        const cleanupResult = this.cleanups[index]?.();
+        if (
+          cleanupResult instanceof Promise ||
+          (cleanupResult !== null &&
+            typeof cleanupResult === 'object' &&
+            typeof (cleanupResult as Promise<unknown>).then === 'function')
+        ) {
+          const msLeft = remainingMs();
+          if (msLeft <= 0) {
+            allCleanupsSucceeded = false;
+            failures.push(this.cleanupTimeoutFailure(index));
+            void (cleanupResult as Promise<unknown>).catch(() => undefined);
+          } else {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const timeout = new Promise<typeof TIMEOUT_TOKEN>((resolve) => {
+              timer = setTimeout(() => resolve(TIMEOUT_TOKEN), msLeft);
+            });
+            const result = await Promise.race([
+              (cleanupResult as Promise<unknown>).then(() => 'success' as const),
+              timeout
+            ]);
+            if (timer !== undefined) {
+              clearTimeout(timer);
+            }
+            if (result === TIMEOUT_TOKEN) {
+              allCleanupsSucceeded = false;
+              failures.push(this.cleanupTimeoutFailure(index));
+              void (cleanupResult as Promise<unknown>).catch(() => undefined);
+            } else {
+              removedRegistrations++;
+            }
+          }
         } else {
           removedRegistrations++;
         }

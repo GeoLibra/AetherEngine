@@ -326,7 +326,12 @@ export class DynamicPluginHost {
       }
     });
 
-    const activeTasks = active.map((record) => this.retractRecord(record, 'host-shutdown'));
+    const cleanupReports: PluginCleanupReport[] = [];
+    const activeTasks = active.map(async (record) => {
+      const report = await this.retractRecord(record, 'host-shutdown');
+      cleanupReports.push(report);
+      return report;
+    });
 
     const allOperations = Promise.allSettled([
       ...this.inFlightActivations,
@@ -375,22 +380,33 @@ export class DynamicPluginHost {
       }
     }
 
-    // 6. Collect all diagnostics
+    // 6. Collect all diagnostics (aggregating all cleanup report failures and record diagnostics)
     const diagnostics: PluginDiagnosticSnapshot[] = [];
+    const seen = new Set<PluginDiagnosticSnapshot>();
+
+    const addDiagnostic = (diagnostic: PluginDiagnosticSnapshot | undefined) => {
+      if (diagnostic && !seen.has(diagnostic)) {
+        seen.add(diagnostic);
+        diagnostics.push(diagnostic);
+      }
+    };
+
+    for (const report of cleanupReports) {
+      for (const failure of report.failures) {
+        addDiagnostic(failure);
+      }
+    }
+
     for (const record of active) {
-      if (record.diagnostic && !diagnostics.includes(record.diagnostic)) {
-        diagnostics.push(record.diagnostic);
-      }
+      addDiagnostic(record.diagnostic);
     }
+
     for (const record of this.records) {
-      if (
-        (record.phase === 'failed' || record.phase === 'failed-to-quiesce') &&
-        record.diagnostic &&
-        !diagnostics.includes(record.diagnostic)
-      ) {
-        diagnostics.push(record.diagnostic);
+      if (record.phase === 'failed' || record.phase === 'failed-to-quiesce') {
+        addDiagnostic(record.diagnostic);
       }
     }
+
     return Object.freeze(diagnostics);
   }
 
