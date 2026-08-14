@@ -34,14 +34,20 @@ export default defineConfig({
       testMatch: 'webgpu-render.spec.ts',
       use: {
         ...devices['Desktop Chrome'],
+        ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
         deviceScaleFactor: 1,
         launchOptions: {
           args: [
             '--enable-unsafe-webgpu',
-            '--enable-features=Vulkan,UseSkiaRenderer',
-            '--use-gl=angle',
-            '--use-angle=swiftshader',
-            '--disable-vulkan-fallback-to-gl-for-testing'
+            ...(process.platform === 'linux'
+              ? [
+                  '--enable-features=Vulkan,UseSkiaRenderer',
+                  '--use-angle=vulkan',
+                  '--disable-vulkan-surface',
+                  '--ignore-gpu-blocklist',
+                  '--disable-vulkan-fallback-to-gl-for-testing'
+                ]
+              : [])
           ]
         }
       }

@@ -23,12 +23,6 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
     }
   });
 
-  // Headless Linux CI runners lack hardware GPU rasterization for canvas screenshot compositing;
-  // full pipeline submission, render passes, draw calls, and zero-validation errors are asserted above.
-  if (process.env.CI) {
-    return;
-  }
-
   await expect(harness.page.locator('canvas')).toHaveScreenshot('webgpu-indexed-cube.png', {
     animations: 'disabled',
     maxDiffPixelRatio: 0.01
