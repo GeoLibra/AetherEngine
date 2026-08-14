@@ -8,6 +8,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       pathPrefixes: Object.freeze([
         'engine/design/v2/01-foundation/03-time-events-commands.md',
         'engine/design/v2/02-runtime/01-app-plugin.md',
+        'engine/design/v2/02-runtime/04-dynamic-plugin-runtime.md',
         'src/app/',
         'src/events/'
       ])
@@ -87,6 +88,25 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
     })
   ]),
   suites: Object.freeze([
+    Object.freeze({
+      id: 'dynamic-plugin-runtime',
+      description:
+        'Dynamic plugin activation, last-good updates, reverse cleanup, and stale-message rejection.',
+      domainIds: Object.freeze(['runtime']),
+      pathPrefixes: Object.freeze([
+        'benchmark/dynamic-plugin-runtime/',
+        'benchmark/dynamic-plugin-runtime.bench.ts',
+        'benchmark/dynamic-plugin-runtime-runner.mjs',
+        'engine/design/v2/02-runtime/04-dynamic-plugin-runtime.md',
+        'src/dynamic-plugins/',
+        'test/benchmark/dynamic-plugin-runtime.test.ts',
+        'test/dynamic-plugins/'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/dynamic-plugin-runtime-runner.mjs', '{profile}'])
+      })
+    }),
     Object.freeze({
       id: 'runtime-jobs',
       description:
