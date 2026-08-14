@@ -1,6 +1,7 @@
 import { bench, expect } from 'vitest';
 import {
   assertDynamicPluginReference,
+  runDynamicPluginAether,
   runDynamicPluginReference
 } from './dynamic-plugin-runtime/model';
 
@@ -12,11 +13,12 @@ for (const plugins of pluginScales) {
   for (const contributionsPerPlugin of contributionScales) {
     bench(
       `updates ${plugins} plugins with ${contributionsPerPlugin} contributions each`,
-      () => {
+      async () => {
         const input = { plugins, contributionsPerPlugin, pendingPerPlugin: 2 };
-        const result = runDynamicPluginReference(input);
+        const reference = runDynamicPluginReference(input);
+        const result = await runDynamicPluginAether(input);
         assertDynamicPluginReference(result, input);
-        expect(result.snapshotCopies).toBe(plugins * 2);
+        expect(result).toEqual(reference);
       },
       { iterations: 1, warmupIterations: 0 }
     );
