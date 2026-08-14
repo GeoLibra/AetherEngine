@@ -35,11 +35,20 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
-        // Linux CI supplies Xvfb, so use Chromium's headed compositor for WebGPU presentation.
-        ...(process.env.CI && process.platform === 'linux' ? { headless: false } : {}),
         deviceScaleFactor: 1,
         launchOptions: {
-          args: ['--enable-unsafe-webgpu']
+          args: [
+            '--enable-unsafe-webgpu',
+            ...(process.platform === 'linux'
+              ? [
+                  '--use-angle=vulkan',
+                  '--enable-features=Vulkan',
+                  '--use-vulkan=swiftshader',
+                  '--disable-vulkan-surface',
+                  '--ignore-gpu-blocklist'
+                ]
+              : [])
+          ]
         }
       }
     }

@@ -114,7 +114,6 @@ jobs:
       - name: Run ${{ matrix.project }}
         env:
           E2E_PROJECT: ${{ matrix.project }}
-          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" pnpm e2e --project="$E2E_PROJECT"
       - name: Upload Playwright artifacts
         if: always()
