@@ -1,5 +1,6 @@
 export { App } from './app/app';
 export { definePlugin } from './app/utils';
+export { CoreSchedule } from './app/constants';
 export type {
   AppBuilder,
   AppState,
@@ -14,6 +15,7 @@ export type {
 export type {
   AccessToken,
   AppScope,
+  CoreSchedule as CoreScheduleType,
   ExtensionContribution,
   ExtensionPoint,
   ExtensionSnapshot,

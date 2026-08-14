@@ -4,6 +4,10 @@ import type { SchemaMigration, TypeSchema } from '../schema';
 import type { ObserverDescriptor } from '../ecs/observer';
 import type { EventChannel } from '../events/event-channel';
 import type { StateStore } from '../events/state-store';
+import type { CoreSchedule, LifecycleDiagnosticCode } from './constants';
+
+export type { CoreSchedule, LifecycleDiagnosticCode } from './constants';
+
 // Registry scopes and token types
 export type AppScope = 'main' | 'render' | 'editor' | 'asset-worker' | 'global';
 export type ServiceToken<T> = symbol & { readonly __type?: T };
@@ -34,9 +38,7 @@ export interface ServiceFactoryRegistration<T> {
   readonly options: Readonly<ServiceOptions<T>>;
 }
 
-export type ServiceRegistration<T> =
-  | ServiceValueRegistration<T>
-  | ServiceFactoryRegistration<T>;
+export type ServiceRegistration<T> = ServiceValueRegistration<T> | ServiceFactoryRegistration<T>;
 
 export interface RegistrationHandle {
   remove(): boolean;
@@ -56,32 +58,11 @@ export interface ExtensionSnapshot<T> {
 }
 
 // Schedule and system types
-export type ScheduleLabel =
-  | 'PreStartup'
-  | 'Startup'
-  | 'PostStartup'
-  | 'First'
-  | 'PreUpdate'
-  | 'FixedFirst'
-  | 'FixedPreUpdate'
-  | 'FixedUpdate'
-  | 'FixedPostUpdate'
-  | 'FixedLast'
-  | 'Update'
-  | 'PostUpdate'
-  | 'Last'
-  | 'PreRender'
-  | 'Render'
-  | 'PostRender'
-  | 'FrameCleanup'
-  | string;
+export type ScheduleLabel = CoreSchedule | (string & {});
 
 export type System = (world: World) => void | Promise<void>;
 
-export type AccessToken =
-  | ComponentType<object>
-  | RelationType
-  | ResourceToken<unknown>;
+export type AccessToken = ComponentType<object> | RelationType | ResourceToken<unknown>;
 
 export interface SystemDescriptor {
   readonly id: string;
@@ -121,10 +102,7 @@ export type AppState =
 
 export interface AppBuilder {
   addSystem(stage: ScheduleLabel, descriptor: SystemDescriptor): void;
-  addCommandApplyPoint(
-    stage: ScheduleLabel,
-    descriptor: CommandApplyPointDescriptor
-  ): void;
+  addCommandApplyPoint(stage: ScheduleLabel, descriptor: CommandApplyPointDescriptor): void;
   insertResource<T>(token: ResourceToken<T>, resource: T): void;
   replaceResource<T>(token: ResourceToken<T>, resource: T): void;
   provideService<T>(token: ServiceToken<T>, registration: ServiceRegistration<T>): void;
@@ -163,13 +141,7 @@ export interface PluginGroup {
 }
 
 export interface LifecycleDiagnostic {
-  readonly code:
-    | 'APP_STARTUP_FAILED'
-    | 'APP_RUNTIME_FAILED'
-    | 'PLUGIN_SHUTDOWN_FAILED'
-    | 'FRAME_CLEANUP_FAILED'
-    | 'SERVICE_DISPOSAL_FAILED'
-    | 'CONTRIBUTION_CLEANUP_FAILED';
+  readonly code: LifecycleDiagnosticCode;
   readonly phase:
     | 'startup'
     | 'runtime'
