@@ -37,18 +37,7 @@ export default defineConfig({
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
         deviceScaleFactor: 1,
         launchOptions: {
-          args: [
-            '--enable-unsafe-webgpu',
-            ...(process.platform === 'linux'
-              ? [
-                  '--enable-features=Vulkan,UseSkiaRenderer',
-                  '--use-angle=vulkan',
-                  '--disable-vulkan-surface',
-                  '--ignore-gpu-blocklist',
-                  '--disable-vulkan-fallback-to-gl-for-testing'
-                ]
-              : [])
-          ]
+          args: ['--enable-unsafe-webgpu']
         }
       }
     }
