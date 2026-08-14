@@ -2,6 +2,7 @@ import type { WebGL2NativeContextPort } from '../native-types';
 import { constant } from './capability-query';
 import { glCall, glObject } from './gl-call';
 import type { BrowserWebGL2TextureFacts } from './resource-port';
+import { textureSubresource } from './texture-subresource';
 import type { BrowserWebGL2Object } from './types';
 
 export function createBrowserWebGL2FramebufferPort(
@@ -27,15 +28,16 @@ export function createBrowserWebGL2FramebufferPort(
       const drawBuffers: number[] = [];
       if (Array.isArray(colors))
         colors.forEach((attachment, index) => {
-          const texture = attachmentView(attachment);
-          requireTexture(textureFacts, texture);
+          if (typeof attachment !== 'object' || attachment === null)
+            throw new TypeError('Framebuffer color attachment is invalid.');
+          const subresource = attachmentSubresource(attachment, textureFacts);
           const attachmentPoint = constant(gl, 'COLOR_ATTACHMENT0') + index;
           glCall(gl, 'framebufferTexture2D', [
             constant(gl, 'FRAMEBUFFER'),
             attachmentPoint,
             constant(gl, 'TEXTURE_2D'),
-            texture,
-            0
+            subresource.texture,
+            subresource.mipLevel
           ]);
           drawBuffers.push(attachmentPoint);
         });
@@ -47,17 +49,18 @@ export function createBrowserWebGL2FramebufferPort(
       }
       const depth = descriptor.depthStencilAttachment;
       if (typeof depth === 'object' && depth !== null) {
-        const texture = attachmentView(depth);
-        const facts = requireTexture(textureFacts, texture);
+        const subresource = attachmentSubresource(depth, textureFacts);
         glCall(gl, 'framebufferTexture2D', [
           constant(gl, 'FRAMEBUFFER'),
           constant(
             gl,
-            facts.aspect === 'depth-stencil' ? 'DEPTH_STENCIL_ATTACHMENT' : 'DEPTH_ATTACHMENT'
+            subresource.facts.aspect === 'depth-stencil'
+              ? 'DEPTH_STENCIL_ATTACHMENT'
+              : 'DEPTH_ATTACHMENT'
           ),
           constant(gl, 'TEXTURE_2D'),
-          texture,
-          0
+          subresource.texture,
+          subresource.mipLevel
         ]);
       }
       return framebuffer;
@@ -96,16 +99,18 @@ function validateAttachmentExtents(
   descriptor: Readonly<Record<string, unknown>>,
   textureFacts: WeakMap<object, BrowserWebGL2TextureFacts>
 ): void {
-  let expected: BrowserWebGL2TextureFacts | undefined;
+  let expected: { readonly width: number; readonly height: number } | undefined;
   const validate = (attachment: unknown): void => {
-    const facts = requireTexture(textureFacts, attachmentView(attachment));
+    if (typeof attachment !== 'object' || attachment === null)
+      throw new TypeError('Framebuffer attachment is invalid.');
+    const subresource = attachmentSubresource(attachment, textureFacts);
     if (expected === undefined) {
-      expected = facts;
+      expected = subresource;
       return;
     }
-    if (facts.width !== expected.width || facts.height !== expected.height) {
+    if (subresource.width !== expected.width || subresource.height !== expected.height) {
       throw new Error(
-        `WebGL2 framebuffer attachment extent mismatch: expected ${expected.width}x${expected.height}, received ${facts.width}x${facts.height}.`
+        `WebGL2 framebuffer attachment extent mismatch: expected ${expected.width}x${expected.height}, received ${subresource.width}x${subresource.height}.`
       );
     }
   };
@@ -216,21 +221,14 @@ export interface BrowserWebGL2FramebufferState {
   current: object | null;
 }
 
-function attachmentView(value: unknown): object {
-  if (typeof value !== 'object' || value === null)
-    throw new TypeError('Framebuffer attachment is invalid.');
-  const view = Reflect.get(value, 'view');
-  if (typeof view !== 'object' || view === null)
-    throw new TypeError('Framebuffer attachment view is invalid.');
-  return view;
-}
-
-function requireTexture(
-  facts: WeakMap<object, BrowserWebGL2TextureFacts>,
-  texture: object
-): BrowserWebGL2TextureFacts {
-  const result = facts.get(texture);
-  if (result === undefined)
-    throw new Error('Framebuffer attachment is not owned by this browser WebGL2 context.');
-  return result;
+function attachmentSubresource(
+  attachment: object,
+  facts: WeakMap<object, BrowserWebGL2TextureFacts>
+) {
+  return textureSubresource(attachment, facts, {
+    texture: 'view',
+    mipLevel: 'mipLevel',
+    width: 'width',
+    height: 'height'
+  });
 }

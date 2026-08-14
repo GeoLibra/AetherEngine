@@ -234,6 +234,35 @@ describe('browser WebGL2 native operations', () => {
     ).toThrow(/attachment extent mismatch.*80x100.*80x64/i);
   });
 
+  test('attaches and lowers viewport against the selected mip subresource', () => {
+    const gl = new FakeOperationsGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+    const texture = port.createTexture?.({
+      size: { width: 8, height: 8, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10,
+      mipLevelCount: 2
+    });
+    if (texture === undefined) throw new Error('Missing mipmapped texture.');
+    const descriptor = {
+      colorAttachments: [
+        { view: texture, mipLevel: 1, width: 4, height: 4, loadOp: 'load', storeOp: 'store' }
+      ]
+    };
+    gl.calls.length = 0;
+
+    port.createFramebuffer?.(descriptor);
+    port.beginRenderPass?.(descriptor);
+    port.setViewport?.(0, 1, 4, 2, 0, 1);
+
+    expect(gl.calls).toEqual(
+      expect.arrayContaining([
+        ['framebufferTexture2D', gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 1],
+        ['viewport', 0, 1, 4, 2]
+      ])
+    );
+  });
+
   test('lowers baseline 2D texture uploads and buffer-texture copies without readback', () => {
     const gl = new FakeOperationsGL();
     const port = createBrowserWebGL2OperationPort(gl);
@@ -253,6 +282,9 @@ describe('browser WebGL2 native operations', () => {
     }
     gl.calls.length = 0;
     const pixels = new Uint8Array(32);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 8);
+    gl.pixelStorei(gl.PACK_ALIGNMENT, 8);
+    gl.calls.length = 0;
 
     port.writeTexture?.(
       { texture, mipLevel: 0, origin: { x: 0, y: 0, z: 0 } },
@@ -278,6 +310,8 @@ describe('browser WebGL2 native operations', () => {
 
     expect(gl.calls).toEqual(
       expect.arrayContaining([
+        ['pixelStorei', gl.UNPACK_ALIGNMENT, 4],
+        ['pixelStorei', gl.PACK_ALIGNMENT, 4],
         ['texSubImage2D', gl.TEXTURE_2D, 0, 0, 0, 4, 2, gl.RGBA, gl.UNSIGNED_BYTE, pixels],
         ['texSubImage2D', gl.TEXTURE_2D, 0, 0, 0, 4, 2, gl.RGBA, gl.UNSIGNED_BYTE, 256],
         ['readPixels', 0, 0, 4, 2, gl.RGBA, gl.UNSIGNED_BYTE, 256],
@@ -286,6 +320,35 @@ describe('browser WebGL2 native operations', () => {
     );
     expect(gl.calls.some(([name]) => name === 'getBufferSubData')).toBe(false);
     expect(gl.calls.some(([name]) => name === 'flush')).toBe(false);
+  });
+
+  test('attaches the selected source mip for texture readback', () => {
+    const gl = new FakeOperationsGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+    const texture = port.createTexture?.({
+      size: { width: 8, height: 8, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x13,
+      mipLevelCount: 2
+    });
+    const buffer = port.createBuffer?.({ size: 512, usage: 0x0c });
+    if (texture === undefined || buffer === undefined) throw new Error('Missing copy resources.');
+    gl.calls.length = 0;
+
+    port.copyTextureToBuffer?.(
+      { texture, mipLevel: 1, origin: { x: 0, y: 0, z: 0 } },
+      { buffer, offset: 256, bytesPerRow: 256, rowsPerImage: 4 },
+      { width: 4, height: 4, depthOrArrayLayers: 1 }
+    );
+
+    expect(gl.calls).toContainEqual([
+      'framebufferTexture2D',
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      texture,
+      1
+    ]);
   });
 
   test('applies load/store operations and resolves without a pass-boundary flush', () => {
@@ -329,6 +392,56 @@ describe('browser WebGL2 native operations', () => {
     );
     expect(gl.calls.some(([name]) => name === 'flush')).toBe(false);
   });
+
+  test('resolves between the selected source and target mip extents', () => {
+    const gl = new FakeOperationsGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+    const source = port.createTexture?.({
+      size: { width: 16, height: 16, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10,
+      mipLevelCount: 2
+    });
+    const target = port.createTexture?.({
+      size: { width: 16, height: 16, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10,
+      mipLevelCount: 2
+    });
+    if (source === undefined || target === undefined) throw new Error('Missing resolve textures.');
+    gl.calls.length = 0;
+
+    port.resolveRenderPass?.({
+      colorAttachments: [
+        {
+          view: source,
+          mipLevel: 1,
+          width: 8,
+          height: 8,
+          resolveTarget: target,
+          resolveTargetMipLevel: 1,
+          resolveTargetWidth: 8,
+          resolveTargetHeight: 8,
+          loadOp: 'load',
+          storeOp: 'store'
+        }
+      ]
+    });
+
+    expect(gl.calls).toEqual(
+      expect.arrayContaining([
+        [
+          'framebufferTexture2D',
+          gl.DRAW_FRAMEBUFFER,
+          gl.COLOR_ATTACHMENT0,
+          gl.TEXTURE_2D,
+          target,
+          1
+        ],
+        ['blitFramebuffer', 0, 0, 8, 8, 0, 0, 8, 8, gl.COLOR_BUFFER_BIT, gl.NEAREST]
+      ])
+    );
+  });
 });
 
 class FakeOperationsGL {
@@ -363,6 +476,8 @@ class FakeOperationsGL {
   readonly FLOAT = 0x1406;
   readonly UNPACK_ROW_LENGTH = 0x0cf2;
   readonly PACK_ROW_LENGTH = 0x0d02;
+  readonly UNPACK_ALIGNMENT = 0x0cf5;
+  readonly PACK_ALIGNMENT = 0x0d05;
   readonly COLOR = 0x1800;
   readonly DEPTH = 0x1801;
   readonly STENCIL = 0x1802;

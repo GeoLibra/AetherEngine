@@ -148,37 +148,13 @@ const webgpuColor = webgpuDevice.createTexture({ size: [8, 8], format: 'rgba8uno
 const webgpuColorView = webgpuColor.createView();
 
 bench(
-  'reuses one native WebGL2 surface backing across 1000 logical frame leases',
+  'keeps WebGL2 surface backing allocation bounded across frame and resize axes',
   () => {
-    const surface = new WebGL2BrowserSurface({ id: Symbol('benchmark-canvas'), kind: 'canvas' });
-    surface.configure(
-      webgl2SurfaceDevice,
-      {
-        format: 'rgba8unorm',
-        colorSpace: 'srgb',
-        alphaMode: 'opaque',
-        width: 1280,
-        height: 720,
-        presentMode: 'fifo'
-      },
-      1
-    );
-    const createsBefore = webgl2SurfaceContext.textureCreates;
-    const deletesBefore = webgl2SurfaceContext.textureDeletes;
-    const presentsBefore = webgl2SurfaceContext.presents;
-    let previousTexture: object | undefined;
-    for (let index = 0; index < COMMAND_BUFFER_COUNT; index++) {
-      const acquired = surface.acquire();
-      if (acquired.status !== 'success') throw new Error('Expected a benchmark surface frame.');
-      expect(acquired.frame.texture).not.toBe(previousTexture);
-      previousTexture = acquired.frame.texture;
-      acquired.frame.present();
-    }
-    expect(webgl2SurfaceContext.textureCreates - createsBefore).toBe(1);
-    expect(webgl2SurfaceContext.textureDeletes - deletesBefore).toBe(0);
-    expect(webgl2SurfaceContext.presents - presentsBefore).toBe(COMMAND_BUFFER_COUNT);
-    surface.dispose();
-    expect(webgl2SurfaceContext.textureDeletes - deletesBefore).toBe(1);
+    runSurfaceLeaseScenario(10, 0);
+    runSurfaceLeaseScenario(COMMAND_BUFFER_COUNT, 0);
+    runSurfaceLeaseScenario(10, 1);
+    runSurfaceLeaseScenario(10, 4);
+    runPerFrameAllocationReference(COMMAND_BUFFER_COUNT);
   },
   { iterations: 1, warmupIterations: 0 }
 );
@@ -200,6 +176,60 @@ bench(
   },
   { iterations: 1, warmupIterations: 0 }
 );
+
+function runSurfaceLeaseScenario(frameCount: number, resizeCount: number): void {
+  const surface = new WebGL2BrowserSurface({ id: Symbol('benchmark-canvas'), kind: 'canvas' });
+  const createsBefore = webgl2SurfaceContext.textureCreates;
+  const deletesBefore = webgl2SurfaceContext.textureDeletes;
+  const presentsBefore = webgl2SurfaceContext.presents;
+  let previousTexture: object | undefined;
+
+  for (let generation = 0; generation <= resizeCount; generation++) {
+    surface.configure(
+      webgl2SurfaceDevice,
+      {
+        format: 'rgba8unorm',
+        colorSpace: 'srgb',
+        alphaMode: 'opaque',
+        width: 1280 + generation,
+        height: 720 + generation,
+        presentMode: 'fifo'
+      },
+      generation + 1
+    );
+    for (let frame = 0; frame < frameCount; frame++) {
+      const acquired = surface.acquire();
+      if (acquired.status !== 'success') throw new Error('Expected a benchmark surface frame.');
+      expect(acquired.frame.texture).not.toBe(previousTexture);
+      previousTexture = acquired.frame.texture;
+      acquired.frame.present();
+    }
+  }
+
+  expect(webgl2SurfaceContext.textureCreates - createsBefore).toBe(resizeCount + 1);
+  expect(webgl2SurfaceContext.textureDeletes - deletesBefore).toBe(resizeCount);
+  expect(webgl2SurfaceContext.presents - presentsBefore).toBe(frameCount * (resizeCount + 1));
+  surface.dispose();
+  expect(webgl2SurfaceContext.textureDeletes - deletesBefore).toBe(resizeCount + 1);
+}
+
+function runPerFrameAllocationReference(frameCount: number): void {
+  const createsBefore = webgl2SurfaceContext.textureCreates;
+  const deletesBefore = webgl2SurfaceContext.textureDeletes;
+  const presentsBefore = webgl2SurfaceContext.presents;
+  for (let frame = 0; frame < frameCount; frame++) {
+    const texture = webgl2SurfaceDevice.createTexture({
+      size: [1280, 720],
+      format: 'rgba8unorm',
+      usage: 0x13
+    });
+    webgl2SurfaceDevice.presentSurfaceTexture(texture);
+    texture.dispose();
+  }
+  expect(webgl2SurfaceContext.textureCreates - createsBefore).toBe(frameCount);
+  expect(webgl2SurfaceContext.textureDeletes - deletesBefore).toBe(frameCount);
+  expect(webgl2SurfaceContext.presents - presentsBefore).toBe(frameCount);
+}
 
 bench(
   'records WebGL2 deferred render-pass commands',

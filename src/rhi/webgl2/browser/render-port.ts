@@ -2,6 +2,7 @@ import type { WebGL2NativeContextPort, WebGL2NativeObject } from '../native-type
 import { constant } from './capability-query';
 import { glCall } from './gl-call';
 import type { BrowserWebGL2TextureFacts } from './resource-port';
+import { textureSubresource } from './texture-subresource';
 import type { BrowserWebGL2Object } from './types';
 
 export function createBrowserWebGL2RenderPort(
@@ -31,17 +32,13 @@ export function createBrowserWebGL2RenderPort(
       if (Array.isArray(attachments)) {
         const first = attachments[0];
         if (typeof first === 'object' && first !== null) {
-          const view = Reflect.get(first, 'view');
-          if (typeof view === 'object' && view !== null)
-            framebufferHeight = textureFacts.get(view)?.height;
+          framebufferHeight = attachmentSubresource(first, textureFacts).height;
         }
       }
       if (framebufferHeight === undefined) {
         const depth = descriptor.depthStencilAttachment;
         if (typeof depth === 'object' && depth !== null) {
-          const view = Reflect.get(depth, 'view');
-          if (typeof view === 'object' && view !== null)
-            framebufferHeight = textureFacts.get(view)?.height;
+          framebufferHeight = attachmentSubresource(depth, textureFacts).height;
         }
       }
     },
@@ -97,6 +94,18 @@ export function createBrowserWebGL2RenderPort(
       ]);
     }
   };
+}
+
+function attachmentSubresource(
+  attachment: object,
+  facts: WeakMap<object, BrowserWebGL2TextureFacts>
+) {
+  return textureSubresource(attachment, facts, {
+    texture: 'view',
+    mipLevel: 'mipLevel',
+    width: 'width',
+    height: 'height'
+  });
 }
 
 function compareFunction(gl: BrowserWebGL2Object, value: unknown): number {

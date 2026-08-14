@@ -3,6 +3,7 @@ import { constant } from './capability-query';
 import type { BrowserWebGL2FramebufferState } from './framebuffer-port';
 import { glCall, glObject } from './gl-call';
 import type { BrowserWebGL2TextureFacts } from './resource-port';
+import { textureSubresource } from './texture-subresource';
 import type { BrowserWebGL2Object } from './types';
 
 export function createBrowserWebGL2RenderPassOperations(
@@ -57,10 +58,22 @@ export function createBrowserWebGL2RenderPassOperations(
       for (const attachment of colorAttachments(descriptor)) {
         const target = Reflect.get(attachment, 'resolveTarget');
         if (typeof target !== 'object' || target === null) continue;
-        const source = attachmentView(attachment);
-        const sourceFacts = requiredFacts(textureFacts, source);
-        const targetFacts = requiredFacts(textureFacts, target);
-        if (sourceFacts.width !== targetFacts.width || sourceFacts.height !== targetFacts.height) {
+        const sourceSubresource = textureSubresource(attachment, textureFacts, {
+          texture: 'view',
+          mipLevel: 'mipLevel',
+          width: 'width',
+          height: 'height'
+        });
+        const targetSubresource = textureSubresource(attachment, textureFacts, {
+          texture: 'resolveTarget',
+          mipLevel: 'resolveTargetMipLevel',
+          width: 'resolveTargetWidth',
+          height: 'resolveTargetHeight'
+        });
+        if (
+          sourceSubresource.width !== targetSubresource.width ||
+          sourceSubresource.height !== targetSubresource.height
+        ) {
           throw new Error('WebGL2 resolve attachments must have equal extents.');
         }
         const resolveFramebuffer = glObject(gl, 'createFramebuffer');
@@ -70,18 +83,18 @@ export function createBrowserWebGL2RenderPassOperations(
             constant(gl, 'DRAW_FRAMEBUFFER'),
             constant(gl, 'COLOR_ATTACHMENT0'),
             constant(gl, 'TEXTURE_2D'),
-            target,
-            0
+            targetSubresource.texture,
+            targetSubresource.mipLevel
           ]);
           glCall(gl, 'blitFramebuffer', [
             0,
             0,
-            sourceFacts.width,
-            sourceFacts.height,
+            sourceSubresource.width,
+            sourceSubresource.height,
             0,
             0,
-            targetFacts.width,
-            targetFacts.height,
+            targetSubresource.width,
+            targetSubresource.height,
             constant(gl, 'COLOR_BUFFER_BIT'),
             constant(gl, 'NEAREST')
           ]);
@@ -153,18 +166,4 @@ function objectField(
 
 function numberValue(value: unknown, fallback: number): number {
   return typeof value === 'number' ? value : fallback;
-}
-
-function attachmentView(attachment: object): object {
-  const view = Reflect.get(attachment, 'view');
-  if (typeof view !== 'object' || view === null)
-    throw new Error('WebGL2 resolve source is invalid.');
-  return view;
-}
-
-function requiredFacts(facts: WeakMap<object, BrowserWebGL2TextureFacts>, texture: object) {
-  const result = facts.get(texture);
-  if (result === undefined)
-    throw new Error('WebGL2 resolve attachment is not owned by this context.');
-  return result;
 }

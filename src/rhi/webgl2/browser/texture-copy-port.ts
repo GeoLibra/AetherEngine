@@ -18,6 +18,7 @@ export function createBrowserWebGL2TextureCopyPort(
       const extent = copyExtent(size);
       requireBaselineExtent(extent);
       glCall(gl, 'bindBuffer', [constant(gl, 'PIXEL_UNPACK_BUFFER'), null]);
+      setAlignment(gl, 'UNPACK_ALIGNMENT', 4);
       setRowLength(gl, 'UNPACK_ROW_LENGTH', layout.bytesPerRow, 4);
       glCall(gl, 'bindTexture', [constant(gl, 'TEXTURE_2D'), copy.texture]);
       const offset = layout.offset ?? 0;
@@ -31,6 +32,7 @@ export function createBrowserWebGL2TextureCopyPort(
       requireBaselineExtent(extent);
       const buffer = requiredObject(source, 'buffer');
       glCall(gl, 'bindBuffer', [constant(gl, 'PIXEL_UNPACK_BUFFER'), buffer]);
+      setAlignment(gl, 'UNPACK_ALIGNMENT', 4);
       setRowLength(gl, 'UNPACK_ROW_LENGTH', source.bytesPerRow, 4);
       glCall(gl, 'bindTexture', [constant(gl, 'TEXTURE_2D'), copy.texture]);
       texSubImage(gl, copy, extent, numberField(source, 'offset', 0));
@@ -42,8 +44,9 @@ export function createBrowserWebGL2TextureCopyPort(
       const extent = copyExtent(size);
       requireBaselineExtent(extent);
       const buffer = requiredObject(destination, 'buffer');
-      withReadFramebuffer(gl, copy.texture, () => {
+      withReadFramebuffer(gl, copy.texture, copy.mipLevel, () => {
         glCall(gl, 'bindBuffer', [constant(gl, 'PIXEL_PACK_BUFFER'), buffer]);
+        setAlignment(gl, 'PACK_ALIGNMENT', 4);
         setRowLength(gl, 'PACK_ROW_LENGTH', destination.bytesPerRow, 4);
         glCall(gl, 'readPixels', [
           copy.x,
@@ -63,7 +66,7 @@ export function createBrowserWebGL2TextureCopyPort(
       const destinationCopy = textureCopy(destination, textureFacts);
       const extent = copyExtent(size);
       requireBaselineExtent(extent);
-      withReadFramebuffer(gl, sourceCopy.texture, () => {
+      withReadFramebuffer(gl, sourceCopy.texture, sourceCopy.mipLevel, () => {
         glCall(gl, 'bindTexture', [constant(gl, 'TEXTURE_2D'), destinationCopy.texture]);
         glCall(gl, 'copyTexSubImage2D', [
           constant(gl, 'TEXTURE_2D'),
@@ -145,7 +148,12 @@ function texSubImage(
   ]);
 }
 
-function withReadFramebuffer(gl: BrowserWebGL2Object, texture: object, action: () => void): void {
+function withReadFramebuffer(
+  gl: BrowserWebGL2Object,
+  texture: object,
+  mipLevel: number,
+  action: () => void
+): void {
   const framebuffer = glObject(gl, 'createFramebuffer');
   try {
     glCall(gl, 'bindFramebuffer', [constant(gl, 'FRAMEBUFFER'), framebuffer]);
@@ -154,12 +162,16 @@ function withReadFramebuffer(gl: BrowserWebGL2Object, texture: object, action: (
       constant(gl, 'COLOR_ATTACHMENT0'),
       constant(gl, 'TEXTURE_2D'),
       texture,
-      0
+      mipLevel
     ]);
     action();
   } finally {
     glCall(gl, 'deleteFramebuffer', [framebuffer]);
   }
+}
+
+function setAlignment(gl: BrowserWebGL2Object, name: string, value: number): void {
+  glCall(gl, 'pixelStorei', [constant(gl, name), value]);
 }
 
 function requiredObject(value: Readonly<Record<string, unknown>>, name: string): object {

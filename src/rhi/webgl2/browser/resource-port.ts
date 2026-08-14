@@ -8,6 +8,7 @@ export interface BrowserWebGL2TextureFacts {
   readonly height: number;
   readonly format: string;
   readonly aspect: 'color' | 'depth' | 'depth-stencil';
+  readonly mipLevelCount: number;
 }
 
 export function createBrowserWebGL2ResourcePort(
@@ -43,9 +44,10 @@ export function createBrowserWebGL2ResourcePort(
       const texture = glObject(gl, 'createTexture');
       glCall(gl, 'bindTexture', [constant(gl, 'TEXTURE_2D'), texture]);
       const format = textureFormat(gl, descriptor.format);
+      const mipLevelCount = optionalNumber(descriptor, 'mipLevelCount') ?? 1;
       glCall(gl, 'texStorage2D', [
         constant(gl, 'TEXTURE_2D'),
-        optionalNumber(descriptor, 'mipLevelCount') ?? 1,
+        mipLevelCount,
         format.internalFormat,
         width,
         height
@@ -54,7 +56,8 @@ export function createBrowserWebGL2ResourcePort(
         width,
         height,
         format: String(descriptor.format),
-        aspect: format.aspect
+        aspect: format.aspect,
+        mipLevelCount
       });
       return texture;
     },
