@@ -6,6 +6,7 @@ import { WebGL2CommandBuffer } from './command';
 import { WebGL2Metrics, type WebGL2MetricsSnapshot } from './metrics';
 import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
 import { WebGL2ReplayExecutor } from './replay';
+import { decrementLeaseCount } from './lease-count';
 import {
   WebGL2ResourceBase,
   WebGL2TextureView,
@@ -56,7 +57,9 @@ export class WebGL2Queue extends WebGL2UploadQueue implements RHIQueue {
     for (const commandBuffer of commandBuffers) {
       const webgl2CommandBuffer = assertWebGL2CommandBuffer(commandBuffer, this.owner);
       if (seen.has(commandBuffer)) {
-        throw new Error(`Command buffer "${commandBuffer.label ?? 'command-buffer'}" has already been submitted.`);
+        throw new Error(
+          `Command buffer "${commandBuffer.label ?? 'command-buffer'}" has already been submitted.`
+        );
       }
       seen.add(commandBuffer);
       webgl2CommandBuffer.assertReadyForSubmit();
@@ -122,7 +125,8 @@ export class WebGL2Queue extends WebGL2UploadQueue implements RHIQueue {
   }
 
   invalidateExternalState(): void {
-    if (this.owner.state !== 'live') throw new Error('WebGL2 context control belongs to a lost device.');
+    if (this.owner.state !== 'live')
+      throw new Error('WebGL2 context control belongs to a lost device.');
     this.replay.invalidateExternalState();
   }
 
@@ -159,7 +163,10 @@ export class WebGL2Queue extends WebGL2UploadQueue implements RHIQueue {
   }
 
   private release(resource: WebGL2ResourceBase): void {
-    const next = (this.leaseCounts.get(resource) ?? 1) - 1;
+    const next = decrementLeaseCount(
+      this.leaseCounts.get(resource),
+      resource.label ?? resource.kind
+    );
     if (next > 0) {
       this.leaseCounts.set(resource, next);
       return;
@@ -191,7 +198,8 @@ function addResourceAndDependencies(
   const wrapper = assertWebGL2Resource(resource, owner);
   resources.add(wrapper);
   // Texture views alias their texture handle, so retaining only the non-owning view is insufficient.
-  if (wrapper instanceof WebGL2TextureView) resources.add(assertWebGL2Resource(wrapper.texture, owner));
+  if (wrapper instanceof WebGL2TextureView)
+    resources.add(assertWebGL2Resource(wrapper.texture, owner));
 }
 
 function assertWebGL2CommandBuffer(

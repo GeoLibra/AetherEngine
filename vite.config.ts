@@ -16,6 +16,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     exclude: [...configDefaults.exclude, 'e2e/specs/**', '.pnpm-store/**', '.worktrees/**'],
+    benchmark: {
+      exclude: [...configDefaults.exclude, '.pnpm-store/**', '.worktrees/**']
+    },
     globals: true,
     passWithNoTests: true
   }
