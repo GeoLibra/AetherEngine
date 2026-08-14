@@ -47,6 +47,11 @@ export interface DynamicCapabilityDescriptor {
   readonly inheritable: boolean;
 }
 
+export interface DynamicCapabilityToken<T> extends DynamicCapabilityDescriptor {
+  readonly key: symbol;
+  readonly valueType?: T;
+}
+
 export interface DynamicPluginManifest {
   readonly schemaVersion: number;
   readonly pluginId: DynamicPluginId;
@@ -102,4 +107,36 @@ export interface DynamicPluginScopeOptions {
   readonly hostKind: DynamicPluginHostKind;
   readonly quiescence: DynamicPluginQuiescencePort;
   readonly quiescenceTimeoutMs: number;
+}
+
+export interface DynamicCapabilityOpenContext {
+  readonly pluginId: DynamicPluginId;
+  readonly versionId: PluginVersionId;
+  readonly activationId: PluginActivationId;
+  readonly hostKind: DynamicPluginHostKind;
+  readonly signal: AbortSignal;
+}
+
+export interface DynamicCapabilityLease<T> {
+  readonly facade: T;
+  prepare(): void | Promise<void>;
+  commit(): void;
+  rollback(): void | Promise<void>;
+}
+
+export interface DynamicCapabilityProvider<T> {
+  readonly token: DynamicCapabilityToken<T>;
+  open(
+    context: DynamicCapabilityOpenContext
+  ): DynamicCapabilityLease<T> | Promise<DynamicCapabilityLease<T>>;
+}
+
+export interface DynamicCapabilityResolver {
+  get<T>(token: DynamicCapabilityToken<T>): T;
+}
+
+export interface DynamicCapabilitySession {
+  readonly resolver: DynamicCapabilityResolver;
+  commit(): void;
+  rollback(): Promise<void>;
 }

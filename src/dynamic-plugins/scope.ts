@@ -8,6 +8,10 @@ import type {
 
 export class DynamicPluginScope {
   readonly signal: AbortSignal;
+  readonly pluginId;
+  readonly versionId;
+  readonly activationId;
+  readonly hostKind;
 
   private readonly controller = new AbortController();
   private readonly cleanups: DynamicPluginCleanup[] = [];
@@ -16,6 +20,10 @@ export class DynamicPluginScope {
 
   constructor(private readonly options: DynamicPluginScopeOptions) {
     this.signal = this.controller.signal;
+    this.pluginId = options.pluginId;
+    this.versionId = options.versionId;
+    this.activationId = options.activationId;
+    this.hostKind = options.hostKind;
   }
 
   get pendingWork(): number {
