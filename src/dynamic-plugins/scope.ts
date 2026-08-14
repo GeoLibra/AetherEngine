@@ -57,13 +57,15 @@ export class DynamicPluginScope {
 
   private async performDisposal(reason: PluginRetractionReason): Promise<PluginCleanupReport> {
     this.abort(reason);
+    const start = Date.now();
+    const remainingMs = () => Math.max(0, this.options.quiescenceTimeoutMs - (Date.now() - start));
     const pending = Object.freeze([...this.pending]);
     let quiesced = false;
     const failures: PluginDiagnosticSnapshot[] = [];
     try {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<boolean>((resolve) => {
-        timer = setTimeout(() => resolve(false), this.options.quiescenceTimeoutMs);
+        timer = setTimeout(() => resolve(false), remainingMs());
       });
       quiesced = await Promise.race([
         this.options.quiescence.wait(pending, this.options.quiescenceTimeoutMs),
@@ -77,25 +79,46 @@ export class DynamicPluginScope {
       failures.push(this.quiescenceFailure(cause));
     }
 
+    const TIMEOUT_TOKEN = Symbol('cleanup-timeout');
+    let removedRegistrations = 0;
+    let allCleanupsSucceeded = true;
+
     for (let index = this.cleanups.length - 1; index >= 0; index--) {
+      const msLeft = remainingMs();
+      if (msLeft <= 0) {
+        allCleanupsSucceeded = false;
+        failures.push(this.cleanupTimeoutFailure(index));
+        continue;
+      }
+
       try {
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const timeout = new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, this.options.quiescenceTimeoutMs);
+        const timeout = new Promise<typeof TIMEOUT_TOKEN>((resolve) => {
+          timer = setTimeout(() => resolve(TIMEOUT_TOKEN), msLeft);
         });
-        await Promise.race([Promise.resolve(this.cleanups[index]?.()), timeout]);
+        const result = await Promise.race([
+          Promise.resolve(this.cleanups[index]?.()).then(() => 'success' as const),
+          timeout
+        ]);
         if (timer !== undefined) {
           clearTimeout(timer);
         }
+        if (result === TIMEOUT_TOKEN) {
+          allCleanupsSucceeded = false;
+          failures.push(this.cleanupTimeoutFailure(index));
+        } else {
+          removedRegistrations++;
+        }
       } catch (cause) {
+        allCleanupsSucceeded = false;
         failures.push(this.cleanupFailure(cause));
       }
     }
 
     return Object.freeze({
       activationId: this.options.activationId,
-      terminalPhase: quiesced ? 'inactive' : 'failed-to-quiesce',
-      removedRegistrations: this.cleanups.length,
+      terminalPhase: quiesced && allCleanupsSucceeded ? 'inactive' : 'failed-to-quiesce',
+      removedRegistrations,
       cancelledWork: pending.length,
       failures: Object.freeze(failures)
     });
@@ -125,6 +148,21 @@ export class DynamicPluginScope {
         versionId: this.options.versionId,
         activationId: this.options.activationId,
         hostKind: this.options.hostKind
+      })
+    });
+  }
+
+  private cleanupTimeoutFailure(index: number): PluginDiagnosticSnapshot {
+    return Object.freeze({
+      code: 'DYNAMIC_PLUGIN_CLEANUP_TIMEOUT',
+      phase: 'retracting',
+      message: `Dynamic plugin cleanup callback at index ${index} timed out.`,
+      fields: Object.freeze({
+        pluginId: this.options.pluginId,
+        versionId: this.options.versionId,
+        activationId: this.options.activationId,
+        hostKind: this.options.hostKind,
+        cleanupIndex: index
       })
     });
   }

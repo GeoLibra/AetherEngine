@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DynamicCapabilityBroker,
   DynamicPluginHost,
+  dynamicPluginId,
   pluginActivationId
 } from '../../src/dynamic-plugins';
 import {
@@ -167,6 +168,57 @@ describe('DynamicPluginHost lifecycle', () => {
 
     expect(host.current(pluginId)?.pendingWork).toBe(0);
     expect(host.inventory()[0]?.pendingWork).toBe(0);
+  });
+
+  it('bounds aggregate destroy duration to a single shared deadline with multiple hanging plugins', async () => {
+    const panels = panelRegistry();
+    let activation = 0;
+    const broker = new DynamicCapabilityBroker('editor');
+    broker.register(panels.provider);
+    const host = new DynamicPluginHost({
+      hostKind: 'editor',
+      broker,
+      verifier: { verify: () => true },
+      policy: { authorize: () => 'granted' },
+      quiescence: {
+        wait: () => new Promise(() => undefined) // never resolves
+      },
+      quiescenceTimeoutMs: 15,
+      mintActivationId: () => pluginActivationId(`act-${++activation}`)
+    });
+
+    const pluginCount = 40;
+    for (let i = 0; i < pluginCount; i++) {
+      const pid = dynamicPluginId(`com.example.plugin${i}`);
+      host.define({
+        manifest: {
+          schemaVersion: 1,
+          pluginId: pid,
+          versionId: version('v1'),
+          hosts: [{ kind: 'editor', required: true }],
+          capabilities: [],
+          artifactHashes: {
+            'plugin.js': 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+          }
+        },
+        activate: ({ own }) => {
+          own(() => new Promise(() => undefined)); // hanging cleanup
+        }
+      });
+      await host.activate(pid, version('v1'));
+    }
+
+    const start = Date.now();
+    const diagnostics = await host.destroy();
+    const elapsed = Date.now() - start;
+
+    // Should complete in around 15-40ms (single shared timeout), NOT 40 * 15ms or 40 * 1ms serial accumulation
+    expect(elapsed).toBeLessThan(50);
+    const inventory = host.inventory();
+    expect(inventory.length).toBe(pluginCount);
+    for (const entry of inventory) {
+      expect(entry.phase).toBe('failed-to-quiesce');
+    }
   });
 });
 

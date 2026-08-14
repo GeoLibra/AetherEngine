@@ -72,6 +72,17 @@ describe('DynamicPluginScope', () => {
     expect(report.failures.map((f) => f.code)).toContain('DYNAMIC_PLUGIN_QUIESCENCE_FAILED');
     expect(report.failures[0]?.message).toBe('quiescence network error');
   });
+
+  it('reports failed-to-quiesce and DYNAMIC_PLUGIN_CLEANUP_TIMEOUT when a cleanup hangs', async () => {
+    const scope = createScope(immediateQuiescence());
+    scope.own(() => new Promise(() => undefined)); // hanging cleanup
+
+    const report = await scope.dispose('user-request');
+
+    expect(report.terminalPhase).toBe('failed-to-quiesce');
+    expect(report.removedRegistrations).toBe(0);
+    expect(report.failures.map((f) => f.code)).toContain('DYNAMIC_PLUGIN_CLEANUP_TIMEOUT');
+  });
 });
 
 function createScope(quiescence: DynamicPluginQuiescencePort): DynamicPluginScope {

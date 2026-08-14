@@ -304,98 +304,91 @@ export class DynamicPluginHost {
   }
 
   private async performDestroy(): Promise<readonly PluginDiagnosticSnapshot[]> {
-    const deadlineMs = this.options.quiescenceTimeoutMs;
-    const start = Date.now();
-    const remainingMs = () => Math.max(1, deadlineMs - (Date.now() - start));
-
-    // 1. Abort all in-flight scopes
+    // 1. Abort all in-flight scopes immediately
     for (const scope of this.inFlightScopes) {
       scope.abort('host-shutdown');
     }
 
-    // 2. Wait up to remaining deadline for in-flight activations
-    if (this.inFlightActivations.size > 0) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, remainingMs());
-      });
-      await Promise.race([Promise.allSettled([...this.inFlightActivations]), timeout]);
-      if (timer !== undefined) {
-        clearTimeout(timer);
-      }
-    }
-
-    // 3. Actively isolate and clean up any activation that remains in-flight after deadline
-    for (const record of this.inFlightRecords) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, remainingMs());
-      });
-      await Promise.race([this.rollbackFailedActivation(record), timeout]);
-      if (timer !== undefined) {
-        clearTimeout(timer);
-      }
-
-      record.phase = 'failed';
-      if (!record.diagnostic) {
-        record.diagnostic = diagnosticSnapshot(
-          'DYNAMIC_PLUGIN_ACTIVATION_TIMEOUT',
-          new Error('Dynamic plugin activation timed out during host destruction.'),
-          record
-        );
-      }
-      this.inFlightScopes.delete(record.scope);
-      this.activating.delete(record.pluginId);
-    }
-    this.inFlightRecords.clear();
-
-    const diagnostics: PluginDiagnosticSnapshot[] = [];
+    // 2. Identify active and in-flight records
     const active = [...this.currentRecords.values()].reverse();
     this.currentRecords.clear();
-    for (const record of active) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<PluginCleanupReport>((resolve) => {
-        timer = setTimeout(
-          () =>
-            resolve(
-              Object.freeze({
-                activationId: record.activationId,
-                terminalPhase: 'failed-to-quiesce',
-                removedRegistrations: 0,
-                cancelledWork: record.scope.pendingWork,
-                failures: Object.freeze([
-                  diagnosticSnapshot(
-                    'DYNAMIC_PLUGIN_RETRACTION_TIMEOUT',
-                    new Error('Dynamic plugin retraction timed out during host destruction.'),
-                    record
-                  )
-                ])
-              })
-            ),
-          remainingMs()
-        );
-      });
-      const report = await Promise.race([this.retractRecord(record, 'host-shutdown'), timeout]);
-      if (timer !== undefined) {
-        clearTimeout(timer);
+    const inFlight = [...this.inFlightRecords];
+    this.inFlightRecords.clear();
+
+    // 3. Concurrently kick off in-flight activations, in-flight rollbacks, and active retractions
+    const inFlightTasks = inFlight.map(async (record) => {
+      try {
+        await this.rollbackFailedActivation(record);
+      } finally {
+        record.phase = 'failed';
+        this.inFlightScopes.delete(record.scope);
+        this.activating.delete(record.pluginId);
       }
-      record.phase = report.terminalPhase;
-      record.pendingWork = 0;
-      const firstFailure = report.failures[0];
-      if (!record.diagnostic && firstFailure !== undefined) {
-        record.diagnostic = firstFailure;
+    });
+
+    const activeTasks = active.map((record) => this.retractRecord(record, 'host-shutdown'));
+
+    const allOperations = Promise.allSettled([
+      ...this.inFlightActivations,
+      ...inFlightTasks,
+      ...activeTasks
+    ]);
+
+    // 4. Race ALL operations against a SINGLE shared master timeout
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), this.options.quiescenceTimeoutMs);
+    });
+
+    const outcome = await Promise.race([allOperations.then(() => 'completed' as const), timeout]);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+
+    // 5. If master timeout fired, finalize any unfinished records synchronously without additional waiting
+    if (outcome === 'timeout') {
+      for (const record of inFlight) {
+        record.phase = 'failed';
+        if (!record.diagnostic) {
+          record.diagnostic = diagnosticSnapshot(
+            'DYNAMIC_PLUGIN_ACTIVATION_TIMEOUT',
+            new Error('Dynamic plugin activation timed out during host destruction.'),
+            record
+          );
+        }
+        this.inFlightScopes.delete(record.scope);
+        this.activating.delete(record.pluginId);
       }
 
-      diagnostics.push(...report.failures);
+      for (const record of active) {
+        if (record.phase !== 'inactive' && record.phase !== 'failed-to-quiesce') {
+          record.phase = 'failed-to-quiesce';
+          record.pendingWork = 0;
+          if (!record.diagnostic) {
+            record.diagnostic = diagnosticSnapshot(
+              'DYNAMIC_PLUGIN_RETRACTION_TIMEOUT',
+              new Error('Dynamic plugin retraction timed out during host destruction.'),
+              record
+            );
+          }
+        }
+      }
+    }
+
+    // 6. Collect all diagnostics
+    const diagnostics: PluginDiagnosticSnapshot[] = [];
+    for (const record of active) {
       if (record.diagnostic && !diagnostics.includes(record.diagnostic)) {
         diagnostics.push(record.diagnostic);
       }
     }
     for (const record of this.records) {
-      if ((record.phase === 'failed' || record.phase === 'failed-to-quiesce') && record.diagnostic) {
-        if (!diagnostics.includes(record.diagnostic)) {
-          diagnostics.push(record.diagnostic);
-        }
+      if (
+        (record.phase === 'failed' || record.phase === 'failed-to-quiesce') &&
+        record.diagnostic &&
+        !diagnostics.includes(record.diagnostic)
+      ) {
+        diagnostics.push(record.diagnostic);
       }
     }
     return Object.freeze(diagnostics);
