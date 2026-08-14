@@ -150,6 +150,21 @@ describe('CPU light-list fallback', () => {
     });
   });
 
+  test('detaches ordered light snapshots from caller-owned light records', () => {
+    const light = point(1, 0) as Extract<PreparedLight, { readonly kind: 'point' }>;
+    const result = buildCpuLightLists({
+      viewLayerMask: 1,
+      lights: [light],
+      receivers: [],
+      capacity: { maxDirectionalLights: 1, maxLightsPerReceiver: 1, maxLightIndices: 1 }
+    });
+
+    (light.position as [number, number, number])[0] = 99;
+    (light.colorLinear as [number, number, number])[0] = 0;
+
+    expect(result.orderedLights[0]).toMatchObject({ position: [0, 0, 0], colorLinear: [1, 1, 1] });
+  });
+
   test('filters disabled and layer-mismatched light/receiver state observably', () => {
     const result = buildCpuLightLists({
       viewLayerMask: 1,
@@ -208,6 +223,21 @@ describe('shadow requests, atlas, cache, and graph', () => {
       })
     ]);
     expect(selected.usedTexels).toBe(2048);
+  });
+
+  test('detaches selected shadow requests from caller-owned records', () => {
+    const accepted = request(1, 2);
+    const rejected = request(2, 1, 64);
+    const selected = selectShadowRequests([accepted, rejected], {
+      maxRequests: 1,
+      maxTexels: 32 * 32
+    });
+
+    (accepted as { importance: number }).importance = 99;
+    (rejected as { resolutionClass: number }).resolutionClass = 1;
+
+    expect(selected.accepted[0]).toMatchObject({ importance: 2, resolutionClass: 32 });
+    expect(selected.rejected[0]?.request).toMatchObject({ importance: 1, resolutionClass: 64 });
   });
 
   test('invalidates generation-bearing atlas tiles on resize and keys every cache revision', () => {

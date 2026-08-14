@@ -44,7 +44,7 @@ export function buildPackedStaticBvh(
 ): PackedStaticBvh {
   const leafSize = Math.max(1, Math.floor(profile.leafSize ?? 8));
   const maxDepth = Math.max(1, Math.floor(profile.maxDepth ?? 32));
-  const normalized = [...input].sort(compareSpatialEntries);
+  const normalized = input.map(snapshotSpatialEntry).sort(compareSpatialEntries);
   if (normalized.length === 0) return emptyPackedBvh();
   const root = buildNode(normalized, 0, leafSize, maxDepth);
   const nodes: BuildNode[] = [];
@@ -90,6 +90,22 @@ export function buildPackedStaticBvh(
       entityIds.byteLength +
       boundsRevisions.byteLength
   });
+}
+
+function snapshotSpatialEntry(entry: SpatialEntry): SpatialEntry {
+  const bounds =
+    entry.bounds.kind === 'sphere'
+      ? Object.freeze({
+          kind: 'sphere' as const,
+          center: Object.freeze([...entry.bounds.center]) as Vec3,
+          radius: entry.bounds.radius
+        })
+      : Object.freeze({
+          kind: 'aabb' as const,
+          min: Object.freeze([...entry.bounds.min]) as Vec3,
+          max: Object.freeze([...entry.bounds.max]) as Vec3
+        });
+  return Object.freeze({ ...entry, bounds });
 }
 
 /**

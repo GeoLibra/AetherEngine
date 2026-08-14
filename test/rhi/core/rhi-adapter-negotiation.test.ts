@@ -1,7 +1,25 @@
 import { describe, expect, test } from 'vitest';
 import { NullAdapter, RHIDeviceRequestError } from '../../../src';
+import { createCapabilitySnapshot } from '../../../src/rhi/core/capabilities';
+import type { FeatureSupport, RHIFeature } from '../../../src/rhi/contracts/capability';
 
 describe('NullAdapter negotiation', () => {
+  test('publishes detached capability maps through an enforcing read-only facade', () => {
+    const features = new Map<RHIFeature, FeatureSupport>([['compute', { status: 'native' }]]);
+    const snapshot = createCapabilitySnapshot({
+      backend: 'null',
+      features,
+      limits: {},
+      formats: new Map(),
+      queues: [{ role: 'graphics', status: 'native' }]
+    });
+
+    features.set('compute', { status: 'unsupported', reason: 'caller mutation' });
+
+    expect(snapshot.features.get('compute')).toEqual({ status: 'native' });
+    expect('set' in snapshot.features).toBe(false);
+  });
+
   test('creates a device when required facts are satisfied', async () => {
     const adapter = new NullAdapter({
       name: 'Profile Adapter',

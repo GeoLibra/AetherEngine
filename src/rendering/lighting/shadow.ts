@@ -25,11 +25,15 @@ export function selectShadowRequests(
   for (const request of ordered) {
     const cost = request.resolutionClass * request.resolutionClass;
     if (accepted.length >= budget.maxRequests) {
-      rejected.push(Object.freeze({ request, reason: 'request-capacity' }));
+      rejected.push(
+        Object.freeze({ request: snapshotShadowRequest(request), reason: 'request-capacity' })
+      );
     } else if (usedTexels + cost > budget.maxTexels) {
-      rejected.push(Object.freeze({ request, reason: 'texel-capacity' }));
+      rejected.push(
+        Object.freeze({ request: snapshotShadowRequest(request), reason: 'texel-capacity' })
+      );
     } else {
-      accepted.push(request);
+      accepted.push(snapshotShadowRequest(request));
       usedTexels += cost;
     }
   }
@@ -38,6 +42,10 @@ export function selectShadowRequests(
     rejected: Object.freeze(rejected),
     usedTexels
   });
+}
+
+function snapshotShadowRequest(request: ShadowRequest): ShadowRequest {
+  return Object.freeze({ ...request });
 }
 
 export function createShadowCacheKey(input: {

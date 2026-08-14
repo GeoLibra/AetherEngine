@@ -49,7 +49,10 @@ export function buildRenderPhase(
   phase: RenderPhaseKind,
   input: readonly PhaseItem[]
 ): RenderPhaseSnapshot {
-  const items = [...input].filter((item) => item.phase === phase).sort(phaseComparator(phase));
+  const items = input
+    .filter((item) => item.phase === phase)
+    .map(snapshotPhaseItem)
+    .sort(phaseComparator(phase));
   const batches: PhaseBatch[] = [];
   for (const item of items) {
     const key = compatibilityKey(item);
@@ -67,6 +70,10 @@ export function buildRenderPhase(
       batches.map((batch) => Object.freeze({ ...batch, items: Object.freeze(batch.items) }))
     )
   });
+}
+
+function snapshotPhaseItem(item: PhaseItem): PhaseItem {
+  return Object.freeze({ ...item });
 }
 
 /**

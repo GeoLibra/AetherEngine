@@ -45,6 +45,20 @@ describe('packed static BVH', () => {
     expect([...first.entityIds]).toEqual([...second.entityIds]);
     expect(first.nodeCount).toBeGreaterThan(0);
   });
+
+  test('detaches packed entry snapshots from caller-owned bounds', () => {
+    const source = entry(1, 0) as SpatialEntry & {
+      readonly bounds: {
+        readonly kind: 'sphere';
+        readonly center: readonly [number, number, number];
+      };
+    };
+    const bvh = buildPackedStaticBvh([source]);
+
+    (source.bounds.center as [number, number, number])[0] = 99;
+
+    expect(bvh.entries[0]?.bounds).toEqual({ kind: 'sphere', center: [0, 0, -2], radius: 0.25 });
+  });
 });
 
 describe('static BVH plus delta spatial index', () => {

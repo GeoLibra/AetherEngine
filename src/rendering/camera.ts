@@ -179,7 +179,7 @@ export function conservativeSphereFromScale(
   )
     throw new Error('Sphere transform inputs must be finite with a non-negative radius.');
   return Object.freeze({
-    center,
+    center: Object.freeze([...center]) as Vec3,
     radius: localRadius * Math.max(Math.abs(scale[0]), Math.abs(scale[1]), Math.abs(scale[2]))
   });
 }

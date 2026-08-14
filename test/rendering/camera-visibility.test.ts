@@ -121,6 +121,40 @@ describe('camera extraction', () => {
     expect(visibilityView.viewMatrix).toEqual(extracted.view);
   });
 
+  test('detaches CPU visibility data from an externally owned extracted view', () => {
+    const source = extractView({
+      viewId: 'external',
+      camera: entity(9),
+      revision: 5,
+      view: Mat4.identity(),
+      projection: Mat4.perspective(Math.PI / 2, 1, 0.1, 10),
+      projectionDescriptor: {
+        kind: 'perspective',
+        near: 0.1,
+        far: 10,
+        verticalFovRadians: Math.PI / 2
+      },
+      viewport: { logicalWidth: 100, logicalHeight: 100, devicePixelRatio: 1 },
+      layerMask: 1
+    });
+    const extracted = {
+      ...source,
+      view: new Float32Array(source.view),
+      viewportPixels: { ...source.viewportPixels }
+    };
+    const visibilityView = createCpuVisibilityView(extracted, {
+      surface: 'main',
+      featurePolicyKey: 'cpu',
+      historyKey: 'main'
+    });
+
+    extracted.view[0] = 99;
+    extracted.viewportPixels.width = 7;
+
+    expect(visibilityView.viewMatrix?.[0]).toBe(1);
+    expect(visibilityView.viewport.width).toBe(100);
+  });
+
   test('reports camera identity when a view cannot be published', () => {
     expect(() =>
       extractView({
@@ -144,7 +178,11 @@ describe('camera extraction', () => {
   });
 
   test('expands spheres by the maximum absolute non-uniform scale', () => {
-    expect(conservativeSphereFromScale([1, 2, 3], 2, [-1, 4, 0.5])).toEqual({
+    const center: [number, number, number] = [1, 2, 3];
+    const sphere = conservativeSphereFromScale(center, 2, [-1, 4, 0.5]);
+    center[0] = 99;
+
+    expect(sphere).toEqual({
       center: [1, 2, 3],
       radius: 8
     });

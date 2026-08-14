@@ -119,6 +119,26 @@ describe('visibility and render phases', () => {
     expect(transparent.batches).toHaveLength(2);
   });
 
+  test('detaches published phase items from caller-owned records', () => {
+    const phaseItem: PhaseItem = {
+      entity: entity(1),
+      phase: 'opaque',
+      pipelineKey: 'pipeline-before',
+      materialKey: 'material',
+      meshKey: 'mesh',
+      bindingKey: 'binding',
+      drawKey: 'draw',
+      distance: 0,
+      insertionOrder: 0
+    };
+    const snapshot = buildRenderPhase('main', 'opaque', [phaseItem]);
+
+    (phaseItem as { pipelineKey: string }).pipelineKey = 'pipeline-after';
+
+    expect(snapshot.items[0]?.pipelineKey).toBe('pipeline-before');
+    expect(snapshot.batches[0]?.items[0]?.pipelineKey).toBe('pipeline-before');
+  });
+
   test('pipeline identity includes every compatibility axis', () => {
     const base = {
       shader: 's',

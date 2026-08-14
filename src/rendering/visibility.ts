@@ -93,13 +93,14 @@ export function createCpuVisibilityView(
     id: extracted.viewId,
     camera: extracted.camera,
     surface: options.surface,
-    viewport: extracted.viewportPixels,
+    viewport: Object.freeze({ ...extracted.viewportPixels }),
     layerMask: extracted.layerMask,
     featurePolicyKey: options.featurePolicyKey,
     historyKey: options.historyKey,
     viewRevision: extracted.revision,
     frustum: Frustum.fromViewProjection(extracted.unjitteredViewProjection),
-    viewMatrix: extracted.view
+    // Typed arrays remain mutable at runtime even when the containing snapshot is frozen.
+    viewMatrix: extracted.view.slice()
   });
 }
 

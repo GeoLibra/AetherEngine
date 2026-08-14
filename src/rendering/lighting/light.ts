@@ -32,13 +32,37 @@ export function validatePreparedLight(light: PreparedLight): void {
 
 export function orderLightsForGpu(lights: readonly PreparedLight[]): readonly PreparedLight[] {
   for (const light of lights) validatePreparedLight(light);
-  const ordered = [...lights].sort((left, right) => left.entity - right.entity);
+  const ordered = lights
+    .map(snapshotPreparedLight)
+    .sort((left, right) => left.entity - right.entity);
   for (let index = 1; index < ordered.length; index++) {
     if (ordered[index - 1]!.entity === ordered[index]!.entity) {
       throw new Error(`Duplicate prepared light entity ${ordered[index]!.entity}.`);
     }
   }
   return Object.freeze(ordered);
+}
+
+function snapshotPreparedLight(light: PreparedLight): PreparedLight {
+  const common = {
+    ...light,
+    colorLinear: Object.freeze([...light.colorLinear]) as Vec3
+  };
+  if (light.kind === 'directional')
+    return Object.freeze({
+      ...common,
+      direction: Object.freeze([...light.direction]) as Vec3
+    }) as PreparedLight;
+  if (light.kind === 'point')
+    return Object.freeze({
+      ...common,
+      position: Object.freeze([...light.position]) as Vec3
+    }) as PreparedLight;
+  return Object.freeze({
+    ...common,
+    position: Object.freeze([...light.position]) as Vec3,
+    direction: Object.freeze([...light.direction]) as Vec3
+  }) as PreparedLight;
 }
 
 export function normalizedLightDirection(direction: Vec3): Vec3 {
