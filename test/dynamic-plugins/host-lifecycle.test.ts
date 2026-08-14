@@ -284,6 +284,51 @@ describe('DynamicPluginHost lifecycle', () => {
     expect(host.current(pluginId)).toBeUndefined();
     expect(host.inventory()[0]?.phase).toBe('failed-to-quiesce');
   });
+
+  it('bounds public host.retract() duration when capability retraction hangs forever and executes scope cleanups', async () => {
+    let cleanupExecuted = false;
+    const hangingCapabilityProvider = {
+      token: PanelToken,
+      open: () => ({
+        facade: { add: () => undefined },
+        prepare: () => undefined,
+        commit: () => undefined,
+        rollback: () => new Promise<void>(() => undefined) // never resolves
+      })
+    };
+
+    let activation = 0;
+    const broker = new DynamicCapabilityBroker('editor');
+    broker.register(hangingCapabilityProvider);
+    const host = new DynamicPluginHost({
+      hostKind: 'editor',
+      broker,
+      verifier: { verify: () => true },
+      policy: { authorize: () => 'granted' },
+      quiescence: { wait: async () => true },
+      quiescenceTimeoutMs: 15,
+      mintActivationId: () => pluginActivationId(`act-${++activation}`)
+    });
+
+    host.define(
+      definition('hanging-cap-retract-public', ({ own }) => {
+        own(() => {
+          cleanupExecuted = true;
+        });
+      })
+    );
+
+    await host.activate(pluginId, version('hanging-cap-retract-public'));
+
+    const start = Date.now();
+    const report = await host.retract(pluginId, 'user-request');
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(45);
+    expect(cleanupExecuted).toBe(true);
+    expect(report?.terminalPhase).toBe('failed-to-quiesce');
+    expect(host.current(pluginId)).toBeUndefined();
+  });
 });
 
 function deferred<T>() {

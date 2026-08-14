@@ -275,9 +275,12 @@ export class DynamicPluginHost {
   }
 
   private async rollbackFailedActivation(record: ActivationRecord): Promise<void> {
+    const timeoutMs = this.options.quiescenceTimeoutMs;
     const sessionRollback = record.session
-      ? Promise.resolve(record.session.rollback()).catch(() => undefined)
-      : Promise.resolve();
+      ? withTimeout(Promise.resolve(record.session.rollback()), timeoutMs, 'timeout').catch(
+          () => 'error' as const
+        )
+      : Promise.resolve('none' as const);
     const scopeDispose = record.scope.dispose('activation-rollback').catch(() => undefined);
     await Promise.allSettled([sessionRollback, scopeDispose]);
   }
@@ -287,10 +290,11 @@ export class DynamicPluginHost {
     reason: PluginRetractionReason
   ): Promise<PluginCleanupReport> {
     record.phase = 'retracting';
+    const timeoutMs = this.options.quiescenceTimeoutMs;
 
     const sessionRetract = record.session
-      ? Promise.resolve(record.session.retract())
-      : Promise.resolve();
+      ? withTimeout(Promise.resolve(record.session.retract()), timeoutMs, 'timeout')
+      : Promise.resolve('none' as const);
     const scopeDispose = record.scope.dispose(reason);
 
     const [sessionOutcome, reportOutcome] = await Promise.allSettled([
@@ -302,6 +306,12 @@ export class DynamicPluginHost {
       record.diagnostic = diagnosticSnapshot(
         'DYNAMIC_PLUGIN_RETRACTION_FAILED',
         sessionOutcome.reason,
+        record
+      );
+    } else if (sessionOutcome.status === 'fulfilled' && sessionOutcome.value === 'timeout') {
+      record.diagnostic = diagnosticSnapshot(
+        'DYNAMIC_PLUGIN_RETRACTION_TIMEOUT',
+        new Error('Dynamic capability session retraction timed out.'),
         record
       );
     }
@@ -482,4 +492,22 @@ function diagnosticSnapshot(
       hostKind: record.hostKind
     })
   });
+}
+
+function withTimeout<T, U>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutValue: U
+): Promise<T | U> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<U>((resolve) => {
+    timer = setTimeout(() => resolve(timeoutValue), timeoutMs);
+  });
+  return Promise.race([
+    promise.then((value) => {
+      if (timer !== undefined) clearTimeout(timer);
+      return value;
+    }),
+    timeout
+  ]);
 }
