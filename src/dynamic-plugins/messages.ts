@@ -207,7 +207,12 @@ function cloneSerializablePayload(value: unknown, seen = new Set<unknown>()): un
     ) {
       throw new Error('Dynamic plugin message payload contains non-serializable type.');
     }
-    cloned[key] = cloneSerializablePayload(entry, seen);
+    Object.defineProperty(cloned, key, {
+      configurable: true,
+      enumerable: true,
+      value: cloneSerializablePayload(entry, seen),
+      writable: true
+    });
   }
   return Object.freeze(cloned);
 }

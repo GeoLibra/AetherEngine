@@ -139,6 +139,70 @@ describe('dynamic plugin message admission', () => {
     expect(normalized.payload).toEqual([null, null, 0]);
   });
 
+  it('preserves own __proto__ data fields without mutating the published prototype or byte budget', () => {
+    const payload: Record<string, unknown> = {};
+    Object.defineProperty(payload, '__proto__', {
+      configurable: true,
+      enumerable: true,
+      value: { nested: 'data' },
+      writable: true
+    });
+    const payloadJSON = JSON.stringify(payload);
+    const payloadBytes = new TextEncoder().encode(payloadJSON).byteLength;
+
+    const normalized = validateDynamicPluginMessageEnvelope(
+      { ...envelope(), payload },
+      { maxPayloadBytes: payloadBytes }
+    );
+
+    expect(Object.getPrototypeOf(normalized.payload)).toBe(Object.prototype);
+    expect(Object.hasOwn(normalized.payload as object, '__proto__')).toBe(true);
+    expect((normalized.payload as Record<string, unknown>).__proto__).toEqual({ nested: 'data' });
+    expect(normalized.payloadBytes).toBe(payloadBytes);
+    expect(() =>
+      validateDynamicPluginMessageEnvelope(
+        { ...envelope(), payload },
+        { maxPayloadBytes: payloadBytes - 1 }
+      )
+    ).toThrow(/size .* exceeds budget/i);
+  });
+
+  it('retains existing rejection behavior for cycles, repeated references, classes, and unsupported values', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const repeated = { value: 'same object twice' };
+
+    expect(() =>
+      validateDynamicPluginMessageEnvelope(
+        { ...envelope(), payload: circular },
+        { maxPayloadBytes: 1_024 }
+      )
+    ).toThrow(/circular/i);
+    expect(() =>
+      validateDynamicPluginMessageEnvelope(
+        { ...envelope(), payload: [repeated, repeated] },
+        { maxPayloadBytes: 1_024 }
+      )
+    ).toThrow(/circular/i);
+    expect(() =>
+      validateDynamicPluginMessageEnvelope(
+        { ...envelope(), payload: new Date() },
+        { maxPayloadBytes: 1_024 }
+      )
+    ).toThrow(/class instance/i);
+
+    for (const payload of [
+      { value: () => undefined },
+      { value: Symbol('unsupported') },
+      { value: 1n },
+      { value: undefined }
+    ]) {
+      expect(() =>
+        validateDynamicPluginMessageEnvelope({ ...envelope(), payload }, { maxPayloadBytes: 1_024 })
+      ).toThrow(/non-serializable/i);
+    }
+  });
+
   it('accepts one current terminal result and rejects its duplicate', () => {
     const handled: string[] = [];
     const guard = new DynamicPluginMessageGuard(

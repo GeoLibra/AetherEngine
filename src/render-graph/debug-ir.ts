@@ -13,7 +13,19 @@ import {
   type PortableTransition,
   type ResourceLifetime
 } from './lifetimes';
-import type { HistorySlotDebugState } from './history';
+import type { HistoryInvalidationReason, HistorySlotDebugState } from './history';
+
+const HISTORY_INVALIDATION_REASONS = new Set<HistoryInvalidationReason>([
+  'new',
+  'generation-changed',
+  'resize',
+  'abi-changed',
+  'policy-changed',
+  'explicit-reset',
+  'view-destroyed',
+  'submission-failed',
+  'device-lost'
+]);
 
 export interface RenderGraphHistoryDebugBinding {
   readonly readableSlot: number | undefined;
@@ -128,10 +140,8 @@ export function createRenderGraphDebugIR(
   const edges = Object.freeze(compiled.edges.map((edge) => Object.freeze({ ...edge })));
   const order = Object.freeze([...compiled.order]);
   const rootPassIds = Object.freeze([...compiled.rootPassIds]);
-  const schedule = Object.freeze(
-    [...(options.schedule ?? createRenderGraphExecutionSchedule(compiled))].map((step) => ({
-      ...step
-    }))
+  const schedule = cloneDebugSchedule(
+    options.schedule ?? createRenderGraphExecutionSchedule(compiled)
   );
   const logical = Object.freeze({
     schemaVersion: 1 as const,
@@ -207,18 +217,104 @@ function compactUndefined<T extends Readonly<Record<string, unknown>>>(value: T)
   ) as T;
 }
 
-function cloneHistoryDebugBinding(
-  history: RenderGraphHistoryDebugBinding
-): RenderGraphHistoryDebugBinding {
+function cloneHistoryDebugBinding(history: unknown): RenderGraphHistoryDebugBinding {
+  const record = requireDebugRecord(history, 'history debug binding');
   return {
-    readableSlot: history.readableSlot,
-    writableSlot: history.writableSlot,
-    versionSlots: history.versionSlots.map((slot) => ({ ...slot })),
-    slots: history.slots.map((slot) => ({
-      ...slot,
-      pendingSubmissionIds: [...slot.pendingSubmissionIds]
-    }))
+    readableSlot: optionalDebugNumber(record.readableSlot, 'history readable slot'),
+    writableSlot: requiredDebugNumber(record.writableSlot, 'history writable slot'),
+    versionSlots: requiredDebugArray(record.versionSlots, 'history version slots').map((slot) => {
+      const version = requireDebugRecord(slot, 'history version slot');
+      return {
+        version: requiredDebugNumber(version.version, 'history version'),
+        slot: optionalDebugNumber(version.slot, 'history version slot')
+      };
+    }),
+    slots: requiredDebugArray(record.slots, 'history slots').map((slot) =>
+      cloneHistorySlotDebugState(slot)
+    )
   };
+}
+
+function cloneHistorySlotDebugState(value: unknown): HistorySlotDebugState {
+  const slot = requireDebugRecord(value, 'history slot');
+  const invalidationReason = slot.invalidationReason as unknown;
+  if (
+    invalidationReason !== undefined &&
+    (typeof invalidationReason !== 'string' ||
+      !HISTORY_INVALIDATION_REASONS.has(invalidationReason as HistoryInvalidationReason))
+  ) {
+    throw new Error('Render graph history invalidation reason is invalid.');
+  }
+  return {
+    slot: requiredDebugNumber(slot.slot, 'history slot index'),
+    valid: requiredDebugBoolean(slot.valid, 'history slot validity'),
+    invalidationReason: invalidationReason as HistoryInvalidationReason | undefined,
+    producerSubmissionId: optionalDebugNumber(
+      slot.producerSubmissionId,
+      'history producer submission id'
+    ),
+    pendingSubmissionIds: requiredDebugArray(
+      slot.pendingSubmissionIds,
+      'pending submission ids'
+    ).map((id) => requiredDebugNumber(id, 'pending submission id')),
+    pendingRetirement: requiredDebugBoolean(slot.pendingRetirement, 'history pending retirement')
+  };
+}
+
+function cloneDebugSchedule(value: unknown): readonly RenderGraphExecutionStep[] {
+  const steps: RenderGraphExecutionStep[] = [];
+  for (const step of requiredDebugArray(value, 'render graph debug schedule')) {
+    const record = requireDebugRecord(step, 'render graph debug schedule step');
+    if (record.kind === 'prelude') {
+      steps.push({ kind: 'prelude' });
+      continue;
+    }
+    if (record.kind === 'submission') {
+      steps.push({ kind: 'submission' });
+      continue;
+    }
+    if (record.kind === 'pass') {
+      steps.push({
+        kind: 'pass',
+        passId: requiredDebugNumber(record.passId, 'render graph debug pass id'),
+        retainedPassIndex: requiredDebugNumber(
+          record.retainedPassIndex,
+          'render graph debug retained pass index'
+        )
+      });
+      continue;
+    }
+    throw new Error('Render graph debug schedule step kind is invalid.');
+  }
+  return Object.freeze(steps);
+}
+
+function requireDebugRecord(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`Render graph ${label} must be a record.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function requiredDebugArray(value: unknown, label: string): readonly unknown[] {
+  if (!Array.isArray(value)) throw new Error(`Render graph ${label} must be an array.`);
+  return value;
+}
+
+function requiredDebugNumber(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`Render graph ${label} must be a finite number.`);
+  }
+  return value;
+}
+
+function optionalDebugNumber(value: unknown, label: string): number | undefined {
+  return value === undefined ? undefined : requiredDebugNumber(value, label);
+}
+
+function requiredDebugBoolean(value: unknown, label: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`Render graph ${label} must be a boolean.`);
+  return value;
 }
 
 function deepFreeze<T>(value: T, visited = new WeakSet<object>()): T {

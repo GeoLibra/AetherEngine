@@ -188,7 +188,7 @@ function createVisit<T>(
     schema: schema.id,
     path: Object.freeze([...path]),
     policy,
-    reference: Object.freeze({ ...reference }),
+    reference: Object.freeze(reference),
     ...(expectedType === undefined ? {} : { expectedType })
   });
 }
