@@ -47,7 +47,8 @@ export function createWebGL2RenderPipeline(
   owner: WebGL2DeviceOwner,
   translator: WebGL2ShaderTranslationPort | undefined,
   clipDepthMode: WebGL2ClipDepthMode,
-  descriptor: RHIRenderPipelineDescriptor
+  descriptor: RHIRenderPipelineDescriptor,
+  invalidateNativeState: () => void
 ): WebGL2RenderPipeline {
   if (translator === undefined)
     throw new Error('WebGL2 render pipeline creation requires a shader translation port.');
@@ -102,6 +103,10 @@ export function createWebGL2RenderPipeline(
     );
   } catch (cause) {
     throw new WebGL2ProgramCreationError(descriptor.label, cause);
+  } finally {
+    // Sampler initialization temporarily calls useProgram; an earlier replay cache may now be stale.
+    if (programBindings.some((binding) => binding.kind === 'combined-sampler'))
+      invalidateNativeState();
   }
   const reflect = owner.native.getProgramReflection;
   if (reflect === undefined)

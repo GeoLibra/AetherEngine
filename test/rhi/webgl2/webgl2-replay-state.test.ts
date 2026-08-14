@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   WebGL2Adapter,
   type WebGL2BindingManifestEntry,
+  type WebGL2ProgramBinding,
   type WebGL2PhysicalBinding,
   type WebGL2NativeContextLostInfo
 } from '../../../src';
@@ -24,7 +25,9 @@ class ReplayContext {
   readonly precision = {};
   readonly lost = new Promise<WebGL2NativeContextLostInfo>(() => {});
   readonly calls: Array<{ name: string; args: readonly unknown[] }> = [];
+  readonly drawPrograms: NativeObject[] = [];
   private nextId = 1;
+  private currentProgram: NativeObject | undefined;
   failNextDraw = false;
   reflection: readonly WebGL2BindingManifestEntry[] = [];
 
@@ -37,13 +40,17 @@ class ReplayContext {
   createSampler(): NativeObject {
     return this.object('sampler');
   }
-  createProgram(): NativeObject {
-    return this.object('program');
+  createProgram(descriptor: Readonly<Record<string, unknown>>): NativeObject {
+    const program = this.object('program');
+    if (Array.isArray(descriptor.programBindings) && descriptor.programBindings.length !== 0)
+      this.currentProgram = program;
+    return program;
   }
   getProgramReflection(): readonly WebGL2BindingManifestEntry[] {
     return this.reflection;
   }
   useProgram(...args: unknown[]): void {
+    this.currentProgram = args[0] as NativeObject;
     this.call('useProgram', args);
   }
   beginRenderPass(...args: unknown[]): void {
@@ -80,6 +87,7 @@ class ReplayContext {
     this.call('bindSampler', args);
   }
   draw(...args: unknown[]): void {
+    if (this.currentProgram !== undefined) this.drawPrograms.push(this.currentProgram);
     this.call('draw', args);
     if (this.failNextDraw) {
       this.failNextDraw = false;
@@ -120,7 +128,8 @@ class Translator {
     private readonly bindings: readonly WebGL2BindingManifestEntry[] = [],
     private readonly physicalBindings: readonly WebGL2PhysicalBinding[] = bindings.map(
       (binding) => ({ ...binding, slot: binding.binding })
-    )
+    ),
+    private readonly programBindings: readonly WebGL2ProgramBinding[] = []
   ) {}
   translate(input: { entryPoint: string }) {
     return {
@@ -128,7 +137,7 @@ class Translator {
       bindings: this.bindings,
       targetAbiFingerprint: 'test-abi',
       physicalBindings: this.physicalBindings,
-      programBindings: [],
+      programBindings: this.programBindings,
       requiredExtensions: [],
       sourceMap: [],
       translatorFingerprint: 'test-output'
@@ -138,7 +147,8 @@ class Translator {
 
 async function createFixture(
   bindings: readonly WebGL2BindingManifestEntry[] = [],
-  physicalBindings?: readonly WebGL2PhysicalBinding[]
+  physicalBindings?: readonly WebGL2PhysicalBinding[],
+  programBindings?: readonly WebGL2ProgramBinding[]
 ) {
   const native = new ReplayContext();
   native.reflection = bindings;
@@ -148,7 +158,7 @@ async function createFixture(
   ) => WebGL2Adapter;
   const device = await new Adapter(
     native,
-    new Translator(bindings, physicalBindings)
+    new Translator(bindings, physicalBindings, programBindings)
   ).requestDevice({
     requiredFeatures: [],
     optionalFeatures: []
@@ -260,6 +270,34 @@ describe('WebGL2 ordered replay and state VM', () => {
 
     expect(native.calls.filter((call) => call.name === 'useProgram')).toHaveLength(1);
     expect(device.queue.metrics().stateSkips).toBeGreaterThan(0);
+  });
+
+  test('rebinds a cached pipeline after later program initialization mutates native state', async () => {
+    const programBindings = [
+      { kind: 'combined-sampler', name: 'aether_sampler', slot: 0 }
+    ] as const;
+    const { device, native, pipeline, color } = await createFixture([], undefined, programBindings);
+    const record = () => {
+      const encoder = device.createCommandEncoder();
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{ view: color.createView(), loadOp: 'load', storeOp: 'store' }]
+      });
+      pass.setPipeline(pipeline);
+      pass.draw(3);
+      pass.end();
+      return encoder.finish();
+    };
+
+    await device.queue.submit([record()]).done;
+    const laterModule = device.createShaderModule({ code: 'later-program' });
+    device.createRenderPipeline({
+      vertex: { module: laterModule },
+      fragment: { module: laterModule, targets: [{ format: 'rgba8unorm' }] }
+    });
+    await device.queue.submit([record()]).done;
+
+    expect(native.drawPrograms).toHaveLength(2);
+    expect(native.drawPrograms[1]).toBe(native.drawPrograms[0]);
   });
 
   test('applies explicit portable defaults instead of assuming driver state', async () => {
