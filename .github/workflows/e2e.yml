@@ -14,7 +14,7 @@ on:
         options:
           - all
           - browser-host-smoke
-          - webgl2-smoke
+          - webgl2-render
           - webgpu-render
 
 concurrency:
@@ -54,9 +54,9 @@ jobs:
             selected_project="${{ github.event.inputs.project }}"
             case "$selected_project" in
               all)
-                resolution='{"include":[{"project":"browser-host-smoke"},{"project":"webgl2-smoke"},{"project":"webgpu-render"}],"reasons":[{"path":"","ruleId":"manual-all"}],"fallback":true}'
+                resolution='{"include":[{"project":"browser-host-smoke"},{"project":"webgl2-render"},{"project":"webgpu-render"}],"reasons":[{"path":"","ruleId":"manual-all"}],"fallback":true}'
                 ;;
-              browser-host-smoke|webgl2-smoke|webgpu-render)
+              browser-host-smoke|webgl2-render|webgpu-render)
                 resolution="$(node -e 'const project = process.argv[1]; process.stdout.write(JSON.stringify({ include: [{ project }], reasons: [{ path: "", ruleId: "manual-project" }], fallback: false }));' "$selected_project")"
                 ;;
               *)

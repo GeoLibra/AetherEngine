@@ -32,6 +32,10 @@ export function createBrowserWebGL2ContextPort(
   if (!isContext(native)) return null;
   const gl = native;
   const extensions = queryWebGL2Extensions(gl);
+  if (options.clipControl === false) extensions.delete('EXT_clip_control');
+  const clipControl = extensions.has('EXT_clip_control')
+    ? gl.getExtension?.('EXT_clip_control')
+    : undefined;
   initializeWebGL2StateDefaults(gl);
   let resolveLost!: (info: { reason?: string; message?: string }) => void;
   let settled = false;
@@ -68,11 +72,34 @@ export function createBrowserWebGL2ContextPort(
     precision: queryWebGL2Precision(gl),
     lost,
     restored,
+    ...(clipControl === undefined || clipControl === null
+      ? {}
+      : {
+          setClipControl(): void {
+            const method = Reflect.get(clipControl, 'clipControlEXT');
+            if (typeof method !== 'function')
+              throw new Error('EXT_clip_control does not expose clipControlEXT.');
+            Reflect.apply(method, clipControl, [
+              extensionConstant(clipControl, gl, 'LOWER_LEFT_EXT', 'LOWER_LEFT'),
+              extensionConstant(clipControl, gl, 'ZERO_TO_ONE_EXT', 'ZERO_TO_ONE')
+            ]);
+          }
+        }),
     destroy(): void {
       canvas.removeEventListener('webglcontextlost', onLost);
       canvas.removeEventListener('webglcontextrestored', onRestored);
     }
   };
+}
+
+function extensionConstant(
+  extension: object,
+  gl: BrowserWebGL2Context,
+  extensionName: string,
+  contextName: string
+): number {
+  const value = Reflect.get(extension, extensionName);
+  return typeof value === 'number' ? value : constant(gl, contextName);
 }
 
 function contextInfo(gl: BrowserWebGL2Context) {

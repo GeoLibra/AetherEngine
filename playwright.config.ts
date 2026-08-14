@@ -22,7 +22,7 @@ export default defineConfig({
       }
     },
     {
-      name: 'webgl2-smoke',
+      name: 'webgl2-render',
       testMatch: 'webgl2.spec.ts',
       use: {
         ...devices['Desktop Chrome'],

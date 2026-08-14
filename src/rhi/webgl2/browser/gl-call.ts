@@ -10,8 +10,12 @@ export function glCall(
   return Reflect.apply(method, gl, args);
 }
 
-export function glObject(gl: BrowserWebGL2Object, name: string): object {
-  const value = glCall(gl, name);
+export function glObject(
+  gl: BrowserWebGL2Object,
+  name: string,
+  args: readonly unknown[] = []
+): object {
+  const value = glCall(gl, name, args);
   if (typeof value !== 'object' || value === null)
     throw new Error(`WebGL2 ${name}() returned null.`);
   return value;

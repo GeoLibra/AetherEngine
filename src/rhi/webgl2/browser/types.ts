@@ -10,12 +10,14 @@ export interface BrowserWebGL2ContextOptions {
   readonly stencil?: boolean;
   readonly preserveDrawingBuffer?: boolean;
   readonly powerPreference?: 'default' | 'high-performance' | 'low-power';
+  readonly clipControl?: boolean;
 }
 
 export type BrowserWebGL2Object = object;
 
 export interface BrowserWebGL2Context extends BrowserWebGL2Object {
   getSupportedExtensions(): string[] | null;
+  getExtension?(name: string): unknown;
   getParameter(parameter: number): unknown;
   getShaderPrecisionFormat(
     shaderType: number,

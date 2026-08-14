@@ -36,7 +36,7 @@ describe('createMatrixOutput', () => {
     expect(createMatrixOutput('')).toMatchObject({
       include: [
         { project: 'browser-host-smoke' },
-        { project: 'webgl2-smoke' },
+        { project: 'webgl2-render' },
         { project: 'webgpu-render' }
       ],
       fallback: true
@@ -59,7 +59,7 @@ describe('runCli', () => {
     expect(JSON.parse(stdout)).toMatchObject({
       include: [
         { project: 'browser-host-smoke' },
-        { project: 'webgl2-smoke' },
+        { project: 'webgl2-render' },
         { project: 'webgpu-render' }
       ],
       fallback: true

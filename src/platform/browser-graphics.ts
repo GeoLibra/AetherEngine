@@ -154,7 +154,8 @@ async function createWebGL2Session(
   }
   const native = createBrowserWebGL2ContextPort(canvas, {
     powerPreference: options.powerPreference ?? 'default',
-    alpha: options.surface.alphaMode !== 'opaque'
+    alpha: options.surface.alphaMode !== 'opaque',
+    ...(options.webgl2ClipControl === undefined ? {} : { clipControl: options.webgl2ClipControl })
   });
   if (native === null) {
     throw unavailable([
@@ -162,7 +163,7 @@ async function createWebGL2Session(
       attempt('webgl2', 'context', 'unavailable', 'Target canvas did not return a WebGL2 context.')
     ]);
   }
-  const adapter = new WebGL2Adapter(native);
+  const adapter = new WebGL2Adapter(native, options.webgl2Translator);
   let device;
   try {
     device = await adapter.requestDevice(options.device);

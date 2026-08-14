@@ -40,13 +40,13 @@ export const E2E_ROUTING_RULES = Object.freeze([
     id: 'webgl2',
     prefixes: Object.freeze(['src/rhi/webgl2/', 'test/rhi/webgl2/']),
     exact: Object.freeze(['engine/design/v2/03-platform/04-webgl2-backend.md']),
-    projects: Object.freeze(['webgl2-smoke'] as const)
+    projects: Object.freeze(['webgl2-render'] as const)
   },
   {
     id: 'rhi-contract',
     prefixes: Object.freeze(['src/rhi/contracts/', 'test/rhi/contracts/']),
     exact: Object.freeze(['engine/design/v2/03-platform/02-rhi-contract.md']),
-    projects: Object.freeze(['webgl2-smoke'] as const)
+    projects: Object.freeze(['webgl2-render'] as const)
   },
   {
     id: 'explicit-no-e2e',

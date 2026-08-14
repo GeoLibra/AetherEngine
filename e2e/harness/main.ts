@@ -2,6 +2,7 @@ import { BrowserHost, type WindowMetrics } from '../../src';
 import { createDOMBrowserPort } from './browser-port';
 import type { E2EBridge, E2EState } from './types';
 import { runWebGPUScene } from './webgpu-scene';
+import { runWebGL2Scene } from './webgl2-scene';
 
 type Scenario = 'browser-host' | 'webgl2' | 'webgpu';
 type Cleanup = () => void | Promise<void>;
@@ -102,10 +103,10 @@ async function initialize(): Promise<void> {
   };
 
   if (scenario === 'webgl2') {
-    // This is only real-context availability evidence, not WebGL2Adapter conformance.
-    if (canvas.getContext('webgl2') === null) {
-      throw new Error('WebGL2 is unavailable.');
-    }
+    const scene = await runWebGL2Scene(canvas);
+    cleanups.push(() => scene.destroy());
+    publishReady('webgl2', scene.detail);
+    return;
   }
 
   if (scenario === 'webgpu') {
@@ -120,7 +121,8 @@ async function initialize(): Promise<void> {
 
 function readScenario(): Scenario {
   const scenario = new URLSearchParams(window.location.search).get('scenario');
-  if (scenario === 'browser-host' || scenario === 'webgl2' || scenario === 'webgpu') return scenario;
+  if (scenario === 'browser-host' || scenario === 'webgl2' || scenario === 'webgpu')
+    return scenario;
   throw new Error(`Unsupported E2E scenario: ${scenario ?? '(missing)'}.`);
 }
 
