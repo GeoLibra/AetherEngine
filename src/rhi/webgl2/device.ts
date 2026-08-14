@@ -33,6 +33,7 @@ import {
   WebGL2Sampler,
   WebGL2Texture,
   assertWebGL2Resource,
+  getWebGL2Handle,
   normalizeExtent
 } from './resource';
 import { WebGL2Queue } from './queue';
@@ -140,6 +141,16 @@ export class WebGL2Device implements RHIDevice {
       create.call(this.native, snapshot),
       descriptor
     );
+  }
+  createSurfaceTexture(descriptor: RHITextureDescriptor): RHITexture {
+    return this.createTexture(descriptor);
+  }
+  presentSurfaceTexture(texture: RHITexture): void {
+    assertWebGL2Resource(texture, this.owner);
+    const present = this.native.presentSurfaceTexture;
+    if (present === undefined)
+      throw new Error('Native WebGL2 context cannot present a surface texture.');
+    present.call(this.native, getWebGL2Handle(texture, this.owner), texture.width, texture.height);
   }
   createSampler(descriptor: RHISamplerDescriptor = {}): RHISampler {
     const create = this.native.createSampler;

@@ -11,7 +11,10 @@ export function createBrowserWebGL2RenderPassOperations(
   framebufferState: BrowserWebGL2FramebufferState
 ): Pick<
   WebGL2NativeContextPort,
-  'applyRenderPassLoadOperations' | 'applyRenderPassStoreOperations' | 'resolveRenderPass'
+  | 'applyRenderPassLoadOperations'
+  | 'applyRenderPassStoreOperations'
+  | 'resolveRenderPass'
+  | 'presentSurfaceTexture'
 > {
   return {
     applyRenderPassLoadOperations(descriptor): void {
@@ -90,6 +93,32 @@ export function createBrowserWebGL2RenderPassOperations(
           glCall(gl, 'deleteFramebuffer', [resolveFramebuffer]);
         }
       }
+    },
+    presentSurfaceTexture(texture, width, height): void {
+      const read = glObject(gl, 'createFramebuffer');
+      glCall(gl, 'bindFramebuffer', [constant(gl, 'READ_FRAMEBUFFER'), read]);
+      glCall(gl, 'framebufferTexture2D', [
+        constant(gl, 'READ_FRAMEBUFFER'),
+        constant(gl, 'COLOR_ATTACHMENT0'),
+        constant(gl, 'TEXTURE_2D'),
+        texture,
+        0
+      ]);
+      glCall(gl, 'bindFramebuffer', [constant(gl, 'DRAW_FRAMEBUFFER'), null]);
+      glCall(gl, 'blitFramebuffer', [
+        0,
+        0,
+        width,
+        height,
+        0,
+        0,
+        width,
+        height,
+        constant(gl, 'COLOR_BUFFER_BIT'),
+        constant(gl, 'NEAREST')
+      ]);
+      glCall(gl, 'deleteFramebuffer', [read]);
+      framebufferState.current = null;
     }
   };
 }
