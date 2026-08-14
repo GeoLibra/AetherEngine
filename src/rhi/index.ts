@@ -31,7 +31,7 @@ export type {
   NativeDawnBackend,
   NativeDawnFactsPort
 } from './native';
-export { WebGL2ContextControlExtension } from './webgl2/extension-types';
+export { WebGL2ContextControlExtension } from './webgl2/context-control';
 export { WebGL2ProgramCreationError } from './webgl2/errors';
 export { WebGPUSurface } from './webgpu/surface';
 export { WebGPUInteropExtension } from './webgpu/interop';
@@ -51,7 +51,7 @@ export type {
   WebGL2NativeContextLostInfo,
   WebGL2NativeContextPort,
   WebGL2NativeLimits
-} from './webgl2/native-types';
+} from './webgl2/types';
 export type {
   FinalizedWebGL2Shader,
   WebGL2BindingKind,
@@ -60,10 +60,10 @@ export type {
   WebGL2ShaderStage,
   WebGL2ShaderTranslationPort,
   WebGL2TranslatedShader
-} from './webgl2/shader-types';
-export { finalizeWebGL2Shader } from './webgl2/shader-types';
+} from './webgl2/types';
+export { finalizeWebGL2Shader } from './webgl2/shader-finalization';
 export type { WebGL2MetricsSnapshot } from './webgl2/metrics';
-export type { WebGL2ContextControl } from './webgl2/extension-types';
+export type { WebGL2ContextControl } from './webgl2/types';
 export type {
   WebGPUNativeAdapterInfo,
   WebGPUNativeAdapterPort,
@@ -83,7 +83,7 @@ export type {
   WebGPUNativeSurfaceAcquireResult,
   WebGPUNativeSurfaceConfiguration,
   WebGPUNativeTexturePort
-} from './webgpu/native-types';
+} from './webgpu/types';
 export type { GPUImageCopyBuffer } from './contracts/resource';
 export type {
   NativeImportDescriptorMap,
@@ -94,9 +94,9 @@ export type {
   WebGPUNativeImportKind,
   WebGPUNativeKind,
   WebGPUNativeResourceMap
-} from './webgpu/interop-types';
+} from './webgpu/types';
 export type { RHIExtensionToken } from './contracts/extension';
-export type { WebGPUPipelineCreationResult } from './webgpu/pipeline-types';
+export type { WebGPUPipelineCreationResult } from './webgpu/types';
 export type { WebGPUFastPathMetrics } from './webgpu/metrics';
 export { webgpuCompat } from './core/webgpu-compat';
 export type {

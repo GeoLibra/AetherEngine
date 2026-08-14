@@ -1,8 +1,5 @@
-import type { WebGPUNativeQueuePort } from '../native-types';
-import {
-  unwrapBrowserWebGPUResource,
-  type BrowserWebGPUDeviceOwner
-} from './resource-port';
+import type { WebGPUNativeQueuePort } from '../types';
+import { unwrapBrowserWebGPUResource, type BrowserWebGPUDeviceOwner } from './resource-port';
 import { lowerBrowserDescriptor } from './descriptor-lowering';
 
 export function createBrowserWebGPUQueuePort(
@@ -20,13 +17,16 @@ export function createBrowserWebGPUQueuePort(
     },
     writeBuffer(buffer, offset, data): void {
       callRequired(nativeQueue, 'writeBuffer', [
-        unwrapBrowserWebGPUResource(buffer, owner), offset, data
+        unwrapBrowserWebGPUResource(buffer, owner),
+        offset,
+        data
       ]);
     },
     writeTexture(destination, data, dataLayout, size): void {
       callRequired(nativeQueue, 'writeTexture', [
         lowerBrowserDescriptor(destination, Object.keys(destination), (value) =>
-          lowerResource(value, owner)),
+          lowerResource(value, owner)
+        ),
         data,
         dataLayout,
         size
@@ -43,6 +43,7 @@ function lowerResource(value: unknown, owner: BrowserWebGPUDeviceOwner): unknown
 
 function callRequired(target: object, key: string, args: readonly unknown[]): unknown {
   const method = Reflect.get(target, key);
-  if (typeof method !== 'function') throw new TypeError(`Native WebGPU object does not implement ${key}().`);
+  if (typeof method !== 'function')
+    throw new TypeError(`Native WebGPU object does not implement ${key}().`);
   return Reflect.apply(method, target, args);
 }

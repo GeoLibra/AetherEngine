@@ -1,5 +1,5 @@
 import type { AppExit, Runner, RunnerContext } from '../app/runner';
-import type { NativeFramePort } from './native-host-types';
+import type { NativeFramePort } from './types';
 
 export interface NativeRunnerBoundary {
   dispatchFrame(run: () => void): Promise<void>;
@@ -49,9 +49,9 @@ export class NativeRunner implements Runner {
     // Exactly one platform callback is pending; native cadence never falls back to a busy loop.
     this.pendingFrame = this.frames.request((timestampSeconds) => {
       this.pendingFrame = undefined;
-      void this.boundary.dispatchFrame(() => this.acceptFrame(context, timestampSeconds)).catch(
-        (error: unknown) => this.fail(error)
-      );
+      void this.boundary
+        .dispatchFrame(() => this.acceptFrame(context, timestampSeconds))
+        .catch((error: unknown) => this.fail(error));
     });
   }
 

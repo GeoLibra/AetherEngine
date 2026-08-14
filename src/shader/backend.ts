@@ -1,4 +1,5 @@
-import { finalizeWebGL2Shader, type WebGL2ShaderTranslationPort } from '../rhi/webgl2/shader-types';
+import type { WebGL2ShaderTranslationPort } from '../rhi/webgl2/types';
+import { finalizeWebGL2Shader } from '../rhi/webgl2/shader-finalization';
 import type { WebGL2ClipDepthMode } from '../rhi/webgl2/clip-depth';
 import { emitWgslModule } from './wgsl-emitter';
 import { GLSL_ES_EMITTER_VERSION, emitGlslEsModule } from './backends/glsl-es';

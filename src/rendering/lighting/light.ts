@@ -1,4 +1,4 @@
-import type { Vec3 } from '../../math';
+import type { Vec3 } from '../../math/types';
 import type { PreparedLight } from './types';
 
 const UINT32_MAX = 0xffff_ffff;

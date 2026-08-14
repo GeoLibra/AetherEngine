@@ -4,7 +4,7 @@ import type {
   NativeMemoryEvictor,
   NativeMemoryPressureEvent,
   NativeMemoryPressureResult
-} from './lifecycle-types';
+} from './types';
 
 export class NativeLifecycleTerminationError extends Error {
   readonly errors: readonly unknown[];
@@ -34,21 +34,41 @@ export class NativeLifecycleCoordinator {
 
   registerEvictor(evictor: NativeMemoryEvictor): void {
     this.assertActive();
-    if (!/^[a-z][a-z0-9.-]*$/i.test(evictor.name)) throw new Error('Native memory evictor name is invalid.');
-    if (!Number.isFinite(evictor.priority)) throw new Error('Native memory evictor priority must be finite.');
-    if (this.evictors.some(({ name }) => name === evictor.name)) throw new Error('Duplicate native memory evictor.');
+    if (!/^[a-z][a-z0-9.-]*$/i.test(evictor.name))
+      throw new Error('Native memory evictor name is invalid.');
+    if (!Number.isFinite(evictor.priority))
+      throw new Error('Native memory evictor priority must be finite.');
+    if (this.evictors.some(({ name }) => name === evictor.name))
+      throw new Error('Duplicate native memory evictor.');
     this.evictors.push(evictor);
   }
 
-  registerCleanup(cleanup: () => void): void { this.assertActive(); this.cleanups.push(cleanup); }
+  registerCleanup(cleanup: () => void): void {
+    this.assertActive();
+    this.cleanups.push(cleanup);
+  }
 
-  foreground(): void { this.emit({ kind: 'foreground' }); }
-  background(): void { this.emit({ kind: 'background', policy: this.policy }); }
-  audioInterrupted(interrupted: boolean): void { this.emit({ kind: 'audio-interruption', interrupted }); }
-  orientation(orientation: string): void { this.emit({ kind: 'orientation', orientation }); }
-  resize(size: readonly [number, number]): void { this.emit({ kind: 'resize', size: Object.freeze([...size]) as readonly [number, number] }); }
-  surfaceLost(generation: number): void { this.emit({ kind: 'surface-lost', generation }); }
-  surfaceRecreated(generation: number): void { this.emit({ kind: 'surface-recreated', generation }); }
+  foreground(): void {
+    this.emit({ kind: 'foreground' });
+  }
+  background(): void {
+    this.emit({ kind: 'background', policy: this.policy });
+  }
+  audioInterrupted(interrupted: boolean): void {
+    this.emit({ kind: 'audio-interruption', interrupted });
+  }
+  orientation(orientation: string): void {
+    this.emit({ kind: 'orientation', orientation });
+  }
+  resize(size: readonly [number, number]): void {
+    this.emit({ kind: 'resize', size: Object.freeze([...size]) as readonly [number, number] });
+  }
+  surfaceLost(generation: number): void {
+    this.emit({ kind: 'surface-lost', generation });
+  }
+  surfaceRecreated(generation: number): void {
+    this.emit({ kind: 'surface-recreated', generation });
+  }
 
   memoryPressure(event: NativeMemoryPressureEvent): NativeMemoryPressureResult {
     this.assertActive();
@@ -56,7 +76,9 @@ export class NativeLifecycleCoordinator {
     let evictedBytes = 0;
     let callbacks = 0;
     const failedEvictors: string[] = [];
-    const ordered = [...this.evictors].sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
+    const ordered = [...this.evictors].sort(
+      (a, b) => a.priority - b.priority || a.name.localeCompare(b.name)
+    );
     for (const evictor of ordered) {
       if (evictedBytes >= event.targetBytes || callbacks >= event.maxCallbacks) break;
       callbacks += 1;
@@ -84,7 +106,11 @@ export class NativeLifecycleCoordinator {
     this.listeners.clear();
     const errors: unknown[] = [];
     for (const cleanup of this.cleanups) {
-      try { cleanup(); } catch (error) { errors.push(error); }
+      try {
+        cleanup();
+      } catch (error) {
+        errors.push(error);
+      }
     }
     this.cleanups.length = 0;
     this.evictors.length = 0;

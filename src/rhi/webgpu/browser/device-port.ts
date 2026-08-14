@@ -6,7 +6,7 @@ import type {
   WebGPUNativeErrorType,
   WebGPUNativeResourcePort,
   WebGPUNativeTexturePort
-} from '../native-types';
+} from '../types';
 import {
   lowerBrowserBufferDescriptor,
   lowerBrowserDescriptor,
@@ -29,15 +29,30 @@ const deviceOwners = new WeakMap<WebGPUNativeDevicePort, BrowserWebGPUDeviceOwne
 
 const DESCRIPTOR_KEYS = Object.freeze({
   sampler: Object.freeze([
-    'label', 'addressModeU', 'addressModeV', 'addressModeW', 'magFilter', 'minFilter',
-    'mipmapFilter', 'lodMinClamp', 'lodMaxClamp', 'compare', 'maxAnisotropy'
+    'label',
+    'addressModeU',
+    'addressModeV',
+    'addressModeW',
+    'magFilter',
+    'minFilter',
+    'mipmapFilter',
+    'lodMinClamp',
+    'lodMaxClamp',
+    'compare',
+    'maxAnisotropy'
   ]),
   shaderModule: Object.freeze(['label', 'code', 'sourceMapHints', 'compilationHints']),
   bindGroupLayout: Object.freeze(['label', 'entries']),
   pipelineLayout: Object.freeze(['label', 'bindGroupLayouts']),
   bindGroup: Object.freeze(['label', 'layout', 'entries']),
   renderPipeline: Object.freeze([
-    'label', 'layout', 'vertex', 'primitive', 'depthStencil', 'multisample', 'fragment'
+    'label',
+    'layout',
+    'vertex',
+    'primitive',
+    'depthStencil',
+    'multisample',
+    'fragment'
   ]),
   computePipeline: Object.freeze(['label', 'layout', 'compute'])
 });
@@ -56,10 +71,15 @@ export function createBrowserWebGPUDevicePort(
   const port: WebGPUNativeDevicePort = {
     lost: normalizeLostPromise(Reflect.get(nativeDevice, 'lost')),
     queue: createBrowserWebGPUQueuePort(nativeQueue, owner),
-    destroy(): void { callOptional(nativeDevice, 'destroy'); },
+    destroy(): void {
+      callOptional(nativeDevice, 'destroy');
+    },
     createBuffer(descriptor): WebGPUNativeResourcePort {
       const lowered = lowerBrowserBufferDescriptor(descriptor);
-      const native = requireObject(callRequired(nativeDevice, 'createBuffer', [lowered]), 'GPUBuffer');
+      const native = requireObject(
+        callRequired(nativeDevice, 'createBuffer', [lowered]),
+        'GPUBuffer'
+      );
       return new BrowserWebGPUBufferPort(
         owner,
         native,
@@ -69,40 +89,99 @@ export function createBrowserWebGPUDevicePort(
     },
     createTexture(descriptor): WebGPUNativeTexturePort {
       const lowered = lowerBrowserTextureDescriptor(descriptor);
-      const native = requireObject(callRequired(nativeDevice, 'createTexture', [lowered]), 'GPUTexture');
+      const native = requireObject(
+        callRequired(nativeDevice, 'createTexture', [lowered]),
+        'GPUTexture'
+      );
       return new BrowserWebGPUTexturePort(owner, native);
     },
     createSampler(descriptor): WebGPUNativeResourcePort {
-      return createResource(nativeDevice, owner, 'createSampler', descriptor, DESCRIPTOR_KEYS.sampler);
+      return createResource(
+        nativeDevice,
+        owner,
+        'createSampler',
+        descriptor,
+        DESCRIPTOR_KEYS.sampler
+      );
     },
     createShaderModule(descriptor): WebGPUNativeResourcePort {
-      return createResource(nativeDevice, owner, 'createShaderModule', descriptor, DESCRIPTOR_KEYS.shaderModule);
+      return createResource(
+        nativeDevice,
+        owner,
+        'createShaderModule',
+        descriptor,
+        DESCRIPTOR_KEYS.shaderModule
+      );
     },
     createBindGroupLayout(descriptor): WebGPUNativeResourcePort {
-      return createResource(nativeDevice, owner, 'createBindGroupLayout', descriptor, DESCRIPTOR_KEYS.bindGroupLayout);
+      return createResource(
+        nativeDevice,
+        owner,
+        'createBindGroupLayout',
+        descriptor,
+        DESCRIPTOR_KEYS.bindGroupLayout
+      );
     },
     createPipelineLayout(descriptor): WebGPUNativeResourcePort {
-      return createResource(nativeDevice, owner, 'createPipelineLayout', descriptor, DESCRIPTOR_KEYS.pipelineLayout);
+      return createResource(
+        nativeDevice,
+        owner,
+        'createPipelineLayout',
+        descriptor,
+        DESCRIPTOR_KEYS.pipelineLayout
+      );
     },
     createBindGroup(descriptor): WebGPUNativeResourcePort {
-      return createResource(nativeDevice, owner, 'createBindGroup', descriptor, DESCRIPTOR_KEYS.bindGroup);
+      return createResource(
+        nativeDevice,
+        owner,
+        'createBindGroup',
+        descriptor,
+        DESCRIPTOR_KEYS.bindGroup
+      );
     },
     createRenderPipeline(descriptor): WebGPUNativeResourcePort {
-      return createResource(nativeDevice, owner, 'createRenderPipeline', descriptor, DESCRIPTOR_KEYS.renderPipeline);
+      return createResource(
+        nativeDevice,
+        owner,
+        'createRenderPipeline',
+        descriptor,
+        DESCRIPTOR_KEYS.renderPipeline
+      );
     },
     createComputePipeline(descriptor): WebGPUNativeResourcePort {
-      return createResource(nativeDevice, owner, 'createComputePipeline', descriptor, DESCRIPTOR_KEYS.computePipeline);
+      return createResource(
+        nativeDevice,
+        owner,
+        'createComputePipeline',
+        descriptor,
+        DESCRIPTOR_KEYS.computePipeline
+      );
     },
     async createRenderPipelineAsync(descriptor): Promise<WebGPUNativeResourcePort> {
-      return createResourceAsync(nativeDevice, owner, 'createRenderPipelineAsync', descriptor, DESCRIPTOR_KEYS.renderPipeline);
+      return createResourceAsync(
+        nativeDevice,
+        owner,
+        'createRenderPipelineAsync',
+        descriptor,
+        DESCRIPTOR_KEYS.renderPipeline
+      );
     },
     async createComputePipelineAsync(descriptor): Promise<WebGPUNativeResourcePort> {
-      return createResourceAsync(nativeDevice, owner, 'createComputePipelineAsync', descriptor, DESCRIPTOR_KEYS.computePipeline);
+      return createResourceAsync(
+        nativeDevice,
+        owner,
+        'createComputePipelineAsync',
+        descriptor,
+        DESCRIPTOR_KEYS.computePipeline
+      );
     },
     createCommandEncoder(descriptor) {
       return createBrowserWebGPUCommandEncoderPort(nativeDevice, owner, descriptor);
     },
-    pushErrorScope(filter): void { callRequired(nativeDevice, 'pushErrorScope', [filter]); },
+    pushErrorScope(filter): void {
+      callRequired(nativeDevice, 'pushErrorScope', [filter]);
+    },
     async popErrorScope(): Promise<WebGPUNativeErrorPort | null> {
       const error = await callRequired(nativeDevice, 'popErrorScope', []);
       return error === null ? null : normalizeNativeError(error);
@@ -113,7 +192,9 @@ export function createBrowserWebGPUDevicePort(
         handler(normalizeNativeError(Reflect.get(eventObject, 'error')));
       };
       callRequired(nativeDevice, 'addEventListener', ['uncapturederror', listener]);
-      return () => { callRequired(nativeDevice, 'removeEventListener', ['uncapturederror', listener]); };
+      return () => {
+        callRequired(nativeDevice, 'removeEventListener', ['uncapturederror', listener]);
+      };
     }
   };
   nativeDevices.set(port, nativeDevice);
@@ -123,7 +204,8 @@ export function createBrowserWebGPUDevicePort(
 
 export function unwrapBrowserWebGPUDevice(device: WebGPUNativeDevicePort): object {
   const native = nativeDevices.get(device);
-  if (native === undefined) throw new Error('WebGPU device was not created by the browser device port.');
+  if (native === undefined)
+    throw new Error('WebGPU device was not created by the browser device port.');
   return native;
 }
 
@@ -131,7 +213,8 @@ export function getBrowserWebGPUDeviceOwner(
   device: WebGPUNativeDevicePort
 ): BrowserWebGPUDeviceOwner {
   const owner = deviceOwners.get(device);
-  if (owner === undefined) throw new Error('WebGPU device was not created by the browser device port.');
+  if (owner === undefined)
+    throw new Error('WebGPU device was not created by the browser device port.');
   return owner;
 }
 
@@ -139,8 +222,9 @@ export function lowerBrowserDeviceRequest(
   nativeAdapter: object,
   request: WebGPUNativeDeviceRequest
 ): Promise<WebGPUNativeDevicePort> {
-  return Promise.resolve(callRequired(nativeAdapter, 'requestDevice', [lowerBrowserDeviceDescriptor(request)]))
-    .then((device) => createBrowserWebGPUDevicePort(device, request));
+  return Promise.resolve(
+    callRequired(nativeAdapter, 'requestDevice', [lowerBrowserDeviceDescriptor(request)])
+  ).then((device) => createBrowserWebGPUDevicePort(device, request));
 }
 
 function createResource(
@@ -208,7 +292,8 @@ function errorType(name: string): WebGPUNativeErrorType {
 
 function callRequired(target: object, key: string, args: readonly unknown[]): unknown {
   const method = Reflect.get(target, key);
-  if (typeof method !== 'function') throw new TypeError(`Native WebGPU object does not implement ${key}().`);
+  if (typeof method !== 'function')
+    throw new TypeError(`Native WebGPU object does not implement ${key}().`);
   return Reflect.apply(method, target, args);
 }
 
@@ -218,12 +303,14 @@ function callOptional(target: object, key: string): void {
 }
 
 function requireObject(value: unknown, label: string): object {
-  if (typeof value !== 'object' || value === null) throw new TypeError(`${label} is not an object.`);
+  if (typeof value !== 'object' || value === null)
+    throw new TypeError(`${label} is not an object.`);
   return value;
 }
 
 function requireNumber(record: Readonly<Record<string, unknown>>, key: string): number {
   const value = record[key];
-  if (typeof value !== 'number') throw new TypeError(`WebGPU descriptor field ${key} must be a number.`);
+  if (typeof value !== 'number')
+    throw new TypeError(`WebGPU descriptor field ${key} must be a number.`);
   return value;
 }

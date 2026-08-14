@@ -1,7 +1,7 @@
 import type { RHIShaderModule } from '../contracts/resource';
 import type { RHIShaderModuleDescriptor } from '../contracts/descriptor';
 import { WebGL2ResourceBase } from './resource';
-import type { WebGL2DeviceOwner } from './resource-types';
+import type { WebGL2DeviceOwner } from './types';
 
 export class WebGL2ShaderModule extends WebGL2ResourceBase implements RHIShaderModule {
   readonly kind = 'shader-module';

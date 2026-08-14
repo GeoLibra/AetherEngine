@@ -14,7 +14,7 @@ import type {
   RenderQuerySnapshot,
   RenderQuerySpec
 } from '../rendering/render-world';
-import type { RenderView } from '../rendering/visibility';
+import type { RenderView } from '../rendering/visibility/types';
 
 export type RenderSystemScope = 'global' | 'per-view';
 

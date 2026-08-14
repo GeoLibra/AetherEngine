@@ -1,4 +1,4 @@
-import type { WebGL2NativeContextPort } from './native-types';
+import type { WebGL2NativeContextPort } from './types';
 
 export const WEBGL2_CLIP_CONTROL_EXTENSION = 'EXT_clip_control';
 

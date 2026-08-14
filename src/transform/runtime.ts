@@ -3,13 +3,9 @@ import { defineResource } from '../ecs/resource';
 import type { Entity } from '../ecs/types';
 import type { World } from '../ecs/world';
 import { Mat4, Quat } from '../math';
-import type { Quaternion, Vec3 } from '../math';
+import type { Quaternion, Vec3 } from '../math/types';
 import { LocalTransform, WorldTransform } from './components';
-import {
-  markTransformHistory,
-  TransformHistory,
-  TransformHistoryResource
-} from './history';
+import { markTransformHistory, TransformHistory, TransformHistoryResource } from './history';
 import {
   updateWorldOrigin,
   worldPositionRelativeToOrigin,
@@ -61,10 +57,7 @@ export class TransformRuntime {
     });
   }
 
-  static install(
-    world: World,
-    options: TransformRuntimeOptions = {}
-  ): TransformRuntime {
+  static install(world: World, options: TransformRuntimeOptions = {}): TransformRuntime {
     const existing = installed.get(world);
     if (existing) {
       if (options.cellSize !== undefined && options.cellSize !== existing.origin.cellSize) {
@@ -126,9 +119,7 @@ export class TransformRuntime {
   setLocal(entity: Entity, patch: LocalTransformPatch): boolean {
     const local = this.requireLocal(entity);
     const translation = patch.translation ?? tuple3(local.translation);
-    const rotation = patch.rotation
-      ? Quat.normalize(patch.rotation)
-      : tuple4(local.rotation);
+    const rotation = patch.rotation ? Quat.normalize(patch.rotation) : tuple4(local.rotation);
     const scale = patch.scale ?? tuple3(local.scale);
     assertFiniteVector('translation', translation);
     assertFiniteVector('scale', scale);
@@ -207,11 +198,7 @@ export class TransformRuntime {
       : ([0, 0, 0] as Vec3);
     const snapshots = new Map<Entity, RenderTransformSnapshot>();
     for (const [entity, derived] of this.world.query([WorldTransform])) {
-      const matrix = interpolateTransform(
-        derived.previousMatrix,
-        derived.matrix,
-        alpha
-      );
+      const matrix = interpolateTransform(derived.previousMatrix, derived.matrix, alpha);
       matrix[12] = matrix[12]! - camera[0];
       matrix[13] = matrix[13]! - camera[1];
       matrix[14] = matrix[14]! - camera[2];
@@ -312,9 +299,7 @@ export class TransformRuntime {
     for (const root of roots) {
       const parent = this.world.getParent(root);
       const parentMatrix =
-        parent === null
-          ? Mat4.identity()
-          : new Float32Array(this.requireWorld(parent).matrix);
+        parent === null ? Mat4.identity() : new Float32Array(this.requireWorld(parent).matrix);
       const result = this.propagateSubtree(root, parentMatrix, 0);
       propagated += result.propagated;
       maxDepth = Math.max(maxDepth, result.maxDepth);
@@ -338,17 +323,11 @@ export class TransformRuntime {
     while (stack.length > 0) {
       const current = stack.pop()!;
       const local = this.world.getComponent(current.entity, LocalTransform);
-      let worldMatrix: Float32Array<ArrayBufferLike> = new Float32Array(
-        current.parentMatrix
-      );
+      let worldMatrix: Float32Array<ArrayBufferLike> = new Float32Array(current.parentMatrix);
       if (local) {
         worldMatrix = Mat4.multiply(
           current.parentMatrix,
-          Mat4.fromTRS(
-            tuple3(local.translation),
-            tuple4(local.rotation),
-            tuple3(local.scale)
-          )
+          Mat4.fromTRS(tuple3(local.translation), tuple4(local.rotation), tuple3(local.scale))
         );
         this.writeWorld(current.entity, worldMatrix);
         propagated++;

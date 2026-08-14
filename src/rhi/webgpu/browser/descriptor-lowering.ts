@@ -1,4 +1,4 @@
-import type { WebGPUNativeDeviceRequest } from '../native-types';
+import type { WebGPUNativeDeviceRequest } from '../types';
 
 export function lowerBrowserDeviceDescriptor(
   request: WebGPUNativeDeviceRequest
@@ -20,7 +20,13 @@ export function lowerBrowserTextureDescriptor(
   descriptor: Readonly<Record<string, unknown>>
 ): Readonly<Record<string, unknown>> {
   const lowered = copyDefined(descriptor, [
-    'label', 'mipLevelCount', 'sampleCount', 'dimension', 'format', 'usage', 'viewFormats'
+    'label',
+    'mipLevelCount',
+    'sampleCount',
+    'dimension',
+    'format',
+    'usage',
+    'viewFormats'
   ]);
   const size = descriptor.size;
   if (!isRecord(size)) throw new TypeError('WebGPU texture descriptor requires an object size.');
@@ -50,7 +56,8 @@ export function lowerBrowserDescriptor(
 function lowerDescriptorValue(value: unknown, lowerResource: (value: unknown) => unknown): unknown {
   const loweredResource = lowerResource(value);
   if (loweredResource !== value) return loweredResource;
-  if (Array.isArray(value)) return Object.freeze(value.map((entry) => lowerDescriptorValue(entry, lowerResource)));
+  if (Array.isArray(value))
+    return Object.freeze(value.map((entry) => lowerDescriptorValue(entry, lowerResource)));
   if (!isRecord(value)) return value;
   const result: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
@@ -77,6 +84,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 
 function requireNumber(record: Readonly<Record<string, unknown>>, key: string): number {
   const value = record[key];
-  if (typeof value !== 'number') throw new TypeError(`WebGPU descriptor field ${key} must be a number.`);
+  if (typeof value !== 'number')
+    throw new TypeError(`WebGPU descriptor field ${key} must be a number.`);
   return value;
 }

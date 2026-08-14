@@ -1,7 +1,7 @@
 import type { AdapterCapabilities, FeatureSupport, RHIFeature } from '../contracts/capability';
 import { createCapabilitySnapshot, RHI_FEATURES } from '../core/capabilities';
 import { selectWebGL2ClipDepthMode } from './clip-depth';
-import type { WebGL2AdapterFacts, WebGL2NativeContextPort } from './native-types';
+import type { WebGL2AdapterFacts, WebGL2NativeContextPort } from './types';
 
 const TIMER_QUERY_EXTENSION = 'EXT_disjoint_timer_query_webgl2';
 

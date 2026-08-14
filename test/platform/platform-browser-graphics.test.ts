@@ -1,7 +1,15 @@
 import { describe, expect, test } from 'vitest';
-import { createBrowserGraphics } from '../../src';
+import {
+  BrowserGraphicsBootstrapError as PublicBrowserGraphicsBootstrapError,
+  createBrowserGraphics
+} from '../../src';
+import { BrowserGraphicsBootstrapError } from '../../src/platform/browser-graphics-error';
 
 describe('browser graphics bootstrap', () => {
+  test('preserves the bootstrap error public runtime identity', () => {
+    expect(PublicBrowserGraphicsBootstrapError).toBe(BrowserGraphicsBootstrapError);
+  });
+
   test('probes WebGPU through the adapter before attaching the target canvas', async () => {
     const events: string[] = [];
     const canvas = {
@@ -28,6 +36,7 @@ describe('browser graphics bootstrap', () => {
       surface: { width: 640, height: 360 }
     });
 
+    await expect(result).rejects.toBeInstanceOf(BrowserGraphicsBootstrapError);
     await expect(result).rejects.toMatchObject({
       code: 'platform/browser-graphics-unavailable',
       attempts: [

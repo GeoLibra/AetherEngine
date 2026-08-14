@@ -13,8 +13,8 @@ import type {
 import { toResourceRef } from '../core/resource-ref';
 import { getWebGL2BindGroupResources, validateWebGL2BindGroupSlot } from './bindings';
 import { assertWebGL2Resource } from './resource';
-import type { WebGL2DeviceOwner } from './resource-types';
-import type { WebGL2ReplayCommand } from './command-types';
+import type { WebGL2DeviceOwner } from './types';
+import type { WebGL2ReplayCommand } from './types';
 import { throwWebGL2Unsupported } from './unsupported';
 
 export interface WebGL2PassController {

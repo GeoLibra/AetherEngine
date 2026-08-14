@@ -1,4 +1,4 @@
-import type { NativeRuntimeControllerOptions, JsRuntimePort, NativeThreadPort } from './runtime-types';
+import type { NativeRuntimeControllerOptions, JsRuntimePort, NativeThreadPort } from './types';
 import { assertNativeJsThread } from './thread';
 
 export class NativeRuntimeOperationError extends Error {
@@ -23,7 +23,9 @@ export class NativeRuntimeController {
     this.runtime = options.ownership === 'dedicated' ? options.createRuntime() : options.runtime;
   }
 
-  isOnJsThread(): boolean { return this.threads.currentThread() === this.threads.jsThread; }
+  isOnJsThread(): boolean {
+    return this.threads.currentThread() === this.threads.jsThread;
+  }
 
   enterJsThread<T>(operation: string, run: () => T): T {
     this.assertActive(operation);
@@ -33,14 +35,18 @@ export class NativeRuntimeController {
 
   runOnJsThread<T>(operation: string, run: () => T | Promise<T>): Promise<T> {
     if (this.destroyed) {
-      return Promise.reject(new NativeRuntimeOperationError(operation, new Error('Native runtime is destroyed.')));
+      return Promise.reject(
+        new NativeRuntimeOperationError(operation, new Error('Native runtime is destroyed.'))
+      );
     }
     if (this.threads.currentThread() === this.threads.jsThread) return this.run(operation, run);
     return new Promise<T>((resolve, reject) => {
       this.threads.dispatchToJs(() => {
         // Destruction wins over queued work so callbacks cannot enter a dead runtime.
         if (this.destroyed) {
-          reject(new NativeRuntimeOperationError(operation, new Error('Native runtime is destroyed.')));
+          reject(
+            new NativeRuntimeOperationError(operation, new Error('Native runtime is destroyed.'))
+          );
           return;
         }
         void this.run(operation, run).then(resolve, reject);
@@ -59,12 +65,17 @@ export class NativeRuntimeController {
   }
 
   private run<T>(operation: string, run: () => T | Promise<T>): Promise<T> {
-    return Promise.resolve().then(run).catch((cause: unknown) => {
-      throw cause instanceof NativeRuntimeOperationError ? cause : new NativeRuntimeOperationError(operation, cause);
-    });
+    return Promise.resolve()
+      .then(run)
+      .catch((cause: unknown) => {
+        throw cause instanceof NativeRuntimeOperationError
+          ? cause
+          : new NativeRuntimeOperationError(operation, cause);
+      });
   }
 
   private assertActive(operation: string): void {
-    if (this.destroyed) throw new NativeRuntimeOperationError(operation, new Error('Native runtime is destroyed.'));
+    if (this.destroyed)
+      throw new NativeRuntimeOperationError(operation, new Error('Native runtime is destroyed.'));
   }
 }

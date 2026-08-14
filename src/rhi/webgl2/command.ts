@@ -30,12 +30,12 @@ import {
   assertWebGL2Resource,
   normalizeExtent
 } from './resource';
-import type { WebGL2DeviceOwner } from './resource-types';
+import type { WebGL2DeviceOwner } from './types';
 import type {
   WebGL2ImageCopyTexture,
   WebGL2RenderPassSnapshot,
   WebGL2ReplayCommand
-} from './command-types';
+} from './types';
 import { WebGL2RenderPassEncoder, type WebGL2PassController } from './pass';
 import { throwWebGL2Unsupported } from './unsupported';
 import { validateBufferTextureCopy } from '../core/texture-copy-layout';

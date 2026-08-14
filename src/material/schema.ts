@@ -1,5 +1,5 @@
 import { defineSchema } from '../schema';
-import type { FieldId, ValueTypeDefinition } from '../schema';
+import type { FieldId, ValueTypeDefinition } from '../schema/types';
 import { MaterialDiagnosticError } from './diagnostics';
 import type {
   MaterialField,

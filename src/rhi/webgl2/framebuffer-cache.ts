@@ -1,10 +1,10 @@
 import type { RHIResource, RHITextureView } from '../contracts/resource';
 import { createFramebufferCacheKey } from './cache-key';
-import type { WebGL2RenderPassSnapshot } from './command-types';
+import type { WebGL2RenderPassSnapshot } from './types';
 import type { WebGL2Metrics } from './metrics';
-import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
+import type { WebGL2NativeContextPort, WebGL2NativeObject } from './types';
 import { getWebGL2Handle } from './resource';
-import type { WebGL2DeviceOwner } from './resource-types';
+import type { WebGL2DeviceOwner } from './types';
 
 interface FramebufferEntry {
   readonly handle: WebGL2NativeObject;

@@ -1,11 +1,18 @@
 import type { NativeRuntimeController } from '../native-runtime/runtime';
 import { NativeLifecycleCoordinator } from '../native-runtime/lifecycle';
-import type { NativeBackgroundPolicy } from '../native-runtime/lifecycle-types';
+import type { NativeBackgroundPolicy } from '../native-runtime/types';
 import { MutablePlatformServiceRegistry } from './services';
 import { PlatformWindow } from './window';
 import { NativeRunner } from './native-runner';
-import type { NativePlatformLifecycleEvent, NativePlatformPort } from './native-host-types';
-import type { Host, HostState, RunnerOptions, WindowId, WindowOptions } from './types';
+import type {
+  Host,
+  HostState,
+  NativePlatformLifecycleEvent,
+  NativePlatformPort,
+  RunnerOptions,
+  WindowId,
+  WindowOptions
+} from './types';
 
 interface NativeWindowLifecycle {
   closingFromPort: boolean;
@@ -41,10 +48,13 @@ export class NativeHost implements Host {
   ) {
     this.clock = port.clock;
     this.lifecycle = new NativeLifecycleCoordinator(backgroundPolicy);
-    this.unsubscribeLifecycle = port.onLifecycle?.((event) => this.handleLifecycle(event)) ?? (() => undefined);
+    this.unsubscribeLifecycle =
+      port.onLifecycle?.((event) => this.handleLifecycle(event)) ?? (() => undefined);
   }
 
-  get state(): HostState { return this.currentState; }
+  get state(): HostState {
+    return this.currentState;
+  }
 
   async createWindow(options: WindowOptions): Promise<PlatformWindow> {
     this.assertActive('create a window');
@@ -76,10 +86,16 @@ export class NativeHost implements Host {
     );
     try {
       lifecycle.unsubscribeMetrics = windowPort.onMetrics((update) => window.queueMetrics(update));
-      lifecycle.unsubscribeSurface = windowPort.onSurface((target) => window.queueSurfaceTarget(target));
+      lifecycle.unsubscribeSurface = windowPort.onSurface((target) =>
+        window.queueSurfaceTarget(target)
+      );
       lifecycle.unsubscribeClose = windowPort.onClose(() => {
         lifecycle.closingFromPort = true;
-        try { window.close(); } finally { lifecycle.closingFromPort = false; }
+        try {
+          window.close();
+        } finally {
+          lifecycle.closingFromPort = false;
+        }
       });
     } catch (error) {
       rollbackWindowSetup(window, error, 'NativeHost');
@@ -111,14 +127,17 @@ export class NativeHost implements Host {
     return runner;
   }
 
-  windows(): readonly PlatformWindow[] { return Object.freeze([...this.ownedWindows]); }
+  windows(): readonly PlatformWindow[] {
+    return Object.freeze([...this.ownedWindows]);
+  }
 
   destroy(): void {
     if (this.currentState === 'destroyed') return;
     this.currentState = 'destroyed';
     const errors: unknown[] = [];
     // Teardown is best-effort across every owned layer; one faulty port must not strand the runtime.
-    for (const runner of this.runners) captureCleanup(errors, () => runner.requestStop('host-destroyed'));
+    for (const runner of this.runners)
+      captureCleanup(errors, () => runner.requestStop('host-destroyed'));
     // Closing mutates the registry, so teardown must iterate a stable snapshot.
     for (const window of [...this.ownedWindows]) captureCleanup(errors, () => window.close());
     captureCleanup(errors, this.unsubscribeLifecycle);
@@ -142,14 +161,30 @@ export class NativeHost implements Host {
   private handleLifecycle(event: NativePlatformLifecycleEvent): void {
     this.runtime.enterJsThread('native.lifecycle', () => {
       switch (event.kind) {
-        case 'foreground': this.lifecycle.foreground(); return;
-        case 'background': this.lifecycle.background(); return;
-        case 'audio-interruption': this.lifecycle.audioInterrupted(event.interrupted); return;
-        case 'orientation': this.lifecycle.orientation(event.orientation); return;
-        case 'resize': this.lifecycle.resize(event.size); return;
-        case 'surface-lost': this.lifecycle.surfaceLost(event.generation); return;
-        case 'surface-recreated': this.lifecycle.surfaceRecreated(event.generation); return;
-        case 'memory-pressure': this.lifecycle.memoryPressure(event.pressure); return;
+        case 'foreground':
+          this.lifecycle.foreground();
+          return;
+        case 'background':
+          this.lifecycle.background();
+          return;
+        case 'audio-interruption':
+          this.lifecycle.audioInterrupted(event.interrupted);
+          return;
+        case 'orientation':
+          this.lifecycle.orientation(event.orientation);
+          return;
+        case 'resize':
+          this.lifecycle.resize(event.size);
+          return;
+        case 'surface-lost':
+          this.lifecycle.surfaceLost(event.generation);
+          return;
+        case 'surface-recreated':
+          this.lifecycle.surfaceRecreated(event.generation);
+          return;
+        case 'memory-pressure':
+          this.lifecycle.memoryPressure(event.pressure);
+          return;
       }
     });
   }
@@ -162,14 +197,21 @@ const DEFAULT_NATIVE_BACKGROUND_POLICY: NativeBackgroundPolicy = Object.freeze({
 });
 
 function captureCleanup(errors: unknown[], cleanup: () => void): void {
-  try { cleanup(); } catch (error) { errors.push(error); }
+  try {
+    cleanup();
+  } catch (error) {
+    errors.push(error);
+  }
 }
 
 function rollbackWindowSetup(window: PlatformWindow, setupError: unknown, hostName: string): never {
   try {
     window.close();
   } catch (cleanupError) {
-    throw new AggregateError([setupError, cleanupError], `${hostName} window setup and cleanup failed.`);
+    throw new AggregateError(
+      [setupError, cleanupError],
+      `${hostName} window setup and cleanup failed.`
+    );
   }
   throw setupError;
 }

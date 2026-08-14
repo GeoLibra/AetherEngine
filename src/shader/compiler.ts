@@ -5,7 +5,7 @@ import { parseFluxShader } from './parser';
 import { createShaderBindingManifest } from './layout';
 import { resolveShaderSource } from './source';
 import { resolveShaderVariants } from './variant';
-import type { WebGL2ShaderTranslationPort } from '../rhi/webgl2/shader-types';
+import type { WebGL2ShaderTranslationPort } from '../rhi/webgl2/types';
 import type { WebGL2ClipDepthMode } from '../rhi/webgl2/clip-depth';
 import type {
   ShaderBindingRequirement,

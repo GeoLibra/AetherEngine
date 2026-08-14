@@ -1,4 +1,5 @@
-import { ShaderParameterWriter, type BufferLayoutManifest } from '../../shader';
+import { ShaderParameterWriter } from '../../shader';
+import type { BufferLayoutManifest } from '../../shader/types';
 import { normalizedLightDirection, orderLightsForGpu } from './light';
 import type { PreparedLight } from './types';
 

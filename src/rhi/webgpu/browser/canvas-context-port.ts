@@ -2,7 +2,7 @@ import type {
   WebGPUNativeCanvasContextPort,
   WebGPUNativeSurfaceAcquireResult,
   WebGPUNativeSurfaceConfiguration
-} from '../native-types';
+} from '../types';
 import { BrowserWebGPUTexturePort, type BrowserWebGPUDeviceOwner } from './resource-port';
 import { getBrowserWebGPUDeviceOwner, unwrapBrowserWebGPUDevice } from './device-port';
 

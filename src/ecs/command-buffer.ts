@@ -1,14 +1,8 @@
 import { cloneUnknown } from '../schema/migration';
 import { defineResource } from './resource';
 import { validateComponentInput } from './component';
-import type {
-  CommandApplyResult,
-  CommandEntity,
-  ComponentBundle,
-  SpawnTicket,
-  WorldCommand
-} from './command-types';
-import { SpawnTicket as SpawnTicketValue } from './command-types';
+import type { CommandApplyResult, CommandEntity, ComponentBundle, WorldCommand } from './types';
+import { SpawnTicket } from './spawn-ticket';
 import type { ComponentInput, ComponentType, Entity, RelationType } from './types';
 import type { World } from './world';
 
@@ -30,7 +24,7 @@ export class CommandBuffer {
   }
 
   spawn(bundle: ComponentBundle = []): SpawnTicket {
-    const ticket = new SpawnTicketValue(this.owner, this.nextTicket++);
+    const ticket = new SpawnTicket(this.owner, this.nextTicket++);
     this.commands.push({ kind: 'spawn', ticket, bundle: cloneBundle(bundle) });
     return ticket;
   }
@@ -63,11 +57,7 @@ export class CommandBuffer {
     return this;
   }
 
-  setRelation(
-    source: CommandEntity,
-    relation: RelationType,
-    target?: CommandEntity
-  ): this {
+  setRelation(source: CommandEntity, relation: RelationType, target?: CommandEntity): this {
     this.commands.push(
       target === undefined
         ? { kind: 'relation', source, relation }
@@ -96,11 +86,7 @@ export class CommandBuffer {
           this.despawn(remapEntity(command.entity, tickets));
           break;
         case 'insert':
-          this.insert(
-            remapEntity(command.entity, tickets),
-            command.component,
-            command.data
-          );
+          this.insert(remapEntity(command.entity, tickets), command.component, command.data);
           break;
         case 'remove':
           this.remove(remapEntity(command.entity, tickets), command.component);
@@ -159,11 +145,7 @@ export class CommandBuffer {
           if (command.target === undefined) {
             world.removeRelation(source, command.relation);
           } else {
-            world.addRelation(
-              source,
-              command.relation,
-              resolveEntity(command.target, resolved)
-            );
+            world.addRelation(source, command.relation, resolveEntity(command.target, resolved));
           }
           break;
         }
@@ -204,13 +186,7 @@ export class CommandBuffer {
           break;
         }
         case 'insert': {
-          const target = validateEntity(
-            command.entity,
-            world,
-            this.owner,
-            availableTickets,
-            dead
-          );
+          const target = validateEntity(command.entity, world, this.owner, availableTickets, dead);
           validateComponent(world, command.component, command.data);
           setVirtualComponent(componentOverrides, target, command.component, true);
           break;
@@ -229,25 +205,13 @@ export class CommandBuffer {
           break;
         }
         case 'relation': {
-          const source = validateEntity(
-            command.source,
-            world,
-            this.owner,
-            availableTickets,
-            dead
-          );
+          const source = validateEntity(command.source, world, this.owner, availableTickets, dead);
           const relationMap = getRelationMap(relationOverrides, command.relation);
           if (command.target === undefined) {
             relationMap.set(entityKey(source), null);
             break;
           }
-          const target = validateEntity(
-            command.target,
-            world,
-            this.owner,
-            availableTickets,
-            dead
-          );
+          const target = validateEntity(command.target, world, this.owner, availableTickets, dead);
           relationMap.set(entityKey(source), target);
           if (
             command.relation.acyclic &&
@@ -280,9 +244,7 @@ function hasVirtualComponent(
   if (value !== undefined) {
     return value;
   }
-  return target instanceof SpawnTicketValue
-    ? false
-    : world.hasComponent(target, component);
+  return target instanceof SpawnTicket ? false : world.hasComponent(target, component);
 }
 
 function setVirtualComponent(
@@ -318,7 +280,7 @@ function validateEntity(
   availableTickets: ReadonlySet<SpawnTicket>,
   dead: ReadonlySet<string>
 ): VirtualTarget {
-  if (target instanceof SpawnTicketValue) {
+  if (target instanceof SpawnTicket) {
     if (target.owner !== owner) {
       throw new Error('SpawnTicket belongs to a different CommandBuffer.');
     }
@@ -355,7 +317,7 @@ function createsCycle(
     visited.add(key);
     if (overrides.has(key)) {
       current = overrides.get(key) ?? null;
-    } else if (current instanceof SpawnTicketValue) {
+    } else if (current instanceof SpawnTicket) {
       current = null;
     } else {
       current = world.getRelation(current, relation)?.target ?? null;
@@ -377,7 +339,7 @@ function getRelationMap(
 }
 
 function resolveEntity(target: CommandEntity, resolved: ReadonlyMap<SpawnTicket, Entity>): Entity {
-  if (!(target instanceof SpawnTicketValue)) {
+  if (!(target instanceof SpawnTicket)) {
     return target;
   }
   const entity = resolved.get(target);
@@ -391,7 +353,7 @@ function remapEntity(
   target: CommandEntity,
   tickets: ReadonlyMap<SpawnTicket, SpawnTicket>
 ): CommandEntity {
-  if (!(target instanceof SpawnTicketValue)) {
+  if (!(target instanceof SpawnTicket)) {
     return target;
   }
   const remapped = tickets.get(target);
@@ -402,7 +364,7 @@ function remapEntity(
 }
 
 function entityKey(target: VirtualTarget): string {
-  return target instanceof SpawnTicketValue ? `ticket:${target.index}` : `entity:${target}`;
+  return target instanceof SpawnTicket ? `ticket:${target.index}` : `entity:${target}`;
 }
 
 function cloneBundle(bundle: ComponentBundle): ComponentBundle {

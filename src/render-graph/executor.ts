@@ -41,7 +41,7 @@ export type {
   RestrictedSampler,
   RestrictedShaderModule,
   RestrictedTextureView
-} from './restricted-context-types';
+} from './types';
 import type { AcquiredHistorySlot, HistoryIdentity, HistoryRegistry } from './history';
 import type { GraphHandle } from './types';
 import type { RenderGraphHistoryDebugBinding } from './debug-ir';

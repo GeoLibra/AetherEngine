@@ -65,12 +65,12 @@ export {
 } from './ecs/component';
 export { World } from './ecs/world';
 export type { QueryState } from './ecs/query-state';
-export type { QueryCandidateSource, QueryDebugPlan } from './ecs/query-types';
+export type { QueryCandidateSource, QueryDebugPlan } from './ecs/types';
 export type { MonotonicClock, WorldMetricsSnapshot, WorldOptions } from './ecs/world-metrics';
 export { defineResource } from './ecs/resource';
 export { ChangeReader } from './ecs/change-tracker';
 export { CommandBuffer, CommandBufferResource } from './ecs/command-buffer';
-export { SpawnTicket } from './ecs/command-types';
+export { SpawnTicket } from './ecs/spawn-ticket';
 export { DeferredWorld, ObserverRegistry } from './ecs/observer';
 export type {
   ChangeReaderOptions,
@@ -104,7 +104,7 @@ export type {
   ComponentBundle,
   ComponentCommandValue,
   WorldCommand
-} from './ecs/command-types';
+} from './ecs/types';
 export type {
   ObserverDescriptor,
   ObserverEvent,
@@ -126,10 +126,9 @@ export {
   TimeDiagnostics,
   TimeDiagnosticsResource,
   TimePolicy,
-  TimePolicyResource,
-  TimeRuntimeResource
+  TimePolicyResource
 } from './app/time';
-export type { FixedOverrunPolicy, TimePolicyOptions } from './app/time-types';
+export type { FixedOverrunPolicy, TimePolicyOptions } from './app/types';
 export * from './jobs';
 export * from './dynamic-plugins';
 export * from './platform';

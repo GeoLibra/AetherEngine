@@ -1,5 +1,5 @@
 import type { RenderEntityId } from '../render-world';
-import type { RenderView } from '../visibility';
+import type { RenderView } from '../visibility/types';
 import {
   compareSpatialEntries,
   isSpatialEntryVisible,

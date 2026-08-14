@@ -1,4 +1,4 @@
-import type { WorldBounds } from '../visibility';
+import type { WorldBounds } from '../visibility/types';
 import { orderLightsForGpu } from './light';
 import type {
   CpuLightListCapacity,

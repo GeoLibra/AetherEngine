@@ -2,10 +2,9 @@ import { describe, expect, test } from 'vitest';
 import {
   assertGraphHandle,
   createGraphHandle,
-  isGraphHandle,
-  type BufferHandle,
-  type TextureHandle
-} from '../../src/render-graph/types';
+  isGraphHandle
+} from '../../src/render-graph/handles';
+import type { BufferHandle, TextureHandle } from '../../src/render-graph/types';
 
 const textureHandle: TextureHandle = createGraphHandle('texture', 7, 2, 3);
 

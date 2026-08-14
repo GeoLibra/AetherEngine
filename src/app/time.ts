@@ -1,4 +1,4 @@
-import type { FixedOverrunPolicy, TimePolicyOptions } from './time-types';
+import type { FixedOverrunPolicy, TimePolicyOptions } from './types';
 import { defineResource } from '../ecs/resource';
 
 const DEFAULT_FIXED_STEP = 1 / 60;
@@ -136,11 +136,7 @@ export class TimeRuntime {
     return this.accumulator + fixedStepEpsilon(policy.fixedStep) >= policy.fixedStep;
   }
 
-  beginFixedStep(
-    fixedTime: FixedTime,
-    substep: number,
-    consumeAccumulator = true
-  ): void {
+  beginFixedStep(fixedTime: FixedTime, substep: number, consumeAccumulator = true): void {
     if (consumeAccumulator) {
       this.accumulator = Math.max(0, this.accumulator - fixedTime.step);
     }
@@ -155,10 +151,7 @@ export class TimeRuntime {
     diagnostics: TimeDiagnostics,
     accumulatorSubsteps: number
   ): void {
-    if (
-      accumulatorSubsteps === policy.maxSubsteps &&
-      this.canRunFixedStep(policy)
-    ) {
+    if (accumulatorSubsteps === policy.maxSubsteps && this.canRunFixedStep(policy)) {
       diagnostics.overrunFrames++;
       if (policy.overrun === 'discard') {
         const wholeSteps = Math.floor(

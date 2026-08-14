@@ -1,8 +1,19 @@
 import type { GPUImageCopyTexture, RHIBuffer } from '../contracts/resource';
-import type { BufferWriteRange, GPUExtent3D, GPUImageDataLayout, RHIUploadData } from '../contracts/webgpu';
-import { WebGL2Buffer, WebGL2Texture, assertWebGL2Resource, getWebGL2Handle, normalizeExtent } from './resource';
-import type { WebGL2DeviceOwner } from './resource-types';
-import type { WebGL2NativeContextPort } from './native-types';
+import type {
+  BufferWriteRange,
+  GPUExtent3D,
+  GPUImageDataLayout,
+  RHIUploadData
+} from '../contracts/webgpu';
+import {
+  WebGL2Buffer,
+  WebGL2Texture,
+  assertWebGL2Resource,
+  getWebGL2Handle,
+  normalizeExtent
+} from './resource';
+import type { WebGL2DeviceOwner } from './types';
+import type { WebGL2NativeContextPort } from './types';
 import type { WebGL2Metrics } from './metrics';
 
 export class WebGL2UploadQueue {
@@ -17,7 +28,8 @@ export class WebGL2UploadQueue {
     const bytes = copyBytes(data);
     validateBufferRange(offset, bytes.byteLength, target.size);
     const write = this.native.writeBuffer;
-    if (write === undefined) throw new Error('Native WebGL2 context does not support buffer uploads.');
+    if (write === undefined)
+      throw new Error('Native WebGL2 context does not support buffer uploads.');
     write.call(this.native, getWebGL2Handle(target, this.owner), offset, bytes);
     this.webgl2Metrics.recordUpload(bytes.byteLength);
     this.webgl2Metrics.recordGLCall();
@@ -31,7 +43,8 @@ export class WebGL2UploadQueue {
       return { offset: range.offset, bytes };
     });
     const write = this.native.writeBuffer;
-    if (write === undefined) throw new Error('Native WebGL2 context does not support buffer uploads.');
+    if (write === undefined)
+      throw new Error('Native WebGL2 context does not support buffer uploads.');
     const handle = getWebGL2Handle(target, this.owner);
     for (const entry of writes) {
       write.call(this.native, handle, entry.offset, entry.bytes);
@@ -49,11 +62,18 @@ export class WebGL2UploadQueue {
     validateDataLayout(dataLayout);
     const copySize = validateExtent(size);
     const resource = assertWebGL2Resource(destination.texture, this.owner);
-    if (!(resource instanceof WebGL2Texture)) throw new Error('WebGL2Queue requires a WebGL2 texture.');
-    const lowered = lowerTextureDestination(destination, resource, getWebGL2Handle(resource, this.owner), copySize);
+    if (!(resource instanceof WebGL2Texture))
+      throw new Error('WebGL2Queue requires a WebGL2 texture.');
+    const lowered = lowerTextureDestination(
+      destination,
+      resource,
+      getWebGL2Handle(resource, this.owner),
+      copySize
+    );
     const bytes = copyBytes(data);
     const write = this.native.writeTexture;
-    if (write === undefined) throw new Error('Native WebGL2 context does not support texture uploads.');
+    if (write === undefined)
+      throw new Error('Native WebGL2 context does not support texture uploads.');
     write.call(this.native, lowered, bytes, Object.freeze({ ...dataLayout }), copySize);
     this.webgl2Metrics.recordUpload(bytes.byteLength);
     this.webgl2Metrics.recordGLCall();
@@ -61,7 +81,8 @@ export class WebGL2UploadQueue {
 
   private validateBuffer(buffer: RHIBuffer): WebGL2Buffer {
     const resource = assertWebGL2Resource(buffer, this.owner);
-    if (!(resource instanceof WebGL2Buffer)) throw new Error('WebGL2Queue requires a WebGL2 buffer.');
+    if (!(resource instanceof WebGL2Buffer))
+      throw new Error('WebGL2Queue requires a WebGL2 buffer.');
     return resource;
   }
 }
@@ -74,18 +95,30 @@ function copyBytes(data: RHIUploadData): Uint8Array {
 }
 
 function validateBufferRange(offset: number, size: number, bufferSize: number): void {
-  if (!Number.isInteger(offset) || !Number.isInteger(size) || offset < 0 || size < 0 || offset + size > bufferSize) {
-    throw new Error(`Buffer range ${offset}..${offset + size} is outside buffer size ${bufferSize}.`);
+  if (
+    !Number.isInteger(offset) ||
+    !Number.isInteger(size) ||
+    offset < 0 ||
+    size < 0 ||
+    offset + size > bufferSize
+  ) {
+    throw new Error(
+      `Buffer range ${offset}..${offset + size} is outside buffer size ${bufferSize}.`
+    );
   }
 }
 
 function validateExtent(size: GPUExtent3D) {
   const extent = normalizeExtent(size);
   if (
-    !Number.isInteger(extent.width) || !Number.isInteger(extent.height) ||
-    !Number.isInteger(extent.depthOrArrayLayers) || extent.width < 0 ||
-    extent.height < 0 || extent.depthOrArrayLayers < 0
-  ) throw new Error('Texture copy size must contain non-negative integer dimensions.');
+    !Number.isInteger(extent.width) ||
+    !Number.isInteger(extent.height) ||
+    !Number.isInteger(extent.depthOrArrayLayers) ||
+    extent.width < 0 ||
+    extent.height < 0 ||
+    extent.depthOrArrayLayers < 0
+  )
+    throw new Error('Texture copy size must contain non-negative integer dimensions.');
   return extent;
 }
 
@@ -104,36 +137,56 @@ function lowerTextureDestination(
   const mipLevel = destination.mipLevel ?? 0;
   const mipCount = texture.descriptor.mipLevelCount ?? 1;
   if (!Number.isInteger(mipLevel) || mipLevel < 0 || mipLevel >= mipCount) {
-    throw new Error(`Texture mipLevel ${mipLevel} is outside texture "${texture.label ?? texture.id}" mipLevelCount ${mipCount}.`);
+    throw new Error(
+      `Texture mipLevel ${mipLevel} is outside texture "${texture.label ?? texture.id}" mipLevelCount ${mipCount}.`
+    );
   }
   const origin = normalizeOrigin(destination.origin);
   const scale = 2 ** mipLevel;
   const bounds = {
     width: Math.max(1, Math.floor(texture.width / scale)),
     height: Math.max(1, Math.floor(texture.height / scale)),
-    depthOrArrayLayers: texture.descriptor.dimension === '3d'
-      ? Math.max(1, Math.floor(texture.depthOrArrayLayers / scale))
-      : texture.depthOrArrayLayers
+    depthOrArrayLayers:
+      texture.descriptor.dimension === '3d'
+        ? Math.max(1, Math.floor(texture.depthOrArrayLayers / scale))
+        : texture.depthOrArrayLayers
   };
   if (
-    origin.x + size.width > bounds.width || origin.y + size.height > bounds.height ||
+    origin.x + size.width > bounds.width ||
+    origin.y + size.height > bounds.height ||
     origin.z + size.depthOrArrayLayers > bounds.depthOrArrayLayers
   ) {
     throw new Error(
       `Texture copy range exceeds texture "${texture.label ?? texture.id}" mip level ${mipLevel} bounds ` +
-      `${bounds.width}x${bounds.height}x${bounds.depthOrArrayLayers}.`
+        `${bounds.width}x${bounds.height}x${bounds.depthOrArrayLayers}.`
     );
   }
-  return Object.freeze({ texture: handle, mipLevel, origin: Object.freeze(origin), aspect: destination.aspect ?? 'all' });
+  return Object.freeze({
+    texture: handle,
+    mipLevel,
+    origin: Object.freeze(origin),
+    aspect: destination.aspect ?? 'all'
+  });
 }
 
 function normalizeOrigin(origin: GPUImageCopyTexture['origin']) {
-  const tuple = Array.isArray(origin) ? origin as readonly number[] : undefined;
-  const object = tuple === undefined ? origin as { x?: number; y?: number; z?: number } | undefined : undefined;
-  const value = tuple === undefined
-    ? { x: object?.x ?? 0, y: object?.y ?? 0, z: object?.z ?? 0 }
-    : { x: tuple[0] ?? 0, y: tuple[1] ?? 0, z: tuple[2] ?? 0 };
-  if (!Number.isInteger(value.x) || !Number.isInteger(value.y) || !Number.isInteger(value.z) || value.x < 0 || value.y < 0 || value.z < 0) {
+  const tuple = Array.isArray(origin) ? (origin as readonly number[]) : undefined;
+  const object =
+    tuple === undefined
+      ? (origin as { x?: number; y?: number; z?: number } | undefined)
+      : undefined;
+  const value =
+    tuple === undefined
+      ? { x: object?.x ?? 0, y: object?.y ?? 0, z: object?.z ?? 0 }
+      : { x: tuple[0] ?? 0, y: tuple[1] ?? 0, z: tuple[2] ?? 0 };
+  if (
+    !Number.isInteger(value.x) ||
+    !Number.isInteger(value.y) ||
+    !Number.isInteger(value.z) ||
+    value.x < 0 ||
+    value.y < 0 ||
+    value.z < 0
+  ) {
     throw new Error('Texture copy origin must contain non-negative integer coordinates.');
   }
   return value;

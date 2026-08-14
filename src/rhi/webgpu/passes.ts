@@ -4,30 +4,22 @@ import type {
   RHIBuffer,
   RHIComputePipeline,
   RHIRenderPipeline,
-  RHIResource,
+  RHIResource
 } from '../contracts/resource';
 import type { GPUIndexFormat } from '../contracts/webgpu';
 import type {
   WebGPUNativeComputePassPort,
   WebGPUNativeRenderPassPort,
-  WebGPUNativeResourcePort,
-} from './native-types';
+  WebGPUNativeResourcePort
+} from './types';
 
 export interface WebGPUCommandPassController {
   lease(resource: RHIResource): void;
   nativeHandle(resource: RHIResource): WebGPUNativeResourcePort;
   assertPassActive(): void;
   endPass(): void;
-  draw(
-    vertices: number,
-    instances: number,
-    topology: RHIRenderPipeline['topology']
-  ): void;
-  drawIndexed(
-    indices: number,
-    instances: number,
-    topology: RHIRenderPipeline['topology']
-  ): void;
+  draw(vertices: number, instances: number, topology: RHIRenderPipeline['topology']): void;
+  drawIndexed(indices: number, instances: number, topology: RHIRenderPipeline['topology']): void;
   drawIndirect(): void;
   dispatch(indirect: boolean): void;
 }
@@ -50,8 +42,7 @@ export class WebGPURenderPass implements RHIRenderPassEncoder {
 
   popDebugGroup(): void {
     this.active();
-    if (this.debugDepth === 0)
-      throw new Error('WebGPU render pass has no debug group to pop.');
+    if (this.debugDepth === 0) throw new Error('WebGPU render pass has no debug group to pop.');
     this.debugDepth -= 1;
     this.native.popDebugGroup();
   }
@@ -62,35 +53,19 @@ export class WebGPURenderPass implements RHIRenderPassEncoder {
     this.native.setPipeline(this.handle(pipeline));
   }
 
-  setBindGroup(
-    index: number,
-    group: RHIBindGroup,
-    offsets: readonly number[] = []
-  ): void {
+  setBindGroup(index: number, group: RHIBindGroup, offsets: readonly number[] = []): void {
     this.active();
     for (const entry of group.descriptor.entries)
-      this.encoder.lease(
-        'buffer' in entry.resource ? entry.resource.buffer : entry.resource
-      );
+      this.encoder.lease('buffer' in entry.resource ? entry.resource.buffer : entry.resource);
     this.native.setBindGroup(index, this.handle(group), offsets);
   }
 
-  setVertexBuffer(
-    slot: number,
-    buffer: RHIBuffer,
-    offset = 0,
-    size?: number
-  ): void {
+  setVertexBuffer(slot: number, buffer: RHIBuffer, offset = 0, size?: number): void {
     this.active();
     this.native.setVertexBuffer(slot, this.handle(buffer), offset, size);
   }
 
-  setIndexBuffer(
-    buffer: RHIBuffer,
-    format: GPUIndexFormat,
-    offset = 0,
-    size?: number
-  ): void {
+  setIndexBuffer(buffer: RHIBuffer, format: GPUIndexFormat, offset = 0, size?: number): void {
     this.active();
     this.native.setIndexBuffer(this.handle(buffer), format, offset, size);
   }
@@ -112,12 +87,7 @@ export class WebGPURenderPass implements RHIRenderPassEncoder {
     this.native.setScissorRect(x, y, width, height);
   }
 
-  draw(
-    vertexCount: number,
-    instanceCount = 1,
-    firstVertex = 0,
-    firstInstance = 0
-  ): void {
+  draw(vertexCount: number, instanceCount = 1, firstVertex = 0, firstInstance = 0): void {
     this.active();
     const pipeline = this.requirePipeline();
     this.native.draw(vertexCount, instanceCount, firstVertex, firstInstance);
@@ -133,13 +103,7 @@ export class WebGPURenderPass implements RHIRenderPassEncoder {
   ): void {
     this.active();
     const pipeline = this.requirePipeline();
-    this.native.drawIndexed(
-      indexCount,
-      instanceCount,
-      firstIndex,
-      baseVertex,
-      firstInstance
-    );
+    this.native.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
     this.encoder.drawIndexed(indexCount, instanceCount, pipeline.topology);
   }
 
@@ -152,8 +116,7 @@ export class WebGPURenderPass implements RHIRenderPassEncoder {
 
   end(): void {
     this.active();
-    if (this.debugDepth > 0)
-      throw new Error('WebGPU render pass has unclosed debug groups.');
+    if (this.debugDepth > 0) throw new Error('WebGPU render pass has unclosed debug groups.');
     this.ended = true;
     this.native.end();
     this.encoder.endPass();
@@ -193,8 +156,7 @@ export class WebGPUComputePass implements RHIComputePassEncoder {
 
   popDebugGroup(): void {
     this.active();
-    if (this.debugDepth === 0)
-      throw new Error('WebGPU compute pass has no debug group to pop.');
+    if (this.debugDepth === 0) throw new Error('WebGPU compute pass has no debug group to pop.');
     this.debugDepth -= 1;
     this.native.popDebugGroup();
   }
@@ -205,16 +167,10 @@ export class WebGPUComputePass implements RHIComputePassEncoder {
     this.native.setPipeline(this.handle(pipeline));
   }
 
-  setBindGroup(
-    index: number,
-    group: RHIBindGroup,
-    offsets: readonly number[] = []
-  ): void {
+  setBindGroup(index: number, group: RHIBindGroup, offsets: readonly number[] = []): void {
     this.active();
     for (const entry of group.descriptor.entries)
-      this.encoder.lease(
-        'buffer' in entry.resource ? entry.resource.buffer : entry.resource
-      );
+      this.encoder.lease('buffer' in entry.resource ? entry.resource.buffer : entry.resource);
     this.native.setBindGroup(index, this.handle(group), offsets);
   }
 
@@ -234,8 +190,7 @@ export class WebGPUComputePass implements RHIComputePassEncoder {
 
   end(): void {
     this.active();
-    if (this.debugDepth > 0)
-      throw new Error('WebGPU compute pass has unclosed debug groups.');
+    if (this.debugDepth > 0) throw new Error('WebGPU compute pass has unclosed debug groups.');
     this.ended = true;
     this.native.end();
     this.encoder.endPass();
@@ -248,9 +203,7 @@ export class WebGPUComputePass implements RHIComputePassEncoder {
 
   private requirePipeline(): void {
     if (this.pipeline === undefined)
-      throw new Error(
-        'WebGPU compute pass requires a pipeline before dispatch.'
-      );
+      throw new Error('WebGPU compute pass requires a pipeline before dispatch.');
   }
 
   private handle(resource: RHIResource): WebGPUNativeResourcePort {

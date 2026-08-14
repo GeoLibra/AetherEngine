@@ -8,16 +8,15 @@ import {
   type GraphRange,
   type TextureGraphRange
 } from './ranges';
-import {
-  assertGraphHandle,
-  createGraphHandle,
-  type BufferDescriptor,
-  type BufferHandle,
-  type GraphHandle,
-  type GraphResourceKind,
-  type GraphResourceOrigin,
-  type TextureDescriptor,
-  type TextureHandle
+import { assertGraphHandle, createGraphHandle } from './handles';
+import type {
+  BufferDescriptor,
+  BufferHandle,
+  GraphHandle,
+  GraphResourceKind,
+  GraphResourceOrigin,
+  TextureDescriptor,
+  TextureHandle
 } from './types';
 
 export interface InitializationInterval {

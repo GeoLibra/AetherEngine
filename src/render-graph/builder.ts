@@ -4,21 +4,21 @@ import {
   type GraphResourceRecord
 } from './resources';
 import type { GraphRange } from './ranges';
-import {
-  assertGraphHandle,
-  type BufferDescriptor,
-  type BufferHandle,
-  type BufferRange,
-  type BufferReadUsage,
-  type BufferWriteUsage,
-  type ExternalResourceState,
-  type GraphHandle,
-  type PassToken,
-  type TextureDescriptor,
-  type TextureHandle,
-  type TextureRange,
-  type TextureReadUsage,
-  type TextureWriteUsage
+import { assertGraphHandle } from './handles';
+import type {
+  BufferDescriptor,
+  BufferHandle,
+  BufferRange,
+  BufferReadUsage,
+  BufferWriteUsage,
+  ExternalResourceState,
+  GraphHandle,
+  PassToken,
+  TextureDescriptor,
+  TextureHandle,
+  TextureRange,
+  TextureReadUsage,
+  TextureWriteUsage
 } from './types';
 
 export interface SurfaceFrameToken {
