@@ -237,7 +237,8 @@ export class WebGL2Device implements RHIDevice {
       this.owner,
       this.translator,
       this.clipDepthMode,
-      descriptor
+      descriptor,
+      () => this.queue.invalidateExternalState()
     );
   }
   createComputePipeline(_descriptor: RHIComputePipelineDescriptor = {}): RHIComputePipeline {

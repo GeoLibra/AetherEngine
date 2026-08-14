@@ -118,6 +118,7 @@ class Translator {
       bindings: [],
       targetAbiFingerprint: 'test-abi',
       physicalBindings: [],
+      programBindings: [],
       requiredExtensions: [],
       sourceMap: [],
       translatorFingerprint: 'test-output'

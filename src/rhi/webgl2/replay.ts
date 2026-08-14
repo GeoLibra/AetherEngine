@@ -233,18 +233,19 @@ export class WebGL2ReplayExecutor {
         throw new Error(
           `WebGL2 pipeline has no binding for group ${index} binding ${entry.binding}.`
         );
-      const physical = pipeline.physicalBindings.find(
+      const physical = pipeline.physicalBindings.filter(
         (candidate) =>
           candidate.group === index &&
           candidate.binding === entry.binding &&
           candidate.kind === manifest.kind
       );
-      if (physical === undefined) {
+      if (physical.length === 0) {
         throw new Error(
           `WebGL2 pipeline has no physical slot for group ${index} binding ${entry.binding}.`
         );
       }
-      this.applyBinding(physical.slot, entry.resource, dynamicOffsets.get(entry.binding) ?? 0);
+      for (const mapping of physical)
+        this.applyBinding(mapping.slot, entry.resource, dynamicOffsets.get(entry.binding) ?? 0);
     }
   }
 
