@@ -26,7 +26,21 @@ export default defineConfig({
       testMatch: 'webgl2.spec.ts',
       use: {
         ...devices['Desktop Chrome'],
-        deviceScaleFactor: 1
+        ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
+        deviceScaleFactor: 1,
+        launchOptions: {
+          args: [
+            ...(process.platform === 'linux'
+              ? [
+                  '--use-angle=vulkan',
+                  '--enable-features=Vulkan',
+                  '--use-vulkan=swiftshader',
+                  '--disable-vulkan-surface',
+                  '--ignore-gpu-blocklist'
+                ]
+              : [])
+          ]
+        }
       }
     },
     {
