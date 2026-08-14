@@ -11,7 +11,8 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
     detail: {
       generation: expect.any(Number),
       surfaceGeneration: 1,
-      format: 'bgra8unorm',
+      // Preferred canvas format varies across platform drivers (e.g. rgba8unorm on Linux CI vs bgra8unorm on macOS/Windows).
+      format: expect.stringMatching(/^(rgba8unorm|bgra8unorm)$/),
       colorSpace: 'srgb',
       alphaMode: 'opaque',
       renderPasses: 1,
