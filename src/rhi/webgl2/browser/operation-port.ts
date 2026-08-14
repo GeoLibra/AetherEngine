@@ -6,6 +6,7 @@ import { createBrowserWebGL2CopyPort } from './copy-port';
 import { createBrowserWebGL2FramebufferPort } from './framebuffer-port';
 import { createBrowserWebGL2TextureCopyPort } from './texture-copy-port';
 import { createBrowserWebGL2RenderPassOperations } from './render-pass-operations';
+import { createBrowserWebGL2BindingPort } from './binding-port';
 
 export function createBrowserWebGL2OperationPort(
   gl: BrowserWebGL2Object
@@ -18,6 +19,7 @@ export function createBrowserWebGL2OperationPort(
     ...createBrowserWebGL2CopyPort(gl),
     ...createBrowserWebGL2FramebufferPort(gl, textureFacts, framebufferState),
     ...createBrowserWebGL2TextureCopyPort(gl, textureFacts),
-    ...createBrowserWebGL2RenderPassOperations(gl, textureFacts, framebufferState)
+    ...createBrowserWebGL2RenderPassOperations(gl, textureFacts, framebufferState),
+    ...createBrowserWebGL2BindingPort(gl)
   };
 }
