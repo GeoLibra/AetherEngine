@@ -2,8 +2,12 @@ import { expect, test } from '../fixtures/harness';
 
 test('WebGPU renders the clear, triangle, and indexed depth cube in one submission', async ({
   harness
-}) => {
+}, testInfo) => {
   const state = await harness.state();
+  await testInfo.attach('webgpu-state', {
+    body: JSON.stringify(state, null, 2),
+    contentType: 'application/json'
+  });
   expect(state, JSON.stringify(state)).toMatchObject({
     status: 'ready',
     host: 'browser',

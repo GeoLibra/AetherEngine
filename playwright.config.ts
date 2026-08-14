@@ -1,17 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const BASE_URL = 'http://127.0.0.1:4173';
-const WEBGPU_CHROMIUM_ARGS = [
-  '--enable-unsafe-webgpu',
-  ...(process.env.CI && process.platform === 'linux'
-    ? [
-        '--ozone-platform=x11',
-        '--use-angle=vulkan',
-        '--enable-features=Vulkan,VulkanFromANGLE',
-        '--disable-vulkan-surface'
-      ]
-    : [])
-];
 
 export default defineConfig({
   testDir: './e2e/specs',
@@ -50,7 +39,7 @@ export default defineConfig({
         ...(process.env.CI && process.platform === 'linux' ? { headless: false } : {}),
         deviceScaleFactor: 1,
         launchOptions: {
-          args: WEBGPU_CHROMIUM_ARGS
+          args: ['--enable-unsafe-webgpu']
         }
       }
     }
