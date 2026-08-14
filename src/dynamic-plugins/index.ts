@@ -2,7 +2,12 @@ export { DynamicCapabilityBroker, createDynamicCapabilityToken } from './capabil
 export { dynamicPluginId, pluginActivationId, pluginVersionId } from './ids';
 export { DynamicPluginHost, type DynamicPluginHostOptions } from './host';
 export { createDynamicPluginInventory } from './inventory';
-export { planCapabilityAuthorization, validateDynamicPluginManifest } from './manifest';
+export {
+  computeCanonicalPluginVersionId,
+  createCanonicalVersionVerifier,
+  planCapabilityAuthorization,
+  validateDynamicPluginManifest
+} from './manifest';
 export { DynamicPluginMessageGuard, validateDynamicPluginMessageEnvelope } from './messages';
 export { DynamicPluginHostService, createDynamicPluginHostPlugin } from './plugin';
 export { DynamicPluginScope } from './scope';

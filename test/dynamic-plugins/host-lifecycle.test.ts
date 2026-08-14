@@ -81,6 +81,23 @@ describe('DynamicPluginHost lifecycle', () => {
     expect(panels.visible()).toEqual([]);
     expect(host.current(pluginId)).toBeUndefined();
   });
+
+  it('bounds in-flight activation wait by quiescenceTimeoutMs deadline during destroy', async () => {
+    const panels = panelRegistry();
+    const host = createHost(panels.provider);
+    host.define(
+      definition('hanging', () => {
+        return new Promise(() => undefined); // never resolves or settles
+      })
+    );
+
+    const activationPromise = host.activate(pluginId, version('hanging'));
+    // host destroy should not hang forever; it completes within quiescenceTimeoutMs (50ms)
+    await host.destroy();
+
+    expect(host.current(pluginId)).toBeUndefined();
+    await expect(activationPromise).rejects.toThrow();
+  });
 });
 
 function deferred<T>() {

@@ -61,6 +61,35 @@ describe('dynamic plugin message admission', () => {
     ).toThrow(/non-serializable/i);
   });
 
+  it('validates specific payload schema when validator is provided', () => {
+    interface CustomPayload {
+      readonly count: number;
+    }
+    const validator = (payload: unknown): CustomPayload => {
+      if (
+        typeof payload !== 'object' ||
+        payload === null ||
+        typeof (payload as { count?: unknown }).count !== 'number'
+      ) {
+        throw new Error('Payload must contain numeric count.');
+      }
+      return payload as CustomPayload;
+    };
+
+    const validEnvelope = validateDynamicPluginMessageEnvelope<CustomPayload>(
+      { ...envelope(), payload: { count: 42 } },
+      { maxPayloadBytes: 1_024, validatePayload: validator }
+    );
+    expect(validEnvelope.payload.count).toBe(42);
+
+    expect(() =>
+      validateDynamicPluginMessageEnvelope<CustomPayload>(
+        { ...envelope(), payload: { count: 'not-a-number' } },
+        { maxPayloadBytes: 1_024, validatePayload: validator }
+      )
+    ).toThrow(/payload schema validation failed/i);
+  });
+
   it('accepts one current terminal result and rejects its duplicate', () => {
     const handled: string[] = [];
     const guard = new DynamicPluginMessageGuard(

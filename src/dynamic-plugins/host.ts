@@ -279,7 +279,16 @@ export class DynamicPluginHost {
   }
 
   private async performDestroy(): Promise<readonly PluginDiagnosticSnapshot[]> {
-    await Promise.allSettled([...this.inFlightActivations]);
+    if (this.inFlightActivations.size > 0) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, this.options.quiescenceTimeoutMs);
+      });
+      await Promise.race([Promise.allSettled([...this.inFlightActivations]), timeout]);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+    }
     const diagnostics: PluginDiagnosticSnapshot[] = [];
     const active = [...this.currentRecords.values()].reverse();
     this.currentRecords.clear();

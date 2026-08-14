@@ -186,11 +186,14 @@ export interface DynamicPluginMessageEnvelope<T> {
   readonly payload: T;
 }
 
-export interface DynamicPluginMessageValidationOptions {
+export interface DynamicPluginMessageValidationOptions<T = unknown> {
   readonly maxPayloadBytes: number;
+  readonly validatePayload?: (payload: unknown) => T;
 }
 
-export interface DynamicPluginMessageGuardOptions extends DynamicPluginMessageValidationOptions {
+export interface DynamicPluginMessageGuardOptions<
+  T = unknown
+> extends DynamicPluginMessageValidationOptions<T> {
   readonly maxTrackedRequests: number;
 }
 

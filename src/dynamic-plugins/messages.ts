@@ -11,7 +11,7 @@ import type {
 
 export function validateDynamicPluginMessageEnvelope<T = unknown>(
   value: unknown,
-  options: DynamicPluginMessageValidationOptions
+  options: DynamicPluginMessageValidationOptions<T>
 ): DynamicPluginMessageEnvelope<T> {
   if (!isRecord(value) || value.schemaVersion !== 1) {
     throw new Error('Dynamic plugin message schema version is unsupported.');
@@ -28,7 +28,23 @@ export function validateDynamicPluginMessageEnvelope<T = unknown>(
     throw new Error('Dynamic plugin message schema has invalid identity or payload fields.');
   }
 
-  const { bytes, payload } = validateAndComputePayload<T>(value.payload, options.maxPayloadBytes);
+  const { bytes, payload: rawPayload } = validateAndComputePayload<unknown>(
+    value.payload,
+    options.maxPayloadBytes
+  );
+
+  let finalPayload: T;
+  if (options.validatePayload) {
+    try {
+      finalPayload = options.validatePayload(rawPayload);
+    } catch (cause) {
+      throw new Error(
+        `Dynamic plugin message payload schema validation failed: ${cause instanceof Error ? cause.message : String(cause)}`
+      );
+    }
+  } else {
+    finalPayload = rawPayload as T;
+  }
 
   if (
     typeof value.payloadBytes === 'number' &&
@@ -47,7 +63,7 @@ export function validateDynamicPluginMessageEnvelope<T = unknown>(
     activationId: pluginActivationId(value.activationId),
     requestId: value.requestId.trim(),
     payloadBytes: bytes,
-    payload
+    payload: finalPayload
   });
 }
 
@@ -63,7 +79,7 @@ export class DynamicPluginMessageGuard<T> {
       pluginId: DynamicPluginId
     ) => DynamicPluginInventoryEntry | undefined,
     private readonly handle: (envelope: DynamicPluginMessageEnvelope<T>) => void,
-    private readonly options: DynamicPluginMessageGuardOptions
+    private readonly options: DynamicPluginMessageGuardOptions<T>
   ) {
     if (!Number.isInteger(options.maxTrackedRequests) || options.maxTrackedRequests <= 0) {
       throw new Error('Dynamic plugin message guard requires a positive request bound.');

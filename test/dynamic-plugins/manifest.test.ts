@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  computeCanonicalPluginVersionId,
+  createCanonicalVersionVerifier,
   dynamicPluginId,
   planCapabilityAuthorization,
   pluginVersionId,
@@ -87,7 +89,34 @@ describe('dynamic plugin manifest contracts', () => {
         manifestWith({ artifactHashes: { 'bundle.js': '' } }),
         acceptingVerifier
       )
-    ).toThrow(/must not be empty/i);
+    ).toThrow(/must be a valid cryptographic hash format/i);
+
+    expect(() =>
+      validateDynamicPluginManifest(
+        manifestWith({ artifactHashes: { 'bundle.js': 'anything' } }),
+        acceptingVerifier
+      )
+    ).toThrow(/must be a valid cryptographic hash format/i);
+  });
+
+  it('computes canonical version id and verifies matching manifest', () => {
+    const manifest = manifestWith({
+      versionId: pluginVersionId('sha256:will-be-replaced')
+    });
+    const canonicalId = computeCanonicalPluginVersionId(manifest);
+    expect(canonicalId).toMatch(/^sha256:[a-f0-9]{16}$/);
+
+    const validManifest = manifestWith({ versionId: canonicalId });
+    const verifier = createCanonicalVersionVerifier();
+    expect(validateDynamicPluginManifest(validManifest, verifier)).toBe(validManifest);
+
+    const tamperedManifest = manifestWith({
+      versionId: canonicalId,
+      artifactHashes: Object.freeze({ 'bundle.js': 'sha256:deadbeef12345678' })
+    });
+    expect(() => validateDynamicPluginManifest(tamperedManifest, verifier)).toThrow(
+      /version verification failed/i
+    );
   });
 });
 
@@ -102,7 +131,7 @@ function manifestWith(overrides: Partial<DynamicPluginManifest> = {}): DynamicPl
     versionId: pluginVersionId('sha256:version-1'),
     hosts: Object.freeze([{ kind: 'editor', required: true }] satisfies DynamicPluginHostRequest[]),
     capabilities: Object.freeze([]),
-    artifactHashes: Object.freeze({ 'bundle.js': 'sha256:abcd' }),
+    artifactHashes: Object.freeze({ 'bundle.js': 'sha256:0123456789abcdef' }),
     ...overrides
   });
 }

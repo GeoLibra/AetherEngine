@@ -37,7 +37,7 @@ export function definition(
     capabilities: Object.freeze([
       { id: PanelToken.id, version: PanelToken.version, required: true }
     ]),
-    artifactHashes: Object.freeze({ 'index.js': 'sha256:fixture' })
+    artifactHashes: Object.freeze({ 'index.js': 'sha256:0123456789abcdef' })
   });
   return Object.freeze({ manifest, activate });
 }
