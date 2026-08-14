@@ -13,58 +13,131 @@ import {
 
 class Handle implements WebGPUNativeResourcePort {}
 class TextureHandle extends Handle implements WebGPUNativeTexturePort {
-  createView(): WebGPUNativeResourcePort { return new Handle(); }
+  createView(): WebGPUNativeResourcePort {
+    return new Handle();
+  }
 }
 
 class RenderPass implements WebGPUNativeRenderPassPort {
   constructor(private readonly calls: string[]) {}
-  pushDebugGroup(): void { this.calls.push('render.pushDebugGroup'); }
-  popDebugGroup(): void { this.calls.push('render.popDebugGroup'); }
-  setPipeline(): void { this.calls.push('render.setPipeline'); }
-  setBindGroup(): void { this.calls.push('render.setBindGroup'); }
-  setVertexBuffer(): void { this.calls.push('render.setVertexBuffer'); }
-  setIndexBuffer(): void { this.calls.push('render.setIndexBuffer'); }
-  setViewport(): void { this.calls.push('render.setViewport'); }
-  setScissorRect(): void { this.calls.push('render.setScissorRect'); }
-  draw(): void { this.calls.push('render.draw'); }
-  drawIndexed(): void { this.calls.push('render.drawIndexed'); }
-  drawIndirect(): void { this.calls.push('render.drawIndirect'); }
-  end(): void { this.calls.push('render.end'); }
+  pushDebugGroup(): void {
+    this.calls.push('render.pushDebugGroup');
+  }
+  popDebugGroup(): void {
+    this.calls.push('render.popDebugGroup');
+  }
+  setPipeline(): void {
+    this.calls.push('render.setPipeline');
+  }
+  setBindGroup(): void {
+    this.calls.push('render.setBindGroup');
+  }
+  setVertexBuffer(): void {
+    this.calls.push('render.setVertexBuffer');
+  }
+  setIndexBuffer(): void {
+    this.calls.push('render.setIndexBuffer');
+  }
+  setViewport(): void {
+    this.calls.push('render.setViewport');
+  }
+  setScissorRect(): void {
+    this.calls.push('render.setScissorRect');
+  }
+  draw(): void {
+    this.calls.push('render.draw');
+  }
+  drawIndexed(): void {
+    this.calls.push('render.drawIndexed');
+  }
+  drawIndirect(): void {
+    this.calls.push('render.drawIndirect');
+  }
+  end(): void {
+    this.calls.push('render.end');
+  }
 }
 
 class ComputePass implements WebGPUNativeComputePassPort {
   constructor(private readonly calls: string[]) {}
-  pushDebugGroup(): void { this.calls.push('compute.pushDebugGroup'); }
-  popDebugGroup(): void { this.calls.push('compute.popDebugGroup'); }
-  setPipeline(): void { this.calls.push('compute.setPipeline'); }
-  setBindGroup(): void { this.calls.push('compute.setBindGroup'); }
-  dispatchWorkgroups(): void { this.calls.push('compute.dispatchWorkgroups'); }
-  dispatchWorkgroupsIndirect(): void { this.calls.push('compute.dispatchWorkgroupsIndirect'); }
-  end(): void { this.calls.push('compute.end'); }
+  pushDebugGroup(): void {
+    this.calls.push('compute.pushDebugGroup');
+  }
+  popDebugGroup(): void {
+    this.calls.push('compute.popDebugGroup');
+  }
+  setPipeline(): void {
+    this.calls.push('compute.setPipeline');
+  }
+  setBindGroup(): void {
+    this.calls.push('compute.setBindGroup');
+  }
+  dispatchWorkgroups(): void {
+    this.calls.push('compute.dispatchWorkgroups');
+  }
+  dispatchWorkgroupsIndirect(): void {
+    this.calls.push('compute.dispatchWorkgroupsIndirect');
+  }
+  end(): void {
+    this.calls.push('compute.end');
+  }
 }
 
 class NativeEncoder implements WebGPUNativeCommandEncoderPort {
   readonly calls: string[] = [];
-  pushDebugGroup(): void { this.calls.push('encoder.pushDebugGroup'); }
-  popDebugGroup(): void { this.calls.push('encoder.popDebugGroup'); }
-  beginRenderPass(): WebGPUNativeRenderPassPort { this.calls.push('encoder.beginRenderPass'); return new RenderPass(this.calls); }
-  beginComputePass(): WebGPUNativeComputePassPort { this.calls.push('encoder.beginComputePass'); return new ComputePass(this.calls); }
-  copyBufferToBuffer(): void { this.calls.push('encoder.copyBufferToBuffer'); }
-  copyTextureToTexture(): void { this.calls.push('encoder.copyTextureToTexture'); }
-  copyBufferToTexture(): void { this.calls.push('encoder.copyBufferToTexture'); }
-  copyTextureToBuffer(): void { this.calls.push('encoder.copyTextureToBuffer'); }
-  finish(): WebGPUNativeResourcePort { this.calls.push('encoder.finish'); return new Handle(); }
+  readonly renderPassDescriptors: Readonly<Record<string, unknown>>[] = [];
+  pushDebugGroup(): void {
+    this.calls.push('encoder.pushDebugGroup');
+  }
+  popDebugGroup(): void {
+    this.calls.push('encoder.popDebugGroup');
+  }
+  beginRenderPass(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeRenderPassPort {
+    this.calls.push('encoder.beginRenderPass');
+    this.renderPassDescriptors.push(descriptor);
+    return new RenderPass(this.calls);
+  }
+  beginComputePass(): WebGPUNativeComputePassPort {
+    this.calls.push('encoder.beginComputePass');
+    return new ComputePass(this.calls);
+  }
+  copyBufferToBuffer(): void {
+    this.calls.push('encoder.copyBufferToBuffer');
+  }
+  copyTextureToTexture(): void {
+    this.calls.push('encoder.copyTextureToTexture');
+  }
+  copyBufferToTexture(): void {
+    this.calls.push('encoder.copyBufferToTexture');
+  }
+  copyTextureToBuffer(): void {
+    this.calls.push('encoder.copyTextureToBuffer');
+  }
+  finish(): WebGPUNativeResourcePort {
+    this.calls.push('encoder.finish');
+    return new Handle();
+  }
 }
 
 class NativeDevice implements WebGPUNativeDevicePort {
   readonly lost = new Promise<never>(() => undefined);
   readonly queue = { submit(): void {}, onSubmittedWorkDone: async () => undefined };
   readonly encoders: NativeEncoder[] = [];
-  createBuffer(): WebGPUNativeResourcePort { return new Handle(); }
-  createTexture(): WebGPUNativeTexturePort { return new TextureHandle(); }
-  createShaderModule(): WebGPUNativeResourcePort { return new Handle(); }
-  createRenderPipeline(): WebGPUNativeResourcePort { return new Handle(); }
-  createComputePipeline(): WebGPUNativeResourcePort { return new Handle(); }
+  createBuffer(): WebGPUNativeResourcePort {
+    return new Handle();
+  }
+  createTexture(): WebGPUNativeTexturePort {
+    return new TextureHandle();
+  }
+  createShaderModule(): WebGPUNativeResourcePort {
+    return new Handle();
+  }
+  createRenderPipeline(): WebGPUNativeResourcePort {
+    return new Handle();
+  }
+  createComputePipeline(): WebGPUNativeResourcePort {
+    return new Handle();
+  }
   createCommandEncoder(): WebGPUNativeCommandEncoderPort {
     const encoder = new NativeEncoder();
     this.encoders.push(encoder);
@@ -78,12 +151,17 @@ class NativeAdapter implements WebGPUNativeAdapterPort {
   readonly limits = {};
   readonly formats = new Map();
   readonly device = new NativeDevice();
-  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> { return this.device; }
+  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> {
+    return this.device;
+  }
 }
 
 async function createDevice() {
   const adapter = new NativeAdapter();
-  const device = await new WebGPUAdapter(adapter).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+  const device = await new WebGPUAdapter(adapter).requestDevice({
+    requiredFeatures: [],
+    optionalFeatures: []
+  });
   return { device, native: adapter.device };
 }
 
@@ -124,8 +202,35 @@ describe('WebGPU direct command recording', () => {
     pass.end();
 
     expect(native.encoders[0]?.calls).toEqual([
-      'encoder.beginRenderPass', 'render.setPipeline', 'render.draw', 'render.end'
+      'encoder.beginRenderPass',
+      'render.setPipeline',
+      'render.draw',
+      'render.end'
     ]);
+  });
+
+  test('snapshots mutable clear colors before native render-pass lowering', async () => {
+    const { device, native } = await createDevice();
+    const texture = device.createTexture({ size: [8, 8], format: 'rgba8unorm', usage: 16 });
+    const clearValue: [number, number, number, number] = [0, 0, 0, 1];
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: texture.createView(),
+          loadOp: 'clear',
+          storeOp: 'store',
+          clearValue
+        }
+      ]
+    });
+
+    clearValue[0] = 1;
+    pass.end();
+
+    expect(native.encoders[0]?.renderPassDescriptors[0]).toMatchObject({
+      colorAttachments: [{ clearValue: [0, 0, 0, 1] }]
+    });
   });
 
   test('rejects invalid pass and encoder state before native forwarding', async () => {
@@ -141,7 +246,9 @@ describe('WebGPU direct command recording', () => {
     pass.end();
     expect(() => pass.draw(3)).toThrow('WebGPU render pass has already ended.');
     encoder.finish();
-    expect(() => encoder.pushDebugGroup('late')).toThrow('WebGPU command encoder has already finished.');
+    expect(() => encoder.pushDebugGroup('late')).toThrow(
+      'WebGPU command encoder has already finished.'
+    );
   });
 
   test('validates buffer and texture copy bounds before native forwarding', async () => {
@@ -149,16 +256,20 @@ describe('WebGPU direct command recording', () => {
     const source = device.createBuffer({ label: 'source', size: 16, usage: 1 });
     const destination = device.createBuffer({ label: 'destination', size: 16, usage: 1 });
     const texture = device.createTexture({
-      label: 'texture', size: [8, 8], mipLevelCount: 2, format: 'rgba8unorm', usage: 1
+      label: 'texture',
+      size: [8, 8],
+      mipLevelCount: 2,
+      format: 'rgba8unorm',
+      usage: 1
     });
     const encoder = device.createCommandEncoder();
 
     expect(() => encoder.copyBufferToBuffer(source, 12, destination, 0, 8)).toThrow(
       'Buffer range 12..20 is outside buffer size 16.'
     );
-    expect(() => encoder.copyTextureToTexture(
-      { texture, mipLevel: 1 }, { texture, mipLevel: 1 }, [8, 8]
-    )).toThrow('Texture copy range exceeds texture "texture" mip level 1 bounds 4x4x1.');
+    expect(() =>
+      encoder.copyTextureToTexture({ texture, mipLevel: 1 }, { texture, mipLevel: 1 }, [8, 8])
+    ).toThrow('Texture copy range exceeds texture "texture" mip level 1 bounds 4x4x1.');
     expect(native.encoders[0]?.calls).toEqual([]);
   });
 
@@ -167,7 +278,9 @@ describe('WebGPU direct command recording', () => {
     const upload = device.createBuffer({ size: 1024, usage: 1 << 2 });
     const readback = device.createBuffer({ size: 1024, usage: 1 << 3 });
     const texture = device.createTexture({
-      size: [4, 2], format: 'rgba8unorm', usage: (1 << 0) | (1 << 1)
+      size: [4, 2],
+      format: 'rgba8unorm',
+      usage: (1 << 0) | (1 << 1)
     });
     const encoder = device.createCommandEncoder();
 
@@ -175,7 +288,8 @@ describe('WebGPU direct command recording', () => {
     encoder.copyTextureToBuffer({ texture }, { buffer: readback, bytesPerRow: 256 }, [4, 2]);
 
     expect(native.encoders[0]?.calls).toEqual([
-      'encoder.copyBufferToTexture', 'encoder.copyTextureToBuffer'
+      'encoder.copyBufferToTexture',
+      'encoder.copyTextureToBuffer'
     ]);
   });
 
@@ -197,7 +311,10 @@ describe('WebGPU direct command recording', () => {
     pass.dispatchWorkgroups(2, 3, 4);
     pass.end();
     expect(native.encoders[1]?.calls).toEqual([
-      'encoder.beginComputePass', 'compute.setPipeline', 'compute.dispatchWorkgroups', 'compute.end'
+      'encoder.beginComputePass',
+      'compute.setPipeline',
+      'compute.dispatchWorkgroups',
+      'compute.end'
     ]);
   });
 });

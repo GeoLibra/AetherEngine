@@ -46,6 +46,9 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
     const diagnostics = diagnosticMessages(session);
     return Object.freeze({
       detail: Object.freeze({
+        adapterName: session.adapter.info.name,
+        adapterVendor: session.adapter.info.vendor,
+        adapterArchitecture: session.adapter.info.architecture,
         generation: session.device.generation,
         surfaceGeneration: session.surface.generation,
         format: session.surface.configuration?.format,

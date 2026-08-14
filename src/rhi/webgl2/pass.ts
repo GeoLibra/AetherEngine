@@ -21,8 +21,16 @@ export interface WebGL2PassController {
   readonly ownerToken: WebGL2DeviceOwner;
   record(replay: WebGL2ReplayCommand, portable: RHICommandRecord): void;
   lease(resource: RHIResource): void;
-  recordDraw(vertexCount: number, instanceCount: number, topology: GPUPrimitiveTopology | undefined): void;
-  recordIndexedDraw(indexCount: number, instanceCount: number, topology: GPUPrimitiveTopology | undefined): void;
+  recordDraw(
+    vertexCount: number,
+    instanceCount: number,
+    topology: GPUPrimitiveTopology | undefined
+  ): void;
+  recordIndexedDraw(
+    indexCount: number,
+    instanceCount: number,
+    topology: GPUPrimitiveTopology | undefined
+  ): void;
   endPass(pass: WebGL2RenderPassEncoder): void;
 }
 
@@ -31,7 +39,10 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
   private debugGroupDepth = 0;
   private pipeline: RHIRenderPipeline | undefined;
   private readonly extent: Readonly<{ width: number; height: number }>;
-  private readonly bindGroups = new Map<number, { group: RHIBindGroup; offsets: readonly number[] }>();
+  private readonly bindGroups = new Map<
+    number,
+    { group: RHIBindGroup; offsets: readonly number[] }
+  >();
   private readonly vertexBuffers = new Map<number, RHIBuffer>();
   private indexBuffer: RHIBuffer | undefined;
 
@@ -46,7 +57,7 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     this.ensureActive();
     this.debugGroupDepth += 1;
     this.encoder.record(
-      Object.freeze({ kind: 'push-debug', scope: 'render-pass', label }),
+      { kind: 'push-debug', scope: 'render-pass', label },
       { kind: 'pushDebugGroup', scope: 'render-pass', label }
     );
   }
@@ -56,7 +67,7 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     if (this.debugGroupDepth === 0) throw new Error(`${this.passName} has no debug group to pop.`);
     this.debugGroupDepth -= 1;
     this.encoder.record(
-      Object.freeze({ kind: 'pop-debug', scope: 'render-pass' }),
+      { kind: 'pop-debug', scope: 'render-pass' },
       { kind: 'popDebugGroup', scope: 'render-pass' }
     );
   }
@@ -68,7 +79,7 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     this.pipeline = pipeline;
     this.encoder.lease(pipeline);
     this.encoder.record(
-      Object.freeze({ kind: 'set-pipeline', pipeline }),
+      { kind: 'set-pipeline', pipeline },
       { kind: 'setRenderPipeline', pipeline: toResourceRef(pipeline) }
     );
   }
@@ -76,13 +87,19 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
   setBindGroup(index: number, group: RHIBindGroup, dynamicOffsets: readonly number[] = []): void {
     this.ensureActive();
     validateWebGL2BindGroupSlot(index, group, dynamicOffsets, this.owner, this.pipeline?.layout);
-    const offsets = Object.freeze([...dynamicOffsets]);
+    const offsets = [...dynamicOffsets];
     this.bindGroups.set(index, { group, offsets });
     this.encoder.lease(group);
     for (const resource of getWebGL2BindGroupResources(group)) this.encoder.lease(resource);
     this.encoder.record(
-      Object.freeze({ kind: 'set-bind-group', index, group, dynamicOffsets: offsets }),
-      { kind: 'setBindGroup', scope: 'render-pass', index, bindGroup: toResourceRef(group), dynamicOffsets: offsets }
+      { kind: 'set-bind-group', index, group, dynamicOffsets: offsets },
+      {
+        kind: 'setBindGroup',
+        scope: 'render-pass',
+        index,
+        bindGroup: toResourceRef(group),
+        dynamicOffsets: offsets
+      }
     );
   }
 
@@ -92,8 +109,14 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     this.vertexBuffers.set(slot, buffer);
     this.encoder.lease(buffer);
     this.encoder.record(
-      Object.freeze({ kind: 'set-vertex-buffer', slot, buffer, offset, ...(size === undefined ? {} : { size }) }),
-      { kind: 'setVertexBuffer', slot, buffer: toResourceRef(buffer), offset, ...(size === undefined ? {} : { size }) }
+      { kind: 'set-vertex-buffer', slot, buffer, offset, ...(size === undefined ? {} : { size }) },
+      {
+        kind: 'setVertexBuffer',
+        slot,
+        buffer: toResourceRef(buffer),
+        offset,
+        ...(size === undefined ? {} : { size })
+      }
     );
   }
 
@@ -103,18 +126,37 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     this.indexBuffer = buffer;
     this.encoder.lease(buffer);
     this.encoder.record(
-      Object.freeze({ kind: 'set-index-buffer', buffer, indexFormat, offset, ...(size === undefined ? {} : { size }) }),
-      { kind: 'setIndexBuffer', buffer: toResourceRef(buffer), indexFormat, offset, ...(size === undefined ? {} : { size }) }
+      {
+        kind: 'set-index-buffer',
+        buffer,
+        indexFormat,
+        offset,
+        ...(size === undefined ? {} : { size })
+      },
+      {
+        kind: 'setIndexBuffer',
+        buffer: toResourceRef(buffer),
+        indexFormat,
+        offset,
+        ...(size === undefined ? {} : { size })
+      }
     );
   }
 
-  setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
+  setViewport(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    minDepth: number,
+    maxDepth: number
+  ): void {
     this.ensureActive();
     validateRectangle('Viewport', x, y, width, height, this.extent, false);
     validateDepth(minDepth, 'Viewport minDepth');
     validateDepth(maxDepth, 'Viewport maxDepth');
     this.encoder.record(
-      Object.freeze({ kind: 'set-viewport', x, y, width, height, minDepth, maxDepth }),
+      { kind: 'set-viewport', x, y, width, height, minDepth, maxDepth },
       { kind: 'setViewport', x, y, width, height, minDepth, maxDepth }
     );
   }
@@ -123,7 +165,7 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     this.ensureActive();
     validateRectangle('Scissor', x, y, width, height, this.extent, true);
     this.encoder.record(
-      Object.freeze({ kind: 'set-scissor', x, y, width, height }),
+      { kind: 'set-scissor', x, y, width, height },
       { kind: 'setScissorRect', x, y, width, height }
     );
   }
@@ -133,20 +175,27 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     const pipeline = this.requireReadyToDraw();
     validateDrawArguments([vertexCount, instanceCount, firstVertex, firstInstance]);
     this.encoder.record(
-      Object.freeze({ kind: 'draw', vertexCount, instanceCount, firstVertex, firstInstance }),
+      { kind: 'draw', vertexCount, instanceCount, firstVertex, firstInstance },
       { kind: 'draw', vertexCount, instanceCount, firstVertex, firstInstance }
     );
     this.encoder.recordDraw(vertexCount, instanceCount, pipeline.topology);
   }
 
-  drawIndexed(indexCount: number, instanceCount = 1, firstIndex = 0, baseVertex = 0, firstInstance = 0): void {
+  drawIndexed(
+    indexCount: number,
+    instanceCount = 1,
+    firstIndex = 0,
+    baseVertex = 0,
+    firstInstance = 0
+  ): void {
     this.ensureActive();
     const pipeline = this.requireReadyToDraw();
     validateDrawArguments([indexCount, instanceCount, firstIndex, firstInstance]);
     if (!Number.isInteger(baseVertex)) throw new Error('Draw baseVertex must be an integer.');
-    if (this.indexBuffer === undefined) throw new Error(`${this.passName} requires an index buffer before drawIndexed.`);
+    if (this.indexBuffer === undefined)
+      throw new Error(`${this.passName} requires an index buffer before drawIndexed.`);
     this.encoder.record(
-      Object.freeze({ kind: 'draw-indexed', indexCount, instanceCount, firstIndex, baseVertex, firstInstance }),
+      { kind: 'draw-indexed', indexCount, instanceCount, firstIndex, baseVertex, firstInstance },
       { kind: 'drawIndexed', indexCount, instanceCount, firstIndex, baseVertex, firstInstance }
     );
     this.encoder.recordIndexedDraw(indexCount, instanceCount, pipeline.topology);
@@ -163,14 +212,15 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     this.ended = true;
     const label = this.descriptor.label;
     this.encoder.record(
-      Object.freeze({ kind: 'end-render-pass', ...(label === undefined ? {} : { label }) }),
+      { kind: 'end-render-pass', ...(label === undefined ? {} : { label }) },
       { kind: 'endRenderPass', ...(label === undefined ? {} : { label }) }
     );
     this.encoder.endPass(this);
   }
 
   private requireReadyToDraw(): RHIRenderPipeline {
-    if (this.pipeline === undefined) throw new Error(`${this.passName} requires a render pipeline before drawing.`);
+    if (this.pipeline === undefined)
+      throw new Error(`${this.passName} requires a render pipeline before drawing.`);
     assertWebGL2Resource(this.pipeline, this.owner);
     this.validateBoundGroups(this.pipeline.layout, true);
     for (const buffer of this.vertexBuffers.values()) assertWebGL2Resource(buffer, this.owner);
@@ -178,10 +228,16 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     return this.pipeline;
   }
 
-  private validateBoundGroups(layout: RHIPipelineLayout | undefined, requireComplete: boolean): void {
+  private validateBoundGroups(
+    layout: RHIPipelineLayout | undefined,
+    requireComplete: boolean
+  ): void {
     if (layout !== undefined && requireComplete) {
       layout.bindGroupLayouts.forEach((_, index) => {
-        if (!this.bindGroups.has(index)) throw new Error(`Bind group slot ${index} required by the current pipeline layout is not bound.`);
+        if (!this.bindGroups.has(index))
+          throw new Error(
+            `Bind group slot ${index} required by the current pipeline layout is not bound.`
+          );
       });
     }
     for (const [index, binding] of this.bindGroups) {
@@ -194,43 +250,90 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     if (this.ended) throw new Error(`${this.passName} has already ended.`);
   }
 
-  private get owner(): WebGL2DeviceOwner { return this.encoder.ownerToken; }
-  private get passName(): string { return `Render pass "${this.descriptor.label ?? 'anonymous'}"`; }
+  private get owner(): WebGL2DeviceOwner {
+    return this.encoder.ownerToken;
+  }
+  private get passName(): string {
+    return `Render pass "${this.descriptor.label ?? 'anonymous'}"`;
+  }
 }
 
-function validateBufferBinding(buffer: RHIBuffer, offset: number, size: number | undefined, owner: WebGL2DeviceOwner, label: string): void {
+function validateBufferBinding(
+  buffer: RHIBuffer,
+  offset: number,
+  size: number | undefined,
+  owner: WebGL2DeviceOwner,
+  label: string
+): void {
   assertWebGL2Resource(buffer, owner);
   const rangeSize = size ?? buffer.size - offset;
-  if (!Number.isInteger(offset) || !Number.isInteger(rangeSize) || offset < 0 || rangeSize < 0 || offset + rangeSize > buffer.size) {
-    throw new Error(`${label} range ${offset}..${offset + rangeSize} is outside buffer size ${buffer.size}.`);
+  if (
+    !Number.isInteger(offset) ||
+    !Number.isInteger(rangeSize) ||
+    offset < 0 ||
+    rangeSize < 0 ||
+    offset + rangeSize > buffer.size
+  ) {
+    throw new Error(
+      `${label} range ${offset}..${offset + rangeSize} is outside buffer size ${buffer.size}.`
+    );
   }
 }
 
-function resolveRenderPassExtent(descriptor: RHIRenderPassDescriptor): Readonly<{ width: number; height: number }> {
+function resolveRenderPassExtent(
+  descriptor: RHIRenderPassDescriptor
+): Readonly<{ width: number; height: number }> {
   const views = descriptor.colorAttachments.map((attachment) => attachment.view);
-  if (descriptor.depthStencilAttachment !== undefined) views.push(descriptor.depthStencilAttachment.view);
+  if (descriptor.depthStencilAttachment !== undefined)
+    views.push(descriptor.depthStencilAttachment.view);
   const first = views[0];
-  if (first === undefined) throw new Error(`Render pass "${descriptor.label ?? 'anonymous'}" requires at least one attachment.`);
+  if (first === undefined)
+    throw new Error(
+      `Render pass "${descriptor.label ?? 'anonymous'}" requires at least one attachment.`
+    );
   for (const view of views.slice(1)) {
-    if (view.width !== first.width || view.height !== first.height) throw new Error('Render pass attachments must have matching extents.');
+    if (view.width !== first.width || view.height !== first.height)
+      throw new Error('Render pass attachments must have matching extents.');
   }
-  return Object.freeze({ width: first.width, height: first.height });
+  return { width: first.width, height: first.height };
 }
 
-function validateRectangle(label: string, x: number, y: number, width: number, height: number, extent: { width: number; height: number }, integer: boolean): void {
+function validateRectangle(
+  label: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  extent: { width: number; height: number },
+  integer: boolean
+): void {
   const values = [x, y, width, height];
-  if (values.some((value) => !Number.isFinite(value)) || (integer && values.some((value) => !Number.isInteger(value)))) {
+  if (
+    values.some((value) => !Number.isFinite(value)) ||
+    (integer && values.some((value) => !Number.isInteger(value)))
+  ) {
     throw new Error(`${label} rectangle must use ${integer ? 'integer ' : ''}finite values.`);
   }
-  if (x < 0 || y < 0 || width < 0 || height < 0 || x + width > extent.width || y + height > extent.height) {
-    throw new Error(`${label} rectangle ${x},${y} ${width}x${height} exceeds render pass extent ${extent.width}x${extent.height}.`);
+  if (
+    x < 0 ||
+    y < 0 ||
+    width < 0 ||
+    height < 0 ||
+    x + width > extent.width ||
+    y + height > extent.height
+  ) {
+    throw new Error(
+      `${label} rectangle ${x},${y} ${width}x${height} exceeds render pass extent ${extent.width}x${extent.height}.`
+    );
   }
 }
 
 function validateDepth(value: number, label: string): void {
-  if (!Number.isFinite(value) || value < 0 || value > 1) throw new Error(`${label} must be between 0 and 1.`);
+  if (!Number.isFinite(value) || value < 0 || value > 1)
+    throw new Error(`${label} must be between 0 and 1.`);
 }
 
 function validateDrawArguments(values: readonly number[]): void {
-  if (values.some((value) => !Number.isInteger(value) || value < 0)) throw new Error('Draw arguments must be non-negative integers.');
+  if (values.some((value) => !Number.isInteger(value) || value < 0))
+    throw new Error('Draw arguments must be non-negative integers.');
 }

@@ -4,7 +4,7 @@ import type {
   RHICommandRecord,
   RHICommandStats,
   RHIComputePassEncoder,
-  RHIRenderPassEncoder,
+  RHIRenderPassEncoder
 } from '../contracts/command';
 import type {
   RHIResource,
@@ -12,37 +12,34 @@ import type {
   RHIBuffer,
   RHITextureView,
   GPUImageCopyTexture,
-  GPUImageCopyBuffer,
+  GPUImageCopyBuffer
 } from '../contracts/resource';
 import type { RHIRenderPassDescriptor } from '../contracts/render-target';
 import type {
   GPUCommandBufferDescriptor,
   GPUComputePassDescriptor,
-  GPUExtent3D,
+  GPUExtent3D
 } from '../contracts/webgpu';
 import {
   cloneCommandStats,
   createCommandStats,
   recordDraw,
   recordIndexedDraw,
-  recordIndirectDraw,
+  recordIndirectDraw
 } from '../core/stats';
-import type {
-  WebGPUNativeCommandEncoderPort,
-  WebGPUNativeResourcePort,
-} from './native-types';
+import type { WebGPUNativeCommandEncoderPort, WebGPUNativeResourcePort } from './native-types';
 import {
   WebGPUBuffer,
   WebGPUResourceBase,
   getWebGPUNativeHandle,
-  type WebGPUDeviceOwner,
+  type WebGPUDeviceOwner
 } from './resource';
 import type { WebGPUFastPathCounter } from './metrics';
 import { WebGPUComputePass, WebGPURenderPass } from './passes';
 import {
   lowerAndValidateTextureDestination,
   normalizeUploadExtent,
-  validateUploadBufferRange,
+  validateUploadBufferRange
 } from './upload-validation';
 import { validateBufferTextureCopy } from '../core/texture-copy-layout';
 
@@ -52,15 +49,10 @@ interface EncoderInteropState {
   readonly assertAvailable: () => void;
 }
 
-const encoderInteropState = new WeakMap<
-  WebGPUCommandEncoder,
-  EncoderInteropState
->();
+const encoderInteropState = new WeakMap<WebGPUCommandEncoder, EncoderInteropState>();
+const EMPTY_COMMAND_STREAM: readonly RHICommandRecord[] = Object.freeze([]);
 
-export class WebGPUCommandBuffer
-  extends WebGPUResourceBase
-  implements RHICommandBuffer
-{
+export class WebGPUCommandBuffer extends WebGPUResourceBase implements RHICommandBuffer {
   readonly kind = 'command-buffer';
   private submitted = false;
   constructor(
@@ -77,7 +69,7 @@ export class WebGPUCommandBuffer
     return cloneCommandStats(this.stats);
   }
   getCommandStream(): readonly RHICommandRecord[] {
-    return Object.freeze([]);
+    return EMPTY_COMMAND_STREAM;
   }
   toCommandStreamJSON(): string {
     return '[]';
@@ -112,7 +104,7 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     encoderInteropState.set(this, {
       owner,
       native,
-      assertAvailable: () => this.ensureIdle(),
+      assertAvailable: () => this.ensureIdle()
     });
   }
 
@@ -120,49 +112,41 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     this.beginPass();
     const colorAttachments = descriptor.colorAttachments.map((attachment) => {
       this.lease(attachment.view);
-      if (attachment.resolveTarget !== undefined)
-        this.lease(attachment.resolveTarget);
-      return Object.freeze({
+      if (attachment.resolveTarget !== undefined) this.lease(attachment.resolveTarget);
+      return {
         ...attachment,
         view: getWebGPUNativeHandle(attachment.view, this.owner),
+        ...(attachment.clearValue === undefined
+          ? {}
+          : { clearValue: snapshotColor(attachment.clearValue) }),
         ...(attachment.resolveTarget === undefined
           ? {}
           : {
-              resolveTarget: getWebGPUNativeHandle(
-                attachment.resolveTarget,
-                this.owner
-              ),
-            }),
-      });
+              resolveTarget: getWebGPUNativeHandle(attachment.resolveTarget, this.owner)
+            })
+      };
     });
     const lowered: Record<string, unknown> = {
-      colorAttachments: Object.freeze(colorAttachments),
+      colorAttachments
     };
     if (descriptor.label !== undefined) lowered.label = descriptor.label;
     if (descriptor.depthStencilAttachment !== undefined) {
       this.lease(descriptor.depthStencilAttachment.view);
-      lowered.depthStencilAttachment = Object.freeze({
+      lowered.depthStencilAttachment = {
         ...descriptor.depthStencilAttachment,
-        view: getWebGPUNativeHandle(
-          descriptor.depthStencilAttachment.view,
-          this.owner
-        ),
-      });
+        view: getWebGPUNativeHandle(descriptor.depthStencilAttachment.view, this.owner)
+      };
     }
     this.stats.renderPasses += 1;
-    const nativePass = this.native.beginRenderPass(Object.freeze(lowered));
+    const nativePass = this.native.beginRenderPass(lowered);
     this.fastPath.recordPassWrapper();
     return new WebGPURenderPass(this, nativePass);
   }
 
-  beginComputePass(
-    descriptor: GPUComputePassDescriptor = {}
-  ): RHIComputePassEncoder {
+  beginComputePass(descriptor: GPUComputePassDescriptor = {}): RHIComputePassEncoder {
     this.beginPass();
     this.stats.computePasses += 1;
-    const nativePass = this.native.beginComputePass(
-      Object.freeze({ ...descriptor })
-    );
+    const nativePass = this.native.beginComputePass({ ...descriptor });
     this.fastPath.recordPassWrapper();
     return new WebGPUComputePass(this, nativePass);
   }
@@ -173,8 +157,7 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
   }
   popDebugGroup(): void {
     this.ensureOpen();
-    if (this.debugDepth === 0)
-      throw new Error('WebGPU command encoder has no debug group to pop.');
+    if (this.debugDepth === 0) throw new Error('WebGPU command encoder has no debug group to pop.');
     this.debugDepth -= 1;
     this.native.popDebugGroup();
   }
@@ -207,10 +190,7 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     this.ensureIdle();
     const extent = normalizeUploadExtent(copySize);
     const nativeSource = getWebGPUNativeHandle(source.texture, this.owner);
-    const nativeDestination = getWebGPUNativeHandle(
-      destination.texture,
-      this.owner
-    );
+    const nativeDestination = getWebGPUNativeHandle(destination.texture, this.owner);
     const loweredSource = lowerAndValidateTextureDestination(
       source,
       source.texture,
@@ -228,48 +208,75 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     this.native.copyTextureToTexture(loweredSource, loweredDestination, extent);
     this.stats.copy.copyTextureToTexture += 1;
   }
-  copyBufferToTexture(source: GPUImageCopyBuffer, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void {
+  copyBufferToTexture(
+    source: GPUImageCopyBuffer,
+    destination: GPUImageCopyTexture,
+    copySize: GPUExtent3D
+  ): void {
     this.ensureIdle();
     const extent = normalizeUploadExtent(copySize);
     const nativeBuffer = getWebGPUNativeHandle(source.buffer, this.owner);
     const nativeTexture = getWebGPUNativeHandle(destination.texture, this.owner);
     const layout = validateBufferTextureCopy(source, destination, extent, 'buffer-to-texture');
-    const loweredDestination = lowerAndValidateTextureDestination(destination, destination.texture, nativeTexture, extent);
-    if (this.native.copyBufferToTexture === undefined) throw new Error('Native WebGPU command encoder does not support copyBufferToTexture.');
+    const loweredDestination = lowerAndValidateTextureDestination(
+      destination,
+      destination.texture,
+      nativeTexture,
+      extent
+    );
+    if (this.native.copyBufferToTexture === undefined)
+      throw new Error('Native WebGPU command encoder does not support copyBufferToTexture.');
     this.lease(source.buffer);
     this.lease(destination.texture);
     this.native.copyBufferToTexture(
-      Object.freeze({ buffer: nativeBuffer, offset: layout.offset, bytesPerRow: layout.bytesPerRow, rowsPerImage: layout.rowsPerImage }),
+      {
+        buffer: nativeBuffer,
+        offset: layout.offset,
+        bytesPerRow: layout.bytesPerRow,
+        rowsPerImage: layout.rowsPerImage
+      },
       loweredDestination,
       extent
     );
     this.stats.copy.copyBufferToTexture += 1;
   }
-  copyTextureToBuffer(source: GPUImageCopyTexture, destination: GPUImageCopyBuffer, copySize: GPUExtent3D): void {
+  copyTextureToBuffer(
+    source: GPUImageCopyTexture,
+    destination: GPUImageCopyBuffer,
+    copySize: GPUExtent3D
+  ): void {
     this.ensureIdle();
     const extent = normalizeUploadExtent(copySize);
     const nativeTexture = getWebGPUNativeHandle(source.texture, this.owner);
     const nativeBuffer = getWebGPUNativeHandle(destination.buffer, this.owner);
-    const loweredSource = lowerAndValidateTextureDestination(source, source.texture, nativeTexture, extent);
+    const loweredSource = lowerAndValidateTextureDestination(
+      source,
+      source.texture,
+      nativeTexture,
+      extent
+    );
     const layout = validateBufferTextureCopy(destination, source, extent, 'texture-to-buffer');
-    if (this.native.copyTextureToBuffer === undefined) throw new Error('Native WebGPU command encoder does not support copyTextureToBuffer.');
+    if (this.native.copyTextureToBuffer === undefined)
+      throw new Error('Native WebGPU command encoder does not support copyTextureToBuffer.');
     this.lease(source.texture);
     this.lease(destination.buffer);
     this.native.copyTextureToBuffer(
       loweredSource,
-      Object.freeze({ buffer: nativeBuffer, offset: layout.offset, bytesPerRow: layout.bytesPerRow, rowsPerImage: layout.rowsPerImage }),
+      {
+        buffer: nativeBuffer,
+        offset: layout.offset,
+        bytesPerRow: layout.bytesPerRow,
+        rowsPerImage: layout.rowsPerImage
+      },
       extent
     );
     this.stats.copy.copyTextureToBuffer += 1;
   }
   finish(descriptor: GPUCommandBufferDescriptor = {}): RHICommandBuffer {
     this.ensureIdle();
-    if (this.debugDepth > 0)
-      throw new Error('WebGPU command encoder has unclosed debug groups.');
+    if (this.debugDepth > 0) throw new Error('WebGPU command encoder has unclosed debug groups.');
     this.finished = true;
-    const nativeCommandBuffer = this.native.finish(
-      Object.freeze({ ...descriptor })
-    );
+    const nativeCommandBuffer = this.native.finish({ ...descriptor });
     this.fastPath.recordCommandBuffer();
     return new WebGPUCommandBuffer(
       this.id,
@@ -301,18 +308,10 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
   endPass(): void {
     this.activePass = false;
   }
-  draw(
-    vertices: number,
-    instances: number,
-    topology: RHIRenderPipeline['topology']
-  ): void {
+  draw(vertices: number, instances: number, topology: RHIRenderPipeline['topology']): void {
     recordDraw(this.stats, vertices, instances, topology);
   }
-  drawIndexed(
-    indices: number,
-    instances: number,
-    topology: RHIRenderPipeline['topology']
-  ): void {
+  drawIndexed(indices: number, instances: number, topology: RHIRenderPipeline['topology']): void {
     recordIndexedDraw(this.stats, indices, instances, topology);
   }
   drawIndirect(): void {
@@ -327,33 +326,30 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
     this.activePass = true;
   }
   private ensureOpen(): void {
-    if (this.finished)
-      throw new Error('WebGPU command encoder has already finished.');
+    if (this.finished) throw new Error('WebGPU command encoder has already finished.');
     if (this.owner.state !== 'live')
       throw new Error('WebGPU command encoder belongs to a lost device.');
   }
   private ensureIdle(): void {
     this.ensureOpen();
-    if (this.activePass)
-      throw new Error('WebGPU command encoder has an active pass.');
+    if (this.activePass) throw new Error('WebGPU command encoder has an active pass.');
   }
-  private validateCopyBuffer(
-    buffer: RHIBuffer,
-    offset: number,
-    size: number
-  ): void {
+  private validateCopyBuffer(buffer: RHIBuffer, offset: number, size: number): void {
     getWebGPUNativeHandle(buffer, this.owner);
     if (!(buffer instanceof WebGPUBuffer)) {
-      throw new Error(
-        'WebGPU command encoder only accepts buffers created by WebGPUDevice.'
-      );
+      throw new Error('WebGPU command encoder only accepts buffers created by WebGPUDevice.');
     }
     if (buffer.isMapped)
-      throw new Error(
-        `Buffer "${buffer.label ?? buffer.id}" is currently mapped.`
-      );
+      throw new Error(`Buffer "${buffer.label ?? buffer.id}" is currently mapped.`);
     validateUploadBufferRange(offset, size, buffer.size);
   }
+}
+
+function snapshotColor(
+  color: NonNullable<RHIRenderPassDescriptor['colorAttachments'][number]['clearValue']>
+) {
+  if (Array.isArray(color)) return [...color] as [number, number, number, number];
+  return { ...color };
 }
 
 export function getWebGPUNativeCommandEncoder(
@@ -364,8 +360,7 @@ export function getWebGPUNativeCommandEncoder(
     throw new Error('Command encoder was not created by WebGPUDevice.');
   }
   const state = encoderInteropState.get(encoder);
-  if (state === undefined)
-    throw new Error('WebGPU command encoder has no native handle.');
+  if (state === undefined) throw new Error('WebGPU command encoder has no native handle.');
   if (state.owner !== owner)
     throw new Error('Command encoder belongs to a different WebGPUDevice.');
   state.assertAvailable();

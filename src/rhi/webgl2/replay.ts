@@ -301,7 +301,9 @@ function dynamicOffsetMap(
   const result = new Map<number, number>();
   let index = 0;
   for (const entry of group.layout.descriptor.entries) {
-    if (entry.buffer?.hasDynamicOffset === true) result.set(entry.binding, offsets[index++] ?? 0);
+    if (entry.buffer?.hasDynamicOffset === true) {
+      result.set(entry.binding, offsets[index++]!);
+    }
   }
   return result;
 }

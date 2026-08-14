@@ -95,11 +95,12 @@ describe('WebGL2 deferred command recording', () => {
   test('records immutable replay commands without calling native GL', async () => {
     const { device, native, pipeline, color, vertex, index } = await createFixture();
     const copyTarget = device.createTexture({ size: [8, 8], format: 'rgba8unorm', usage: 2 });
+    const clearValue: [number, number, number, number] = [0, 0, 0, 1];
     const attachment: RHIRenderPassColorAttachment = {
       view: color.createView(),
       loadOp: 'clear',
       storeOp: 'store',
-      clearValue: [0, 0, 0, 1]
+      clearValue
     };
     const attachments = [attachment];
     const encoder = device.createCommandEncoder({ label: 'frame' });
@@ -120,6 +121,7 @@ describe('WebGL2 deferred command recording', () => {
     encoder.copyTextureToTexture({ texture: color }, { texture: copyTarget }, [4, 4]);
 
     attachment.loadOp = 'load';
+    clearValue[0] = 1;
     attachments.length = 0;
     const commandBuffer = encoder.finish({ label: 'recorded-frame' });
 
@@ -154,7 +156,9 @@ describe('WebGL2 deferred command recording', () => {
     expect(replay[2]?.descriptor).toMatchObject({
       colorAttachments: [{ loadOp: 'clear' }]
     });
-    expect(Object.isFrozen(replay[2])).toBe(true);
+    expect(replay[2]?.descriptor).toMatchObject({
+      colorAttachments: [{ clearValue: { r: 0, g: 0, b: 0, a: 1 } }]
+    });
     const leases = (
       commandBuffer as typeof commandBuffer & { getLeasedResources(): readonly unknown[] }
     ).getLeasedResources();
@@ -187,6 +191,27 @@ describe('WebGL2 deferred command recording', () => {
     if (binding?.kind === 'setBindGroup') (binding.dynamicOffsets as number[])[0] = 768;
     expect(commandBuffer.getCommandStream()[1]).toMatchObject({ dynamicOffsets: [256] });
     expect(native.calls).toEqual([]);
+  });
+
+  test('rejects a missing entry in a sparse dynamic offset array', async () => {
+    const { device, color } = await createFixture();
+    const buffer = device.createBuffer({ size: 1024, usage: 64 });
+    const groupLayout = device.createBindGroupLayout({
+      entries: [{ binding: 0, visibility: 1, buffer: { type: 'uniform', hasDynamicOffset: true } }]
+    });
+    const group = device.createBindGroup({
+      layout: groupLayout,
+      entries: [{ binding: 0, resource: { buffer, offset: 0, size: 256 } }]
+    });
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{ view: color.createView(), loadOp: 'load', storeOp: 'store' }]
+    });
+    const sparseOffsets = new Array<number>(1);
+
+    expect(() => pass.setBindGroup(0, group, sparseOffsets)).toThrow(
+      'Dynamic uniform buffer offset at index 0 is missing.'
+    );
   });
 
   test('rejects invalid lifecycle and unsupported commands at record time', async () => {

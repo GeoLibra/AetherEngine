@@ -17,10 +17,25 @@ import type {
   RHIRenderPassEncoder
 } from '../contracts';
 import { toResourceRef } from '../core/resource-ref';
-import { cloneCommandStats, createCommandStats, recordDraw, recordIndexedDraw } from '../core/stats';
-import { WebGL2Buffer, WebGL2ResourceBase, WebGL2Texture, assertWebGL2Resource, normalizeExtent } from './resource';
+import {
+  cloneCommandStats,
+  createCommandStats,
+  recordDraw,
+  recordIndexedDraw
+} from '../core/stats';
+import {
+  WebGL2Buffer,
+  WebGL2ResourceBase,
+  WebGL2Texture,
+  assertWebGL2Resource,
+  normalizeExtent
+} from './resource';
 import type { WebGL2DeviceOwner } from './resource-types';
-import type { WebGL2ImageCopyTexture, WebGL2RenderPassSnapshot, WebGL2ReplayCommand } from './command-types';
+import type {
+  WebGL2ImageCopyTexture,
+  WebGL2RenderPassSnapshot,
+  WebGL2ReplayCommand
+} from './command-types';
 import { WebGL2RenderPassEncoder, type WebGL2PassController } from './pass';
 import { throwWebGL2Unsupported } from './unsupported';
 import { validateBufferTextureCopy } from '../core/texture-copy-layout';
@@ -38,7 +53,7 @@ export class WebGL2CommandBuffer extends WebGL2ResourceBase implements RHIComman
     private readonly stats: RHICommandStats,
     private readonly leasedResources: readonly RHIResource[]
   ) {
-    super(id, owner, Object.freeze({}), label, false);
+    super(id, owner, {}, label, false);
   }
 
   getReplayCommands(): readonly WebGL2ReplayCommand[] {
@@ -46,18 +61,31 @@ export class WebGL2CommandBuffer extends WebGL2ResourceBase implements RHIComman
     return this.replayCommands;
   }
 
-  getLeasedResources(): readonly RHIResource[] { return this.leasedResources; }
+  getLeasedResources(): readonly RHIResource[] {
+    return this.leasedResources;
+  }
   assertReadyForSubmit(): void {
     assertWebGL2Resource(this, this.owner);
-    if (this.submitted) throw new Error(`Command buffer "${this.label ?? 'command-buffer'}" has already been submitted.`);
+    if (this.submitted)
+      throw new Error(
+        `Command buffer "${this.label ?? 'command-buffer'}" has already been submitted.`
+      );
   }
-  markSubmitted(): void { this.assertReadyForSubmit(); this.submitted = true; }
-  getStats(): RHICommandStats { assertWebGL2Resource(this, this.owner); return cloneCommandStats(this.stats); }
+  markSubmitted(): void {
+    this.assertReadyForSubmit();
+    this.submitted = true;
+  }
+  getStats(): RHICommandStats {
+    assertWebGL2Resource(this, this.owner);
+    return cloneCommandStats(this.stats);
+  }
   getCommandStream(): readonly RHICommandRecord[] {
     assertWebGL2Resource(this, this.owner);
     return this.records.map(cloneCommandRecord);
   }
-  toCommandStreamJSON(): string { return JSON.stringify(this.getCommandStream()); }
+  toCommandStreamJSON(): string {
+    return JSON.stringify(this.getCommandStream());
+  }
 }
 
 export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassController {
@@ -74,7 +102,9 @@ export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassContro
     private readonly id: number,
     readonly ownerToken: WebGL2DeviceOwner,
     descriptor: GPUCommandEncoderDescriptor
-  ) { this.label = descriptor.label; }
+  ) {
+    this.label = descriptor.label;
+  }
 
   beginRenderPass(descriptor: RHIRenderPassDescriptor): RHIRenderPassEncoder {
     this.ensureCanBeginPass('render');
@@ -84,13 +114,17 @@ export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassContro
       this.lease(attachment.view);
       if (attachment.resolveTarget !== undefined) this.lease(attachment.resolveTarget);
     }
-    if (passDescriptor.depthStencilAttachment !== undefined) this.lease(passDescriptor.depthStencilAttachment.view);
+    if (passDescriptor.depthStencilAttachment !== undefined)
+      this.lease(passDescriptor.depthStencilAttachment.view);
     const pass = new WebGL2RenderPassEncoder(this, passDescriptor);
     this.stats.renderPasses += 1;
     this.record(
-      Object.freeze({ kind: 'begin-render-pass', descriptor: replayDescriptor }),
-      { kind: 'beginRenderPass', colorAttachmentCount: passDescriptor.colorAttachments.length,
-        ...(passDescriptor.label === undefined ? {} : { label: passDescriptor.label }) }
+      { kind: 'begin-render-pass', descriptor: replayDescriptor },
+      {
+        kind: 'beginRenderPass',
+        colorAttachmentCount: passDescriptor.colorAttachments.length,
+        ...(passDescriptor.label === undefined ? {} : { label: passDescriptor.label })
+      }
     );
     this.activePass = pass;
     return pass;
@@ -106,7 +140,7 @@ export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassContro
     this.ensureNoActivePass('push an encoder debug group');
     this.debugGroupDepth += 1;
     this.record(
-      Object.freeze({ kind: 'push-debug', scope: 'encoder', label }),
+      { kind: 'push-debug', scope: 'encoder', label },
       { kind: 'pushDebugGroup', scope: 'encoder', label }
     );
   }
@@ -114,15 +148,22 @@ export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassContro
   popDebugGroup(): void {
     this.ensureCanRecord();
     this.ensureNoActivePass('pop an encoder debug group');
-    if (this.debugGroupDepth === 0) throw new Error(`${this.encoderName} has no debug group to pop.`);
+    if (this.debugGroupDepth === 0)
+      throw new Error(`${this.encoderName} has no debug group to pop.`);
     this.debugGroupDepth -= 1;
     this.record(
-      Object.freeze({ kind: 'pop-debug', scope: 'encoder' }),
+      { kind: 'pop-debug', scope: 'encoder' },
       { kind: 'popDebugGroup', scope: 'encoder' }
     );
   }
 
-  copyBufferToBuffer(source: RHIBuffer, sourceOffset: number, destination: RHIBuffer, destinationOffset: number, size: number): void {
+  copyBufferToBuffer(
+    source: RHIBuffer,
+    sourceOffset: number,
+    destination: RHIBuffer,
+    destinationOffset: number,
+    size: number
+  ): void {
     this.ensureCanRecord();
     this.ensureNoActivePass('copy buffers');
     const sourceBuffer = requireBuffer(source, this.ownerToken);
@@ -133,13 +174,30 @@ export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassContro
     this.lease(destinationBuffer);
     this.stats.copy.copyBufferToBuffer += 1;
     this.record(
-      Object.freeze({ kind: 'copy-buffer-to-buffer', source: sourceBuffer, sourceOffset, destination: destinationBuffer, destinationOffset, size }),
-      { kind: 'copyBufferToBuffer', source: toResourceRef(sourceBuffer), sourceOffset,
-        destination: toResourceRef(destinationBuffer), destinationOffset, size }
+      {
+        kind: 'copy-buffer-to-buffer',
+        source: sourceBuffer,
+        sourceOffset,
+        destination: destinationBuffer,
+        destinationOffset,
+        size
+      },
+      {
+        kind: 'copyBufferToBuffer',
+        source: toResourceRef(sourceBuffer),
+        sourceOffset,
+        destination: toResourceRef(destinationBuffer),
+        destinationOffset,
+        size
+      }
     );
   }
 
-  copyTextureToTexture(source: GPUImageCopyTexture, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void {
+  copyTextureToTexture(
+    source: GPUImageCopyTexture,
+    destination: GPUImageCopyTexture,
+    copySize: GPUExtent3D
+  ): void {
     this.ensureCanRecord();
     this.ensureNoActivePass('copy textures');
     const extent = validateExtent(copySize);
@@ -149,53 +207,113 @@ export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassContro
     this.lease(normalizedDestination.texture);
     this.stats.copy.copyTextureToTexture += 1;
     this.record(
-      Object.freeze({ kind: 'copy-texture-to-texture', source: normalizedSource, destination: normalizedDestination, copySize: extent }),
-      { kind: 'copyTextureToTexture', source: portableTextureCopy(normalizedSource),
-        destination: portableTextureCopy(normalizedDestination), copySize: extent }
+      {
+        kind: 'copy-texture-to-texture',
+        source: normalizedSource,
+        destination: normalizedDestination,
+        copySize: extent
+      },
+      {
+        kind: 'copyTextureToTexture',
+        source: portableTextureCopy(normalizedSource),
+        destination: portableTextureCopy(normalizedDestination),
+        copySize: extent
+      }
     );
   }
 
-  copyBufferToTexture(source: GPUImageCopyBuffer, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void {
+  copyBufferToTexture(
+    source: GPUImageCopyBuffer,
+    destination: GPUImageCopyTexture,
+    copySize: GPUExtent3D
+  ): void {
     this.ensureCanRecord();
     this.ensureNoActivePass('copy buffer to texture');
     const sourceBuffer = requireBuffer(source.buffer, this.ownerToken);
     const extent = validateExtent(copySize);
     const destinationTexture = validateTextureCopy(destination, extent, this.ownerToken);
-    const layout = validateBufferTextureCopy({ ...source, buffer: sourceBuffer }, destination, extent, 'buffer-to-texture');
-    const replaySource = Object.freeze({ buffer: sourceBuffer, offset: layout.offset, bytesPerRow: layout.bytesPerRow, rowsPerImage: layout.rowsPerImage });
+    const layout = validateBufferTextureCopy(
+      { ...source, buffer: sourceBuffer },
+      destination,
+      extent,
+      'buffer-to-texture'
+    );
+    const replaySource = {
+      buffer: sourceBuffer,
+      offset: layout.offset,
+      bytesPerRow: layout.bytesPerRow,
+      rowsPerImage: layout.rowsPerImage
+    };
     this.lease(sourceBuffer);
     this.lease(destinationTexture.texture);
     this.stats.copy.copyBufferToTexture += 1;
     this.record(
-      Object.freeze({ kind: 'copy-buffer-to-texture', source: replaySource, destination: destinationTexture, copySize: extent }),
-      { kind: 'copyBufferToTexture', source: layout, destination: portableTextureCopy(destinationTexture), copySize: extent }
+      {
+        kind: 'copy-buffer-to-texture',
+        source: replaySource,
+        destination: destinationTexture,
+        copySize: extent
+      },
+      {
+        kind: 'copyBufferToTexture',
+        source: layout,
+        destination: portableTextureCopy(destinationTexture),
+        copySize: extent
+      }
     );
   }
 
-  copyTextureToBuffer(source: GPUImageCopyTexture, destination: GPUImageCopyBuffer, copySize: GPUExtent3D): void {
+  copyTextureToBuffer(
+    source: GPUImageCopyTexture,
+    destination: GPUImageCopyBuffer,
+    copySize: GPUExtent3D
+  ): void {
     this.ensureCanRecord();
     this.ensureNoActivePass('copy texture to buffer');
     const destinationBuffer = requireBuffer(destination.buffer, this.ownerToken);
     const extent = validateExtent(copySize);
     const sourceTexture = validateTextureCopy(source, extent, this.ownerToken);
-    const layout = validateBufferTextureCopy({ ...destination, buffer: destinationBuffer }, source, extent, 'texture-to-buffer');
-    const replayDestination = Object.freeze({ buffer: destinationBuffer, offset: layout.offset, bytesPerRow: layout.bytesPerRow, rowsPerImage: layout.rowsPerImage });
+    const layout = validateBufferTextureCopy(
+      { ...destination, buffer: destinationBuffer },
+      source,
+      extent,
+      'texture-to-buffer'
+    );
+    const replayDestination = {
+      buffer: destinationBuffer,
+      offset: layout.offset,
+      bytesPerRow: layout.bytesPerRow,
+      rowsPerImage: layout.rowsPerImage
+    };
     this.lease(sourceTexture.texture);
     this.lease(destinationBuffer);
     this.stats.copy.copyTextureToBuffer += 1;
     this.record(
-      Object.freeze({ kind: 'copy-texture-to-buffer', source: sourceTexture, destination: replayDestination, copySize: extent }),
-      { kind: 'copyTextureToBuffer', source: portableTextureCopy(sourceTexture), destination: layout, copySize: extent }
+      {
+        kind: 'copy-texture-to-buffer',
+        source: sourceTexture,
+        destination: replayDestination,
+        copySize: extent
+      },
+      {
+        kind: 'copyTextureToBuffer',
+        source: portableTextureCopy(sourceTexture),
+        destination: layout,
+        copySize: extent
+      }
     );
   }
 
   finish(descriptor: GPUCommandBufferDescriptor = {}): RHICommandBuffer {
     this.ensureCanRecord();
-    if (this.activePass !== undefined) throw new Error('Cannot finish command encoder while a pass is active.');
+    if (this.activePass !== undefined)
+      throw new Error('Cannot finish command encoder while a pass is active.');
     if (this.debugGroupDepth > 0) throw new Error(`${this.encoderName} has unclosed debug groups.`);
     this.finished = true;
     return new WebGL2CommandBuffer(
-      this.id, this.ownerToken, descriptor.label,
+      this.id,
+      this.ownerToken,
+      descriptor.label,
       Object.freeze([...this.replayCommands]),
       Object.freeze(this.records.map(cloneCommandRecord)),
       cloneCommandStats(this.stats),
@@ -203,16 +321,28 @@ export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassContro
     );
   }
 
-  getStats(): RHICommandStats { return cloneCommandStats(this.stats); }
+  getStats(): RHICommandStats {
+    return cloneCommandStats(this.stats);
+  }
   record(replay: WebGL2ReplayCommand, portable: RHICommandRecord): void {
     this.replayCommands.push(replay);
     this.records.push(portable);
   }
-  lease(resource: RHIResource): void { this.leasedResources.add(resource); }
-  recordDraw(vertexCount: number, instanceCount: number, topology: Parameters<typeof recordDraw>[3]): void {
+  lease(resource: RHIResource): void {
+    this.leasedResources.add(resource);
+  }
+  recordDraw(
+    vertexCount: number,
+    instanceCount: number,
+    topology: Parameters<typeof recordDraw>[3]
+  ): void {
     recordDraw(this.stats, vertexCount, instanceCount, topology);
   }
-  recordIndexedDraw(indexCount: number, instanceCount: number, topology: Parameters<typeof recordIndexedDraw>[3]): void {
+  recordIndexedDraw(
+    indexCount: number,
+    instanceCount: number,
+    topology: Parameters<typeof recordIndexedDraw>[3]
+  ): void {
     recordIndexedDraw(this.stats, indexCount, instanceCount, topology);
   }
   endPass(pass: WebGL2RenderPassEncoder): void {
@@ -222,22 +352,30 @@ export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassContro
 
   private ensureCanBeginPass(kind: 'render' | 'compute'): void {
     this.ensureCanRecord();
-    if (this.activePass !== undefined) throw new Error(`Cannot begin a ${kind} pass while another pass is active.`);
+    if (this.activePass !== undefined)
+      throw new Error(`Cannot begin a ${kind} pass while another pass is active.`);
   }
   private ensureCanRecord(): void {
-    if (this.ownerToken.state !== 'live') throw new Error(`${this.encoderName} belongs to a lost device.`);
+    if (this.ownerToken.state !== 'live')
+      throw new Error(`${this.encoderName} belongs to a lost device.`);
     if (this.finished) throw new Error(`${this.encoderName} has already finished.`);
   }
   private ensureNoActivePass(action: string): void {
     if (this.activePass !== undefined) throw new Error(`Cannot ${action} while a pass is active.`);
   }
-  private get encoderName(): string { return `Command encoder "${this.label ?? this.id}"`; }
+  private get encoderName(): string {
+    return `Command encoder "${this.label ?? this.id}"`;
+  }
 }
 
-function snapshotPortableRenderPass(descriptor: RHIRenderPassDescriptor, owner: WebGL2DeviceOwner): RHIRenderPassDescriptor {
+function snapshotPortableRenderPass(
+  descriptor: RHIRenderPassDescriptor,
+  owner: WebGL2DeviceOwner
+): RHIRenderPassDescriptor {
   const colorAttachments = descriptor.colorAttachments.map((attachment) => {
     assertWebGL2Resource(attachment.view, owner);
-    if (attachment.resolveTarget !== undefined) assertWebGL2Resource(attachment.resolveTarget, owner);
+    if (attachment.resolveTarget !== undefined)
+      assertWebGL2Resource(attachment.resolveTarget, owner);
     const clearValue = cloneColor(attachment.clearValue);
     return Object.freeze({
       ...attachment,
@@ -277,61 +415,105 @@ function cloneColor(color: GPUColor | undefined): GPUColor | undefined {
 }
 
 function normalizeColor(color: GPUColor): Readonly<{ r: number; g: number; b: number; a: number }> {
-  if (Array.isArray(color)) return Object.freeze({ r: color[0], g: color[1], b: color[2], a: color[3] });
+  if (Array.isArray(color))
+    return Object.freeze({ r: color[0], g: color[1], b: color[2], a: color[3] });
   const object = color as { r: number; g: number; b: number; a: number };
   return Object.freeze({ r: object.r, g: object.g, b: object.b, a: object.a });
 }
 
 function requireBuffer(buffer: RHIBuffer, owner: WebGL2DeviceOwner): WebGL2Buffer {
   const resource = assertWebGL2Resource(buffer, owner);
-  if (!(resource instanceof WebGL2Buffer)) throw new Error('Command encoder requires a WebGL2 buffer.');
+  if (!(resource instanceof WebGL2Buffer))
+    throw new Error('Command encoder requires a WebGL2 buffer.');
   return resource;
 }
 
 function validateBufferRange(offset: number, size: number, bufferSize: number): void {
-  if (!Number.isInteger(offset) || !Number.isInteger(size) || offset < 0 || size < 0 || offset + size > bufferSize) {
-    throw new Error(`Buffer range ${offset}..${offset + size} is outside buffer size ${bufferSize}.`);
+  if (
+    !Number.isInteger(offset) ||
+    !Number.isInteger(size) ||
+    offset < 0 ||
+    size < 0 ||
+    offset + size > bufferSize
+  ) {
+    throw new Error(
+      `Buffer range ${offset}..${offset + size} is outside buffer size ${bufferSize}.`
+    );
   }
 }
 
 function validateExtent(size: GPUExtent3D) {
   const extent = normalizeExtent(size);
-  if ([extent.width, extent.height, extent.depthOrArrayLayers].some((value) => !Number.isInteger(value) || value < 0)) {
+  if (
+    [extent.width, extent.height, extent.depthOrArrayLayers].some(
+      (value) => !Number.isInteger(value) || value < 0
+    )
+  ) {
     throw new Error('Texture copy size must contain non-negative integer dimensions.');
   }
   return extent;
 }
 
-function validateTextureCopy(copy: GPUImageCopyTexture, size: ReturnType<typeof validateExtent>, owner: WebGL2DeviceOwner): WebGL2ImageCopyTexture {
+function validateTextureCopy(
+  copy: GPUImageCopyTexture,
+  size: ReturnType<typeof validateExtent>,
+  owner: WebGL2DeviceOwner
+): WebGL2ImageCopyTexture {
   const resource = assertWebGL2Resource(copy.texture, owner);
-  if (!(resource instanceof WebGL2Texture)) throw new Error('Command encoder requires a WebGL2 texture.');
+  if (!(resource instanceof WebGL2Texture))
+    throw new Error('Command encoder requires a WebGL2 texture.');
   const mipLevel = copy.mipLevel ?? 0;
   const mipCount = resource.descriptor.mipLevelCount ?? 1;
-  if (!Number.isInteger(mipLevel) || mipLevel < 0 || mipLevel >= mipCount) throw new Error(`Texture mipLevel ${mipLevel} is outside mipLevelCount ${mipCount}.`);
+  if (!Number.isInteger(mipLevel) || mipLevel < 0 || mipLevel >= mipCount)
+    throw new Error(`Texture mipLevel ${mipLevel} is outside mipLevelCount ${mipCount}.`);
   const origin = normalizeOrigin(copy.origin);
   const scale = 2 ** mipLevel;
   const width = Math.max(1, Math.floor(resource.width / scale));
   const height = Math.max(1, Math.floor(resource.height / scale));
-  const depth = resource.descriptor.dimension === '3d'
-    ? Math.max(1, Math.floor(resource.depthOrArrayLayers / scale)) : resource.depthOrArrayLayers;
-  if (origin.x + size.width > width || origin.y + size.height > height || origin.z + size.depthOrArrayLayers > depth) {
-    throw new Error(`Texture copy range exceeds texture "${resource.label ?? resource.id}" bounds.`);
+  const depth =
+    resource.descriptor.dimension === '3d'
+      ? Math.max(1, Math.floor(resource.depthOrArrayLayers / scale))
+      : resource.depthOrArrayLayers;
+  if (
+    origin.x + size.width > width ||
+    origin.y + size.height > height ||
+    origin.z + size.depthOrArrayLayers > depth
+  ) {
+    throw new Error(
+      `Texture copy range exceeds texture "${resource.label ?? resource.id}" bounds.`
+    );
   }
   return Object.freeze({ texture: resource, mipLevel, origin, aspect: copy.aspect ?? 'all' });
 }
 
 function normalizeOrigin(origin: GPUImageCopyTexture['origin']) {
   const tuple = Array.isArray(origin) ? origin : undefined;
-  const object = tuple === undefined ? origin as { x?: number; y?: number; z?: number } | undefined : undefined;
-  const value = { x: tuple?.[0] ?? object?.x ?? 0, y: tuple?.[1] ?? object?.y ?? 0, z: tuple?.[2] ?? object?.z ?? 0 };
-  if ([value.x, value.y, value.z].some((coordinate) => !Number.isInteger(coordinate) || coordinate < 0)) {
+  const object =
+    tuple === undefined
+      ? (origin as { x?: number; y?: number; z?: number } | undefined)
+      : undefined;
+  const value = {
+    x: tuple?.[0] ?? object?.x ?? 0,
+    y: tuple?.[1] ?? object?.y ?? 0,
+    z: tuple?.[2] ?? object?.z ?? 0
+  };
+  if (
+    [value.x, value.y, value.z].some(
+      (coordinate) => !Number.isInteger(coordinate) || coordinate < 0
+    )
+  ) {
     throw new Error('Texture copy origin must contain non-negative integer coordinates.');
   }
   return Object.freeze(value);
 }
 
 function portableTextureCopy(copy: WebGL2ImageCopyTexture) {
-  return Object.freeze({ texture: toResourceRef(copy.texture), mipLevel: copy.mipLevel, origin: copy.origin, aspect: copy.aspect });
+  return Object.freeze({
+    texture: toResourceRef(copy.texture),
+    mipLevel: copy.mipLevel,
+    origin: copy.origin,
+    aspect: copy.aspect
+  });
 }
 
 function cloneCommandRecord(record: RHICommandRecord): RHICommandRecord {

@@ -120,7 +120,9 @@ describe('E2E GitHub Actions workflow', () => {
     expect(e2eJob).toContain('matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}');
     expect(e2eJob).toContain('pnpm exec playwright install --with-deps chromium');
     expect(runStep).toContain('E2E_PROJECT: ${{ matrix.project }}');
-    expect(runStep).toContain('run: pnpm e2e --project="$E2E_PROJECT"');
+    expect(runStep).toContain(
+      'run: xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" pnpm e2e --project="$E2E_PROJECT"'
+    );
     expect(runStep).not.toContain('--project=${{ matrix.project }}');
 
     expect(uploadStep).toContain('if: always()');
