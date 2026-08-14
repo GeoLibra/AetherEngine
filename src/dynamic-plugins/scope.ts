@@ -79,44 +79,20 @@ export class DynamicPluginScope {
       failures.push(this.quiescenceFailure(cause));
     }
 
-    const TIMEOUT_TOKEN = Symbol('cleanup-timeout');
+    const cleanupPromises: Array<{ index: number; promise: Promise<unknown> }> = [];
     let removedRegistrations = 0;
     let allCleanupsSucceeded = true;
 
     for (let index = this.cleanups.length - 1; index >= 0; index--) {
       try {
-        const cleanupResult = this.cleanups[index]?.();
+        const result = this.cleanups[index]?.();
         if (
-          cleanupResult instanceof Promise ||
-          (cleanupResult !== null &&
-            typeof cleanupResult === 'object' &&
-            typeof (cleanupResult as Promise<unknown>).then === 'function')
+          result instanceof Promise ||
+          (result !== null &&
+            typeof result === 'object' &&
+            typeof (result as Promise<unknown>).then === 'function')
         ) {
-          const msLeft = remainingMs();
-          if (msLeft <= 0) {
-            allCleanupsSucceeded = false;
-            failures.push(this.cleanupTimeoutFailure(index));
-            void (cleanupResult as Promise<unknown>).catch(() => undefined);
-          } else {
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            const timeout = new Promise<typeof TIMEOUT_TOKEN>((resolve) => {
-              timer = setTimeout(() => resolve(TIMEOUT_TOKEN), msLeft);
-            });
-            const result = await Promise.race([
-              (cleanupResult as Promise<unknown>).then(() => 'success' as const),
-              timeout
-            ]);
-            if (timer !== undefined) {
-              clearTimeout(timer);
-            }
-            if (result === TIMEOUT_TOKEN) {
-              allCleanupsSucceeded = false;
-              failures.push(this.cleanupTimeoutFailure(index));
-              void (cleanupResult as Promise<unknown>).catch(() => undefined);
-            } else {
-              removedRegistrations++;
-            }
-          }
+          cleanupPromises.push({ index, promise: result as Promise<unknown> });
         } else {
           removedRegistrations++;
         }
@@ -124,6 +100,48 @@ export class DynamicPluginScope {
         allCleanupsSucceeded = false;
         failures.push(this.cleanupFailure(cause));
       }
+    }
+
+    if (cleanupPromises.length > 0) {
+      const msLeft = remainingMs();
+      const TIMEOUT_TOKEN = Symbol('cleanup-timeout');
+
+      await Promise.all(
+        cleanupPromises.map(async ({ index, promise }) => {
+          if (msLeft <= 0) {
+            allCleanupsSucceeded = false;
+            failures.push(this.cleanupTimeoutFailure(index));
+            void promise.catch(() => undefined);
+            return;
+          }
+
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const timeout = new Promise<typeof TIMEOUT_TOKEN>((resolve) => {
+            timer = setTimeout(() => resolve(TIMEOUT_TOKEN), msLeft);
+          });
+
+          try {
+            const outcome = await Promise.race([promise.then(() => 'success' as const), timeout]);
+            if (timer !== undefined) {
+              clearTimeout(timer);
+            }
+
+            if (outcome === TIMEOUT_TOKEN) {
+              allCleanupsSucceeded = false;
+              failures.push(this.cleanupTimeoutFailure(index));
+              void promise.catch(() => undefined);
+            } else {
+              removedRegistrations++;
+            }
+          } catch (cause) {
+            if (timer !== undefined) {
+              clearTimeout(timer);
+            }
+            allCleanupsSucceeded = false;
+            failures.push(this.cleanupFailure(cause));
+          }
+        })
+      );
     }
 
     return Object.freeze({

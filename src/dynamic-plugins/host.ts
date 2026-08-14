@@ -275,14 +275,11 @@ export class DynamicPluginHost {
   }
 
   private async rollbackFailedActivation(record: ActivationRecord): Promise<void> {
-    try {
-      if (record.session) {
-        await record.session.rollback();
-      }
-      await record.scope.dispose('activation-rollback');
-    } catch {
-      // The activation error remains primary; cleanup detail is reported by the Scope.
-    }
+    const sessionRollback = record.session
+      ? Promise.resolve(record.session.rollback()).catch(() => undefined)
+      : Promise.resolve();
+    const scopeDispose = record.scope.dispose('activation-rollback').catch(() => undefined);
+    await Promise.allSettled([sessionRollback, scopeDispose]);
   }
 
   private async retractRecord(
@@ -290,17 +287,53 @@ export class DynamicPluginHost {
     reason: PluginRetractionReason
   ): Promise<PluginCleanupReport> {
     record.phase = 'retracting';
-    try {
-      await record.session?.retract();
-    } catch (cause) {
-      record.diagnostic = diagnosticSnapshot('DYNAMIC_PLUGIN_RETRACTION_FAILED', cause, record);
+
+    const sessionRetract = record.session
+      ? Promise.resolve(record.session.retract())
+      : Promise.resolve();
+    const scopeDispose = record.scope.dispose(reason);
+
+    const [sessionOutcome, reportOutcome] = await Promise.allSettled([
+      sessionRetract,
+      scopeDispose
+    ]);
+
+    if (sessionOutcome.status === 'rejected') {
+      record.diagnostic = diagnosticSnapshot(
+        'DYNAMIC_PLUGIN_RETRACTION_FAILED',
+        sessionOutcome.reason,
+        record
+      );
     }
-    const report = await record.scope.dispose(reason);
-    record.phase = report.terminalPhase;
-    record.pendingWork = 0;
-    const lastFailure = report.failures.at(-1);
-    if (!record.diagnostic && lastFailure) record.diagnostic = lastFailure;
-    return report;
+
+    if (reportOutcome.status === 'fulfilled') {
+      const report = reportOutcome.value;
+      record.phase = report.terminalPhase;
+      record.pendingWork = 0;
+      const lastFailure = report.failures.at(-1);
+      if (!record.diagnostic && lastFailure) {
+        record.diagnostic = lastFailure;
+      }
+      return report;
+    } else {
+      record.phase = 'failed-to-quiesce';
+      record.pendingWork = 0;
+      const failure = diagnosticSnapshot(
+        'DYNAMIC_PLUGIN_CLEANUP_FAILED',
+        reportOutcome.reason,
+        record
+      );
+      if (!record.diagnostic) {
+        record.diagnostic = failure;
+      }
+      return Object.freeze({
+        activationId: record.activationId,
+        terminalPhase: 'failed-to-quiesce',
+        removedRegistrations: 0,
+        cancelledWork: record.scope.pendingWork,
+        failures: Object.freeze([failure])
+      });
+    }
   }
 
   private async performDestroy(): Promise<readonly PluginDiagnosticSnapshot[]> {

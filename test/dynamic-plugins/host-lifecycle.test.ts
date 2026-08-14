@@ -243,6 +243,47 @@ describe('DynamicPluginHost lifecycle', () => {
     expect(messages).toContain('cleanup error 1');
     expect(messages).toContain('cleanup error 2');
   });
+
+  it('still executes plugin scope cleanups even when capability lease retraction hangs forever', async () => {
+    let cleanupExecuted = false;
+    const hangingCapabilityProvider = {
+      token: PanelToken,
+      open: () => ({
+        facade: { add: () => undefined },
+        prepare: () => undefined,
+        commit: () => undefined,
+        rollback: () => new Promise<void>(() => undefined) // never resolves
+      })
+    };
+
+    let activation = 0;
+    const broker = new DynamicCapabilityBroker('editor');
+    broker.register(hangingCapabilityProvider);
+    const host = new DynamicPluginHost({
+      hostKind: 'editor',
+      broker,
+      verifier: { verify: () => true },
+      policy: { authorize: () => 'granted' },
+      quiescence: { wait: async () => true },
+      quiescenceTimeoutMs: 20,
+      mintActivationId: () => pluginActivationId(`act-${++activation}`)
+    });
+
+    host.define(
+      definition('hanging-cap-rollback', ({ own }) => {
+        own(() => {
+          cleanupExecuted = true;
+        });
+      })
+    );
+
+    await host.activate(pluginId, version('hanging-cap-rollback'));
+    const diagnostics = await host.destroy();
+
+    expect(cleanupExecuted).toBe(true);
+    expect(host.current(pluginId)).toBeUndefined();
+    expect(host.inventory()[0]?.phase).toBe('failed-to-quiesce');
+  });
 });
 
 function deferred<T>() {
