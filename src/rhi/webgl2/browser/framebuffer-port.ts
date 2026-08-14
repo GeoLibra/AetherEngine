@@ -100,22 +100,37 @@ function validateAttachmentExtents(
   textureFacts: WeakMap<object, BrowserWebGL2TextureFacts>
 ): void {
   let expected: { readonly width: number; readonly height: number } | undefined;
-  const validate = (attachment: unknown): void => {
+  const validate = (attachment: unknown) => {
     if (typeof attachment !== 'object' || attachment === null)
       throw new TypeError('Framebuffer attachment is invalid.');
     const subresource = attachmentSubresource(attachment, textureFacts);
     if (expected === undefined) {
       expected = subresource;
-      return;
-    }
-    if (subresource.width !== expected.width || subresource.height !== expected.height) {
+    } else if (subresource.width !== expected.width || subresource.height !== expected.height) {
       throw new Error(
         `WebGL2 framebuffer attachment extent mismatch: expected ${expected.width}x${expected.height}, received ${subresource.width}x${subresource.height}.`
       );
     }
+    return subresource;
   };
   if (Array.isArray(descriptor.colorAttachments)) {
-    for (const attachment of descriptor.colorAttachments) validate(attachment);
+    for (const attachment of descriptor.colorAttachments) {
+      const source = validate(attachment);
+      if (typeof attachment !== 'object' || attachment === null) continue;
+      const resolveTarget = Reflect.get(attachment, 'resolveTarget');
+      if (typeof resolveTarget !== 'object' || resolveTarget === null) continue;
+      const target = textureSubresource(attachment, textureFacts, {
+        texture: 'resolveTarget',
+        mipLevel: 'resolveTargetMipLevel',
+        width: 'resolveTargetWidth',
+        height: 'resolveTargetHeight'
+      });
+      if (source.width !== target.width || source.height !== target.height) {
+        throw new Error(
+          `WebGL2 resolve attachment extent mismatch: source ${source.width}x${source.height}, target ${target.width}x${target.height}.`
+        );
+      }
+    }
   }
   if (
     typeof descriptor.depthStencilAttachment === 'object' &&

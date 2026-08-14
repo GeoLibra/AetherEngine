@@ -442,6 +442,44 @@ describe('browser WebGL2 native operations', () => {
       ])
     );
   });
+
+  test('rejects a mismatched resolve mip before creating the framebuffer', () => {
+    const gl = new FakeOperationsGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+    const source = port.createTexture?.({
+      size: { width: 8, height: 8, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10,
+      mipLevelCount: 2
+    });
+    const target = port.createTexture?.({
+      size: { width: 8, height: 8, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10
+    });
+    if (source === undefined || target === undefined) throw new Error('Missing resolve textures.');
+    gl.calls.length = 0;
+
+    expect(() =>
+      port.createFramebuffer?.({
+        colorAttachments: [
+          {
+            view: source,
+            mipLevel: 1,
+            width: 4,
+            height: 4,
+            resolveTarget: target,
+            resolveTargetMipLevel: 0,
+            resolveTargetWidth: 8,
+            resolveTargetHeight: 8,
+            loadOp: 'load',
+            storeOp: 'store'
+          }
+        ]
+      })
+    ).toThrow(/resolve attachment extent mismatch.*4x4.*8x8/i);
+    expect(gl.calls.some(([name]) => name === 'createFramebuffer')).toBe(false);
+  });
 });
 
 class FakeOperationsGL {
