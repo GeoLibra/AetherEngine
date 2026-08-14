@@ -55,6 +55,7 @@ export class DynamicPluginHost {
   private readonly activating = new Set<DynamicPluginId>();
   private readonly inFlightActivations = new Set<Promise<DynamicPluginInventoryEntry>>();
   private readonly inFlightScopes = new Set<DynamicPluginScope>();
+  private readonly inFlightRecords = new Set<ActivationRecord>();
   private snapshotCopyCount = 0;
   private destroyed = false;
   private destruction: Promise<readonly PluginDiagnosticSnapshot[]> | undefined;
@@ -115,17 +116,24 @@ export class DynamicPluginHost {
   current(pluginId: DynamicPluginId): DynamicPluginInventoryEntry | undefined {
     const record = this.currentRecords.get(pluginId);
     if (!record) return undefined;
-    this.snapshotCopyCount += 1;
     return copyInventoryEntry(record);
   }
 
   inventory(): readonly DynamicPluginInventoryEntry[] {
+    const entries: DynamicPluginInventoryEntry[] = [];
+    const emitted = new Set<string>();
+
     for (const record of this.records) {
-      record.pendingWork = record.scope.pendingWork;
+      entries.push(copyInventoryEntry(record));
+      emitted.add(definitionKey(record.pluginId, record.versionId));
     }
-    const items = [...this.definitionEntries.values(), ...this.records];
-    this.snapshotCopyCount += items.length;
-    return createDynamicPluginInventory(items);
+    for (const [key, entry] of this.definitionEntries) {
+      if (!emitted.has(key)) {
+        entries.push(entry);
+      }
+    }
+
+    return Object.freeze(entries);
   }
 
   metrics(): DynamicPluginHostMetrics {
@@ -134,23 +142,32 @@ export class DynamicPluginHost {
     });
   }
 
-  async retract(
+  retract(
     pluginId: DynamicPluginId,
     reason: PluginRetractionReason
   ): Promise<PluginCleanupReport | undefined> {
-    const record = this.currentRecords.get(pluginId);
-    if (!record) return undefined;
-    this.currentRecords.delete(pluginId);
-    return this.retractRecord(record, reason);
+    try {
+      this.assertAvailable();
+      const current = this.currentRecords.get(pluginId);
+      if (!current) return Promise.resolve(undefined);
+      this.currentRecords.delete(pluginId);
+      return this.retractRecord(current, reason);
+    } catch (cause) {
+      return Promise.reject(cause);
+    }
   }
 
   destroy(): Promise<readonly PluginDiagnosticSnapshot[]> {
+    if (this.destroyed) {
+      return this.destruction ?? Promise.resolve(Object.freeze([]));
+    }
     this.destroyed = true;
     for (const scope of this.inFlightScopes) {
       scope.abort('host-shutdown');
     }
-    this.destruction ??= this.performDestroy();
-    return this.destruction;
+    const destruction = this.performDestroy();
+    this.destruction = destruction;
+    return destruction;
   }
 
   private async performActivation(
@@ -180,6 +197,7 @@ export class DynamicPluginHost {
       scope
     };
     this.records.push(record);
+    this.inFlightRecords.add(record);
 
     try {
       validateDynamicPluginManifest(manifest, this.options.verifier);
@@ -190,7 +208,7 @@ export class DynamicPluginHost {
       const session = await this.options.broker.open(plan, scope);
       record.session = session;
 
-      if (this.destroyed) {
+      if (this.destroyed || (record.phase as DynamicPluginPhase) === 'failed') {
         throw new Error('Dynamic plugin host is destroyed.');
       }
 
@@ -205,7 +223,7 @@ export class DynamicPluginHost {
         track: (work) => scope.track(work)
       });
 
-      if (this.destroyed) {
+      if (this.destroyed || (record.phase as DynamicPluginPhase) === 'failed') {
         throw new Error('Dynamic plugin host is destroyed.');
       }
 
@@ -230,11 +248,14 @@ export class DynamicPluginHost {
       this.snapshotCopyCount += 1;
       return copyInventoryEntry(record);
     } catch (cause) {
-      await this.rollbackFailedActivation(record);
-      record.phase = 'failed';
-      record.diagnostic = diagnosticSnapshot('DYNAMIC_PLUGIN_ACTIVATION_FAILED', cause, record);
+      if ((record.phase as DynamicPluginPhase) !== 'failed') {
+        await this.rollbackFailedActivation(record);
+        record.phase = 'failed';
+        record.diagnostic = diagnosticSnapshot('DYNAMIC_PLUGIN_ACTIVATION_FAILED', cause, record);
+      }
       throw cause;
     } finally {
+      this.inFlightRecords.delete(record);
       this.inFlightScopes.delete(scope);
       this.activating.delete(manifest.pluginId);
     }
@@ -289,6 +310,23 @@ export class DynamicPluginHost {
         clearTimeout(timer);
       }
     }
+
+    // Actively isolate and clean up any activation that remains in-flight after deadline
+    for (const record of this.inFlightRecords) {
+      await this.rollbackFailedActivation(record);
+      record.phase = 'failed';
+      if (!record.diagnostic) {
+        record.diagnostic = diagnosticSnapshot(
+          'DYNAMIC_PLUGIN_ACTIVATION_TIMEOUT',
+          new Error('Dynamic plugin activation timed out during host destruction.'),
+          record
+        );
+      }
+      this.inFlightScopes.delete(record.scope);
+      this.activating.delete(record.pluginId);
+    }
+    this.inFlightRecords.clear();
+
     const diagnostics: PluginDiagnosticSnapshot[] = [];
     const active = [...this.currentRecords.values()].reverse();
     this.currentRecords.clear();

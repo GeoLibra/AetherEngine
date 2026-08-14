@@ -28,19 +28,28 @@ export function validateDynamicPluginMessageEnvelope<T = unknown>(
     throw new Error('Dynamic plugin message schema has invalid identity or payload fields.');
   }
 
-  const { bytes, payload: rawPayload } = validateAndComputePayload<unknown>(
+  const { bytes: initialBytes, payload: rawPayload } = validateAndComputePayload<unknown>(
     value.payload,
     options.maxPayloadBytes
   );
 
   let finalPayload: T;
+  let finalBytes = initialBytes;
   if (options.validatePayload) {
+    let customResult: unknown;
     try {
-      finalPayload = options.validatePayload(rawPayload);
+      customResult = options.validatePayload(rawPayload);
     } catch (cause) {
       throw new Error(
         `Dynamic plugin message payload schema validation failed: ${cause instanceof Error ? cause.message : String(cause)}`
       );
+    }
+    if (customResult !== rawPayload) {
+      const validated = validateAndComputePayload<T>(customResult, options.maxPayloadBytes);
+      finalPayload = validated.payload;
+      finalBytes = validated.bytes;
+    } else {
+      finalPayload = rawPayload as T;
     }
   } else {
     finalPayload = rawPayload as T;
@@ -62,7 +71,7 @@ export function validateDynamicPluginMessageEnvelope<T = unknown>(
     versionId: pluginVersionId(value.versionId),
     activationId: pluginActivationId(value.activationId),
     requestId: value.requestId.trim(),
-    payloadBytes: bytes,
+    payloadBytes: finalBytes,
     payload: finalPayload
   });
 }

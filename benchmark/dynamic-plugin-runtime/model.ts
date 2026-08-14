@@ -189,7 +189,9 @@ function benchmarkDefinition(
         required: true
       }
     ]),
-    artifactHashes: Object.freeze({ 'bundle.js': 'sha256:0000000000000000' })
+    artifactHashes: Object.freeze({
+      'bundle.js': 'sha256:0000000000000000000000000000000000000000000000000000000000000000'
+    })
   });
   return Object.freeze({ manifest, activate });
 }

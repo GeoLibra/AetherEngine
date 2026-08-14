@@ -89,22 +89,36 @@ describe('dynamic plugin manifest contracts', () => {
         manifestWith({ artifactHashes: { 'bundle.js': '' } }),
         acceptingVerifier
       )
-    ).toThrow(/must be a valid cryptographic hash format/i);
+    ).toThrow(/format/i);
 
     expect(() =>
       validateDynamicPluginManifest(
         manifestWith({ artifactHashes: { 'bundle.js': 'anything' } }),
         acceptingVerifier
       )
-    ).toThrow(/must be a valid cryptographic hash format/i);
+    ).toThrow(/format/i);
+
+    expect(() =>
+      validateDynamicPluginManifest(
+        manifestWith({ artifactHashes: { 'bundle.js': 'unknown:0123456789abcdef' } }),
+        acceptingVerifier
+      )
+    ).toThrow(/unsupported algorithm/i);
+
+    expect(() =>
+      validateDynamicPluginManifest(
+        manifestWith({ artifactHashes: { 'bundle.js': 'sha256:deadbeef' } }),
+        acceptingVerifier
+      )
+    ).toThrow(/exactly 64 hex characters/i);
   });
 
-  it('computes canonical version id and verifies matching manifest', () => {
+  it('computes canonical version id with real sha256 and verifies matching manifest', () => {
     const manifest = manifestWith({
       versionId: pluginVersionId('sha256:will-be-replaced')
     });
     const canonicalId = computeCanonicalPluginVersionId(manifest);
-    expect(canonicalId).toMatch(/^sha256:[a-f0-9]{16}$/);
+    expect(canonicalId).toMatch(/^sha256:[a-f0-9]{64}$/);
 
     const validManifest = manifestWith({ versionId: canonicalId });
     const verifier = createCanonicalVersionVerifier();
@@ -112,7 +126,9 @@ describe('dynamic plugin manifest contracts', () => {
 
     const tamperedManifest = manifestWith({
       versionId: canonicalId,
-      artifactHashes: Object.freeze({ 'bundle.js': 'sha256:deadbeef12345678' })
+      artifactHashes: Object.freeze({
+        'bundle.js': 'sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+      })
     });
     expect(() => validateDynamicPluginManifest(tamperedManifest, verifier)).toThrow(
       /version verification failed/i
@@ -131,7 +147,9 @@ function manifestWith(overrides: Partial<DynamicPluginManifest> = {}): DynamicPl
     versionId: pluginVersionId('sha256:version-1'),
     hosts: Object.freeze([{ kind: 'editor', required: true }] satisfies DynamicPluginHostRequest[]),
     capabilities: Object.freeze([]),
-    artifactHashes: Object.freeze({ 'bundle.js': 'sha256:0123456789abcdef' }),
+    artifactHashes: Object.freeze({
+      'bundle.js': 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    }),
     ...overrides
   });
 }

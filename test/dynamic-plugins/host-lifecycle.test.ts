@@ -82,21 +82,30 @@ describe('DynamicPluginHost lifecycle', () => {
     expect(host.current(pluginId)).toBeUndefined();
   });
 
-  it('bounds in-flight activation wait by quiescenceTimeoutMs deadline during destroy', async () => {
+  it('bounds in-flight activation wait by quiescenceTimeoutMs deadline during destroy and tears down state', async () => {
     const panels = panelRegistry();
     const host = createHost(panels.provider);
+    const entered = deferred<void>();
     host.define(
-      definition('hanging', () => {
+      definition('hanging', ({ capabilities }) => {
+        capabilities.get(PanelToken).add('hanging-staging-panel');
+        entered.resolve();
         return new Promise(() => undefined); // never resolves or settles
       })
     );
 
     const activationPromise = host.activate(pluginId, version('hanging'));
+    await entered.promise;
+
     // host destroy should not hang forever; it completes within quiescenceTimeoutMs (50ms)
-    await host.destroy();
+    const diagnostics = await host.destroy();
 
     expect(host.current(pluginId)).toBeUndefined();
-    await expect(activationPromise).rejects.toThrow();
+    expect(panels.visible()).toEqual([]);
+    const inventory = host.inventory();
+    expect(inventory[0]?.phase).toBe('failed');
+    expect(inventory[0]?.diagnostic?.code).toBe('DYNAMIC_PLUGIN_ACTIVATION_TIMEOUT');
+    expect(diagnostics.map((d) => d.code)).toContain('DYNAMIC_PLUGIN_ACTIVATION_TIMEOUT');
   });
 });
 

@@ -1,4 +1,5 @@
 import { pluginVersionId } from './ids';
+import { computeSha256Hex } from './sha256';
 import type {
   DynamicCapabilityDescriptor,
   DynamicCapabilityPlan,
@@ -11,7 +12,17 @@ import type {
 } from './types';
 
 const SUPPORTED_MANIFEST_SCHEMA_VERSION = 1;
-const CRYPTOGRAPHIC_HASH_PATTERN = /^[a-z0-9_-]+:[a-f0-9]{8,128}$/i;
+
+const SUPPORTED_HASH_ALGORITHMS: Readonly<Record<string, number>> = Object.freeze({
+  sha256: 64,
+  sha384: 96,
+  sha512: 128
+});
+const HEX_CHARS_PATTERN = /^[a-f0-9]+$/i;
+
+function codePointCompare(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
 
 export function validateDynamicPluginManifest(
   manifest: DynamicPluginManifest,
@@ -40,13 +51,13 @@ export function computeCanonicalPluginVersionId(
   const canonicalData = {
     schemaVersion: manifest.schemaVersion,
     pluginId: manifest.pluginId,
-    hosts: [...manifest.hosts].sort((a, b) => a.kind.localeCompare(b.kind)),
+    hosts: [...manifest.hosts].sort((a, b) => codePointCompare(a.kind, b.kind)),
     capabilities: [...manifest.capabilities].sort((a, b) => {
-      const cmp = a.id.localeCompare(b.id);
+      const cmp = codePointCompare(a.id, b.id);
       return cmp !== 0 ? cmp : a.version - b.version;
     }),
     artifactHashes: Object.keys(manifest.artifactHashes ?? {})
-      .sort()
+      .sort(codePointCompare)
       .reduce<Record<string, string>>((acc, key) => {
         acc[key] = manifest.artifactHashes[key]!;
         return acc;
@@ -54,12 +65,8 @@ export function computeCanonicalPluginVersionId(
   };
 
   const serialized = canonicalStringify(canonicalData);
-  let hash = 0xcbf29ce484222325n;
-  for (let index = 0; index < serialized.length; index++) {
-    hash ^= BigInt(serialized.charCodeAt(index));
-    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
-  }
-  return pluginVersionId(`sha256:${hash.toString(16).padStart(16, '0')}`);
+  const hex = computeSha256Hex(serialized);
+  return pluginVersionId(`sha256:${hex}`);
 }
 
 export function createCanonicalVersionVerifier(): DynamicPluginVersionVerifier {
@@ -147,9 +154,26 @@ function assertValidArtifactHashes(manifest: DynamicPluginManifest): void {
     if (typeof file !== 'string' || file.trim().length === 0) {
       throw new Error('Dynamic plugin artifact hash filename must not be empty.');
     }
-    if (typeof hash !== 'string' || !CRYPTOGRAPHIC_HASH_PATTERN.test(hash.trim())) {
+    if (typeof hash !== 'string') {
+      throw new Error(`Dynamic plugin artifact hash for "${file}" must be a string.`);
+    }
+    const colon = hash.indexOf(':');
+    if (colon <= 0) {
       throw new Error(
-        `Dynamic plugin artifact hash for "${file}" must be a valid cryptographic hash format (e.g. sha256:<hex>).`
+        `Dynamic plugin artifact hash for "${file}" must follow the "<algorithm>:<digest>" format.`
+      );
+    }
+    const algorithm = hash.slice(0, colon).toLowerCase();
+    const digest = hash.slice(colon + 1);
+    const expectedLength = SUPPORTED_HASH_ALGORITHMS[algorithm];
+    if (expectedLength === undefined) {
+      throw new Error(
+        `Dynamic plugin artifact hash for "${file}" uses unsupported algorithm "${algorithm}". Supported algorithms are sha256, sha384, sha512.`
+      );
+    }
+    if (digest.length !== expectedLength || !HEX_CHARS_PATTERN.test(digest)) {
+      throw new Error(
+        `Dynamic plugin artifact hash for "${file}" must have exactly ${expectedLength} hex characters for ${algorithm}.`
       );
     }
   }
@@ -160,7 +184,7 @@ function canonicalStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalStringify).join(',')}]`;
   const record = value as Readonly<Record<string, unknown>>;
   return `{${Object.keys(record)
-    .sort()
+    .sort(codePointCompare)
     .map((key) => `${JSON.stringify(key)}:${canonicalStringify(record[key])}`)
     .join(',')}}`;
 }

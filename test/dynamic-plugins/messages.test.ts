@@ -88,6 +88,17 @@ describe('dynamic plugin message admission', () => {
         { maxPayloadBytes: 1_024, validatePayload: validator }
       )
     ).toThrow(/payload schema validation failed/i);
+
+    // Validator returning non-serializable object (function) must be caught by boundary re-check
+    expect(() =>
+      validateDynamicPluginMessageEnvelope<CustomPayload>(
+        { ...envelope(), payload: { count: 1 } },
+        {
+          maxPayloadBytes: 1_024,
+          validatePayload: () => ({ count: 1, fn: () => undefined }) as unknown as CustomPayload
+        }
+      )
+    ).toThrow(/non-serializable/i);
   });
 
   it('accepts one current terminal result and rejects its duplicate', () => {
