@@ -15,6 +15,12 @@ export type {
 } from './webgpu/browser';
 export { WebGL2Adapter } from './webgl2/adapter';
 export {
+  createBrowserWebGL2ContextPort,
+  initializeWebGL2StateDefaults,
+  WebGL2BrowserSurface
+} from './webgl2/browser';
+export type { BrowserWebGL2Canvas, BrowserWebGL2ContextOptions } from './webgl2/browser';
+export {
   NativeDawnAdapter,
   NativeDawnDeviceRequestError,
   createNativeDawnCapabilities

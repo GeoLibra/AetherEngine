@@ -1,6 +1,12 @@
 import { finalizeWebGL2Shader, type WebGL2ShaderTranslationPort } from '../rhi/webgl2/shader-types';
 import type { WebGL2ClipDepthMode } from '../rhi/webgl2/clip-depth';
 import { emitWgslModule } from './wgsl-emitter';
+import { GLSL_ES_EMITTER_VERSION, emitGlslEsModule } from './backends/glsl-es';
+import {
+  collectGlslTextureSamplerUses,
+  fuseGlslTextureSamplerBindings
+} from './backends/glsl-binding-fusion';
+import { reflectBindingEntry } from './binding-reflection';
 import type { ShaderDiagnostic, ShaderModuleIR, ShaderTarget, SourceSpan } from './types';
 import type { ResolvedShaderVariants } from './variant';
 
@@ -37,13 +43,6 @@ export async function emitShaderBackend(
   const wgsl = `// FluxSL typed IR ${ir.version}\n// variants ${options.variants.key.value}\n${emitWgslModule(ir, entries)}`;
   let source = wgsl;
   if (options.target === 'glsl300es') {
-    if (!options.translator) {
-      return failure(
-        'SHADER_TRANSLATOR_MISSING',
-        'No approved WebGL2 shader translator is registered.',
-        primarySpan(ir)
-      );
-    }
     const selectedEntry = selectedEntries.length === 1 ? selectedEntries[0] : undefined;
     if (selectedEntry === undefined || selectedEntry.stage === 'compute') {
       return failure(
@@ -54,21 +53,25 @@ export async function emitShaderBackend(
     }
     try {
       const constants = numericVariantConstants(ir, options.variants.values);
-      const translated = options.translator.translate(
-        Object.freeze({
-          wgsl,
-          stage: selectedEntry.stage,
-          entryPoint: selectedEntry.name,
+      if (options.translator !== undefined) {
+        const translated = options.translator.translate(
+          Object.freeze({
+            wgsl,
+            stage: selectedEntry.stage,
+            entryPoint: selectedEntry.name,
+            constants,
+            capabilities: Object.freeze([...(options.capabilities ?? [])]),
+            approvedExtensions: Object.freeze([...(options.approvedExtensions ?? [])]),
+            clipDepthMode: options.webgl2ClipDepthMode ?? 'vertex-remap'
+          })
+        );
+        source = finalizeWebGL2Shader(options.translator, translated, {
           constants,
-          capabilities: Object.freeze([...(options.capabilities ?? [])]),
-          approvedExtensions: Object.freeze([...(options.approvedExtensions ?? [])]),
-          clipDepthMode: options.webgl2ClipDepthMode ?? 'vertex-remap'
-        })
-      );
-      source = finalizeWebGL2Shader(options.translator, translated, {
-        constants,
-        approvedExtensions: options.approvedExtensions ?? []
-      }).source;
+          approvedExtensions: options.approvedExtensions ?? []
+        }).source;
+      } else {
+        source = finalizeTypedGlsl(ir, selectedEntry.name, constants);
+      }
     } catch (error) {
       return failure(
         'SHADER_TRANSLATION_FAILED',
@@ -110,6 +113,39 @@ export async function emitShaderBackend(
     ok: false,
     diagnostics: Object.freeze(issues.map((issue) => backendDiagnostic(issue, primary)))
   });
+}
+
+function finalizeTypedGlsl(
+  ir: ShaderModuleIR,
+  entryName: string,
+  constants: Readonly<Record<string, number>>
+): string {
+  const bindings = ir.globals
+    .filter((global) => global.group !== undefined && global.binding !== undefined)
+    .map((global) =>
+      reflectBindingEntry(
+        global.group!,
+        global.binding!,
+        global.name,
+        global.type,
+        global.addressSpace,
+        undefined
+      )
+    );
+  const combinedSamplers = fuseGlslTextureSamplerBindings(
+    bindings,
+    collectGlslTextureSamplerUses(ir),
+    16
+  );
+  const defines = Object.entries(constants)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, value]) => `#define ${name} ${value}`);
+  return [
+    '#version 300 es',
+    `// Aether typed GLSL ES emitter ${GLSL_ES_EMITTER_VERSION}`,
+    ...defines,
+    emitGlslEsModule(ir, entryName, combinedSamplers)
+  ].join('\n');
 }
 
 function numericVariantConstants(

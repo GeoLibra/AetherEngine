@@ -30,7 +30,10 @@ describe('browser graphics bootstrap', () => {
 
     await expect(result).rejects.toMatchObject({
       code: 'platform/browser-graphics-unavailable',
-      attempts: [{ backend: 'webgpu', stage: 'adapter', classification: 'unavailable' }]
+      attempts: [
+        { backend: 'webgpu', stage: 'adapter', classification: 'unavailable' },
+        { backend: 'webgl2', stage: 'environment', classification: 'unavailable' }
+      ]
     });
     expect(events).toEqual(['gpu.requestAdapter']);
   });
@@ -159,7 +162,76 @@ describe('browser graphics bootstrap', () => {
       reason: 'canvas detached'
     });
   });
+
+  test('falls back after adapter-only WebGPU probing while the canvas is still unattached', async () => {
+    const events: string[] = [];
+    const gl = createFallbackGL();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext(kind: string): unknown {
+        events.push(`canvas.getContext:${kind}`);
+        return kind === 'webgl2' ? gl : null;
+      },
+      addEventListener(): void {},
+      removeEventListener(): void {}
+    };
+    const session = await createBrowserGraphics({
+      canvas,
+      preference: ['webgpu', 'webgl2'],
+      environment: {
+        gpu: {
+          async requestAdapter(): Promise<null> {
+            events.push('gpu.requestAdapter');
+            return null;
+          }
+        },
+        getCanvasContext(): null {
+          events.push('canvas.getContext:webgpu');
+          return null;
+        }
+      },
+      device: { requiredFeatures: [], optionalFeatures: [] },
+      surface: { width: 64, height: 32 }
+    });
+
+    expect(session.backend).toBe('webgl2');
+    expect(events).toEqual(['gpu.requestAdapter', 'canvas.getContext:webgl2']);
+    expect(canvas).toMatchObject({ width: 64, height: 32 });
+    await session.destroy();
+  });
 });
+
+function createFallbackGL(): object {
+  let nextConstant = 1;
+  const constants = new Map<string, number>();
+  const methods: Record<string, (...args: unknown[]) => unknown> = {
+    getSupportedExtensions: () => [],
+    getParameter: () => 8,
+    getShaderPrecisionFormat: () => ({ precision: 23 }),
+    pixelStorei: () => undefined,
+    disable: () => undefined,
+    colorMask: () => undefined,
+    depthMask: () => undefined,
+    stencilMask: () => undefined,
+    bindBuffer: () => undefined,
+    bindFramebuffer: () => undefined,
+    bindRenderbuffer: () => undefined,
+    bindVertexArray: () => undefined,
+    activeTexture: () => undefined
+  };
+  return new Proxy(methods, {
+    get(target, property: string) {
+      if (property in target) return target[property];
+      let value = constants.get(property);
+      if (value === undefined) {
+        value = nextConstant++;
+        constants.set(property, value);
+      }
+      return value;
+    }
+  });
+}
 
 function createBrowserFixture() {
   const events: string[] = [];

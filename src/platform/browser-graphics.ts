@@ -8,6 +8,9 @@ import {
 } from '../rhi/webgpu/browser';
 import type { RHISurfaceConfiguration } from '../rhi/contracts/surface';
 import type { SurfaceTarget } from './types';
+import { WebGL2Adapter } from '../rhi/webgl2/adapter';
+import { createBrowserWebGL2ContextPort, WebGL2BrowserSurface } from '../rhi/webgl2/browser';
+import type { BrowserWebGL2Canvas } from '../rhi/webgl2/browser';
 import {
   BrowserGraphicsBootstrapError,
   type BrowserGraphicsAttempt,
@@ -22,11 +25,8 @@ export async function createBrowserGraphics(
 ): Promise<BrowserGraphicsSession> {
   validateSize(options.surface);
   const preference = options.preference ?? ['webgpu', 'webgl2'];
-  if (!preference.includes('webgpu')) {
-    throw unavailable([
-      attempt('webgl2', 'environment', 'unsupported', 'WebGL2 backend is not implemented yet.')
-    ]);
-  }
+  if (preference[0] === 'webgl2' || !preference.includes('webgpu'))
+    return createWebGL2Session(options, []);
 
   let environment;
   try {
@@ -34,16 +34,20 @@ export async function createBrowserGraphics(
       options.environment ??
       getBrowserWebGPUEnvironment(globalThis as unknown as BrowserWebGPUGlobalObject);
   } catch (cause) {
-    throw unavailable([attempt('webgpu', 'environment', 'unavailable', messageOf(cause))]);
+    const attempts = [attempt('webgpu', 'environment', 'unavailable', messageOf(cause))];
+    if (preference.includes('webgl2')) return createWebGL2Session(options, attempts);
+    throw unavailable(attempts);
   }
 
   const nativeAdapter = await requestBrowserWebGPUAdapter(environment, {
     ...(options.powerPreference === undefined ? {} : { powerPreference: options.powerPreference })
   });
   if (nativeAdapter === null) {
-    throw unavailable([
+    const attempts = [
       attempt('webgpu', 'adapter', 'unavailable', 'navigator.gpu.requestAdapter() returned null.')
-    ]);
+    ];
+    if (preference.includes('webgl2')) return createWebGL2Session(options, attempts);
+    throw unavailable(attempts);
   }
 
   const adapter = new WebGPUAdapter(nativeAdapter);
@@ -51,7 +55,9 @@ export async function createBrowserGraphics(
   try {
     device = await adapter.requestDevice(options.device);
   } catch (cause) {
-    throw unavailable([attempt('webgpu', 'device', 'unsupported', messageOf(cause))]);
+    const attempts = [attempt('webgpu', 'device', 'unsupported', messageOf(cause))];
+    if (preference.includes('webgl2')) return createWebGL2Session(options, attempts);
+    throw unavailable(attempts);
   }
 
   // This is the first operation allowed to attach the target canvas.
@@ -122,6 +128,82 @@ export async function createBrowserGraphics(
       surfaceGeneration = windowGeneration;
       setCanvasExtent(options.canvas, size);
       surface.configure(device, configuration, windowGeneration);
+    },
+    async destroy(): Promise<void> {
+      if (destroyed) return;
+      destroyed = true;
+      surface.dispose();
+      device.destroy();
+    }
+  });
+}
+
+async function createWebGL2Session(
+  options: BrowserGraphicsOptions,
+  priorAttempts: readonly BrowserGraphicsAttempt[]
+): Promise<BrowserGraphicsSession> {
+  const canvas = options.canvas as unknown as BrowserWebGL2Canvas;
+  if (
+    typeof Reflect.get(canvas, 'addEventListener') !== 'function' ||
+    typeof Reflect.get(canvas, 'removeEventListener') !== 'function'
+  ) {
+    throw unavailable([
+      ...priorAttempts,
+      attempt('webgl2', 'environment', 'unavailable', 'Target canvas lacks context event APIs.')
+    ]);
+  }
+  const native = createBrowserWebGL2ContextPort(canvas, {
+    powerPreference: options.powerPreference ?? 'default',
+    alpha: options.surface.alphaMode !== 'opaque',
+    ...(options.webgl2ClipControl === undefined ? {} : { clipControl: options.webgl2ClipControl })
+  });
+  if (native === null) {
+    throw unavailable([
+      ...priorAttempts,
+      attempt('webgl2', 'context', 'unavailable', 'Target canvas did not return a WebGL2 context.')
+    ]);
+  }
+  const adapter = new WebGL2Adapter(native, options.webgl2Translator);
+  let device;
+  try {
+    device = await adapter.requestDevice(options.device);
+  } catch (cause) {
+    native.destroy?.();
+    throw unavailable([
+      ...priorAttempts,
+      attempt('webgl2', 'device', 'unsupported', messageOf(cause))
+    ]);
+  }
+  const target: SurfaceTarget = Object.freeze({ id: Symbol('browser-canvas'), kind: 'canvas' });
+  const surface = new WebGL2BrowserSurface(target);
+  let configuration = createConfiguration(options, 'rgba8unorm');
+  let generation = 1;
+  setCanvasExtent(options.canvas, configuration);
+  surface.configure(device, configuration, generation);
+  let destroyed = false;
+  const lost = device.lost.then((info) =>
+    Object.freeze({
+      backend: 'webgl2' as const,
+      stage: 'context' as const,
+      reason: info.reason,
+      generation: info.generation,
+      recreationAllowed: info.reason !== 'destroyed'
+    })
+  );
+  return Object.freeze({
+    backend: 'webgl2' as const,
+    adapter,
+    device,
+    surface,
+    lost,
+    resize(size: PhysicalSize): void {
+      if (destroyed) throw new Error('Browser graphics session has been destroyed.');
+      validateSize(size);
+      if (size.width === configuration.width && size.height === configuration.height) return;
+      configuration = Object.freeze({ ...configuration, ...size });
+      generation += 1;
+      setCanvasExtent(options.canvas, size);
+      surface.configure(device, configuration, generation);
     },
     async destroy(): Promise<void> {
       if (destroyed) return;

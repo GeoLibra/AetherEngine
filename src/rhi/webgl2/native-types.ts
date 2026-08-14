@@ -30,6 +30,7 @@ export interface WebGL2NativeContextPort {
   readonly formats: ReadonlyMap<GPUTextureFormat, FormatCapabilities>;
   readonly precision: Readonly<Record<string, number>>;
   readonly lost: Promise<WebGL2NativeContextLostInfo>;
+  readonly restored?: Promise<void>;
   createBuffer?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
   createTexture?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
   createSampler?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
@@ -121,6 +122,7 @@ export interface WebGL2NativeContextPort {
   applyRenderPassLoadOperations?(descriptor: Readonly<Record<string, unknown>>): void;
   applyRenderPassStoreOperations?(descriptor: Readonly<Record<string, unknown>>): void;
   resolveRenderPass?(descriptor: Readonly<Record<string, unknown>>): void;
+  presentSurfaceTexture?(texture: WebGL2NativeObject, width: number, height: number): void;
   createVertexArray?(descriptor: Readonly<Record<string, unknown>>): WebGL2NativeObject;
   bindVertexArray?(vertexArray: WebGL2NativeObject): void;
   deleteVertexArray?(vertexArray: WebGL2NativeObject): void;

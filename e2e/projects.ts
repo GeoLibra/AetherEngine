@@ -1,6 +1,6 @@
 export const E2E_PROJECTS = Object.freeze([
   'browser-host-smoke',
-  'webgl2-smoke',
+  'webgl2-render',
   'webgpu-render'
 ] as const);
 

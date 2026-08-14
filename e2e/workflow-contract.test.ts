@@ -36,7 +36,7 @@ describe('E2E GitHub Actions workflow', () => {
     expect(workflow).toContain('push:\n    branches: [main]');
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toContain(
-      'options:\n          - all\n          - browser-host-smoke\n          - webgl2-smoke'
+      'options:\n          - all\n          - browser-host-smoke\n          - webgl2-render'
     );
     expect(workflow).toContain('          - webgpu-render');
     expect(workflow).toContain('group: ${{ github.workflow }}-${{ github.ref }}');
@@ -142,7 +142,7 @@ describe('E2E GitHub Actions workflow', () => {
       .replaceAll('${{ github.event.inputs.project }}', 'all');
     const selectedScript = extractRunScript(resolveStep)
       .replaceAll('${{ github.event_name }}', 'workflow_dispatch')
-      .replaceAll('${{ github.event.inputs.project }}', 'webgl2-smoke');
+      .replaceAll('${{ github.event.inputs.project }}', 'webgl2-render');
 
     const allOutputs = await executeResolverStep(allScript, undefined);
     const selectedOutputs = await executeResolverStep(selectedScript, undefined);
@@ -150,7 +150,7 @@ describe('E2E GitHub Actions workflow', () => {
     expect(allOutputs.matrix).toEqual({
       include: [
         { project: 'browser-host-smoke' },
-        { project: 'webgl2-smoke' },
+        { project: 'webgl2-render' },
         { project: 'webgpu-render' }
       ]
     });
@@ -160,7 +160,7 @@ describe('E2E GitHub Actions workflow', () => {
     });
     expect(allOutputs.hasProjects).toBe('true');
 
-    expect(selectedOutputs.matrix).toEqual({ include: [{ project: 'webgl2-smoke' }] });
+    expect(selectedOutputs.matrix).toEqual({ include: [{ project: 'webgl2-render' }] });
     expect(selectedOutputs.diagnostics).toEqual({
       reasons: [{ path: '', ruleId: 'manual-project' }],
       fallback: false
@@ -294,7 +294,7 @@ async function executeResolverStep(
   await execFileAsync('bash', ['-c', script], {
     cwd: options.cwd,
     env: {
-      ...process.env,
+      ...isolatedGitEnvironment(),
       PATH: `${options.pathPrefix ?? directory}:${process.env.PATH ?? ''}`,
       GITHUB_OUTPUT: outputPath,
       GITHUB_STEP_SUMMARY: summaryPath
@@ -370,10 +370,15 @@ async function commitAll(directory: string, message: string): Promise<void> {
 }
 
 function isolatedGit(directory: string, args: readonly string[]) {
-  const environment = { ...process.env };
-  for (const key of GIT_LOCAL_ENVIRONMENT_VARIABLES) delete environment[key];
+  const environment = isolatedGitEnvironment();
   environment.GIT_CEILING_DIRECTORIES = dirname(directory);
   return execFileAsync('git', ['-C', directory, ...args], { env: environment });
+}
+
+function isolatedGitEnvironment(): NodeJS.ProcessEnv {
+  const environment = { ...process.env };
+  for (const key of GIT_LOCAL_ENVIRONMENT_VARIABLES) delete environment[key];
+  return environment;
 }
 
 async function writeExecutable(path: string, contents: string): Promise<void> {

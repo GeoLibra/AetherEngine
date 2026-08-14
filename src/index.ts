@@ -151,6 +151,7 @@ export {
   RHIDeviceRequestError,
   RHIUnsupportedOperationError,
   WebGL2Adapter,
+  WebGL2BrowserSurface,
   WebGL2ProgramCreationError,
   WebGPUAdapter,
   getBrowserWebGPUEnvironment,

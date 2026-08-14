@@ -18,7 +18,10 @@ import { textureMipDimension, validateTextureViewMipLevel } from '../core/textur
 import type { WebGL2DeviceOwner } from './resource-types';
 import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
 
-interface NativeEntry { readonly handle: WebGL2NativeObject; readonly owned: boolean }
+interface NativeEntry {
+  readonly handle: WebGL2NativeObject;
+  readonly owned: boolean;
+}
 
 const nativeEntries = new WeakMap<WebGL2ResourceBase, NativeEntry>();
 
@@ -32,9 +35,13 @@ export abstract class WebGL2ResourceBase implements RHIResource {
     handle: WebGL2NativeObject,
     readonly label: string | undefined,
     owned = true
-  ) { nativeEntries.set(this, { handle, owned }); }
+  ) {
+    nativeEntries.set(this, { handle, owned });
+  }
 
-  get generation(): number { return this.owner.generation; }
+  get generation(): number {
+    return this.owner.generation;
+  }
   get state(): RHIResourceState {
     if (this.owner.state !== 'live') return 'device-lost';
     return this.disposed ? 'disposed' : 'live';
@@ -54,21 +61,35 @@ export class WebGL2Buffer extends WebGL2ResourceBase implements RHIBuffer {
   readonly descriptor: Readonly<RHIBufferDescriptor>;
   readonly size: number;
   readonly usage: number;
-  constructor(id: number, owner: WebGL2DeviceOwner, handle: WebGL2NativeObject, descriptor: RHIBufferDescriptor) {
+  constructor(
+    id: number,
+    owner: WebGL2DeviceOwner,
+    handle: WebGL2NativeObject,
+    descriptor: RHIBufferDescriptor
+  ) {
     super(id, owner, handle, descriptor.label);
-    this.descriptor = freezeWithLabel({
-      size: descriptor.size, usage: descriptor.usage, mappedAtCreation: descriptor.mappedAtCreation ?? false
-    }, descriptor.label);
+    this.descriptor = freezeWithLabel(
+      {
+        size: descriptor.size,
+        usage: descriptor.usage,
+        mappedAtCreation: descriptor.mappedAtCreation ?? false
+      },
+      descriptor.label
+    );
     this.size = descriptor.size;
     this.usage = descriptor.usage;
   }
   mapAsync(_mode: GPUMapModeFlags): Promise<void> {
-    return Promise.reject(new Error(`WebGL2 buffer "${this.label ?? this.id}" does not support mapAsync.`));
+    return Promise.reject(
+      new Error(`WebGL2 buffer "${this.label ?? this.id}" does not support mapAsync.`)
+    );
   }
   getMappedRange(): ArrayBuffer {
     throw new Error(`WebGL2 buffer "${this.label ?? this.id}" does not expose a mapped range.`);
   }
-  unmap(): void { throw new Error(`WebGL2 buffer "${this.label ?? this.id}" is not mapped.`); }
+  unmap(): void {
+    throw new Error(`WebGL2 buffer "${this.label ?? this.id}" is not mapped.`);
+  }
 }
 
 export class WebGL2Texture extends WebGL2ResourceBase implements RHITexture {
@@ -79,17 +100,26 @@ export class WebGL2Texture extends WebGL2ResourceBase implements RHITexture {
   readonly depthOrArrayLayers: number;
   readonly format: string;
   readonly usage: number;
-  constructor(id: number, owner: WebGL2DeviceOwner, handle: WebGL2NativeObject, descriptor: RHITextureDescriptor) {
-    super(id, owner, handle, descriptor.label);
+  constructor(
+    id: number,
+    owner: WebGL2DeviceOwner,
+    handle: WebGL2NativeObject,
+    descriptor: RHITextureDescriptor,
+    owned = true
+  ) {
+    super(id, owner, handle, descriptor.label, owned);
     const size = normalizeExtent(descriptor.size);
-    this.descriptor = freezeWithLabel({
-      size,
-      format: descriptor.format,
-      usage: descriptor.usage,
-      dimension: descriptor.dimension ?? '2d',
-      mipLevelCount: descriptor.mipLevelCount ?? 1,
-      sampleCount: descriptor.sampleCount ?? 1
-    }, descriptor.label);
+    this.descriptor = freezeWithLabel(
+      {
+        size,
+        format: descriptor.format,
+        usage: descriptor.usage,
+        dimension: descriptor.dimension ?? '2d',
+        mipLevelCount: descriptor.mipLevelCount ?? 1,
+        sampleCount: descriptor.sampleCount ?? 1
+      },
+      descriptor.label
+    );
     this.width = size.width;
     this.height = size.height;
     this.depthOrArrayLayers = size.depthOrArrayLayers;
@@ -136,26 +166,45 @@ export class WebGL2TextureView extends WebGL2ResourceBase implements RHITextureV
 export class WebGL2Sampler extends WebGL2ResourceBase implements RHISampler {
   readonly kind = 'sampler';
   readonly descriptor: Readonly<RHISamplerDescriptor>;
-  constructor(id: number, owner: WebGL2DeviceOwner, handle: WebGL2NativeObject, descriptor: RHISamplerDescriptor) {
+  constructor(
+    id: number,
+    owner: WebGL2DeviceOwner,
+    handle: WebGL2NativeObject,
+    descriptor: RHISamplerDescriptor
+  ) {
     super(id, owner, handle, descriptor.label);
     this.descriptor = Object.freeze({ ...descriptor });
   }
 }
 
-export function assertWebGL2Resource(resource: RHIResource, owner: WebGL2DeviceOwner): WebGL2ResourceBase {
+export function assertWebGL2Resource(
+  resource: RHIResource,
+  owner: WebGL2DeviceOwner
+): WebGL2ResourceBase {
   if (!(resource instanceof WebGL2ResourceBase)) {
-    throw new Error(`Resource "${resource.label ?? resource.kind}" was not created by WebGL2Device.`);
+    throw new Error(
+      `Resource "${resource.label ?? resource.kind}" was not created by WebGL2Device.`
+    );
   }
-  if (resource.owner !== owner) throw new Error(`Resource "${resource.label ?? resource.kind}" belongs to a different WebGL2Device.`);
-  if (resource.state === 'disposed') throw new Error(`Resource "${resource.label ?? resource.kind}" has been disposed.`);
-  if (resource.state === 'device-lost') throw new Error(`Resource "${resource.label ?? resource.kind}" belongs to a lost device.`);
+  if (resource.owner !== owner)
+    throw new Error(
+      `Resource "${resource.label ?? resource.kind}" belongs to a different WebGL2Device.`
+    );
+  if (resource.state === 'disposed')
+    throw new Error(`Resource "${resource.label ?? resource.kind}" has been disposed.`);
+  if (resource.state === 'device-lost')
+    throw new Error(`Resource "${resource.label ?? resource.kind}" belongs to a lost device.`);
   return resource;
 }
 
-export function getWebGL2Handle(resource: RHIResource, owner: WebGL2DeviceOwner): WebGL2NativeObject {
+export function getWebGL2Handle(
+  resource: RHIResource,
+  owner: WebGL2DeviceOwner
+): WebGL2NativeObject {
   const wrapper = assertWebGL2Resource(resource, owner);
   const entry = nativeEntries.get(wrapper);
-  if (entry === undefined) throw new Error(`Resource "${resource.label ?? resource.kind}" has no native WebGL2 handle.`);
+  if (entry === undefined)
+    throw new Error(`Resource "${resource.label ?? resource.kind}" has no native WebGL2 handle.`);
   return entry.handle;
 }
 
@@ -173,16 +222,26 @@ export function releaseWebGL2Native(
 }
 
 export function normalizeExtent(size: GPUExtent3D) {
-  if (typeof size === 'number') return Object.freeze({ width: size, height: 1, depthOrArrayLayers: 1 });
+  if (typeof size === 'number')
+    return Object.freeze({ width: size, height: 1, depthOrArrayLayers: 1 });
   if (Array.isArray(size)) {
-    return Object.freeze({ width: size[0] ?? 1, height: size[1] ?? 1, depthOrArrayLayers: size[2] ?? 1 });
+    return Object.freeze({
+      width: size[0] ?? 1,
+      height: size[1] ?? 1,
+      depthOrArrayLayers: size[2] ?? 1
+    });
   }
   const value = size as { width: number; height?: number; depthOrArrayLayers?: number };
   return Object.freeze({
-    width: value.width, height: value.height ?? 1, depthOrArrayLayers: value.depthOrArrayLayers ?? 1
+    width: value.width,
+    height: value.height ?? 1,
+    depthOrArrayLayers: value.depthOrArrayLayers ?? 1
   });
 }
 
-function freezeWithLabel<T extends object>(value: T, label: string | undefined): Readonly<T & { label?: string }> {
+function freezeWithLabel<T extends object>(
+  value: T,
+  label: string | undefined
+): Readonly<T & { label?: string }> {
   return Object.freeze(label === undefined ? value : { ...value, label });
 }

@@ -4,7 +4,7 @@ import type { E2EState } from '../harness/types';
 
 const SCENARIO_BY_PROJECT = {
   'browser-host-smoke': 'browser-host',
-  'webgl2-smoke': 'webgl2',
+  'webgl2-render': 'webgl2',
   'webgpu-render': 'webgpu'
 } as const satisfies Record<E2EProject, string>;
 
@@ -40,7 +40,8 @@ export const test = base.extend<HarnessFixtures>({
     try {
       await expect
         .poll(() => page.evaluate(() => window.__AETHER_E2E__.state()), {
-          message: `wait for the ${scenario} harness to finish booting`
+          message: `wait for the ${scenario} harness to finish booting`,
+          timeout: 15_000
         })
         .not.toMatchObject({ status: 'booting' });
 
