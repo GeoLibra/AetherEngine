@@ -46,6 +46,27 @@ const ReferenceSchema = defineSchema<ReferenceDocument>({
 });
 
 describe('Schema reference traversal', () => {
+  test('publishes detached immutable visits without freezing caller references', () => {
+    const registry = new SchemaRegistry();
+    registry.register(ReferenceSchema);
+    const reference = { kind: 'entity' as const, id: 'entity-original' };
+    const source = {
+      target: reference,
+      textures: [],
+      weights: new Float32Array([0.25, 0.75])
+    };
+    let visited: { readonly reference: { readonly kind: string; readonly id: string } } | undefined;
+
+    registry.visitReferences('test.references', 1, source, (visit) => {
+      visited = visit;
+    });
+
+    expect(Object.isExtensible(reference)).toBe(true);
+    reference.id = 'entity-mutated-by-caller';
+    expect(visited?.reference).toEqual({ kind: 'entity', id: 'entity-original' });
+    expect(Object.isFrozen(visited?.reference)).toBe(true);
+  });
+
   test('walks and remaps references through stable field paths without aliasing values', () => {
     const registry = new SchemaRegistry();
     registry.register(ReferenceSchema);

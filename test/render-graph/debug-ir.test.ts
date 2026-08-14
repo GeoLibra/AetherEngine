@@ -64,6 +64,47 @@ describe('render graph Debug IR', () => {
     expect(aliased.checksum).not.toBe(unaliased.checksum);
   });
 
+  test('snapshots caller-provided history debug values before deeply freezing the IR', () => {
+    const graph = new RenderGraphBuilder();
+    const buffer = graph.createBuffer(BUFFER);
+    graph.addPass({
+      id: 'history-debug',
+      setup(pass) {
+        return pass.writeBuffer(buffer, 'copy-dst');
+      },
+      run() {}
+    });
+    const snapshot = graph.build();
+    const pendingSubmissionIds = [7];
+    const schedule = [{ kind: 'submission' as const }];
+    const history = {
+      readableSlot: undefined,
+      writableSlot: 0,
+      versionSlots: [{ version: 0, slot: 0 }],
+      slots: [
+        {
+          slot: 0,
+          valid: false,
+          invalidationReason: 'new' as const,
+          producerSubmissionId: undefined,
+          pendingSubmissionIds,
+          pendingRetirement: false
+        }
+      ]
+    };
+
+    const debug = createRenderGraphDebugIR(snapshot, compileRenderGraph(snapshot), {
+      historyStates: new Map([[0, history]]),
+      schedule
+    });
+
+    expect(Object.isExtensible(history)).toBe(true);
+    expect(Object.isExtensible(schedule[0])).toBe(true);
+    pendingSubmissionIds.push(8);
+    expect(debug.resources[0]?.history?.slots[0]?.pendingSubmissionIds).toEqual([7]);
+    expect(Object.isFrozen(debug.resources[0]?.history)).toBe(true);
+  });
+
   test('derives present disposition from the matching imported surface terminal', () => {
     const graph = new RenderGraphBuilder();
     const output = graph.createTexture(

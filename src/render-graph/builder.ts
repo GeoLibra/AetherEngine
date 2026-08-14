@@ -4,7 +4,7 @@ import {
   type GraphResourceRecord
 } from './resources';
 import type { GraphRange } from './ranges';
-import { assertGraphHandle } from './handles';
+import { assertGraphHandle, isGraphHandle } from './handles';
 import type {
   BufferDescriptor,
   BufferHandle,
@@ -192,7 +192,7 @@ export class RenderGraphBuilder {
       if (isPromiseLike(setupResources)) {
         throw new Error('Render graph pass setup must be synchronous and purely declarative.');
       }
-      frozenResources = freezeSetupValue(setupResources);
+      frozenResources = snapshotSetupValue(setupResources);
     } catch (error) {
       this.resources.rollback(resourceCheckpoint);
       this.terminals.splice(0, this.terminals.length, ...terminalCheckpoint);
@@ -503,35 +503,43 @@ function validatePassDescriptor<TResources, TContext>(
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return typeof value === 'object' && value !== null && 'then' in value;
 }
-function freezeSetupValue<T>(
+function snapshotSetupValue<T>(
   value: T,
   visiting = new WeakSet<object>(),
-  completed = new WeakSet<object>()
+  completed = new WeakMap<object, unknown>()
 ): T {
   if (typeof value === 'function') {
     throw new Error('Render graph setup resources cannot contain mutable function values.');
   }
   if (typeof value !== 'object' || value === null) return value;
+  if (isGraphHandle(value)) return value as T;
   const prototype = Object.getPrototypeOf(value);
   if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
     const name = prototype?.constructor?.name ?? 'unknown';
     throw new Error(`Render graph setup resources cannot contain mutable container ${name}.`);
   }
-  if (completed.has(value)) return value;
+  const existing = completed.get(value);
+  if (existing !== undefined) return existing as T;
   if (visiting.has(value)) throw new Error('Render graph setup resources must not contain cycles.');
   visiting.add(value);
+  const snapshot = Array.isArray(value) ? new Array(value.length) : Object.create(prototype);
   for (const key of Reflect.ownKeys(value)) {
+    if (Array.isArray(value) && key === 'length') continue;
     const property = Object.getOwnPropertyDescriptor(value, key);
     if (property?.get !== undefined || property?.set !== undefined) {
       throw new Error('Render graph setup resources must contain data properties only.');
     }
     if (property !== undefined && 'value' in property) {
-      freezeSetupValue(property.value, visiting, completed);
+      Object.defineProperty(snapshot, key, {
+        ...property,
+        value: snapshotSetupValue(property.value, visiting, completed)
+      });
     }
   }
   visiting.delete(value);
-  completed.add(value);
-  return Object.isFrozen(value) ? value : Object.freeze(value);
+  const frozen = Object.freeze(snapshot);
+  completed.set(value, frozen);
+  return frozen as T;
 }
 
 function assertAccessUsage(kind: GraphHandle['kind'], mode: 'read' | 'write', usage: string): void {

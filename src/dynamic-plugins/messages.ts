@@ -152,11 +152,11 @@ function validateAndComputePayload<T>(
   payload: unknown,
   maxBytes: number
 ): { bytes: number; payload: T } {
-  assertSerializable(payload);
+  const cloned = cloneSerializablePayload(payload);
   let serialized: string;
   try {
-    const json = JSON.stringify(payload);
-    if (json === undefined && payload !== undefined) {
+    const json = JSON.stringify(cloned);
+    if (json === undefined && cloned !== undefined) {
       throw new Error('Dynamic plugin message payload is not serializable.');
     }
     serialized = json ?? 'null';
@@ -170,57 +170,44 @@ function validateAndComputePayload<T>(
       `Dynamic plugin message payload size ${bytes} exceeds budget of ${maxBytes} bytes.`
     );
   }
-
-  const parsed = JSON.parse(serialized) as T;
-  deepFreeze(parsed);
-  return { bytes, payload: parsed };
+  return { bytes, payload: cloned as T };
 }
 
-function assertSerializable(value: unknown, seen = new Set<unknown>()): void {
-  if (value === null || value === undefined) {
-    return;
-  }
+function cloneSerializablePayload(value: unknown, seen = new Set<unknown>()): unknown {
+  // Preserve JSON transport normalization without using JSON parse/stringify as the clone.
+  if (value === null || value === undefined) return null;
   const type = typeof value;
+  if (type === 'number') {
+    return Number.isFinite(value) ? (Object.is(value, -0) ? 0 : value) : null;
+  }
   if (type === 'function' || type === 'symbol' || type === 'bigint') {
     throw new Error('Dynamic plugin message payload contains non-serializable type.');
   }
-  if (type === 'object') {
-    if (seen.has(value)) {
-      throw new Error('Dynamic plugin message payload contains circular reference.');
-    }
-    seen.add(value);
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        assertSerializable(item, seen);
-      }
-    } else {
-      const proto = Object.getPrototypeOf(value);
-      if (proto !== null && proto !== Object.prototype) {
-        throw new Error('Dynamic plugin message payload contains non-serializable class instance.');
-      }
-      for (const key of Object.keys(value)) {
-        const val = (value as Record<string, unknown>)[key];
-        if (
-          typeof val === 'function' ||
-          typeof val === 'symbol' ||
-          typeof val === 'bigint' ||
-          typeof val === 'undefined'
-        ) {
-          throw new Error('Dynamic plugin message payload contains non-serializable type.');
-        }
-        assertSerializable(val, seen);
-      }
-    }
+  if (type !== 'object') return value;
+  if (seen.has(value)) {
+    throw new Error('Dynamic plugin message payload contains circular reference.');
   }
-}
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return Object.freeze(Array.from(value, (entry) => cloneSerializablePayload(entry, seen)));
+  }
 
-function deepFreeze<U>(value: U): U {
-  if (value === null || typeof value !== 'object') {
-    return value;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== null && prototype !== Object.prototype) {
+    throw new Error('Dynamic plugin message payload contains non-serializable class instance.');
   }
-  Object.freeze(value);
+  const cloned = Object.create(prototype) as Record<string, unknown>;
   for (const key of Object.keys(value)) {
-    deepFreeze((value as Record<string, unknown>)[key]);
+    const entry = (value as Record<string, unknown>)[key];
+    if (
+      typeof entry === 'function' ||
+      typeof entry === 'symbol' ||
+      typeof entry === 'bigint' ||
+      typeof entry === 'undefined'
+    ) {
+      throw new Error('Dynamic plugin message payload contains non-serializable type.');
+    }
+    cloned[key] = cloneSerializablePayload(entry, seen);
   }
-  return value;
+  return Object.freeze(cloned);
 }

@@ -19,13 +19,7 @@ export function visitSchemaReferences<T>(
     return;
   }
   for (const field of schema.fields) {
-    visitValue(
-      schema,
-      field.type,
-      value[field.name],
-      [fieldPath(field)],
-      visitor
-    );
+    visitValue(schema, field.type, value[field.name], [fieldPath(field)], visitor);
   }
 }
 
@@ -135,7 +129,9 @@ function mapReference<T>(
   );
   if (mapped === null) {
     if (type.policy === 'required') {
-      throw new Error(`Cannot clear required reference at schema field path "${formatPath(path)}".`);
+      throw new Error(
+        `Cannot clear required reference at schema field path "${formatPath(path)}".`
+      );
     }
     return null;
   }
@@ -192,7 +188,7 @@ function createVisit<T>(
     schema: schema.id,
     path: Object.freeze([...path]),
     policy,
-    reference: Object.freeze(reference),
+    reference: Object.freeze({ ...reference }),
     ...(expectedType === undefined ? {} : { expectedType })
   });
 }

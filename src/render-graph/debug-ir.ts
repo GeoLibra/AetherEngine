@@ -122,15 +122,17 @@ export function createRenderGraphDebugIR(
     const history = options.historyStates?.get(resource.resourceId);
     return Object.freeze({
       ...resource,
-      ...(history === undefined ? {} : { history })
+      ...(history === undefined ? {} : { history: cloneHistoryDebugBinding(history) })
     });
   });
   const edges = Object.freeze(compiled.edges.map((edge) => Object.freeze({ ...edge })));
   const order = Object.freeze([...compiled.order]);
   const rootPassIds = Object.freeze([...compiled.rootPassIds]);
-  const schedule = Object.freeze([
-    ...(options.schedule ?? createRenderGraphExecutionSchedule(compiled))
-  ]);
+  const schedule = Object.freeze(
+    [...(options.schedule ?? createRenderGraphExecutionSchedule(compiled))].map((step) => ({
+      ...step
+    }))
+  );
   const logical = Object.freeze({
     schemaVersion: 1 as const,
     passes: Object.freeze(passes),
@@ -203,6 +205,20 @@ function compactUndefined<T extends Readonly<Record<string, unknown>>>(value: T)
   return Object.freeze(
     Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined))
   ) as T;
+}
+
+function cloneHistoryDebugBinding(
+  history: RenderGraphHistoryDebugBinding
+): RenderGraphHistoryDebugBinding {
+  return {
+    readableSlot: history.readableSlot,
+    writableSlot: history.writableSlot,
+    versionSlots: history.versionSlots.map((slot) => ({ ...slot })),
+    slots: history.slots.map((slot) => ({
+      ...slot,
+      pendingSubmissionIds: [...slot.pendingSubmissionIds]
+    }))
+  };
 }
 
 function deepFreeze<T>(value: T, visited = new WeakSet<object>()): T {

@@ -101,6 +101,44 @@ describe('dynamic plugin message admission', () => {
     ).toThrow(/non-serializable/i);
   });
 
+  it('keeps caller-owned payload graphs extensible while publishing a detached frozen clone', () => {
+    const nested = { items: ['original'] };
+    const payload = Object.assign(Object.create(null), { nested });
+    const input = {
+      schemaVersion: 1,
+      pluginId: String(pluginId),
+      versionId: String(versionId),
+      activationId: String(currentActivation),
+      requestId: 'ownership-check',
+      payload
+    };
+
+    const normalized = validateDynamicPluginMessageEnvelope<typeof payload>(input, {
+      maxPayloadBytes: 1_024
+    });
+
+    expect(Object.isExtensible(input)).toBe(true);
+    expect(Object.isExtensible(payload)).toBe(true);
+    expect(Object.getPrototypeOf(normalized.payload)).toBeNull();
+    payload.nested.items.push('caller-still-owns-this');
+    expect(normalized.payload.nested.items).toEqual(['original']);
+    expect(Object.isFrozen(normalized.payload)).toBe(true);
+    expect(Object.isFrozen(normalized.payload.nested)).toBe(true);
+    expect(Object.isFrozen(normalized.payload.nested.items)).toBe(true);
+  });
+
+  it('preserves JSON transport normalization while cloning payloads', () => {
+    const normalized = validateDynamicPluginMessageEnvelope(
+      {
+        ...envelope(),
+        payload: [undefined, Number.NaN, -0]
+      },
+      { maxPayloadBytes: 1_024 }
+    );
+
+    expect(normalized.payload).toEqual([null, null, 0]);
+  });
+
   it('accepts one current terminal result and rejects its duplicate', () => {
     const handled: string[] = [];
     const guard = new DynamicPluginMessageGuard(
