@@ -1,8 +1,9 @@
 import { BrowserHost, type WindowMetrics } from '../../src';
 import { createDOMBrowserPort } from './browser-port';
 import type { E2EBridge, E2EState } from './types';
+import { runWebGPUScene } from './webgpu-scene';
 
-type Scenario = 'browser-host' | 'webgl2';
+type Scenario = 'browser-host' | 'webgl2' | 'webgpu';
 type Cleanup = () => void | Promise<void>;
 interface ResizeOperation {
   readonly completion: Promise<void>;
@@ -107,12 +108,19 @@ async function initialize(): Promise<void> {
     }
   }
 
+  if (scenario === 'webgpu') {
+    const scene = await runWebGPUScene(canvas);
+    cleanups.push(() => scene.destroy());
+    publishReady('webgpu', scene.detail);
+    return;
+  }
+
   publishReady(scenario, metricsDetail(hostWindow.metrics, hostWindow.generation));
 }
 
 function readScenario(): Scenario {
   const scenario = new URLSearchParams(window.location.search).get('scenario');
-  if (scenario === 'browser-host' || scenario === 'webgl2') return scenario;
+  if (scenario === 'browser-host' || scenario === 'webgl2' || scenario === 'webgpu') return scenario;
   throw new Error(`Unsupported E2E scenario: ${scenario ?? '(missing)'}.`);
 }
 
@@ -175,7 +183,7 @@ function metricsDetail(
 }
 
 function publishReady(
-  backend: 'browser-host' | 'webgl2',
+  backend: 'browser-host' | 'webgl2' | 'webgpu',
   detail: Readonly<Record<string, unknown>>
 ): void {
   if (teardownStarted) return;

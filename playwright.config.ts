@@ -4,6 +4,7 @@ const BASE_URL = 'http://127.0.0.1:4173';
 
 export default defineConfig({
   testDir: './e2e/specs',
+  snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{arg}-{projectName}{ext}',
   retries: 0,
   ...(process.env.CI ? { workers: 1 } : {}),
   timeout: 30_000,
@@ -26,6 +27,18 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         deviceScaleFactor: 1
+      }
+    },
+    {
+      name: 'webgpu-render',
+      testMatch: 'webgpu-render.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chrome',
+        deviceScaleFactor: 1,
+        launchOptions: {
+          args: ['--enable-unsafe-webgpu']
+        }
       }
     }
   ],

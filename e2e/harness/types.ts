@@ -3,7 +3,7 @@ export type E2EState =
   | {
       readonly status: 'ready';
       readonly host: 'browser';
-      readonly backend: 'browser-host' | 'webgl2';
+      readonly backend: 'browser-host' | 'webgl2' | 'webgpu';
       readonly detail: Readonly<Record<string, unknown>>;
     }
   | { readonly status: 'failed'; readonly message: string }

@@ -38,6 +38,15 @@ export {
 } from './app/utils';
 export { Schedule } from './app/schedule';
 export { BrowserRunner, HeadlessRunner } from './app/runner';
+export { createBrowserGraphics, BrowserGraphicsBootstrapError } from './platform';
+export type {
+  BrowserGraphicsAttempt,
+  BrowserGraphicsLoss,
+  BrowserGraphicsOptions,
+  BrowserGraphicsSession,
+  BrowserSurfaceOptions,
+  PhysicalSize
+} from './platform';
 export type {
   AnimationFrameHost,
   AppExit,
@@ -143,6 +152,8 @@ export {
   WebGL2Adapter,
   WebGL2ProgramCreationError,
   WebGPUAdapter,
+  getBrowserWebGPUEnvironment,
+  requestBrowserWebGPUAdapter,
   WebGPUInteropExtension,
   WebGPUSurface,
   WebGPUNativeDeviceRequestError,
@@ -178,6 +189,12 @@ export type {
   WebGL2ShaderTranslationPort,
   WebGL2TranslatedShader,
   WebGPUNativeAdapterInfo,
+  BrowserGPUCanvasContext,
+  BrowserWebGPU,
+  BrowserWebGPUAdapterRequestOptions,
+  BrowserWebGPUCanvas,
+  BrowserWebGPUEnvironment,
+  BrowserWebGPUGlobalObject,
   WebGPUNativeAdapterPort,
   WebGPUNativeBufferPort,
   WebGPUNativeCanvasContextPort,

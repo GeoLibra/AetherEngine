@@ -10,4 +10,5 @@ export * from './execution-plan';
 export * from './transient-pool';
 export * from './history';
 export * from './executor';
+export * from './prepared-resources';
 export * from './render-system';
