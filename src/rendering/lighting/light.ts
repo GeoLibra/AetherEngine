@@ -44,25 +44,50 @@ export function orderLightsForGpu(lights: readonly PreparedLight[]): readonly Pr
 }
 
 function snapshotPreparedLight(light: PreparedLight): PreparedLight {
-  const common = {
-    ...light,
-    colorLinear: Object.freeze([...light.colorLinear]) as Vec3
-  };
   if (light.kind === 'directional')
     return Object.freeze({
-      ...common,
-      direction: Object.freeze([...light.direction]) as Vec3
+      entity: light.entity,
+      payloadVersion: light.payloadVersion,
+      kind: 'directional',
+      direction: snapshotVec3(light.direction),
+      illuminanceLux: light.illuminanceLux,
+      colorLinear: snapshotVec3(light.colorLinear),
+      enabled: light.enabled,
+      layerMask: light.layerMask,
+      castsShadow: light.castsShadow
     }) as PreparedLight;
   if (light.kind === 'point')
     return Object.freeze({
-      ...common,
-      position: Object.freeze([...light.position]) as Vec3
+      entity: light.entity,
+      payloadVersion: light.payloadVersion,
+      kind: 'point',
+      position: snapshotVec3(light.position),
+      luminousIntensityCandela: light.luminousIntensityCandela,
+      range: light.range,
+      colorLinear: snapshotVec3(light.colorLinear),
+      enabled: light.enabled,
+      layerMask: light.layerMask,
+      castsShadow: light.castsShadow
     }) as PreparedLight;
   return Object.freeze({
-    ...common,
-    position: Object.freeze([...light.position]) as Vec3,
-    direction: Object.freeze([...light.direction]) as Vec3
+    entity: light.entity,
+    payloadVersion: light.payloadVersion,
+    kind: 'spot',
+    position: snapshotVec3(light.position),
+    direction: snapshotVec3(light.direction),
+    luminousIntensityCandela: light.luminousIntensityCandela,
+    range: light.range,
+    innerRadians: light.innerRadians,
+    outerRadians: light.outerRadians,
+    colorLinear: snapshotVec3(light.colorLinear),
+    enabled: light.enabled,
+    layerMask: light.layerMask,
+    castsShadow: light.castsShadow
   }) as PreparedLight;
+}
+
+function snapshotVec3(value: Vec3): Vec3 {
+  return Object.freeze([value[0], value[1], value[2]]) as Vec3;
 }
 
 export function normalizedLightDirection(direction: Vec3): Vec3 {

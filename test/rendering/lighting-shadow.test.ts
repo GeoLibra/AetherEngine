@@ -151,10 +151,22 @@ describe('CPU light-list fallback', () => {
   });
 
   test('detaches ordered light snapshots from caller-owned light records', () => {
-    const light = point(1, 0) as Extract<PreparedLight, { readonly kind: 'point' }>;
+    const nestedExtra = { callerOwned: true };
+    const light = {
+      ...point(1, 0),
+      nestedExtra
+    } as Extract<PreparedLight, { readonly kind: 'point' }> & { nestedExtra: object };
+    const directionalLight = {
+      ...directional(2),
+      nestedExtra
+    } as Extract<PreparedLight, { readonly kind: 'directional' }> & { nestedExtra: object };
+    const spotLight = {
+      ...spot(3, 0),
+      nestedExtra
+    } as Extract<PreparedLight, { readonly kind: 'spot' }> & { nestedExtra: object };
     const result = buildCpuLightLists({
       viewLayerMask: 1,
-      lights: [light],
+      lights: [light, directionalLight, spotLight],
       receivers: [],
       capacity: { maxDirectionalLights: 1, maxLightsPerReceiver: 1, maxLightIndices: 1 }
     });
@@ -163,6 +175,16 @@ describe('CPU light-list fallback', () => {
     (light.colorLinear as [number, number, number])[0] = 0;
 
     expect(result.orderedLights[0]).toMatchObject({ position: [0, 0, 0], colorLinear: [1, 1, 1] });
+    expect(result.orderedLights.every((published) => !('nestedExtra' in published))).toBe(true);
+    expect(
+      result.orderedLights.find((published) => published.kind === 'directional')
+    ).toMatchObject({
+      direction: [0, -1, 0]
+    });
+    expect(result.orderedLights.find((published) => published.kind === 'spot')).toMatchObject({
+      position: [0, 0, 0],
+      direction: [0, 0, -2]
+    });
   });
 
   test('filters disabled and layer-mismatched light/receiver state observably', () => {
@@ -226,8 +248,11 @@ describe('shadow requests, atlas, cache, and graph', () => {
   });
 
   test('detaches selected shadow requests from caller-owned records', () => {
-    const accepted = request(1, 2);
-    const rejected = request(2, 1, 64);
+    const nestedExtra = { callerOwned: true };
+    const accepted = { ...request(1, 2), nestedExtra } as ShadowRequest & { nestedExtra: object };
+    const rejected = { ...request(2, 1, 64), nestedExtra } as ShadowRequest & {
+      nestedExtra: object;
+    };
     const selected = selectShadowRequests([accepted, rejected], {
       maxRequests: 1,
       maxTexels: 32 * 32
@@ -238,6 +263,8 @@ describe('shadow requests, atlas, cache, and graph', () => {
 
     expect(selected.accepted[0]).toMatchObject({ importance: 2, resolutionClass: 32 });
     expect(selected.rejected[0]?.request).toMatchObject({ importance: 1, resolutionClass: 64 });
+    expect('nestedExtra' in selected.accepted[0]!).toBe(false);
+    expect('nestedExtra' in selected.rejected[0]!.request).toBe(false);
   });
 
   test('invalidates generation-bearing atlas tiles on resize and keys every cache revision', () => {

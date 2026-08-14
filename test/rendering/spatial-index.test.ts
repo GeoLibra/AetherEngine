@@ -47,17 +47,32 @@ describe('packed static BVH', () => {
   });
 
   test('detaches packed entry snapshots from caller-owned bounds', () => {
-    const source = entry(1, 0) as SpatialEntry & {
+    const nestedExtra = { callerOwned: true };
+    const source = {
+      ...entry(1, 0),
+      bounds: {
+        kind: 'aabb' as const,
+        min: [-1, -1, -3] as [number, number, number],
+        max: [1, 1, -1] as [number, number, number],
+        nestedExtra
+      },
+      nestedExtra
+    } as SpatialEntry & {
       readonly bounds: {
-        readonly kind: 'sphere';
-        readonly center: readonly [number, number, number];
+        readonly kind: 'aabb';
+        readonly min: readonly [number, number, number];
+        readonly max: readonly [number, number, number];
+        readonly nestedExtra: object;
       };
+      readonly nestedExtra: object;
     };
     const bvh = buildPackedStaticBvh([source]);
 
-    (source.bounds.center as [number, number, number])[0] = 99;
+    (source.bounds.min as [number, number, number])[0] = 99;
 
-    expect(bvh.entries[0]?.bounds).toEqual({ kind: 'sphere', center: [0, 0, -2], radius: 0.25 });
+    expect(bvh.entries[0]?.bounds).toEqual({ kind: 'aabb', min: [-1, -1, -3], max: [1, 1, -1] });
+    expect('nestedExtra' in bvh.entries[0]!).toBe(false);
+    expect('nestedExtra' in bvh.entries[0]!.bounds).toBe(false);
   });
 });
 

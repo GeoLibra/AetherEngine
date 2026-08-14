@@ -1,13 +1,24 @@
 import { describe, expect, test } from 'vitest';
 import {
   createLightingWorkload,
+  createShadowSelectionWorkload,
   runLightingReference,
   runLightingSubject,
   runShadowAtlasReference,
-  runShadowAtlasSubject
+  runShadowAtlasSubject,
+  runShadowSelectionReference,
+  runShadowSelectionSubject
 } from '../../benchmark/lighting-shadow/scenario';
 
 describe('lighting-shadow benchmark oracle', () => {
+  test('keeps shadow selection exact across the declared request scale axis', () => {
+    for (const count of [100, 1_000, 10_000]) {
+      const workload = createShadowSelectionWorkload(count, 127);
+      expect(createShadowSelectionWorkload(count, 127)).toEqual(workload);
+      expect(runShadowSelectionSubject(workload)).toEqual(runShadowSelectionReference(workload));
+    }
+  });
+
   test('generates deterministic workloads and agrees with the independent scalar oracle', () => {
     for (const constrained of [false, true]) {
       const workload = createLightingWorkload(256, 48, 83, constrained);

@@ -2,12 +2,97 @@ import { Frustum, Mat4 } from '../../src/math';
 import {
   computeVisibility,
   buildPackedStaticBvh,
+  conservativeSphereFromScale,
+  createCpuVisibilityView,
+  extractView,
   linearCullSpatialEntries,
   StaticBvhSpatialIndex,
   type RenderEntityId,
   type SpatialEntry,
   type VisibilityCandidate
 } from '../../src/rendering';
+
+export interface CameraSnapshotWorkload {
+  readonly entries: readonly Readonly<{
+    center: readonly [number, number, number];
+    localRadius: number;
+    scale: readonly [number, number, number];
+    jitterPixels: readonly [number, number];
+    logicalWidth: number;
+  }>[];
+}
+
+export interface CameraSnapshotResult {
+  readonly count: number;
+  readonly checksum: number;
+}
+
+export function createCameraSnapshotWorkload(count: number, seed = 53): CameraSnapshotWorkload {
+  let state = seed >>> 0;
+  const random = () => (state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 0x1_0000_0000;
+  return Object.freeze({
+    entries: Object.freeze(
+      Array.from({ length: count }, (_, index) =>
+        Object.freeze({
+          center: [random() * 20 - 10, random() * 10 - 5, -random() * 50] as const,
+          localRadius: 0.25 + random() * 2,
+          scale: [random() * 3 - 1.5, random() * 3 - 1.5, random() * 3 - 1.5] as const,
+          jitterPixels: [(index % 3) - 1, (index % 5) - 2] as const,
+          logicalWidth: 320 + (index % 7) * 16
+        })
+      )
+    )
+  });
+}
+
+export function runCameraSnapshotSubject(workload: CameraSnapshotWorkload): CameraSnapshotResult {
+  let checksum = 0;
+  for (let index = 0; index < workload.entries.length; index++) {
+    const entry = workload.entries[index]!;
+    const sphere = conservativeSphereFromScale(entry.center, entry.localRadius, entry.scale);
+    const extracted = extractView({
+      viewId: `snapshot-${index}`,
+      camera: index as RenderEntityId,
+      revision: index,
+      view: Mat4.identity(),
+      projection: Mat4.identity(),
+      unjitteredProjection: Mat4.identity(),
+      projectionDescriptor: {
+        kind: 'orthographic',
+        near: 0.1,
+        far: 100,
+        orthographicHalfHeight: 1
+      },
+      viewport: { logicalWidth: entry.logicalWidth, logicalHeight: 180, devicePixelRatio: 2 },
+      layerMask: 1,
+      jitterPixels: entry.jitterPixels
+    });
+    const visibility = createCpuVisibilityView(extracted, {
+      surface: 'benchmark',
+      featurePolicyKey: 'snapshot-boundary',
+      historyKey: `snapshot-${index}`
+    });
+    checksum +=
+      sphere.center[0] +
+      sphere.radius +
+      extracted.jitterPixels[0] +
+      visibility.viewport.width +
+      visibility.viewMatrix![0]!;
+  }
+  return Object.freeze({ count: workload.entries.length, checksum });
+}
+
+/** Independent scalar oracle for camera snapshot boundaries. */
+export function runCameraSnapshotReference(workload: CameraSnapshotWorkload): CameraSnapshotResult {
+  let checksum = 0;
+  for (const entry of workload.entries) {
+    const radius =
+      entry.localRadius *
+      Math.max(Math.abs(entry.scale[0]), Math.abs(entry.scale[1]), Math.abs(entry.scale[2]));
+    checksum += entry.center[0] + radius + entry.jitterPixels[0] + entry.logicalWidth * 2 + 1;
+  }
+  return Object.freeze({ count: workload.entries.length, checksum });
+}
 
 export function createVisibilityCandidates(
   count: number,

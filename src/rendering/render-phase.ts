@@ -73,7 +73,17 @@ export function buildRenderPhase(
 }
 
 function snapshotPhaseItem(item: PhaseItem): PhaseItem {
-  return Object.freeze({ ...item });
+  return Object.freeze({
+    entity: item.entity,
+    phase: item.phase,
+    pipelineKey: item.pipelineKey,
+    materialKey: item.materialKey,
+    meshKey: item.meshKey,
+    bindingKey: item.bindingKey,
+    drawKey: item.drawKey,
+    distance: item.distance,
+    insertionOrder: item.insertionOrder
+  });
 }
 
 /**

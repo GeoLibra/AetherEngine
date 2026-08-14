@@ -5,11 +5,28 @@ import {
   defineExtractorToken,
   defineRenderField
 } from '../src/rendering';
+import {
+  createRenderPhaseWorkload,
+  runRenderPhaseReference,
+  runRenderPhaseSubject
+} from './render-world/render-phase-scenario';
 
 const Position = defineRenderField<[number, number, number]>('position');
 const Visible = defineRenderField<boolean>('visible');
 const Scene = defineExtractorToken('benchmark-scene', [Position, Visible]);
 const extractorPlan = new RenderExtractorRegistryBuilder().registerExtractor(Scene).build();
+
+for (const phase of ['opaque', 'transparent'] as const) {
+  for (const size of [100, 1_000, 10_000]) {
+    const workload = createRenderPhaseWorkload(size, phase);
+    const reference = runRenderPhaseReference(workload);
+    bench(
+      `render phase ${phase} ${size} items`,
+      () => expect(runRenderPhaseSubject(workload)).toEqual(reference),
+      { iterations: 1, warmupIterations: 0 }
+    );
+  }
+}
 
 for (const size of [100, 1_000, 10_000]) {
   bench(

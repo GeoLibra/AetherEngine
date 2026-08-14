@@ -105,7 +105,14 @@ function snapshotSpatialEntry(entry: SpatialEntry): SpatialEntry {
           min: Object.freeze([...entry.bounds.min]) as Vec3,
           max: Object.freeze([...entry.bounds.max]) as Vec3
         });
-  return Object.freeze({ ...entry, bounds });
+  return Object.freeze({
+    renderEntity: entry.renderEntity,
+    boundsRevision: entry.boundsRevision,
+    bounds,
+    layerMask: entry.layerMask,
+    enabled: entry.enabled,
+    insertionOrder: entry.insertionOrder
+  });
 }
 
 /**

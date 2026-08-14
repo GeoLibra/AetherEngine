@@ -121,6 +121,32 @@ describe('camera extraction', () => {
     expect(visibilityView.viewMatrix).toEqual(extracted.view);
   });
 
+  test('copies and freezes caller-owned jitter pixels', () => {
+    const jitterPixels: [number, number] = [1, -1];
+    const extracted = extractView({
+      viewId: 'jitter-owned',
+      camera: entity(7),
+      revision: 4,
+      view: Mat4.identity(),
+      projection: Mat4.perspective(Math.PI / 2, 1, 0.1, 10),
+      unjitteredProjection: Mat4.perspective(Math.PI / 2, 1, 0.1, 10),
+      projectionDescriptor: {
+        kind: 'perspective',
+        near: 0.1,
+        far: 10,
+        verticalFovRadians: Math.PI / 2
+      },
+      viewport: { logicalWidth: 100, logicalHeight: 100, devicePixelRatio: 1 },
+      layerMask: 3,
+      jitterPixels
+    });
+
+    jitterPixels[0] = 99;
+
+    expect(extracted.jitterPixels).toEqual([1, -1]);
+    expect(Object.isFrozen(extracted.jitterPixels)).toBe(true);
+  });
+
   test('detaches CPU visibility data from an externally owned extracted view', () => {
     const source = extractView({
       viewId: 'external',
@@ -137,10 +163,11 @@ describe('camera extraction', () => {
       viewport: { logicalWidth: 100, logicalHeight: 100, devicePixelRatio: 1 },
       layerMask: 1
     });
+    const nestedExtra = { callerOwned: true };
     const extracted = {
       ...source,
       view: new Float32Array(source.view),
-      viewportPixels: { ...source.viewportPixels }
+      viewportPixels: { ...source.viewportPixels, nestedExtra }
     };
     const visibilityView = createCpuVisibilityView(extracted, {
       surface: 'main',
@@ -153,6 +180,7 @@ describe('camera extraction', () => {
 
     expect(visibilityView.viewMatrix?.[0]).toBe(1);
     expect(visibilityView.viewport.width).toBe(100);
+    expect('nestedExtra' in visibilityView.viewport).toBe(false);
   });
 
   test('reports camera identity when a view cannot be published', () => {

@@ -1,23 +1,66 @@
 import { describe, expect, test } from 'vitest';
 import { NullAdapter, RHIDeviceRequestError } from '../../../src';
 import { createCapabilitySnapshot } from '../../../src/rhi/core/capabilities';
-import type { FeatureSupport, RHIFeature } from '../../../src/rhi/contracts/capability';
+import type {
+  FeatureSupport,
+  FormatCapabilities,
+  QueueCapability,
+  RHIFeature,
+  RHILimits
+} from '../../../src/rhi/contracts/capability';
 
 describe('NullAdapter negotiation', () => {
   test('publishes detached capability maps through an enforcing read-only facade', () => {
-    const features = new Map<RHIFeature, FeatureSupport>([['compute', { status: 'native' }]]);
+    const nestedExtra = { callerOwned: true };
+    const feature = { status: 'native', nestedExtra } as FeatureSupport & { nestedExtra: object };
+    const sampleCounts = [1, 4];
+    const format = {
+      sample: true,
+      filter: true,
+      render: true,
+      blend: true,
+      storage: false,
+      copySrc: true,
+      copyDst: true,
+      sampleCounts,
+      nestedExtra
+    } as FormatCapabilities & { nestedExtra: object };
+    const limits = { maxBufferSize: 1024, nestedExtra } as unknown as RHILimits & {
+      nestedExtra: object;
+    };
+    const queue = {
+      role: 'graphics',
+      status: 'native',
+      nestedExtra
+    } as QueueCapability & { nestedExtra: object };
+    const features = new Map<RHIFeature, FeatureSupport>([['compute', feature]]);
     const snapshot = createCapabilitySnapshot({
       backend: 'null',
       features,
-      limits: {},
-      formats: new Map(),
-      queues: [{ role: 'graphics', status: 'native' }]
+      limits,
+      formats: new Map([['rgba8unorm', format]]),
+      queues: [queue]
     });
 
     features.set('compute', { status: 'unsupported', reason: 'caller mutation' });
+    sampleCounts[0] = 8;
+    nestedExtra.callerOwned = false;
 
     expect(snapshot.features.get('compute')).toEqual({ status: 'native' });
     expect('set' in snapshot.features).toBe(false);
+    expect(Object.keys(snapshot.features)).toEqual([]);
+    expect(Object.getOwnPropertyNames(snapshot.features)).toEqual([]);
+    expect('entriesMap' in snapshot.features).toBe(false);
+    expect(
+      (snapshot.features as unknown as { entriesMap?: Map<unknown, unknown> }).entriesMap
+    ).toBeUndefined();
+    expect(snapshot.formats.get('rgba8unorm')).toMatchObject({ sampleCounts: [1, 4] });
+    expect(snapshot.limits).toEqual({ maxBufferSize: 1024 });
+    expect(snapshot.queues).toEqual([{ role: 'graphics', status: 'native' }]);
+    expect('nestedExtra' in snapshot.features.get('compute')!).toBe(false);
+    expect('nestedExtra' in snapshot.formats.get('rgba8unorm')!).toBe(false);
+    expect('nestedExtra' in snapshot.limits).toBe(false);
+    expect('nestedExtra' in snapshot.queues[0]!).toBe(false);
   });
 
   test('creates a device when required facts are satisfied', async () => {

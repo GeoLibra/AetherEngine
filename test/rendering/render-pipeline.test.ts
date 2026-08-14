@@ -120,7 +120,8 @@ describe('visibility and render phases', () => {
   });
 
   test('detaches published phase items from caller-owned records', () => {
-    const phaseItem: PhaseItem = {
+    const nestedExtra = { callerOwned: true };
+    const phaseItem = {
       entity: entity(1),
       phase: 'opaque',
       pipelineKey: 'pipeline-before',
@@ -129,14 +130,16 @@ describe('visibility and render phases', () => {
       bindingKey: 'binding',
       drawKey: 'draw',
       distance: 0,
-      insertionOrder: 0
-    };
+      insertionOrder: 0,
+      nestedExtra
+    } as PhaseItem & { nestedExtra: object };
     const snapshot = buildRenderPhase('main', 'opaque', [phaseItem]);
 
     (phaseItem as { pipelineKey: string }).pipelineKey = 'pipeline-after';
 
     expect(snapshot.items[0]?.pipelineKey).toBe('pipeline-before');
     expect(snapshot.batches[0]?.items[0]?.pipelineKey).toBe('pipeline-before');
+    expect('nestedExtra' in snapshot.items[0]!).toBe(false);
   });
 
   test('pipeline identity includes every compatibility axis', () => {

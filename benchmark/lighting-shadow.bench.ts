@@ -1,11 +1,24 @@
 import { bench, expect } from 'vitest';
 import {
   createLightingWorkload,
+  createShadowSelectionWorkload,
   runLightingReference,
   runLightingSubject,
   runShadowAtlasReference,
-  runShadowAtlasSubject
+  runShadowAtlasSubject,
+  runShadowSelectionReference,
+  runShadowSelectionSubject
 } from './lighting-shadow/scenario';
+
+for (const count of [100, 1_000, 10_000]) {
+  const workload = createShadowSelectionWorkload(count);
+  const reference = runShadowSelectionReference(workload);
+  bench(
+    `shadow request selection ${count} requests`,
+    () => expect(runShadowSelectionSubject(workload)).toEqual(reference),
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
 
 for (const receiverCount of [100, 1_000, 10_000]) {
   const workload = createLightingWorkload(receiverCount, 32, 71);

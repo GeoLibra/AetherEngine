@@ -121,6 +121,9 @@ export function extractView(options: ExtractViewOptions): ExtractedView {
   );
   const viewProjection = Mat4.multiply(projection, view);
   const unjitteredViewProjection = Mat4.multiply(unjitteredProjection, view);
+  const jitterPixels = Object.freeze(
+    options.jitterPixels === undefined ? [0, 0] : [options.jitterPixels[0], options.jitterPixels[1]]
+  ) as readonly [number, number];
   let inverseViewProjection: Float32Array;
   try {
     inverseViewProjection = Mat4.invert(viewProjection);
@@ -143,7 +146,7 @@ export function extractView(options: ExtractViewOptions): ExtractedView {
     unjitteredViewProjection,
     viewportPixels: computeViewportPixels(options.viewport),
     layerMask: options.layerMask,
-    jitterPixels: options.jitterPixels ?? ([0, 0] as const),
+    jitterPixels,
     depthMode: options.depthMode ?? 'standard'
   });
 }

@@ -93,7 +93,12 @@ export function createCpuVisibilityView(
     id: extracted.viewId,
     camera: extracted.camera,
     surface: options.surface,
-    viewport: Object.freeze({ ...extracted.viewportPixels }),
+    viewport: Object.freeze({
+      x: extracted.viewportPixels.x,
+      y: extracted.viewportPixels.y,
+      width: extracted.viewportPixels.width,
+      height: extracted.viewportPixels.height
+    }),
     layerMask: extracted.layerMask,
     featurePolicyKey: options.featurePolicyKey,
     historyKey: options.historyKey,

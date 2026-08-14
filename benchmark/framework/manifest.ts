@@ -176,9 +176,11 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       domainIds: Object.freeze(['rendering']),
       pathPrefixes: Object.freeze([
         'benchmark/render-world.bench.ts',
+        'benchmark/render-world/',
         'engine/design/v2/04-rendering/01-render-world.md',
         'src/rendering/',
-        'test/rendering/'
+        'test/rendering/',
+        'test/benchmark/render-world.test.ts'
       ]),
       command: Object.freeze({
         executable: 'node',

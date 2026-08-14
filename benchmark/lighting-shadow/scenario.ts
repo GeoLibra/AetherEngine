@@ -1,12 +1,104 @@
 import {
   ShadowAtlasAllocator,
   buildCpuLightLists,
+  selectShadowRequests,
   type CpuLightListCapacity,
   type LightReceiver,
   type PreparedLight,
   type RenderEntityId,
+  type ShadowBudget,
+  type ShadowRequest,
   type WorldBounds
 } from '../../src/rendering';
+
+export interface ShadowSelectionWorkload {
+  readonly requests: readonly ShadowRequest[];
+  readonly budget: ShadowBudget;
+}
+
+export interface CanonicalShadowSelection {
+  readonly accepted: readonly RenderEntityId[];
+  readonly rejected: readonly Readonly<{ entity: RenderEntityId; reason: string }>[];
+  readonly usedTexels: number;
+}
+
+export function createShadowSelectionWorkload(count: number, seed = 113): ShadowSelectionWorkload {
+  let state = seed >>> 0;
+  const random = () => (state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 0x1_0000_0000;
+  return Object.freeze({
+    requests: Object.freeze(
+      Array.from({ length: count }, (_, index) => {
+        const resolutionClass = [16, 32, 64][index % 3]!;
+        return Object.freeze({
+          lightEntity: (count - index) as RenderEntityId,
+          viewId: `view-${index % 4}`,
+          kind:
+            index % 3 === 0
+              ? ('directional-cascade' as const)
+              : index % 3 === 1
+                ? ('spot' as const)
+                : ('point-face' as const),
+          subresourceIndex: index % 6,
+          resolutionClass,
+          importance: Math.floor(random() * 1000),
+          casterRevision: index % 11
+        });
+      })
+    ),
+    budget: Object.freeze({
+      maxRequests: Math.max(1, Math.floor(count * 0.55)),
+      maxTexels: count * 1_300
+    })
+  });
+}
+
+export function runShadowSelectionSubject(
+  workload: ShadowSelectionWorkload
+): CanonicalShadowSelection {
+  const selection = selectShadowRequests(workload.requests, workload.budget);
+  return Object.freeze({
+    accepted: Object.freeze(selection.accepted.map((request) => request.lightEntity)),
+    rejected: Object.freeze(
+      selection.rejected.map(({ request, reason }) =>
+        Object.freeze({ entity: request.lightEntity, reason })
+      )
+    ),
+    usedTexels: selection.usedTexels
+  });
+}
+
+/** Independent scalar ordering and capacity oracle for shadow request selection. */
+export function runShadowSelectionReference(
+  workload: ShadowSelectionWorkload
+): CanonicalShadowSelection {
+  const ordered = [...workload.requests].sort(
+    (left, right) =>
+      right.importance - left.importance ||
+      left.lightEntity - right.lightEntity ||
+      left.viewId.localeCompare(right.viewId) ||
+      left.kind.localeCompare(right.kind) ||
+      left.subresourceIndex - right.subresourceIndex
+  );
+  const accepted: RenderEntityId[] = [];
+  const rejected: Array<{ entity: RenderEntityId; reason: string }> = [];
+  let usedTexels = 0;
+  for (const request of ordered) {
+    const texels = request.resolutionClass * request.resolutionClass;
+    if (accepted.length >= workload.budget.maxRequests)
+      rejected.push({ entity: request.lightEntity, reason: 'request-capacity' });
+    else if (usedTexels + texels > workload.budget.maxTexels)
+      rejected.push({ entity: request.lightEntity, reason: 'texel-capacity' });
+    else {
+      accepted.push(request.lightEntity);
+      usedTexels += texels;
+    }
+  }
+  return Object.freeze({
+    accepted: Object.freeze(accepted),
+    rejected: Object.freeze(rejected.map((entry) => Object.freeze(entry))),
+    usedTexels
+  });
+}
 
 export interface LightingWorkload {
   readonly lights: readonly PreparedLight[];

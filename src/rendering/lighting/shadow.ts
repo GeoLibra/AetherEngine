@@ -45,7 +45,15 @@ export function selectShadowRequests(
 }
 
 function snapshotShadowRequest(request: ShadowRequest): ShadowRequest {
-  return Object.freeze({ ...request });
+  return Object.freeze({
+    lightEntity: request.lightEntity,
+    viewId: request.viewId,
+    kind: request.kind,
+    subresourceIndex: request.subresourceIndex,
+    resolutionClass: request.resolutionClass,
+    importance: request.importance,
+    casterRevision: request.casterRevision
+  });
 }
 
 export function createShadowCacheKey(input: {
