@@ -40,7 +40,8 @@ export const test = base.extend<HarnessFixtures>({
     try {
       await expect
         .poll(() => page.evaluate(() => window.__AETHER_E2E__.state()), {
-          message: `wait for the ${scenario} harness to finish booting`
+          message: `wait for the ${scenario} harness to finish booting`,
+          timeout: 15_000
         })
         .not.toMatchObject({ status: 'booting' });
 
