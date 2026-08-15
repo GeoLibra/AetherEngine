@@ -2,6 +2,7 @@ export * from './types';
 export * from './light';
 export * from './light-buffer';
 export * from './light-list';
+export * from './light-list-feature';
 export * from './csm';
 export * from './shadow';
 export * from './shadow-atlas';

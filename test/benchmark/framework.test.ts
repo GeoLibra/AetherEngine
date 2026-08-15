@@ -125,6 +125,24 @@ describe('changed-file routing', () => {
     }
   });
 
+  test('routes FeaturePolicy design, source, fixtures, and benchmarks to its dedicated suite', () => {
+    for (const path of [
+      'engine/design/v2/10-quality/01-feature-policy.md',
+      'src/feature-policy/resolver.ts',
+      'test/feature-policy/resolver.test.ts',
+      'test/benchmark/feature-policy.test.ts',
+      'benchmark/feature-policy/scenarios.ts'
+    ]) {
+      const route = routeChangedFiles(BENCHMARK_MANIFEST, [path]);
+      expect(route.suiteIds).toEqual(['feature-policy']);
+      expect(route.missingDomainIds).toEqual([]);
+    }
+    expect(
+      routeChangedFiles(BENCHMARK_MANIFEST, ['src/rendering/lighting/light-list-feature.ts'])
+        .suiteIds
+    ).toEqual(['feature-policy', 'lighting-shadow', 'render-world']);
+  });
+
   test('routes shared Material rendering helpers to both semantic owners', () => {
     for (const path of [
       'src/rendering/material-bindings.ts',

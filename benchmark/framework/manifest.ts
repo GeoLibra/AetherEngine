@@ -44,7 +44,9 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       description:
         'RenderWorld, shader, material, RenderGraph, visibility, lighting, and post paths.',
       pathPrefixes: Object.freeze([
+        'engine/design/v2/10-quality/01-feature-policy.md',
         'engine/design/v2/04-rendering/',
+        'src/feature-policy/',
         'src/rendering/',
         'src/shader/',
         'src/material/'
@@ -167,6 +169,26 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       command: Object.freeze({
         executable: 'node',
         args: Object.freeze(['benchmark/rhi-command-runner.mjs', '{profile}'])
+      })
+    }),
+    Object.freeze({
+      id: 'feature-policy',
+      description:
+        'Capability, semantic, dependency, budget, and stable implementation selection with an independent decision oracle.',
+      domainIds: Object.freeze(['rendering']),
+      pathPrefixes: Object.freeze([
+        'benchmark/feature-policy/',
+        'benchmark/feature-policy-runner.mjs',
+        'engine/design/v2/10-quality/01-feature-policy.md',
+        'src/feature-policy/',
+        'src/rendering/lighting/light-list-feature.ts',
+        'test/feature-policy/',
+        'test/feature-policy/light-list-build.test.ts',
+        'test/benchmark/feature-policy.test.ts'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/feature-policy-runner.mjs', '{profile}'])
       })
     }),
     Object.freeze({

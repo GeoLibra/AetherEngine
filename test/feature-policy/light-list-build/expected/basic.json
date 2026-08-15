@@ -1,0 +1,6 @@
+{
+  "directionalEntities": [1],
+  "receivers": [{ "receiver": 10, "lightEntities": [2], "overflowed": false }],
+  "overflowed": false,
+  "fallback": "none"
+}
