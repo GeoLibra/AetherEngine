@@ -128,6 +128,12 @@ export function applyEditorCommandBatch(
   commands: readonly EditorCommandRecord[],
   initialCapacity: number = 64
 ): EditorSnapshotState {
+  if (!Number.isSafeInteger(initialCapacity) || initialCapacity <= 0) {
+    throw new RangeError(
+      `Invalid initialCapacity: expected positive safe integer, got ${String(initialCapacity)}`
+    );
+  }
+
   let capacity = Math.max(16, initialCapacity);
   const nodeIndexMap = new Map<string, number>();
   let nodeCount = 0;
