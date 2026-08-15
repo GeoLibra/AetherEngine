@@ -34,7 +34,14 @@ export function collectFrozenMutableExposures(argument, freeze, path, source, ch
   return results;
 }
 
-function collectValue(expression, propertyPath, context, results, emitted) {
+function collectValue(
+  expression,
+  propertyPath,
+  context,
+  results,
+  emitted,
+  traversal = 'publication'
+) {
   const value = unwrapExpression(expression);
   if (context.resolvingNodes.has(value)) return;
   context.resolvingNodes.add(value);
@@ -48,6 +55,15 @@ function collectValue(expression, propertyPath, context, results, emitted) {
         return;
       }
     } else if (ts.isPropertyAccessExpression(value)) {
+      if (traversal === 'getter' && ts.isPrivateIdentifier(value.name)) {
+        const initializers = privateMemberInitializers(value.expression, value.name.text, context);
+        if (initializers.length > 0) {
+          for (const initializer of initializers) {
+            collectValue(initializer, propertyPath, context, results, emitted, traversal);
+          }
+          return;
+        }
+      }
       const member = memberMaterialization(value.expression, value.name.text, context);
       if (member.isConcrete) {
         for (const initializer of member.values) {
@@ -100,7 +116,8 @@ function collectValue(expression, propertyPath, context, results, emitted) {
           appendPath(propertyPath, initializer.name),
           context,
           results,
-          emitted
+          emitted,
+          initializer.fromGetter ? 'getter' : traversal
         );
       }
       return;
@@ -111,7 +128,8 @@ function collectValue(expression, propertyPath, context, results, emitted) {
           appendPath(propertyPath, initializer.name),
           context,
           results,
-          emitted
+          emitted,
+          initializer.fromGetter ? 'getter' : traversal
         );
       }
       return;
@@ -123,8 +141,10 @@ function collectValue(expression, propertyPath, context, results, emitted) {
 }
 
 function collectObject(object, prefix, context, results, emitted) {
-  for (const [name, value] of materializeObjectProperties(object, context)) {
-    collectValue(value, appendPath(prefix, name), context, results, emitted);
+  for (const [name, values] of materializeObjectProperties(object, context)) {
+    for (const value of values) {
+      collectValue(value, appendPath(prefix, name), context, results, emitted, 'getter');
+    }
   }
 }
 
@@ -195,14 +215,17 @@ function materializeObjectProperties(expression, context) {
   const values = new Map();
   for (const property of object.properties) {
     if (ts.isSpreadAssignment(property)) {
-      for (const [name, value] of materializeObjectProperties(property.expression, context)) {
-        values.set(name, value);
+      for (const [name, propertyValues] of materializeObjectProperties(
+        property.expression,
+        context
+      )) {
+        values.set(name, propertyValues);
       }
       continue;
     }
     const name = propertyName(property, context);
-    const value = propertyValue(property);
-    if (name !== undefined && value !== undefined) values.set(name, value);
+    const valuesForProperty = propertyValues(property);
+    if (name !== undefined && valuesForProperty.length > 0) values.set(name, valuesForProperty);
   }
   return [...values];
 }
@@ -219,7 +242,7 @@ function memberMaterialization(containerExpression, memberName, context) {
       isConcrete: true,
       values: materializeObjectProperties(container, context)
         .filter(([name]) => name === memberName)
-        .map(([, value]) => value)
+        .flatMap(([, values]) => values)
     };
   }
   if (ts.isArrayLiteralExpression(container) && /^\d+$/.test(memberName)) {
@@ -287,21 +310,26 @@ function thisPropertyInitializers(thisExpression, context) {
       continue;
     }
     const name = memberName(member.name);
-    if (name !== undefined) values.set(name, member.initializer);
+    if (name !== undefined) values.set(name, [{ value: member.initializer, fromGetter: false }]);
   }
   for (const member of classNode.members) {
     if (!ts.isGetAccessorDeclaration(member) || !isPublicInstanceMember(member)) continue;
     const name = memberName(member.name, context);
     const returned = returnExpressions(member);
-    if (name !== undefined && returned.length > 0) values.set(name, returned.at(-1));
+    if (name !== undefined && returned.length > 0) {
+      values.set(
+        name,
+        returned.map((value) => ({ value, fromGetter: true }))
+      );
+    }
   }
   for (const member of classNode.members) {
     if (!ts.isConstructorDeclaration(member) || !member.body) continue;
     for (const assignment of constructorAssignments(member, context.freeze)) {
-      values.set(assignment.name, assignment.value);
+      values.set(assignment.name, [{ value: assignment.value, fromGetter: false }]);
     }
   }
-  return [...values].map(([name, value]) => ({ name, value }));
+  return [...values].flatMap(([name, entries]) => entries.map((entry) => ({ name, ...entry })));
 }
 
 function classInstanceInitializers(expression, context, includeGetters) {
@@ -319,24 +347,54 @@ function classInstanceInitializers(expression, context, includeGetters) {
         !ts.isPrivateIdentifier(member.name)
       ) {
         const name = memberName(member.name, context);
-        if (name !== undefined) values.set(name, member.initializer);
+        if (name !== undefined)
+          values.set(name, [{ value: member.initializer, fromGetter: false }]);
       }
       if (includeGetters && ts.isGetAccessorDeclaration(member) && isPublicInstanceMember(member)) {
         const name = memberName(member.name, context);
         const returned = returnExpressions(member);
-        if (name !== undefined && returned.length > 0) values.set(name, returned.at(-1));
+        if (name !== undefined && returned.length > 0) {
+          values.set(
+            name,
+            returned.map((value) => ({ value, fromGetter: true }))
+          );
+        }
       }
       if (ts.isConstructorDeclaration(member) && member.body) {
         for (const assignment of constructorAssignments(member, context.freeze)) {
-          values.set(assignment.name, assignment.value);
+          values.set(assignment.name, [{ value: assignment.value, fromGetter: false }]);
         }
       }
     }
   }
-  return [...values].map(([name, value]) => ({ name, value }));
+  return [...values].flatMap(([name, entries]) => entries.map((entry) => ({ name, ...entry })));
 }
 
-function constructorAssignments(constructor, freeze) {
+/** Getter provenance may inspect a private backing field without treating it as directly published. */
+function privateMemberInitializers(containerExpression, memberName, context) {
+  const container = unwrapExpression(containerExpression);
+  if (container.kind !== ts.SyntaxKind.ThisKeyword) return [];
+  const classNode = nearestClass(container) ?? nearestClass(context.freeze);
+  if (!classNode) return [];
+  const values = new Map();
+  for (const member of classNode.members) {
+    if (
+      ts.isPropertyDeclaration(member) &&
+      ts.isPrivateIdentifier(member.name) &&
+      member.initializer
+    ) {
+      values.set(member.name.text, member.initializer);
+    }
+    if (!ts.isConstructorDeclaration(member) || !member.body) continue;
+    for (const assignment of constructorAssignments(member, context.freeze, true)) {
+      values.set(assignment.name, assignment.value);
+    }
+  }
+  const value = values.get(memberName);
+  return value === undefined ? [] : [value];
+}
+
+function constructorAssignments(constructor, freeze, includePrivate = false) {
   const results = [];
   const freezeStart =
     constructor.pos <= freeze.pos && freeze.end <= constructor.end ? freeze.pos : Infinity;
@@ -346,7 +404,7 @@ function constructorAssignments(constructor, freeze) {
       node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
       ts.isPropertyAccessExpression(node.left) &&
       node.left.expression.kind === ts.SyntaxKind.ThisKeyword &&
-      !ts.isPrivateIdentifier(node.left.name) &&
+      (includePrivate || !ts.isPrivateIdentifier(node.left.name)) &&
       node.getStart() < freezeStart
     ) {
       results.push({ name: node.left.name.text, value: node.right });
@@ -550,7 +608,13 @@ function standardArrayElementTypes(type, context, seen = new Set()) {
   if (!type || seen.has(type)) return [];
   seen.add(type);
   const elements = [];
-  const candidates = [type, type.target, context.checker.getApparentType(type)];
+  const typeArguments = typeArgumentsOf(type, context);
+  const candidates = [
+    type,
+    type.target,
+    context.checker.getApparentType(type),
+    ...(type.aliasTypeArguments ?? [])
+  ];
   try {
     candidates.push(...(context.checker.getBaseTypes(type) ?? []));
   } catch {
@@ -565,6 +629,7 @@ function standardArrayElementTypes(type, context, seen = new Set()) {
       STANDARD_ARRAY_TYPES.has(symbol.getName()) &&
       hasStandardLibraryDeclaration(symbol)
     ) {
+      if (candidate === type.target) elements.push(...typeArguments);
       try {
         for (const indexInfo of context.checker.getIndexInfosOfType(candidate)) {
           elements.push(indexInfo.type);
@@ -577,6 +642,14 @@ function standardArrayElementTypes(type, context, seen = new Set()) {
     elements.push(...standardArrayElementTypes(candidate, context, seen));
   }
   return elements;
+}
+
+function typeArgumentsOf(type, context) {
+  try {
+    return context.checker.getTypeArguments(type);
+  } catch {
+    return [];
+  }
 }
 
 function isRuntimePropertyDeclaration(declaration) {
@@ -718,10 +791,10 @@ function propertyName(property, context) {
   return undefined;
 }
 
-function propertyValue(property) {
-  if (ts.isPropertyAssignment(property)) return property.initializer;
-  if (ts.isShorthandPropertyAssignment(property)) return property.name;
-  return ts.isGetAccessorDeclaration(property) ? returnExpressions(property).at(-1) : undefined;
+function propertyValues(property) {
+  if (ts.isPropertyAssignment(property)) return [property.initializer];
+  if (ts.isShorthandPropertyAssignment(property)) return [property.name];
+  return ts.isGetAccessorDeclaration(property) ? returnExpressions(property) : [];
 }
 
 function memberName(name, context) {

@@ -239,6 +239,69 @@ describe('Object.freeze governance', () => {
     ]);
   });
 
+  test('follows named standard array aliases at unknown publication roots', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'type Tables = ReadonlyArray<Map<string, number>>;',
+          'function freezeTables(tables: Tables) { Object.freeze(tables); }'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([{ propertyPath: '[index]', kind: 'Map' }]);
+  });
+
+  test('follows public getter returns through ECMAScript-private backing values', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class PrivateMapGetter {',
+          '  #table = new Map<string, number>();',
+          '  get table(): ReadonlyMap<string, number> { return this.#table; }',
+          '}',
+          'Object.freeze(new PrivateMapGetter());',
+          'class PrivateBytesGetter {',
+          '  #bytes = new Uint8Array([1]);',
+          '  get bytes(): Uint8Array { return this.#bytes; }',
+          '}',
+          'Object.freeze(new PrivateBytesGetter());',
+          'class PrivateCopyGetter {',
+          '  #bytes = new Uint8Array([1]);',
+          '  get bytes(): Uint8Array { return this.#bytes.slice(); }',
+          '}',
+          'Object.freeze(new PrivateCopyGetter());'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([
+      { propertyPath: 'table', kind: 'Map' },
+      { propertyPath: 'bytes', kind: 'Uint8Array' }
+    ]);
+  });
+
+  test('unions every syntactic object and class getter return path', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'Object.freeze({',
+          '  get table(): Map<string, number> | undefined {',
+          '    if (Math.random() > 0.5) return new Map<string, number>();',
+          '    return undefined;',
+          '  }',
+          '});',
+          'class MultipleReturns {',
+          '  get bytes(): Uint8Array | undefined {',
+          '    if (Math.random() > 0.5) return new Uint8Array([1]);',
+          '    return undefined;',
+          '  }',
+          '}',
+          'Object.freeze(new MultipleReturns());'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([
+      { propertyPath: 'table', kind: 'Map' },
+      { propertyPath: 'bytes', kind: 'Uint8Array' }
+    ]);
+  });
+
   test('does not widen concretely materialized values to their mutable annotations', () => {
     expect(
       nestedMutableExposures(
