@@ -473,6 +473,109 @@ describe('Object.freeze governance', () => {
     ]);
   });
 
+  test('models public binding defaults and object-rest materialization', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class BindingDefaults {',
+          '  #items: unknown = [Math.random() > 0.5 ? new Set<string>() : undefined];',
+          '  #record: unknown = { table: Math.random() > 0.5 ? new Uint8Array([1]) : undefined };',
+          '  #restRecord: unknown = { consumed: 1, table: new Map<string, number>() };',
+          '  get arrayDefault(): unknown {',
+          '    const [item = new Map<string, number>()] = this.#items as readonly unknown[];',
+          '    return item;',
+          '  }',
+          '  get objectDefault(): unknown {',
+          '    const { table = new Map<string, number>() } = this.#record as { readonly table?: unknown };',
+          '    return table;',
+          '  }',
+          '  get rest(): unknown {',
+          '    const { consumed, ...rest } = this.#restRecord as { readonly consumed: unknown; readonly table: unknown };',
+          '    return rest;',
+          '  }',
+          '}',
+          'Object.freeze(new BindingDefaults());'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([
+      { propertyPath: 'arrayDefault', kind: 'Set' },
+      { propertyPath: 'arrayDefault', kind: 'Map' },
+      { propertyPath: 'objectDefault', kind: 'Uint8Array' },
+      { propertyPath: 'objectDefault', kind: 'Map' },
+      { propertyPath: 'rest.table', kind: 'Map' }
+    ]);
+  });
+
+  test('resolves public literal-this provenance through binding and member aliases only', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class ThisAliasPaths {',
+          '  #table: unknown = new Map<string, number>();',
+          '  get bound(): unknown {',
+          '    const { self } = { self: this };',
+          '    return self.#table;',
+          '  }',
+          '  get chained(): unknown {',
+          '    const holder = { self: this };',
+          '    const next = { self: holder.self };',
+          '    return next.self.#table;',
+          '  }',
+          '}',
+          'Object.freeze(new ThisAliasPaths());',
+          'class UnrelatedAlias {',
+          '  #table: unknown = new Map<string, number>();',
+          '  get safe(): unknown {',
+          '    const holder = { self: {} };',
+          '    return holder.self.#table;',
+          '  }',
+          '}',
+          'Object.freeze(new UnrelatedAlias());'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([
+      { propertyPath: 'bound', kind: 'Map' },
+      { propertyPath: 'chained', kind: 'Map' }
+    ]);
+  });
+
+  test('retains values when labeled constructor flow can bypass a later clear', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class LabeledBypass {',
+          '  #table: unknown = new Map<string, number>();',
+          '  constructor(skip: boolean) { clear: { if (skip) break clear; this.#table = undefined; } }',
+          '  get labeled(): unknown { return this.#table; }',
+          '}',
+          'Object.freeze(new LabeledBypass(true));',
+          'class SwitchBypass {',
+          '  #table: unknown = new Map<string, number>();',
+          '  constructor(skip: boolean) { clear: { switch (skip) { case true: break clear; } this.#table = undefined; } }',
+          '  get switched(): unknown { return this.#table; }',
+          '}',
+          'Object.freeze(new SwitchBypass(true));',
+          'class TryBypass {',
+          '  #table: unknown = new Map<string, number>();',
+          '  constructor(skip: boolean) { clear: { try { if (skip) break clear; } finally {} this.#table = undefined; } }',
+          '  get tried(): unknown { return this.#table; }',
+          '}',
+          'Object.freeze(new TryBypass(true));',
+          'class LabeledClear {',
+          '  #table: unknown = new Map<string, number>();',
+          '  constructor() { clear: { this.#table = undefined; } }',
+          '  get cleared(): unknown { return this.#table; }',
+          '}',
+          'Object.freeze(new LabeledClear());'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([
+      { propertyPath: 'labeled', kind: 'Map' },
+      { propertyPath: 'switched', kind: 'Map' },
+      { propertyPath: 'tried', kind: 'Map' }
+    ]);
+  });
+
   test('does not widen concretely materialized values to their mutable annotations', () => {
     expect(
       nestedMutableExposures(

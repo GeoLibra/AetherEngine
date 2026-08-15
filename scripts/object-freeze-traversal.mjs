@@ -485,20 +485,21 @@ function privateMemberInitializers(
 function resolvesToLiteralThis(expression, context, seenSymbols = new Set()) {
   const value = unwrapExpression(expression);
   if (value.kind === ts.SyntaxKind.ThisKeyword) return true;
+  if (ts.isPropertyAccessExpression(value)) {
+    return memberMaterialization(
+      value.expression,
+      value.name.text,
+      context,
+      'public-surface'
+    ).values.some((entry) => resolvesToLiteralThis(entry.value, context, seenSymbols));
+  }
   if (!ts.isIdentifier(value)) return false;
   const symbol = symbolFor(value, context);
   if (!symbol || seenSymbols.has(symbol)) return false;
   seenSymbols.add(symbol);
-  for (const declaration of symbol.declarations ?? []) {
-    if (
-      ts.isVariableDeclaration(declaration) &&
-      declaration.initializer &&
-      resolvesToLiteralThis(declaration.initializer, context, seenSymbols)
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return symbolInitializers(value, context, 'public-surface').some((initializer) =>
+    resolvesToLiteralThis(initializer, context, seenSymbols)
+  );
 }
 
 function constructorAssignments(constructor, freeze, includePrivate = false) {
@@ -519,7 +520,7 @@ function constructorAssignments(constructor, freeze, includePrivate = false) {
         value: node.right,
         unconditional:
           isUnconditionalConstructorWrite(node, constructor.body) &&
-          !hasEarlierSuccessfulConstructorExit(constructor.body, node)
+          !hasEarlierSuccessfulConstructorBypass(constructor.body, node)
       });
     }
     if (node !== constructor && ts.isFunctionLike(node)) return;
@@ -529,21 +530,65 @@ function constructorAssignments(constructor, freeze, includePrivate = false) {
   return results;
 }
 
-/** A throw never produces an instance; an earlier return means the later write cannot dominate it. */
-function hasEarlierSuccessfulConstructorExit(body, assignment) {
-  let hasExit = false;
+/** A throw never produces an instance; an earlier transfer past the write makes it conditional. */
+function hasEarlierSuccessfulConstructorBypass(body, assignment) {
+  let hasBypass = false;
   const assignmentStart = assignment.getStart();
   const visit = (node) => {
-    if (hasExit || node.getStart() >= assignmentStart) return;
+    if (hasBypass || node.getStart() >= assignmentStart) return;
     if (ts.isReturnStatement(node)) {
-      hasExit = true;
+      hasBypass = true;
+      return;
+    }
+    if (
+      (ts.isBreakStatement(node) && transferCanBypassAssignment(node, assignment, 'break')) ||
+      (ts.isContinueStatement(node) && transferCanBypassAssignment(node, assignment, 'continue'))
+    ) {
+      hasBypass = true;
       return;
     }
     if (ts.isFunctionLike(node)) return;
     ts.forEachChild(node, visit);
   };
   ts.forEachChild(body, visit);
-  return hasExit;
+  return hasBypass;
+}
+
+function transferCanBypassAssignment(statement, assignment, kind) {
+  const target = transferTarget(statement, kind);
+  return target !== undefined && isAncestor(target, assignment);
+}
+
+function transferTarget(statement, kind) {
+  const label = statement.label?.text;
+  for (let current = statement.parent; current; current = current.parent) {
+    if (label !== undefined) {
+      if (ts.isLabeledStatement(current) && current.label.text === label) return current;
+      continue;
+    }
+    if (kind === 'break' && (isIterationStatement(current) || ts.isSwitchStatement(current))) {
+      return current;
+    }
+    if (kind === 'continue' && isIterationStatement(current)) return current;
+  }
+  return undefined;
+}
+
+function isIterationStatement(node) {
+  return (
+    ts.isForStatement(node) ||
+    ts.isForInStatement(node) ||
+    ts.isForOfStatement(node) ||
+    ts.isWhileStatement(node) ||
+    ts.isDoStatement(node)
+  );
+}
+
+function isAncestor(ancestor, node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (current === ancestor) return true;
+  }
+  return false;
 }
 
 /** A conditional write can supplement an initializer but cannot erase it on every construction path. */
@@ -922,24 +967,93 @@ function bindingElementInitializers(element, context, traversal = 'publication')
   const declaration = pattern.parent;
   if (!ts.isVariableDeclaration(declaration) || !declaration.initializer) return [];
   if (ts.isObjectBindingPattern(pattern)) {
+    if (element.dotDotDotToken) {
+      return objectRestBindingInitializers(
+        pattern,
+        element,
+        declaration.initializer,
+        context,
+        traversal
+      );
+    }
     const name = element.propertyName
       ? memberName(element.propertyName, context)
       : ts.isIdentifier(element.name)
         ? element.name.text
         : undefined;
-    return name === undefined
-      ? []
-      : memberMaterialization(declaration.initializer, name, context, traversal).values.map(
-          (entry) => entry.value
-        );
+    const sourceValues =
+      name === undefined
+        ? []
+        : memberMaterialization(declaration.initializer, name, context, traversal).values.map(
+            (entry) => entry.value
+          );
+    return appendBindingFallback(element, sourceValues, context);
   }
   if (ts.isArrayBindingPattern(pattern)) {
     const index = pattern.elements.indexOf(element);
-    return index < 0
-      ? []
-      : iterableElements(declaration.initializer, context, traversal).slice(index, index + 1);
+    const sourceValues =
+      index < 0
+        ? []
+        : iterableElements(declaration.initializer, context, traversal).slice(index, index + 1);
+    return appendBindingFallback(element, sourceValues, context);
   }
   return [];
+}
+
+function objectRestBindingInitializers(pattern, element, source, context, traversal) {
+  const excluded = new Set(
+    pattern.elements
+      .filter((binding) => binding !== element && !binding.dotDotDotToken)
+      .map((binding) => bindingPropertyName(binding, context))
+      .filter((name) => name !== undefined)
+  );
+  return materializeObjectProperties(source, context, traversal).flatMap(([name, values]) =>
+    excluded.has(name)
+      ? []
+      : values.map((value) =>
+          ts.factory.createObjectLiteralExpression([
+            ts.factory.createPropertyAssignment(ts.factory.createStringLiteral(name), value)
+          ])
+        )
+  );
+}
+
+function bindingPropertyName(element, context) {
+  return element.propertyName
+    ? memberName(element.propertyName, context)
+    : ts.isIdentifier(element.name)
+      ? element.name.text
+      : undefined;
+}
+
+function appendBindingFallback(element, sourceValues, context) {
+  if (!element.initializer || !bindingMayUseInitializer(sourceValues, context)) return sourceValues;
+  return [...sourceValues, element.initializer];
+}
+
+function bindingMayUseInitializer(sourceValues, context) {
+  return sourceValues.length === 0 || sourceValues.some((value) => mayBeUndefined(value, context));
+}
+
+function mayBeUndefined(expression, context, seen = new Set()) {
+  const type = context.checker.getTypeAtLocation(unwrapExpression(expression));
+  if (!type || seen.has(type)) return false;
+  seen.add(type);
+  return (
+    (type.flags &
+      (ts.TypeFlags.Undefined | ts.TypeFlags.Void | ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !==
+      0 || type.types?.some((part) => mayBeUndefinedType(part, seen))
+  );
+}
+
+function mayBeUndefinedType(type, seen) {
+  if (!type || seen.has(type)) return false;
+  seen.add(type);
+  return (
+    (type.flags &
+      (ts.TypeFlags.Undefined | ts.TypeFlags.Void | ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !==
+      0 || type.types?.some((part) => mayBeUndefinedType(part, seen))
+  );
 }
 
 function emitExposure(propertyPath, kind, context, results, emitted) {
