@@ -35,19 +35,19 @@ export function evaluateCapabilityPredicate(
       break;
     }
   }
-  return Object.freeze({
+  return {
     predicate: snapshotPredicate(predicate),
     satisfied,
     actual,
     reason: satisfied
       ? 'Capability predicate satisfied.'
       : `Capability predicate ${predicate.kind} was not satisfied.`
-  });
+  };
 }
 
 export function snapshotPredicate(predicate: CapabilityPredicate): CapabilityPredicate {
-  return Object.freeze({
+  return {
     ...predicate,
-    ...('statuses' in predicate ? { statuses: Object.freeze([...predicate.statuses]) } : {})
-  }) as CapabilityPredicate;
+    ...('statuses' in predicate ? { statuses: [...predicate.statuses] } : {})
+  } as CapabilityPredicate;
 }

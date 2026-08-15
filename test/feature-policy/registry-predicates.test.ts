@@ -27,7 +27,9 @@ describe('FeaturePolicy identities and registry', () => {
 
     const snapshot = registry.snapshot();
     expect(snapshot.map(({ id, version }) => `${id}@${version}`)).toEqual(['a@1', 'z@2']);
-    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot)).toBe(false);
+    (snapshot as FeatureImplementation[]).length = 0;
+    expect(registry.snapshot()).toHaveLength(2);
     expect(() => registry.register(implementation('a', 1))).toThrow(
       'Duplicate feature implementation'
     );

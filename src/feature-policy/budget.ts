@@ -44,5 +44,5 @@ export function resourceBudgetFits(
 
 export function snapshotResourceBudget(budget: ResourceBudget): ResourceBudget {
   validateResourceBudget(budget);
-  return Object.freeze({ ...budget });
+  return { ...budget };
 }

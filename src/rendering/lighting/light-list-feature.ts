@@ -46,29 +46,29 @@ export function createCpuBoundedLightListImplementation(
 > {
   const capacity = snapshotCapacity(options.capacity);
   const estimatedBudget = snapshotResourceBudget(options.estimatedBudget);
-  return Object.freeze({
+  return {
     kind: 'runtime' as const,
     feature: BuiltInFeature.LightListBuild,
     id: BuiltInFeatureImplementation.CpuBoundedLightList,
     version: 1,
     support: 'fallback' as const,
     semanticContract: 'aether.light-list-build@1',
-    requirements: Object.freeze([
-      Object.freeze({
+    requirements: [
+      {
         kind: 'queue' as const,
         role: 'graphics' as const,
-        statuses: Object.freeze(['native', 'emulated'] as const)
-      }),
-      Object.freeze({ kind: 'service' as const, service: BuiltInHostService.MainCpu })
-    ]),
-    dependencies: Object.freeze([]),
-    conflicts: Object.freeze([]),
+        statuses: ['native', 'emulated'] as const
+      },
+      { kind: 'service' as const, service: BuiltInHostService.MainCpu }
+    ],
+    dependencies: [],
+    conflicts: [],
     priority: 0,
-    quality: Object.freeze({
+    quality: {
       tier: 'cpu-bounded',
       rank: 0,
-      notes: Object.freeze(['Capacity and deterministic truncation are explicit.'])
-    }),
+      notes: ['Capacity and deterministic truncation are explicit.']
+    },
     estimate: () => estimatedBudget,
     prepare: async () => capacity,
     dispose: () => undefined,
@@ -79,7 +79,7 @@ export function createCpuBoundedLightListImplementation(
         receivers: frame.receivers,
         capacity: prepared
       })
-  });
+  };
 }
 
 function snapshotCapacity(capacity: CpuLightListCapacity): CpuLightListCapacity {
@@ -88,5 +88,5 @@ function snapshotCapacity(capacity: CpuLightListCapacity): CpuLightListCapacity 
       throw new Error(`CPU bounded light-list ${name} must be a non-negative integer.`);
     }
   }
-  return Object.freeze({ ...capacity });
+  return { ...capacity };
 }

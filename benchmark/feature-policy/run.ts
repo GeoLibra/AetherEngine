@@ -76,28 +76,26 @@ export function buildFeaturePolicyBenchmarkReport(
     assertFeaturePolicyComparison(reference, subject);
     if (round >= profile.warmupCount) subjectSamples.push(end - start);
   }
-  return Object.freeze({
+  return {
     schemaVersion: 1,
     profile: profileName,
     createdAt: options.createdAt ?? new Date().toISOString(),
-    environment:
-      options.environment ??
-      Object.freeze({
-        node: process.version,
-        platform: process.platform,
-        architecture: process.arch
-      }),
+    environment: options.environment ?? {
+      node: process.version,
+      platform: process.platform,
+      architecture: process.arch
+    },
     repository: options.repository ?? captureRepository(),
-    results: Object.freeze([
-      Object.freeze({
+    results: [
+      {
         featureCount: profile.featureCount,
         candidateCount: profile.candidateCount,
-        reference: Object.freeze({ ...reference, ...timing(referenceSamples) }),
-        subject: Object.freeze({ ...subject, ...timing(subjectSamples) }),
-        correctness: Object.freeze({ status: 'pass' as const, hotReadResolveCount: 0 as const })
-      })
-    ])
-  });
+        reference: { ...reference, ...timing(referenceSamples) },
+        subject: { ...subject, ...timing(subjectSamples) },
+        correctness: { status: 'pass' as const, hotReadResolveCount: 0 as const }
+      }
+    ]
+  };
 }
 
 export function runFeaturePolicyBenchmark(profile: FeaturePolicyBenchmarkProfileName): string {
@@ -113,20 +111,20 @@ export function runFeaturePolicyBenchmark(profile: FeaturePolicyBenchmarkProfile
 }
 
 function timing(rawSamplesMs: readonly number[]): FeaturePolicyTiming {
-  return Object.freeze({
-    rawSamplesMs: Object.freeze([...rawSamplesMs]),
+  return {
+    rawSamplesMs: [...rawSamplesMs],
     summary: summarize(rawSamplesMs)
-  });
+  };
 }
 function assertDuration(start: number, end: number): void {
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start)
     throw new Error('FeaturePolicy benchmark clock must be finite and monotonic.');
 }
 function captureRepository(): FeaturePolicyBenchmarkReport['repository'] {
-  return Object.freeze({
+  return {
     commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     dirty: execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim() !== ''
-  });
+  };
 }
 
 const cliProfile = process.env.AETHER_FEATURE_POLICY_BENCH_PROFILE;

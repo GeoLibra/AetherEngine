@@ -6,7 +6,7 @@ import {
   ZERO_RESOURCE_BUDGET
 } from './budget';
 import { stablePolicyHash } from './hash';
-import { evaluateCapabilityPredicate } from './predicates';
+import { evaluateCapabilityPredicate, snapshotPredicate } from './predicates';
 import type {
   CandidateDisposition,
   DecisionReason,
@@ -36,7 +36,7 @@ export function resolveFeaturePolicy(input: FeaturePolicyInput): FeaturePolicyRe
       ...request,
       ...(request.supportPreference === undefined
         ? {}
-        : { supportPreference: Object.freeze([...request.supportPreference]) })
+        : { supportPreference: [...request.supportPreference] })
     }))
     .sort((a, b) => b.priority - a.priority || a.feature.localeCompare(b.feature));
   const declaredRequests = new Map(requests.map((request) => [request.feature, request]));
@@ -239,7 +239,7 @@ export function resolveFeaturePolicy(input: FeaturePolicyInput): FeaturePolicyRe
   const publishedEvaluations = new ReadonlyMapSnapshot(
     [...evaluations]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, values]) => [key, Object.freeze(values.map(snapshotEvaluation))] as const)
+      .map(([key, values]) => [key, values.map(snapshotEvaluation)] as const)
   );
   const hash = stablePolicyHash({
     schemaVersion: input.schemaVersion,
@@ -248,13 +248,13 @@ export function resolveFeaturePolicy(input: FeaturePolicyInput): FeaturePolicyRe
     decisions: [...publishedDecisions],
     evaluations: [...publishedEvaluations]
   });
-  const metrics = Object.freeze({
+  const metrics = {
     ...counters,
     selectedFeatures: selected.size,
     unsupportedFeatures: [...decisions.values()].filter(({ support }) => support === 'unsupported')
       .length
-  });
-  const snapshot = Object.freeze({
+  };
+  const snapshot = {
     schemaVersion: input.schemaVersion,
     revision: input.revision,
     profileId: input.profileId,
@@ -262,13 +262,13 @@ export function resolveFeaturePolicy(input: FeaturePolicyInput): FeaturePolicyRe
     decisions: publishedDecisions,
     evaluations: publishedEvaluations,
     hash
-  });
-  return Object.freeze({
+  };
+  return {
     ok: unsupportedRequired.length === 0,
     snapshot,
-    unsupportedRequired: Object.freeze(unsupportedRequired),
+    unsupportedRequired,
     metrics
-  });
+  };
 }
 
 function validateInput(input: FeaturePolicyInput): void {
@@ -317,7 +317,7 @@ function groupImplementations(
   return grouped;
 }
 
-const DEFAULT_SUPPORT_PREFERENCE = Object.freeze(['native', 'emulated', 'fallback'] as const);
+const DEFAULT_SUPPORT_PREFERENCE = ['native', 'emulated', 'fallback'] as const;
 
 function compareCandidates(
   a: FeatureImplementation,
@@ -414,54 +414,54 @@ function reason(code: DecisionReason['code'], message: string): DecisionReason {
 }
 
 function snapshotDecision(value: FeatureDecision): FeatureDecision {
-  return Object.freeze({
+  return {
     ...value,
-    reasons: Object.freeze(value.reasons.map((item) => Object.freeze({ ...item }))),
-    requirements: Object.freeze([...value.requirements]),
+    reasons: value.reasons.map((item) => ({ ...item })),
+    requirements: value.requirements.map(snapshotPredicate),
     estimatedBudget: snapshotResourceBudget(value.estimatedBudget)
-  });
+  };
 }
 function snapshotEvaluation(value: FeatureCandidateEvaluation): FeatureCandidateEvaluation {
-  return Object.freeze({
+  return {
     ...value,
-    capabilityResults: Object.freeze(
-      value.capabilityResults.map((item) => Object.freeze({ ...item }))
-    ),
+    capabilityResults: value.capabilityResults.map((item) => ({
+      ...item,
+      predicate: snapshotPredicate(item.predicate)
+    })),
     estimatedBudget:
       value.estimatedBudget === null ? null : snapshotResourceBudget(value.estimatedBudget),
-    quality: Object.freeze({ ...value.quality, notes: Object.freeze([...value.quality.notes]) }),
-    reasons: Object.freeze(value.reasons.map((item) => Object.freeze({ ...item })))
-  });
+    quality: { ...value.quality, notes: [...value.quality.notes] },
+    reasons: value.reasons.map((item) => ({ ...item }))
+  };
 }
 
 class ReadonlyMapSnapshot<K, V> implements ReadonlyMap<K, V> {
-  private readonly data: Map<K, V>;
+  #data: Map<K, V>;
   constructor(entries: readonly (readonly [K, V])[]) {
-    this.data = new Map(entries);
-    Object.freeze(this);
+    this.#data = new Map(entries);
   }
   get size(): number {
-    return this.data.size;
+    return this.#data.size;
   }
   get(key: K): V | undefined {
-    return this.data.get(key);
+    return this.#data.get(key);
   }
   has(key: K): boolean {
-    return this.data.has(key);
+    return this.#data.has(key);
   }
   entries(): MapIterator<[K, V]> {
-    return this.data.entries();
+    return this.#data.entries();
   }
   keys(): MapIterator<K> {
-    return this.data.keys();
+    return this.#data.keys();
   }
   values(): MapIterator<V> {
-    return this.data.values();
+    return this.#data.values();
   }
   [Symbol.iterator](): MapIterator<[K, V]> {
-    return this.data[Symbol.iterator]();
+    return this.#data[Symbol.iterator]();
   }
   forEach(callbackfn: (value: V, key: K, map: ReadonlyMap<K, V>) => void, thisArg?: unknown): void {
-    this.data.forEach((value, key) => callbackfn.call(thisArg, value, key, this));
+    this.#data.forEach((value, key) => callbackfn.call(thisArg, value, key, this));
   }
 }

@@ -24,12 +24,12 @@ export function createFeaturePolicyScenario(
     throw new Error(
       'FeaturePolicy benchmark scales must be positive with at least two candidates.'
     );
-  return Object.freeze({
+  return {
     featureCount,
     candidateCount,
     runReference: () => runFeaturePolicyReference(featureCount, candidateCount),
     runSubject: () => runSubject(featureCount, candidateCount)
-  });
+  };
 }
 
 function runSubject(featureCount: number, candidateCount: number): FeaturePolicyObservation {
@@ -73,18 +73,14 @@ function runSubject(featureCount: number, candidateCount: number): FeaturePolicy
     });
   };
   const result = runResolve();
-  const selected = Object.freeze(
-    [...result.snapshot.decisions].map(
-      ([feature, decision]) =>
-        `${feature}:${decision.implementation}@${decision.implementationVersion}`
-    )
+  const selected = [...result.snapshot.decisions].map(
+    ([feature, decision]) =>
+      `${feature}:${decision.implementation}@${decision.implementationVersion}`
   );
-  const evaluations = Object.freeze(
-    [...result.snapshot.evaluations].flatMap(([feature, values]) =>
-      values.map(
-        (value) =>
-          `${feature}:${value.implementation}@${value.implementationVersion}:${value.disposition}`
-      )
+  const evaluations = [...result.snapshot.evaluations].flatMap(([feature, values]) =>
+    values.map(
+      (value) =>
+        `${feature}:${value.implementation}@${value.implementationVersion}:${value.disposition}`
     )
   );
   const resolveCountBeforeReads = resolveCount;
@@ -94,16 +90,16 @@ function runSubject(featureCount: number, candidateCount: number): FeaturePolicy
         throw new Error('Missing benchmark decision.');
     }
   const hotReadResolveCount = resolveCount - resolveCountBeforeReads;
-  return Object.freeze({
+  return {
     checksum: checksum([...selected, '--evaluations--', ...evaluations]),
     selected,
     evaluations,
-    counters: Object.freeze({
+    counters: {
       ...result.metrics,
       selectedFeatures: result.metrics.selectedFeatures,
       hotReadResolveCount
-    })
-  });
+    }
+  };
 }
 
 function candidate(

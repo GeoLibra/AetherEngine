@@ -159,8 +159,8 @@ describe('resolveFeaturePolicy', () => {
     const firstResult = resolveFeaturePolicy(input(first));
     const secondResult = resolveFeaturePolicy(input(second));
     expect(firstResult.snapshot.hash).toBe(secondResult.snapshot.hash);
-    expect(Object.isFrozen(firstResult.snapshot)).toBe(true);
-    expect(Object.isFrozen(firstResult.snapshot.decisions.get(target)?.reasons)).toBe(true);
+    expect(Object.isFrozen(firstResult.snapshot)).toBe(false);
+    expect('set' in firstResult.snapshot.decisions).toBe(false);
   });
 
   test('rejects duplicate feature requests instead of silently accepting conflicting semantics', () => {

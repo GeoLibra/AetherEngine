@@ -4,8 +4,8 @@ import type {
   RHIFeature,
   RHIQueueRole,
   SupportStatus
-} from '../rhi/contracts/capability';
-import type { GPUTextureFormat } from '../rhi/contracts/webgpu';
+} from '../../rhi/contracts/capability';
+import type { GPUTextureFormat } from '../../rhi/contracts/webgpu';
 
 declare const featureIdBrand: unique symbol;
 declare const implementationIdBrand: unique symbol;

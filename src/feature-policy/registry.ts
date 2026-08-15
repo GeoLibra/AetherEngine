@@ -15,7 +15,7 @@ export class FeatureImplementationRegistry {
   }
 
   snapshot(): readonly FeatureImplementation[] {
-    return Object.freeze([...this.implementations.values()].sort(compareImplementation));
+    return [...this.implementations.values()].sort(compareImplementation);
   }
 }
 
@@ -47,33 +47,29 @@ function snapshotImplementation<Prepared>(
     version: value.version,
     support: value.support,
     semanticContract: value.semanticContract,
-    requirements: Object.freeze(value.requirements.map(snapshotPredicate)),
-    dependencies: Object.freeze(value.dependencies.map((entry) => Object.freeze({ ...entry }))),
-    conflicts: Object.freeze(
-      value.conflicts.map((entry) =>
-        Object.freeze({
-          ...entry,
-          ...(entry.implementations === undefined
-            ? {}
-            : { implementations: Object.freeze([...entry.implementations]) })
-        })
-      )
-    ),
+    requirements: value.requirements.map(snapshotPredicate),
+    dependencies: value.dependencies.map((entry) => ({ ...entry })),
+    conflicts: value.conflicts.map((entry) => ({
+      ...entry,
+      ...(entry.implementations === undefined
+        ? {}
+        : { implementations: [...entry.implementations] })
+    })),
     priority: value.priority,
-    quality: Object.freeze({ ...value.quality, notes: Object.freeze([...value.quality.notes]) }),
+    quality: { ...value.quality, notes: [...value.quality.notes] },
     estimate: value.estimate.bind(value),
     prepare: value.prepare.bind(value),
     dispose: value.dispose.bind(value)
   };
   return value.kind === 'runtime'
-    ? (Object.freeze({
+    ? ({
         ...common,
         kind: value.kind,
         execute: value.execute.bind(value)
-      }) as FeatureImplementation<Prepared>)
-    : (Object.freeze({
+      } as FeatureImplementation<Prepared>)
+    : ({
         ...common,
         kind: value.kind,
         contribute: value.contribute.bind(value)
-      }) as FeatureImplementation<Prepared>);
+      } as FeatureImplementation<Prepared>);
 }
