@@ -125,6 +125,7 @@ describe('shader variants and backend output', () => {
       bindings: [],
       targetAbiFingerprint: 'test-abi',
       physicalBindings: [],
+      programBindings: [],
       requiredExtensions: [],
       sourceMap: [],
       translatorFingerprint: 'bad-directive'
@@ -162,6 +163,7 @@ describe('shader variants and backend output', () => {
       bindings: [{ group: 0, binding: 0, name: 'Frame', kind: 'uniform-buffer' }],
       targetAbiFingerprint: 'test-abi',
       physicalBindings: [],
+      programBindings: [],
       requiredExtensions: [],
       sourceMap: [],
       translatorFingerprint: 'missing-slot'
@@ -246,6 +248,7 @@ function translator(requiredExtensions: readonly string[] = []): WebGL2ShaderTra
       bindings: [],
       targetAbiFingerprint: 'test-abi',
       physicalBindings: [],
+      programBindings: [],
       requiredExtensions,
       sourceMap: [],
       translatorFingerprint: 'test-output'

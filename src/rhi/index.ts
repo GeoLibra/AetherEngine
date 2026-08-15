@@ -57,6 +57,7 @@ export type {
   WebGL2BindingKind,
   WebGL2BindingManifestEntry,
   WebGL2PhysicalBinding,
+  WebGL2ProgramBinding,
   WebGL2ShaderStage,
   WebGL2ShaderTranslationPort,
   WebGL2TranslatedShader

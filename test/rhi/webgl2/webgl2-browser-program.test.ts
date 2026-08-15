@@ -3,6 +3,24 @@ import { describe, expect, test } from 'vitest';
 import { createBrowserWebGL2OperationPort } from '../../../src/rhi/webgl2/browser/operation-port';
 
 describe('browser WebGL2 program diagnostics', () => {
+  test('initializes active uniform blocks and combined samplers after linking', () => {
+    const gl = new BindingProgramGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+
+    port.createProgram?.({
+      vertexSource: '#version 300 es\nvoid main() {}',
+      fragmentSource: '#version 300 es\nvoid main() {}',
+      bindings: [],
+      programBindings: [
+        { kind: 'uniform-buffer', name: 'Aether_0_0', slot: 2 },
+        { kind: 'combined-sampler', name: 'aether_t0_1_s0_2', slot: 5 }
+      ]
+    });
+
+    expect(gl.blockBindings).toEqual([{ blockIndex: 7, slot: 2 }]);
+    expect(gl.samplerBindings).toEqual([{ location: 'aether_t0_1_s0_2', slot: 5 }]);
+  });
+
   test('reports shader stage, driver log, and numbered generated source on compile failure', () => {
     const gl = new FailingShaderGL();
     const port = createBrowserWebGL2OperationPort(gl);
@@ -109,5 +127,28 @@ class FailingFragmentShaderGL extends FailingShaderGL {
   }
   override deleteShader(): void {
     this.deletedShaders += 1;
+  }
+}
+
+class BindingProgramGL extends FailingLinkGL {
+  readonly INVALID_INDEX = 0xffffffff;
+  readonly blockBindings: Array<{ blockIndex: number; slot: number }> = [];
+  readonly samplerBindings: Array<{ location: string; slot: number }> = [];
+
+  override getProgramParameter(): boolean {
+    return true;
+  }
+  getUniformBlockIndex(_program: object, name: string): number {
+    return name === 'Aether_0_0' ? 7 : this.INVALID_INDEX;
+  }
+  uniformBlockBinding(_program: object, blockIndex: number, slot: number): void {
+    this.blockBindings.push({ blockIndex, slot });
+  }
+  useProgram(): void {}
+  getUniformLocation(_program: object, name: string): string | null {
+    return name === 'aether_t0_1_s0_2' ? name : null;
+  }
+  uniform1i(location: string, slot: number): void {
+    this.samplerBindings.push({ location, slot });
   }
 }

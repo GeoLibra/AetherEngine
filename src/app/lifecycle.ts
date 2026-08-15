@@ -1,14 +1,15 @@
+import { LifecycleDiagnosticCode } from './constants';
 import type { LifecycleDiagnostic } from './types';
 
 const DIAGNOSTIC_CODE_BY_PHASE: Readonly<
   Record<LifecycleDiagnostic['phase'], LifecycleDiagnostic['code']>
 > = Object.freeze({
-  startup: 'APP_STARTUP_FAILED',
-  runtime: 'APP_RUNTIME_FAILED',
-  shutdown: 'PLUGIN_SHUTDOWN_FAILED',
-  'frame-cleanup': 'FRAME_CLEANUP_FAILED',
-  'service-disposal': 'SERVICE_DISPOSAL_FAILED',
-  'contribution-cleanup': 'CONTRIBUTION_CLEANUP_FAILED'
+  startup: LifecycleDiagnosticCode.AppStartupFailed,
+  runtime: LifecycleDiagnosticCode.AppRuntimeFailed,
+  shutdown: LifecycleDiagnosticCode.PluginShutdownFailed,
+  'frame-cleanup': LifecycleDiagnosticCode.FrameCleanupFailed,
+  'service-disposal': LifecycleDiagnosticCode.ServiceDisposalFailed,
+  'contribution-cleanup': LifecycleDiagnosticCode.ContributionCleanupFailed
 });
 
 export function createLifecycleDiagnostic(

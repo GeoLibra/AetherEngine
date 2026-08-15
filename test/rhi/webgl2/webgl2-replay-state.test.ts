@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest';
 import {
   WebGL2Adapter,
   type WebGL2BindingManifestEntry,
+  type WebGL2ProgramBinding,
+  type WebGL2PhysicalBinding,
   type WebGL2NativeContextLostInfo
 } from '../../../src';
 
@@ -23,7 +25,9 @@ class ReplayContext {
   readonly precision = {};
   readonly lost = new Promise<WebGL2NativeContextLostInfo>(() => {});
   readonly calls: Array<{ name: string; args: readonly unknown[] }> = [];
+  readonly drawPrograms: NativeObject[] = [];
   private nextId = 1;
+  private currentProgram: NativeObject | undefined;
   failNextDraw = false;
   reflection: readonly WebGL2BindingManifestEntry[] = [];
 
@@ -36,13 +40,17 @@ class ReplayContext {
   createSampler(): NativeObject {
     return this.object('sampler');
   }
-  createProgram(): NativeObject {
-    return this.object('program');
+  createProgram(descriptor: Readonly<Record<string, unknown>>): NativeObject {
+    const program = this.object('program');
+    if (Array.isArray(descriptor.programBindings) && descriptor.programBindings.length !== 0)
+      this.currentProgram = program;
+    return program;
   }
   getProgramReflection(): readonly WebGL2BindingManifestEntry[] {
     return this.reflection;
   }
   useProgram(...args: unknown[]): void {
+    this.currentProgram = args[0] as NativeObject;
     this.call('useProgram', args);
   }
   beginRenderPass(...args: unknown[]): void {
@@ -79,6 +87,7 @@ class ReplayContext {
     this.call('bindSampler', args);
   }
   draw(...args: unknown[]): void {
+    if (this.currentProgram !== undefined) this.drawPrograms.push(this.currentProgram);
     this.call('draw', args);
     if (this.failNextDraw) {
       this.failNextDraw = false;
@@ -115,13 +124,20 @@ class ReplayContext {
 class Translator {
   readonly translatorId = 'test';
   readonly version = 1;
-  constructor(private readonly bindings: readonly WebGL2BindingManifestEntry[] = []) {}
+  constructor(
+    private readonly bindings: readonly WebGL2BindingManifestEntry[] = [],
+    private readonly physicalBindings: readonly WebGL2PhysicalBinding[] = bindings.map(
+      (binding) => ({ ...binding, slot: binding.binding })
+    ),
+    private readonly programBindings: readonly WebGL2ProgramBinding[] = []
+  ) {}
   translate(input: { entryPoint: string }) {
     return {
       source: `void ${input.entryPoint}() {}`,
       bindings: this.bindings,
       targetAbiFingerprint: 'test-abi',
-      physicalBindings: this.bindings.map((binding) => ({ ...binding, slot: binding.binding })),
+      physicalBindings: this.physicalBindings,
+      programBindings: this.programBindings,
       requiredExtensions: [],
       sourceMap: [],
       translatorFingerprint: 'test-output'
@@ -129,14 +145,21 @@ class Translator {
   }
 }
 
-async function createFixture(bindings: readonly WebGL2BindingManifestEntry[] = []) {
+async function createFixture(
+  bindings: readonly WebGL2BindingManifestEntry[] = [],
+  physicalBindings?: readonly WebGL2PhysicalBinding[],
+  programBindings?: readonly WebGL2ProgramBinding[]
+) {
   const native = new ReplayContext();
   native.reflection = bindings;
   const Adapter = WebGL2Adapter as unknown as new (
     native: ReplayContext,
     translator: Translator
   ) => WebGL2Adapter;
-  const device = await new Adapter(native, new Translator(bindings)).requestDevice({
+  const device = await new Adapter(
+    native,
+    new Translator(bindings, physicalBindings, programBindings)
+  ).requestDevice({
     requiredFeatures: [],
     optionalFeatures: []
   });
@@ -249,6 +272,34 @@ describe('WebGL2 ordered replay and state VM', () => {
     expect(device.queue.metrics().stateSkips).toBeGreaterThan(0);
   });
 
+  test('rebinds a cached pipeline after later program initialization mutates native state', async () => {
+    const programBindings = [
+      { kind: 'combined-sampler', name: 'aether_sampler', slot: 0 }
+    ] as const;
+    const { device, native, pipeline, color } = await createFixture([], undefined, programBindings);
+    const record = () => {
+      const encoder = device.createCommandEncoder();
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{ view: color.createView(), loadOp: 'load', storeOp: 'store' }]
+      });
+      pass.setPipeline(pipeline);
+      pass.draw(3);
+      pass.end();
+      return encoder.finish();
+    };
+
+    await device.queue.submit([record()]).done;
+    const laterModule = device.createShaderModule({ code: 'later-program' });
+    device.createRenderPipeline({
+      vertex: { module: laterModule },
+      fragment: { module: laterModule, targets: [{ format: 'rgba8unorm' }] }
+    });
+    await device.queue.submit([record()]).done;
+
+    expect(native.drawPrograms).toHaveLength(2);
+    expect(native.drawPrograms[1]).toBe(native.drawPrograms[0]);
+  });
+
   test('applies explicit portable defaults instead of assuming driver state', async () => {
     const { device, native, color } = await createFixture();
     const shader = device.createShaderModule({ code: 'portable-defaults' });
@@ -347,5 +398,62 @@ describe('WebGL2 ordered replay and state VM', () => {
     ).toEqual([0, expect.any(Object), 256, 256]);
     expect(native.calls.filter((call) => call.name === 'bindTexture')).toHaveLength(1);
     expect(native.calls.filter((call) => call.name === 'bindSampler')).toHaveLength(1);
+  });
+
+  test('fans one logical texture out to every fused sampler unit', async () => {
+    const bindings = [
+      { group: 0, binding: 0, name: 'color', kind: 'texture' },
+      { group: 0, binding: 1, name: 'linear', kind: 'sampler' },
+      { group: 0, binding: 2, name: 'nearest', kind: 'sampler' }
+    ] as const;
+    const physicalBindings = [
+      { group: 0, binding: 0, kind: 'texture', slot: 0 },
+      { group: 0, binding: 0, kind: 'texture', slot: 1 },
+      { group: 0, binding: 1, kind: 'sampler', slot: 0 },
+      { group: 0, binding: 2, kind: 'sampler', slot: 1 }
+    ] as const;
+    const { device, native, color } = await createFixture(bindings, physicalBindings);
+    const texture = device.createTexture({ size: [4, 4], format: 'rgba8unorm', usage: 4 });
+    const linear = device.createSampler();
+    const nearest = device.createSampler();
+    const groupLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: 2, texture: { sampleType: 'float' } },
+        { binding: 1, visibility: 2, sampler: { type: 'filtering' } },
+        { binding: 2, visibility: 2, sampler: { type: 'non-filtering' } }
+      ]
+    });
+    const group = device.createBindGroup({
+      layout: groupLayout,
+      entries: [
+        { binding: 0, resource: texture.createView() },
+        { binding: 1, resource: linear },
+        { binding: 2, resource: nearest }
+      ]
+    });
+    const module = device.createShaderModule({ code: 'two-sampler-ir' });
+    const pipeline = device.createRenderPipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [groupLayout] }),
+      vertex: { module },
+      fragment: { module, targets: [{ format: 'rgba8unorm' }] }
+    });
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{ view: color.createView(), loadOp: 'load', storeOp: 'store' }]
+    });
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, group);
+    pass.draw(3);
+    pass.end();
+    native.calls.length = 0;
+
+    await device.queue.submit([encoder.finish()]).done;
+
+    expect(
+      native.calls.filter((call) => call.name === 'bindTexture').map((call) => call.args[0])
+    ).toEqual([0, 1]);
+    expect(
+      native.calls.filter((call) => call.name === 'bindSampler').map((call) => call.args[0])
+    ).toEqual([0, 1]);
   });
 });

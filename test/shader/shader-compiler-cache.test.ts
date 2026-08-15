@@ -209,6 +209,7 @@ function testTranslator(version: number): WebGL2ShaderTranslationPort {
       bindings: [],
       targetAbiFingerprint: 'test-abi',
       physicalBindings: [],
+      programBindings: [],
       requiredExtensions: [],
       sourceMap: [],
       translatorFingerprint: `output-${version}`

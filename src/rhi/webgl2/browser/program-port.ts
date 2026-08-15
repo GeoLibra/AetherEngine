@@ -1,5 +1,8 @@
-import type { WebGL2NativeContextPort } from '../types';
-import type { WebGL2BindingManifestEntry } from '../types';
+import type {
+  WebGL2BindingManifestEntry,
+  WebGL2NativeContextPort,
+  WebGL2ProgramBinding
+} from '../types';
 import { constant } from './capability-query';
 import { glCall, glObject } from './gl-call';
 import type { BrowserWebGL2Object } from './types';
@@ -37,6 +40,7 @@ export function createBrowserWebGL2ProgramPort(
               fragmentSource
             )
           );
+        initializeProgramBindings(gl, program, descriptor.programBindings);
       } catch (error) {
         if (program !== undefined) glCall(gl, 'deleteProgram', [program]);
         throw error;
@@ -63,6 +67,25 @@ export function createBrowserWebGL2ProgramPort(
       glCall(gl, 'useProgram', [program]);
     }
   };
+}
+
+function initializeProgramBindings(gl: BrowserWebGL2Object, program: object, value: unknown): void {
+  const bindings = Array.isArray(value) ? (value as readonly WebGL2ProgramBinding[]) : [];
+  const samplers = bindings.filter((binding) => binding.kind === 'combined-sampler');
+  if (samplers.length !== 0) glCall(gl, 'useProgram', [program]);
+  for (const binding of bindings) {
+    if (binding.kind === 'uniform-buffer') {
+      const index = glCall(gl, 'getUniformBlockIndex', [program, binding.name]);
+      if (index === constant(gl, 'INVALID_INDEX'))
+        throw new Error(`WebGL2 program uniform block "${binding.name}" is inactive.`);
+      glCall(gl, 'uniformBlockBinding', [program, index, binding.slot]);
+      continue;
+    }
+    const location = glCall(gl, 'getUniformLocation', [program, binding.name]);
+    if (location === null)
+      throw new Error(`WebGL2 program combined sampler "${binding.name}" is inactive.`);
+    glCall(gl, 'uniform1i', [location, binding.slot]);
+  }
 }
 
 function compile(

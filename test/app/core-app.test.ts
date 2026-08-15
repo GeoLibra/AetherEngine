@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   App,
+  CoreSchedule,
   FrameTimeResource,
   HeadlessRunner,
   MinimalPlugins,
@@ -8,6 +9,14 @@ import {
   World,
   type Plugin
 } from '../../src';
+import {
+  DEFAULT_SCHEDULES,
+  FIXED_SCHEDULES,
+  FRAME_AFTER_FIXED_SCHEDULES,
+  FRAME_BEFORE_FIXED_SCHEDULES,
+  LifecycleDiagnosticCode,
+  STARTUP_SCHEDULES
+} from '../../src/app/constants';
 
 describe('Schedule', () => {
   test('runs systems in stable before/after order', () => {
@@ -106,6 +115,44 @@ describe('V2 public App surface', () => {
     expect(app.hasPlugin('aether.time')).toBe(true);
     expect(app.getResource(FrameTimeResource)?.frame).toBe(1);
     expect(exit.frames).toBe(1);
+  });
+
+  test('CoreSchedule and LifecycleDiagnosticCode provide immutable as const dictionaries with strict partition guarantees', () => {
+    expect(Object.isFrozen(CoreSchedule)).toBe(true);
+    expect(Object.isFrozen(LifecycleDiagnosticCode)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_SCHEDULES)).toBe(true);
+    expect(Object.isFrozen(STARTUP_SCHEDULES)).toBe(true);
+    expect(Object.isFrozen(FRAME_BEFORE_FIXED_SCHEDULES)).toBe(true);
+    expect(Object.isFrozen(FIXED_SCHEDULES)).toBe(true);
+    expect(Object.isFrozen(FRAME_AFTER_FIXED_SCHEDULES)).toBe(true);
+
+    // DEFAULT_SCHEDULES must strictly match all values of CoreSchedule in exact declaration order
+    const coreValues = Object.values(CoreSchedule);
+    expect(DEFAULT_SCHEDULES).toEqual(coreValues);
+    expect(DEFAULT_SCHEDULES.length).toBe(17);
+
+    // Partition completeness: Concatenating all phase groups in frame order reconstructs DEFAULT_SCHEDULES
+    const partitioned = [
+      ...STARTUP_SCHEDULES,
+      ...FRAME_BEFORE_FIXED_SCHEDULES,
+      ...FIXED_SCHEDULES,
+      ...FRAME_AFTER_FIXED_SCHEDULES,
+      CoreSchedule.FrameCleanup
+    ];
+    expect(partitioned).toEqual(DEFAULT_SCHEDULES);
+
+    // Mutual exclusivity / Disjointness: No schedule belongs to multiple groups
+    const uniqueEntries = new Set(partitioned);
+    expect(uniqueEntries.size).toBe(partitioned.length);
+
+    // LifecycleDiagnosticCode mapping
+    expect(LifecycleDiagnosticCode.AppStartupFailed).toBe('APP_STARTUP_FAILED');
+    expect(LifecycleDiagnosticCode.AppRuntimeFailed).toBe('APP_RUNTIME_FAILED');
+    expect(LifecycleDiagnosticCode.PluginShutdownFailed).toBe('PLUGIN_SHUTDOWN_FAILED');
+    expect(LifecycleDiagnosticCode.FrameCleanupFailed).toBe('FRAME_CLEANUP_FAILED');
+    expect(LifecycleDiagnosticCode.ServiceDisposalFailed).toBe('SERVICE_DISPOSAL_FAILED');
+    expect(LifecycleDiagnosticCode.ContributionCleanupFailed).toBe('CONTRIBUTION_CLEANUP_FAILED');
+    expect(Object.keys(LifecycleDiagnosticCode).length).toBe(6);
   });
 });
 

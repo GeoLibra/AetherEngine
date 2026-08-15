@@ -1,25 +1,10 @@
 import type { ComponentType, RelationType, ResourceToken } from '../../ecs/types';
 import type { World } from '../../ecs/world';
+import type { CoreSchedule } from '../constants';
 
-export type ScheduleLabel =
-  | 'PreStartup'
-  | 'Startup'
-  | 'PostStartup'
-  | 'First'
-  | 'PreUpdate'
-  | 'FixedFirst'
-  | 'FixedPreUpdate'
-  | 'FixedUpdate'
-  | 'FixedPostUpdate'
-  | 'FixedLast'
-  | 'Update'
-  | 'PostUpdate'
-  | 'Last'
-  | 'PreRender'
-  | 'Render'
-  | 'PostRender'
-  | 'FrameCleanup'
-  | string;
+export type { CoreSchedule } from '../constants';
+
+export type ScheduleLabel = CoreSchedule | (string & {});
 
 export type System = (world: World) => void | Promise<void>;
 

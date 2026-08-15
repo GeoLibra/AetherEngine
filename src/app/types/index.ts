@@ -15,6 +15,7 @@ export type {
 export type {
   AccessToken,
   CommandApplyPointDescriptor,
+  CoreSchedule,
   ScheduleLabel,
   System,
   SystemDescriptor,

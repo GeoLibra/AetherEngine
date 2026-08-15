@@ -17,6 +17,7 @@ class Translator {
   readonly translatorId = 'test';
   readonly version = 1;
   readonly calls: TranslationInput[] = [];
+  textureSlot = 0;
   translate(input: TranslationInput) {
     this.calls.push({
       stage: input.stage,
@@ -34,8 +35,12 @@ class Translator {
       targetAbiFingerprint: 'test-abi',
       physicalBindings: [
         { group: 0, binding: 0, kind: 'uniform-buffer', slot: 0 },
-        { group: 0, binding: 1, kind: 'texture', slot: 0 },
-        { group: 0, binding: 2, kind: 'sampler', slot: 0 }
+        { group: 0, binding: 1, kind: 'texture', slot: this.textureSlot },
+        { group: 0, binding: 2, kind: 'sampler', slot: this.textureSlot }
+      ],
+      programBindings: [
+        { kind: 'uniform-buffer', name: 'Camera', slot: 0 },
+        { kind: 'combined-sampler', name: 'aether_t0_1_s0_2', slot: this.textureSlot }
       ],
       requiredExtensions: [],
       sourceMap: [],
@@ -163,6 +168,10 @@ describe('WebGL2 shader, binding, and pipeline lowering', () => {
     expect(native.programs).toHaveLength(1);
     expect(native.programs[0]?.vertexSource).toMatch(/^#version 300 es/);
     expect(native.programs[0]?.bindings).toHaveLength(3);
+    expect(native.programs[0]?.programBindings).toEqual([
+      { kind: 'combined-sampler', name: 'aether_t0_1_s0_2', slot: 0 },
+      { kind: 'uniform-buffer', name: 'Camera', slot: 0 }
+    ]);
     expect(pipeline.layout).toBe(layout);
     expect(pipeline.descriptor.vertex?.constants).toEqual({ QUALITY: 2 });
     expect(group.dynamicBindingCount).toBe(1);
@@ -223,6 +232,22 @@ describe('WebGL2 shader, binding, and pipeline lowering', () => {
     expect(() => device.createPipelineLayout({ bindGroupLayouts: [first, second] })).toThrow(
       'WebGL2 pipeline layout requires 2 textures, limit is 1.'
     );
+  });
+
+  test('rejects translated physical slots outside probed limits', async () => {
+    const { device, native, translator } = await createDevice();
+    native.limits.maxTextureUnits = 1;
+    translator.textureSlot = 1;
+    const { module, layout } = createPipelineInputs(device);
+
+    expect(() =>
+      device.createRenderPipeline({
+        layout,
+        vertex: { module, entryPoint: 'vsMain' },
+        fragment: { module, entryPoint: 'fsMain', targets: [{ format: 'rgba8unorm' }] }
+      })
+    ).toThrow('WebGL2 physical texture slot 1 exceeds limit 1.');
+    expect(native.programs).toHaveLength(0);
   });
 
   test('preserves pipeline label and native cause on program creation failure', async () => {

@@ -17,11 +17,18 @@ export interface WebGL2PhysicalBinding {
   readonly slot: number;
 }
 
+export interface WebGL2ProgramBinding {
+  readonly kind: 'uniform-buffer' | 'combined-sampler';
+  readonly name: string;
+  readonly slot: number;
+}
+
 export interface WebGL2TranslatedShader {
   readonly source: string;
   readonly bindings: readonly WebGL2BindingManifestEntry[];
   readonly targetAbiFingerprint: string;
   readonly physicalBindings: readonly WebGL2PhysicalBinding[];
+  readonly programBindings: readonly WebGL2ProgramBinding[];
   readonly requiredExtensions: readonly string[];
   readonly sourceMap: readonly Readonly<{ generatedLine: number; authoredLine: number }>[];
   readonly translatorFingerprint: string;
