@@ -381,6 +381,49 @@ describe('shadow requests, atlas, cache, and graph', () => {
     expect(recorded).toEqual([shadowRequestKey(request(1, 3)), shadowRequestKey(request(2, 2))]);
     expect(execution.commandStats.renderPasses).toBe(2);
   });
+
+  test('captures request facts and the recorder at shadow declaration time', () => {
+    const graph = new RenderGraphBuilder();
+    const mutableRequest = request(1, 3);
+    const recorded: ShadowRequest[] = [];
+    const options = {
+      record(_context: RestrictedPassContext, pass: { readonly request: ShadowRequest }): void {
+        recorded.push(pass.request);
+      }
+    };
+    const declared = declareShadowDepthPasses(graph, [mutableRequest], options);
+    (mutableRequest as { viewId: string; resolutionClass: number; casterRevision: number }).viewId =
+      'rewritten';
+    (
+      mutableRequest as { viewId: string; resolutionClass: number; casterRevision: number }
+    ).resolutionClass = 1;
+    (
+      mutableRequest as { viewId: string; resolutionClass: number; casterRevision: number }
+    ).casterRevision = 99;
+    options.record = () => {
+      throw new Error('late recorder must not run');
+    };
+    graph.addPass({
+      id: 'retain-shadow-declaration',
+      setup(pass) {
+        const texture = pass.readTexture(declared.texture!, 'sampled');
+        pass.sideEffect('retain shadow declaration');
+        return { texture };
+      },
+      run(context: RestrictedPassContext, resources) {
+        context.texture(resources.texture, 'sampled');
+      }
+    });
+
+    const snapshot = graph.build();
+    const compiled = compileRenderGraph(snapshot);
+    const plan = createRenderGraphExecutionPlan(snapshot, compiled);
+    new RenderGraphExecutor().execute(plan, { device: new NullDevice() });
+
+    expect(declared.layerByRequestKey.get(shadowRequestKey(request(1, 3)))).toBe(0);
+    expect(recorded).toEqual([request(1, 3)]);
+    expect(Object.isFrozen(recorded[0])).toBe(true);
+  });
 });
 
 function sphereAt(x: number) {

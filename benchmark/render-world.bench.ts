@@ -15,6 +15,11 @@ const Position = defineRenderField<[number, number, number]>('position');
 const Visible = defineRenderField<boolean>('visible');
 const Scene = defineExtractorToken('benchmark-scene', [Position, Visible]);
 const extractorPlan = new RenderExtractorRegistryBuilder().registerExtractor(Scene).build();
+const SnapshotBytes = defineRenderField<Float32Array>('snapshot-bytes');
+const SnapshotOwner = defineExtractorToken('snapshot-owner', [SnapshotBytes]);
+const snapshotExtractorPlan = new RenderExtractorRegistryBuilder()
+  .registerExtractor(SnapshotOwner)
+  .build();
 
 for (const phase of ['opaque', 'transparent'] as const) {
   for (const size of [100, 1_000, 10_000]) {
@@ -79,3 +84,42 @@ bench(
   },
   { iterations: 1, warmupIterations: 0 }
 );
+
+for (const size of [100, 1_000, 10_000]) {
+  const workload = createFrozenMapReadWorkload(size);
+  bench(
+    `reads ${size} FrozenMap fields through detached public copies`,
+    () => {
+      const revision = workload.world.snapshot();
+      let checksum = 0;
+      for (const entity of workload.entities) {
+        const bytes = revision.snapshot.get(entity)!.get(SnapshotBytes)! as Float32Array;
+        checksum += bytes[0]! + bytes[1]!;
+        bytes[0] = -1;
+      }
+      revision.release();
+      expect(checksum).toBe(workload.expectedChecksum);
+      expect(workload.world.read(workload.entities[0]!, SnapshotBytes)![0]).toBe(0);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
+function createFrozenMapReadWorkload(size: number): Readonly<{
+  world: RenderWorld;
+  entities: readonly ReturnType<RenderWorld['mapEntity']>[];
+  expectedChecksum: number;
+}> {
+  const world = new RenderWorld({ extractorPlan: snapshotExtractorPlan });
+  const transaction = world.beginExtract(1, 0);
+  const entities: ReturnType<RenderWorld['mapEntity']>[] = [];
+  let expectedChecksum = 0;
+  for (let index = 0; index < size; index++) {
+    const entity = transaction.mapEntity(`frozen-field-${index}`);
+    transaction.draft(SnapshotOwner).upsert(entity, SnapshotBytes, new Float32Array([index, 1]));
+    entities.push(entity);
+    expectedChecksum += index + 1;
+  }
+  transaction.commit().release();
+  return Object.freeze({ world, entities: Object.freeze(entities), expectedChecksum });
+}

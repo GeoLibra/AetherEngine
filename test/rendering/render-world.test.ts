@@ -145,6 +145,48 @@ describe('RenderWorld', () => {
     expect(value.get('one')).toBe(1);
   });
 
+  test('does not turn an invalid replacement write into a field removal on commit', () => {
+    const Facts = defineRenderField<readonly unknown[]>('atomic-facts');
+    const owner = defineExtractorToken('atomic-owner', [Facts]);
+    const world = new RenderWorld({
+      extractorPlan: new RenderExtractorRegistryBuilder().registerExtractor(owner).build()
+    });
+    let entity!: RenderEntityId;
+    publish(world, 1, (tx) => {
+      entity = tx.mapEntity('existing-facts');
+      tx.draft(owner).upsert(entity, Facts, [1, 2]);
+    });
+    const invalid: unknown[] = [];
+    invalid.push(invalid);
+    const transaction = world.beginExtract(2, 1);
+
+    expect(() => transaction.draft(owner).upsert(entity, Facts, invalid)).toThrow(/cycle/i);
+    const revision = transaction.commit();
+
+    expect(world.read(entity, Facts)).toEqual([1, 2]);
+    expect(revision.diff.changes).toEqual([]);
+    revision.release();
+  });
+
+  test('does not publish an empty entity after its first write fails validation', () => {
+    const Facts = defineRenderField<readonly unknown[]>('first-invalid-facts');
+    const owner = defineExtractorToken('first-invalid-owner', [Facts]);
+    const world = new RenderWorld({
+      extractorPlan: new RenderExtractorRegistryBuilder().registerExtractor(owner).build()
+    });
+    const invalid: unknown[] = [];
+    invalid.push(invalid);
+    const transaction = world.beginExtract(1, 0);
+    const entity = transaction.mapEntity('first-invalid');
+
+    expect(() => transaction.draft(owner).upsert(entity, Facts, invalid)).toThrow(/cycle/i);
+    const revision = transaction.commit();
+
+    expect(revision.snapshot.has(entity)).toBe(false);
+    expect(revision.diff.changes).toEqual([]);
+    revision.release();
+  });
+
   test('seals revision map facades without reflectively exposing their backing maps', () => {
     const world = createWorld();
     const revision = publish(world, 1, (tx) =>

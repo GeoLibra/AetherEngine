@@ -1,24 +1,14 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
-import ts from 'typescript';
+import {
+  analyzeFreezeSource,
+  auditProductionFreeze,
+  type NestedMutableExposure
+} from '../../scripts/object-freeze-analysis.mjs';
 import { describe, expect, test } from 'vitest';
 
-const SOURCE_ROOT = join(process.cwd(), 'src');
+interface ReviewedNestedMutableExposure extends NestedMutableExposure {
+  readonly rationale: string;
+}
 
-const MUTABLE_BUILT_INS = new Set(['Map', 'Set', 'WeakMap', 'WeakSet']);
-const TYPED_ARRAYS = new Set([
-  'Int8Array',
-  'Uint8Array',
-  'Uint8ClampedArray',
-  'Int16Array',
-  'Uint16Array',
-  'Int32Array',
-  'Uint32Array',
-  'Float32Array',
-  'Float64Array',
-  'BigInt64Array',
-  'BigUint64Array'
-]);
 /**
  * Every exception needs an exact freeze call, property path, runtime kind, and a review rationale.
  * This list is intentionally empty: published nested mutable built-ins have enforcing facades or
@@ -26,326 +16,105 @@ const TYPED_ARRAYS = new Set([
  */
 const NESTED_MUTABLE_ALLOWLIST: readonly ReviewedNestedMutableExposure[] = Object.freeze([]);
 
-interface NestedMutableExposure {
-  readonly location: string;
-  readonly propertyPath: string;
-  readonly kind: string;
-}
-
-interface ReviewedNestedMutableExposure extends NestedMutableExposure {
-  readonly rationale: string;
-}
-
-function sourceFiles(directory = SOURCE_ROOT): string[] {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(directory, entry.name);
-    return entry.isDirectory()
-      ? sourceFiles(path)
-      : entry.isFile() && path.endsWith('.ts')
-        ? [path]
-        : [];
-  });
-}
-
-function isFreezeCall(node: ts.Node): node is ts.CallExpression {
-  return (
-    ts.isCallExpression(node) &&
-    ts.isPropertyAccessExpression(node.expression) &&
-    ts.isIdentifier(node.expression.expression) &&
-    node.expression.expression.text === 'Object' &&
-    node.expression.name.text === 'freeze'
-  );
-}
-
-function sourceLocation(path: string, source: ts.SourceFile, node: ts.Node): string {
-  const position = source.getLineAndCharacterOfPosition(node.getStart(source));
-  const displayPath =
-    path === 'snippet.ts' ? path : relative(SOURCE_ROOT, path).split(sep).join('/');
-  return `${displayPath}:${position.line + 1}:${position.character + 1}`;
-}
-
-function isNamedEmptySnapshot(node: ts.CallExpression): boolean {
-  let expression: ts.Expression = node;
-  while (
-    ts.isAsExpression(expression.parent) ||
-    ts.isParenthesizedExpression(expression.parent) ||
-    ts.isSatisfiesExpression(expression.parent)
-  ) {
-    expression = expression.parent;
-  }
-  const declaration = expression.parent;
-  if (
-    !ts.isVariableDeclaration(declaration) ||
-    declaration.initializer !== expression ||
-    !ts.isIdentifier(declaration.name) ||
-    !/^[A-Z][A-Z0-9_]*$/.test(declaration.name.text)
-  ) {
-    return false;
-  }
-  const declarationList = declaration.parent;
-  return (
-    ts.isVariableDeclarationList(declarationList) &&
-    (declarationList.flags & ts.NodeFlags.Const) !== 0 &&
-    ts.isVariableStatement(declarationList.parent) &&
-    ts.isSourceFile(declarationList.parent.parent)
-  );
-}
-
-function findFreezeCalls(
-  matches: (argument: ts.Expression, node: ts.CallExpression) => boolean
-): string[] {
-  const results: string[] = [];
-  for (const path of sourceFiles()) {
-    const source = ts.createSourceFile(
-      path,
-      readFileSync(path, 'utf8'),
-      ts.ScriptTarget.Latest,
-      true
-    );
-    const visit = (node: ts.Node): void => {
-      if (isFreezeCall(node) && node.arguments.length === 1 && matches(node.arguments[0]!, node)) {
-        results.push(sourceLocation(path, source, node));
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
-  }
-  return results;
-}
-
-function findInlineEmptySnapshots(sourceText: string): string[] {
-  const source = ts.createSourceFile('snippet.ts', sourceText, ts.ScriptTarget.Latest, true);
-  const results: string[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
-      isFreezeCall(node) &&
-      node.arguments.length === 1 &&
-      ts.isArrayLiteralExpression(node.arguments[0]!) &&
-      node.arguments[0]!.elements.length === 0 &&
-      !isNamedEmptySnapshot(node)
-    ) {
-      results.push(sourceLocation('snippet.ts', source, node));
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return results;
-}
-
-function isNewExpressionFor(names: ReadonlySet<string>) {
-  return (argument: ts.Expression): boolean =>
-    ts.isNewExpression(argument) &&
-    ts.isIdentifier(argument.expression) &&
-    names.has(argument.expression.text);
-}
-
-function findNestedMutableExposures(sourceText: string): NestedMutableExposure[] {
-  const source = ts.createSourceFile('snippet.ts', sourceText, ts.ScriptTarget.Latest, true);
-  return findNestedMutableExposuresInSource('snippet.ts', source, undefined);
-}
-
-function findProductionNestedMutableExposures(): NestedMutableExposure[] {
-  const compilerOptions: ts.CompilerOptions = {
-    target: ts.ScriptTarget.ESNext,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
-    strict: true,
-    skipLibCheck: true
-  };
-  const paths = sourceFiles();
-  const program = ts.createProgram(paths, compilerOptions);
-  const checker = program.getTypeChecker();
-  return paths.flatMap((path) => {
-    const source = program.getSourceFile(path);
-    return source ? findNestedMutableExposuresInSource(path, source, checker) : [];
-  });
-}
-
-function findNestedMutableExposuresInSource(
-  path: string,
-  source: ts.SourceFile,
-  checker: ts.TypeChecker | undefined
-): NestedMutableExposure[] {
-  const declarations = new Map<string, ts.Expression>();
-  const collectDeclarations = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer)
-      declarations.set(node.name.text, node.initializer);
-    ts.forEachChild(node, collectDeclarations);
-  };
-  collectDeclarations(source);
-
-  const results: NestedMutableExposure[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
-      isFreezeCall(node) &&
-      node.arguments.length === 1 &&
-      ts.isObjectLiteralExpression(node.arguments[0]!)
-    ) {
-      collectMutableProperties(
-        node.arguments[0]!,
-        '',
-        node,
-        path,
-        source,
-        checker,
-        declarations,
-        results
-      );
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return results;
-}
-
-function collectMutableProperties(
-  object: ts.ObjectLiteralExpression,
-  prefix: string,
-  freeze: ts.CallExpression,
-  path: string,
-  source: ts.SourceFile,
-  checker: ts.TypeChecker | undefined,
-  declarations: ReadonlyMap<string, ts.Expression>,
-  results: NestedMutableExposure[]
-): void {
-  for (const property of object.properties) {
-    const name = propertyName(property);
-    const value = propertyValue(property);
-    if (!name || !value) continue;
-    const propertyPath = prefix ? `${prefix}.${name}` : name;
-    if (ts.isObjectLiteralExpression(value)) {
-      collectMutableProperties(
-        value,
-        propertyPath,
-        freeze,
-        path,
-        source,
-        checker,
-        declarations,
-        results
-      );
-      continue;
-    }
-    const kind = mutableBuiltinKind(value, checker, declarations, new Set());
-    if (kind)
-      results.push({
-        location: sourceLocation(path, source, freeze),
-        propertyPath,
-        kind
-      });
-  }
-}
-
-function propertyName(property: ts.ObjectLiteralElementLike): string | undefined {
-  if (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) {
-    return ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
-      ? property.name.text
-      : undefined;
-  }
-  return undefined;
-}
-
-function propertyValue(property: ts.ObjectLiteralElementLike): ts.Expression | undefined {
-  if (ts.isPropertyAssignment(property)) return property.initializer;
-  return ts.isShorthandPropertyAssignment(property) ? property.name : undefined;
-}
-
-function mutableBuiltinKind(
-  expression: ts.Expression,
-  checker: ts.TypeChecker | undefined,
-  declarations: ReadonlyMap<string, ts.Expression>,
-  seen: Set<ts.Expression>
-): string | undefined {
-  const value = unwrapExpression(expression);
-  if (seen.has(value)) return undefined;
-  seen.add(value);
-  if (ts.isNewExpression(value) && ts.isIdentifier(value.expression)) {
-    const name = value.expression.text;
-    if (MUTABLE_BUILT_INS.has(name) || TYPED_ARRAYS.has(name)) return name;
-  }
-  const typedName = checker && mutableBuiltinTypeName(checker, value);
-  if (typedName) return typedName;
-  if (ts.isIdentifier(value)) {
-    const initializer = declarations.get(value.text);
-    if (initializer) return mutableBuiltinKind(initializer, checker, declarations, seen);
-  }
-  return undefined;
-}
-
-function unwrapExpression(expression: ts.Expression): ts.Expression {
-  let value = expression;
-  while (
-    ts.isAsExpression(value) ||
-    ts.isParenthesizedExpression(value) ||
-    ts.isSatisfiesExpression(value)
-  ) {
-    value = value.expression;
-  }
-  return value;
-}
-
-function mutableBuiltinTypeName(
-  checker: ts.TypeChecker,
-  expression: ts.Expression
-): string | undefined {
-  const type = checker.getApparentType(checker.getTypeAtLocation(expression));
-  const symbols =
-    type.isUnion() || type.isIntersection()
-      ? type.types.map((part) => part.getSymbol())
-      : [type.getSymbol()];
-  for (const symbol of symbols) {
-    const name = symbol?.getName();
-    if (name && (MUTABLE_BUILT_INS.has(name) || TYPED_ARRAYS.has(name))) return name;
-  }
-  return undefined;
+function nestedMutableExposures(sourceText: string): readonly NestedMutableExposure[] {
+  return analyzeFreezeSource(sourceText).flatMap((call) => call.nestedMutableBuiltIns);
 }
 
 describe('Object.freeze governance', () => {
   test('allows only module-owned named empty snapshots', () => {
-    expect(findInlineEmptySnapshots('const NO_VALUES = Object.freeze([]);')).toEqual([]);
+    expect(analyzeFreezeSource('const NO_VALUES = Object.freeze([]);')[0]?.category).toBeNull();
     expect(
-      findInlineEmptySnapshots('function build() { const NO_VALUES = Object.freeze([]); }')
-    ).toHaveLength(1);
+      analyzeFreezeSource('function build() { const NO_VALUES = Object.freeze([]); }')[0]?.category
+    ).toBe('inline-empty-array');
   });
 
-  test('does not freeze inline empty arrays', () => {
+  test('does not freeze inline empty arrays or direct mutable built-ins in production', () => {
+    const audit = auditProductionFreeze();
+
+    expect(audit.banned['inline-empty-array']).toEqual([]);
+    expect(audit.banned['mutable-built-in']).toEqual([]);
+    expect(audit.banned['typed-array']).toEqual([]);
+  });
+
+  test('follows identifier, member, array, spread, readonly-type, and runtime-private aliases', () => {
     expect(
-      findFreezeCalls(
-        (argument, node) =>
-          ts.isArrayLiteralExpression(argument) &&
-          argument.elements.length === 0 &&
-          !isNamedEmptySnapshot(node)
+      nestedMutableExposures(
+        [
+          'const mapAlias = new Map<string, number>();',
+          'const outer = { nested: { mapAlias }, list: [new Set<string>()] };',
+          'const alias = outer;',
+          'const member = alias.nested.mapAlias;',
+          'Object.freeze(alias);',
+          'Object.freeze(member);',
+          'Object.freeze({ ...outer });',
+          'const readonlyTyped: ReadonlyMap<string, number> = new Map<string, number>();',
+          'const holder = { readonlyTyped };',
+          'Object.freeze(holder.readonlyTyped);',
+          'Object.freeze(mapAlias);',
+          'class Unsafe {',
+          '  private table = new Map<string, number>();',
+          '  constructor() { Object.freeze(this); }',
+          '}'
+        ].join('\n')
+      )
+    ).toEqual([
+      { location: 'snippet.ts:5:1', propertyPath: 'nested.mapAlias', kind: 'Map' },
+      { location: 'snippet.ts:5:1', propertyPath: 'list[0]', kind: 'Set' },
+      { location: 'snippet.ts:6:1', propertyPath: '<root>', kind: 'Map' },
+      { location: 'snippet.ts:7:1', propertyPath: 'nested.mapAlias', kind: 'Map' },
+      { location: 'snippet.ts:7:1', propertyPath: 'list[0]', kind: 'Set' },
+      { location: 'snippet.ts:10:1', propertyPath: '<root>', kind: 'Map' },
+      { location: 'snippet.ts:11:1', propertyPath: '<root>', kind: 'Map' },
+      { location: 'snippet.ts:14:19', propertyPath: 'table', kind: 'Map' }
+    ]);
+  });
+
+  test('does not flag ECMAScript-private or WeakMap-backed enforcing facades', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'const privateBytes = new Uint8Array(4);',
+          'const weakStorage = new WeakMap<object, Map<string, number>>();',
+          'class PrivateFacade {',
+          '  #table = new Map<string, number>();',
+          '  constructor() { Object.freeze(this); }',
+          '}',
+          'class WeakMapFacade {',
+          '  constructor() {',
+          '    weakStorage.set(this, new Map<string, number>());',
+          '    Object.freeze(this);',
+          '  }',
+          '}'
+        ].join('\n')
       )
     ).toEqual([]);
   });
 
-  test('does not directly freeze mutable built-in constructors', () => {
-    expect(findFreezeCalls(isNewExpressionFor(MUTABLE_BUILT_INS))).toEqual([]);
-  });
-
-  test('does not directly freeze typed-array constructors', () => {
-    expect(findFreezeCalls(isNewExpressionFor(TYPED_ARRAYS))).toEqual([]);
-  });
-
-  test('detects nested mutable collections and aliases hidden by a frozen outer shell', () => {
+  test('follows array spreads but does not mistake an iterable source container for a publication', () => {
     expect(
-      findNestedMutableExposures(`
-        const mapAlias = new Map<string, number>();
-        const typedAlias = new Float32Array(4);
-        Object.freeze({
-          directSet: new Set<string>(),
-          nested: { mapAlias, typedAlias }
-        });
-      `)
-    ).toEqual([
-      { location: 'snippet.ts:4:9', propertyPath: 'directSet', kind: 'Set' },
-      { location: 'snippet.ts:4:9', propertyPath: 'nested.mapAlias', kind: 'Map' },
-      { location: 'snippet.ts:4:9', propertyPath: 'nested.typedAlias', kind: 'Float32Array' }
-    ]);
+      nestedMutableExposures(
+        'const items = [new Map<string, number>()]; Object.freeze([...items]);'
+      )
+    ).toEqual([{ location: 'snippet.ts:1:44', propertyPath: '[0]', kind: 'Map' }]);
+    expect(
+      nestedMutableExposures(
+        'const pending = new Set<Promise<unknown>>(); Object.freeze([...pending]);'
+      )
+    ).toEqual([]);
+  });
+
+  test('bounds cyclic alias resolution', () => {
+    expect(
+      nestedMutableExposures('const first = second; const second = first; Object.freeze(first);')
+    ).toEqual([]);
   });
 
   test('requires reviewed allowlist entries for published nested mutable built-ins', () => {
-    expect(findProductionNestedMutableExposures()).toEqual(
+    const productionExposures = auditProductionFreeze().nestedMutableBuiltIns.map(
+      ({ path: _path, line: _line, column: _column, ...exposure }) => exposure
+    );
+
+    expect(productionExposures).toEqual(
       NESTED_MUTABLE_ALLOWLIST.map(({ rationale: _rationale, ...exposure }) => exposure)
     );
   });

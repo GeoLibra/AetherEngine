@@ -16,11 +16,12 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
     Object.freeze({
       id: 'ecs',
       description: 'ECS storage, queries, relations, change tracking, and transform data paths.',
-      pathPrefixes: Object.freeze([
-        'engine/design/v2/02-runtime/02-ecs-world.md',
-        'src/ecs/',
-        'src/transform/'
-      ])
+      pathPrefixes: Object.freeze(['engine/design/v2/02-runtime/02-ecs-world.md', 'src/ecs/'])
+    }),
+    Object.freeze({
+      id: 'transform',
+      description: 'Transform propagation and extraction snapshot paths.',
+      pathPrefixes: Object.freeze(['src/transform/'])
     }),
     Object.freeze({
       id: 'jobs',
@@ -148,6 +149,22 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       command: Object.freeze({
         executable: 'vite-node',
         args: Object.freeze(['benchmark/cli.ts', '--profile', '{profile}'])
+      })
+    }),
+    Object.freeze({
+      id: 'transform-runtime',
+      description:
+        'Transform propagation and RenderTransformSnapshot matrix extraction with detached publication boundaries.',
+      domainIds: Object.freeze(['transform']),
+      pathPrefixes: Object.freeze([
+        'benchmark/transform-runtime.bench.ts',
+        'benchmark/transform-runtime-runner.mjs',
+        'src/transform/',
+        'test/transform/'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/transform-runtime-runner.mjs', '{profile}'])
       })
     }),
     Object.freeze({

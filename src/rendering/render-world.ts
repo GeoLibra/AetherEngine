@@ -549,10 +549,8 @@ export class ExtractTransaction {
     if (!owner.writes.has(field))
       throw new Error(`Extractor "${owner.name}" does not own field "${field.name}".`);
     if (this.removals.has(entity)) throw new Error('Cannot edit a removed render entity.');
-    const fields = this.candidates.get(entity) ?? new Map();
-    this.candidates.set(entity, fields);
-    const candidates = fields.get(field) ?? new Map();
-    fields.set(field, candidates);
+    // Take ownership before adding any candidate maps. A rejected caller value must be a true
+    // no-op, so commit can neither remove an existing field nor publish a provisional entity.
     const retainedOperation =
       operation.kind === 'upsert'
         ? Object.freeze({
@@ -560,6 +558,10 @@ export class ExtractTransaction {
             value: snapshotRenderFieldValue(operation.value)
           })
         : Object.freeze({ kind: 'remove' as const });
+    const fields = this.candidates.get(entity) ?? new Map();
+    this.candidates.set(entity, fields);
+    const candidates = fields.get(field) ?? new Map();
+    fields.set(field, candidates);
     candidates.set(owner.id, Object.freeze({ extractor: owner, operation: retainedOperation }));
   }
 

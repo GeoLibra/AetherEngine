@@ -42,28 +42,32 @@ export function declareShadowDepthPasses(
     readonly label?: string;
   }
 ): ShadowGraphDeclaration {
-  if (requests.length === 0) {
+  const acceptedRequests = requests.map(snapshotShadowRequest);
+  const record = options.record;
+  const format = options.format ?? 'depth32float';
+  const label = options.label ?? 'lighting-shadow-depth';
+  if (acceptedRequests.length === 0) {
     return Object.freeze({
       texture: undefined,
       passes: NO_SHADOW_PASSES,
       layerByRequestKey: new ReadonlyMapSnapshot<string, number>([])
     });
   }
-  const edge = Math.max(...requests.map((request) => request.resolutionClass));
+  const edge = Math.max(...acceptedRequests.map((request) => request.resolutionClass));
   let texture = graph.createTexture({
-    label: options.label ?? 'lighting-shadow-depth',
+    label,
     width: edge,
     height: edge,
-    depthOrArrayLayers: requests.length,
+    depthOrArrayLayers: acceptedRequests.length,
     mipLevelCount: 1,
     sampleCount: 1,
-    format: options.format ?? 'depth32float',
+    format,
     usage: ['depth-stencil-attachment', 'sampled']
   });
   const passes: PassToken[] = [];
   const layerByRequestKey = new Map<string, number>();
-  for (let layer = 0; layer < requests.length; layer++) {
-    const request = requests[layer]!;
+  for (let layer = 0; layer < acceptedRequests.length; layer++) {
+    const request = acceptedRequests[layer]!;
     const key = shadowRequestKey(request);
     if (layerByRequestKey.has(key)) throw new Error(`Duplicate shadow request key "${key}".`);
     layerByRequestKey.set(key, layer);
@@ -86,7 +90,7 @@ export function declareShadowDepthPasses(
         return { texture: next, range };
       },
       run(context, resources) {
-        options.record(
+        record(
           context,
           Object.freeze({ request, layer, texture: resources.texture, range: resources.range })
         );
@@ -99,5 +103,19 @@ export function declareShadowDepthPasses(
     texture,
     passes: Object.freeze(passes),
     layerByRequestKey: new ReadonlyMapSnapshot(layerByRequestKey)
+  });
+}
+
+function snapshotShadowRequest(request: ShadowRequest): ShadowRequest {
+  // The graph can execute much later than declaration, so request identity cannot remain owned by
+  // the caller. Keep exactly the validated public request facts used by keying and pass execution.
+  return Object.freeze({
+    lightEntity: request.lightEntity,
+    viewId: request.viewId,
+    kind: request.kind,
+    subresourceIndex: request.subresourceIndex,
+    resolutionClass: request.resolutionClass,
+    importance: request.importance,
+    casterRevision: request.casterRevision
   });
 }

@@ -1,6 +1,36 @@
-type TypedArrayConstructor = {
-  from(values: ArrayLike<unknown>): ArrayBufferView;
-};
+type TrustedTypedArrayConstructor = new (length: number) => ArrayBufferView;
+
+const TYPED_ARRAY_CONSTRUCTORS = new Map<string, TrustedTypedArrayConstructor>([
+  ['Int8Array', Int8Array],
+  ['Uint8Array', Uint8Array],
+  ['Uint8ClampedArray', Uint8ClampedArray],
+  ['Int16Array', Int16Array],
+  ['Uint16Array', Uint16Array],
+  ['Int32Array', Int32Array],
+  ['Uint32Array', Uint32Array],
+  ['Float32Array', Float32Array],
+  ['Float64Array', Float64Array],
+  ['BigInt64Array', BigInt64Array],
+  ['BigUint64Array', BigUint64Array]
+]);
+const TYPED_ARRAY_PROTOTYPE = Object.getPrototypeOf(Uint8Array.prototype);
+const TYPED_ARRAY_TAG = (() => {
+  const getter = Object.getOwnPropertyDescriptor(TYPED_ARRAY_PROTOTYPE, Symbol.toStringTag)?.get;
+  if (getter === undefined) {
+    throw new Error('The JavaScript runtime does not expose the intrinsic typed-array tag getter.');
+  }
+  return getter;
+})();
+const TYPED_ARRAY_LENGTH = (() => {
+  const getter = Object.getOwnPropertyDescriptor(TYPED_ARRAY_PROTOTYPE, 'length')?.get;
+  if (getter === undefined) {
+    throw new Error(
+      'The JavaScript runtime does not expose the intrinsic typed-array length getter.'
+    );
+  }
+  return getter;
+})();
+const TYPED_ARRAY_SET = Uint8Array.prototype.set;
 
 /**
  * RenderWorld retains only detached value data. Typed arrays are copied but cannot be frozen by
@@ -32,6 +62,9 @@ function copyValue(value: unknown, visiting: WeakSet<object>): unknown {
     throw new Error('Render field values cannot contain mutable Map or Set collections.');
   }
   if (ArrayBuffer.isView(value)) return copyTypedArray(value);
+  if (hasTypedArrayPrototype(value)) {
+    throw new Error('Render field typed-array values must be genuine, non-proxy typed arrays.');
+  }
   if (visiting.has(value)) throw new Error('Render field values cannot contain cycles.');
   visiting.add(value);
   try {
@@ -42,13 +75,30 @@ function copyValue(value: unknown, visiting: WeakSet<object>): unknown {
 }
 
 function copyTypedArray(value: ArrayBufferView): ArrayBufferView {
-  if (value instanceof DataView)
-    throw new Error('Render field values cannot contain DataView values.');
-  const constructor = value.constructor as unknown as TypedArrayConstructor;
-  if (typeof constructor.from !== 'function') {
-    throw new Error('Render field typed-array value cannot be copied.');
+  const tag = TYPED_ARRAY_TAG.call(value);
+  const constructor = TYPED_ARRAY_CONSTRUCTORS.get(tag);
+  if (constructor === undefined) {
+    throw new Error('Render field values must contain a supported typed-array value.');
   }
-  return constructor.from(value as unknown as ArrayLike<unknown>);
+  try {
+    // Never consult caller-controlled `constructor`, `from`, iterators, or element accessors.
+    // The intrinsic getter/setter validate the typed-array internal slots and copy into a normal,
+    // detached ArrayBuffer even when the input uses SharedArrayBuffer backing storage.
+    const copy = new constructor(TYPED_ARRAY_LENGTH.call(value));
+    Reflect.apply(TYPED_ARRAY_SET, copy, [value]);
+    return copy;
+  } catch {
+    throw new Error('Render field typed-array values must be genuine, supported typed arrays.');
+  }
+}
+
+function hasTypedArrayPrototype(value: object): boolean {
+  let prototype = Object.getPrototypeOf(value);
+  while (prototype !== null) {
+    if (prototype === TYPED_ARRAY_PROTOTYPE) return true;
+    prototype = Object.getPrototypeOf(prototype);
+  }
+  return false;
 }
 
 function copyArray(value: readonly unknown[], visiting: WeakSet<object>): readonly unknown[] {

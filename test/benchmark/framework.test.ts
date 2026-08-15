@@ -14,6 +14,7 @@ describe('benchmark manifest', () => {
     expect(result.errors).toEqual([]);
     expect(result.uncoveredDomainIds).not.toContain('rendering');
     expect(result.uncoveredDomainIds).not.toContain('ecs');
+    expect(result.uncoveredDomainIds).not.toContain('transform');
   });
 
   test('rejects duplicate IDs and suites that reference unknown domains', () => {
@@ -49,6 +50,14 @@ describe('changed-file routing', () => {
     expect(
       routeChangedFiles(BENCHMARK_MANIFEST, ['benchmark/scenarios/definitions.ts']).suiteIds
     ).toEqual(['ecs']);
+  });
+
+  test('routes transform extraction changes only to the dedicated matrix snapshot suite', () => {
+    const route = routeChangedFiles(BENCHMARK_MANIFEST, ['src/transform/runtime.ts']);
+
+    expect(route.domainIds).toEqual(['transform']);
+    expect(route.suiteIds).toEqual(['transform-runtime']);
+    expect(route.missingDomainIds).toEqual([]);
   });
 
   test('requires a suite when Rendering work starts', () => {
