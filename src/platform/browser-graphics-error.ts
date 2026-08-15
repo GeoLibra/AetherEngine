@@ -1,4 +1,4 @@
-import type { BrowserGraphicsAttempt } from './types/browser-graphics-types';
+import type { BrowserGraphicsAttempt } from './types';
 
 export class BrowserGraphicsBootstrapError extends Error {
   readonly code = 'platform/browser-graphics-unavailable';

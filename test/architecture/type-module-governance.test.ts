@@ -77,6 +77,39 @@ function typeIndexViolations(path: string): string[] {
     .map((statement) => statement.getText(source));
 }
 
+function typeContractLeafImports(path: string, text = readFileSync(path, 'utf8')): string[] {
+  if (isTypeModuleFile(path)) return [];
+  const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
+  return source.statements.flatMap((statement) => {
+    if (!ts.isImportDeclaration(statement) || !isTypeContractImport(statement)) return [];
+    const moduleSpecifier = ts.isStringLiteral(statement.moduleSpecifier)
+      ? statement.moduleSpecifier.text
+      : undefined;
+    return moduleSpecifier !== undefined && importsTypeLeaf(moduleSpecifier)
+      ? [moduleSpecifier]
+      : [];
+  });
+}
+
+function isTypeContractImport(statement: ts.ImportDeclaration): boolean {
+  const clause = statement.importClause;
+  if (clause === undefined) return false;
+  if (clause.isTypeOnly) return true;
+  return (
+    clause.name === undefined &&
+    clause.namedBindings !== undefined &&
+    ts.isNamedImports(clause.namedBindings) &&
+    clause.namedBindings.elements.length > 0 &&
+    clause.namedBindings.elements.every((element) => element.isTypeOnly)
+  );
+}
+
+function importsTypeLeaf(moduleSpecifier: string): boolean {
+  const segments = moduleSpecifier.split('/');
+  const typesIndex = segments.lastIndexOf('types');
+  return typesIndex >= 0 && typesIndex < segments.length - 1;
+}
+
 describe('type module governance', () => {
   test('stores shared type modules below local types directories', () => {
     expect(sourceFiles().map(sourcePath).filter(isLegacyTypeFile)).toEqual([]);
@@ -102,5 +135,44 @@ describe('type module governance', () => {
         typeIndexViolations(path).map((statement) => `${sourcePath(path)}: ${statement}`)
       );
     expect(violations).toEqual([]);
+  });
+
+  test('requires implementation type imports to use a local types entry', () => {
+    const violations = sourceFiles().flatMap((path) =>
+      typeContractLeafImports(path).map(
+        (moduleSpecifier) => `${sourcePath(path)}: ${moduleSpecifier}`
+      )
+    );
+    expect(violations).toEqual([]);
+  });
+
+  test('recognizes only type-contract leaf imports outside type directories', () => {
+    const implementation = join(SOURCE_ROOT, 'platform', 'browser-graphics-error.ts');
+    const typeModule = join(SOURCE_ROOT, 'platform', 'types', 'browser-graphics-types.ts');
+
+    expect(
+      typeContractLeafImports(
+        implementation,
+        "import type { Contract } from './types/browser-graphics-types';"
+      )
+    ).toEqual(['./types/browser-graphics-types']);
+    expect(
+      typeContractLeafImports(implementation, "import type { Contract } from './types';")
+    ).toEqual([]);
+    expect(
+      typeContractLeafImports(
+        implementation,
+        "import { type Contract } from './types/contract-types';"
+      )
+    ).toEqual(['./types/contract-types']);
+    expect(
+      typeContractLeafImports(
+        implementation,
+        "import type { Contract } from './browser-graphics-types';"
+      )
+    ).toEqual([]);
+    expect(
+      typeContractLeafImports(typeModule, "import type { Contract } from './other-contract-types';")
+    ).toEqual([]);
   });
 });
