@@ -4,6 +4,8 @@ import {
   createShadowSelectionWorkload,
   runLightingReference,
   runLightingSubject,
+  runShadowAtlasCompactionReference,
+  runShadowAtlasCompactionSubject,
   runShadowAtlasReference,
   runShadowAtlasSubject,
   runShadowSelectionReference,
@@ -46,6 +48,21 @@ describe('lighting-shadow benchmark oracle', () => {
       expect(subject).toEqual(runShadowAtlasReference(columns, columns, 32));
       expect(subject.reclaimedLowerHole).toBe(true);
       expect(subject.staleAfterInvalidate).toBe(true);
+    }
+  });
+
+  test('executes atlas compaction with deterministic relocation and generation evidence', () => {
+    for (const count of [4, 16, 64]) {
+      const subject = runShadowAtlasCompactionSubject(count, 16);
+
+      expect(subject).toEqual(runShadowAtlasCompactionReference(count, 16));
+      expect(subject.counters).toEqual({
+        inputTiles: count,
+        relocations: count,
+        validNextHandles: count,
+        invalidPreviousHandles: count
+      });
+      expect(subject.checksum).toMatch(/^[0-9a-f]{8}$/);
     }
   });
 });

@@ -86,6 +86,10 @@ describe('changed-file routing', () => {
     expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/jobs/queue.ts']).suiteIds).toEqual([
       'runtime-jobs'
     ]);
+    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/ecs/command-buffer.ts']).suiteIds).toEqual([
+      'ecs',
+      'runtime-jobs'
+    ]);
   });
 
   test('routes browser graphics contracts and adapters to the RHI suite', () => {

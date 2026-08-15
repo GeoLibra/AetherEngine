@@ -4,6 +4,8 @@ import {
   createShadowSelectionWorkload,
   runLightingReference,
   runLightingSubject,
+  runShadowAtlasCompactionReference,
+  runShadowAtlasCompactionSubject,
   runShadowAtlasReference,
   runShadowAtlasSubject,
   runShadowSelectionReference,
@@ -45,6 +47,19 @@ bench(
   },
   { iterations: 1, warmupIterations: 0 }
 );
+
+for (const count of [16, 64, 256]) {
+  const reference = runShadowAtlasCompactionReference(count, 16);
+  bench(
+    `shadow atlas compaction ${count} uniform tiles`,
+    () => {
+      const subject = runShadowAtlasCompactionSubject(count, 16);
+      expect(subject).toEqual(reference);
+      expect(subject.counters.relocations).toBe(count);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
 
 const atlasReference = runShadowAtlasReference(32, 32, 32);
 bench(

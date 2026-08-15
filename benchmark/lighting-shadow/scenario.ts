@@ -136,6 +136,24 @@ export interface CanonicalAtlasAllocation {
   readonly staleAfterInvalidate: boolean;
 }
 
+export interface CanonicalAtlasCompaction {
+  readonly generation: number;
+  readonly relocations: readonly Readonly<{
+    key: string;
+    previousX: number;
+    nextX: number;
+    previousGeneration: number;
+    nextGeneration: number;
+  }>[];
+  readonly counters: Readonly<{
+    inputTiles: number;
+    relocations: number;
+    validNextHandles: number;
+    invalidPreviousHandles: number;
+  }>;
+  readonly checksum: string;
+}
+
 export function createLightingWorkload(
   receiverCount: number,
   lightCount: number,
@@ -373,6 +391,104 @@ export function runShadowAtlasReference(
     reclaimedLowerHole: true,
     staleAfterInvalidate: true
   });
+}
+
+export function runShadowAtlasCompactionSubject(
+  count: number,
+  tileSize: number
+): CanonicalAtlasCompaction {
+  assertAtlasScale(count, tileSize);
+  const atlas = new ShadowAtlasAllocator({ width: count * tileSize, height: tileSize });
+  const previous = Array.from({ length: count }, (_, index) => {
+    const tile = atlas.allocate(`tile-${index}`, tileSize);
+    if (tile === undefined) throw new Error('Shadow atlas compaction workload did not fit.');
+    return tile;
+  });
+  const compacted = atlas.compact();
+  if (compacted === undefined)
+    throw new Error('Shadow atlas compaction workload failed to repack.');
+  const relocations = compacted.relocations.map(({ key, previous: before, next }) =>
+    Object.freeze({
+      key,
+      previousX: before.x,
+      nextX: next.x,
+      previousGeneration: before.generation,
+      nextGeneration: next.generation
+    })
+  );
+  const counters = Object.freeze({
+    inputTiles: previous.length,
+    relocations: compacted.relocations.length,
+    validNextHandles: compacted.relocations.filter(({ next }) => atlas.isValid(next)).length,
+    invalidPreviousHandles: previous.filter((handle) => !atlas.isValid(handle)).length
+  });
+  return atlasCompactionObservation(compacted.generation, relocations, counters);
+}
+
+/** Closed-form oracle for uniform one-row packing and code-unit key ordering. */
+export function runShadowAtlasCompactionReference(
+  count: number,
+  tileSize: number
+): CanonicalAtlasCompaction {
+  assertAtlasScale(count, tileSize);
+  const keys = Array.from({ length: count }, (_, index) => `tile-${index}`).sort(compareCodeUnits);
+  const nextX = new Map(keys.map((key, index) => [key, index * tileSize]));
+  const relocations = keys.map((key) => {
+    const numericIndex = Number(key.slice('tile-'.length));
+    return Object.freeze({
+      key,
+      previousX: numericIndex * tileSize,
+      nextX: nextX.get(key)!,
+      previousGeneration: 1,
+      nextGeneration: 2
+    });
+  });
+  return atlasCompactionObservation(
+    2,
+    relocations,
+    Object.freeze({
+      inputTiles: count,
+      relocations: count,
+      validNextHandles: count,
+      invalidPreviousHandles: count
+    })
+  );
+}
+
+function atlasCompactionObservation(
+  generation: number,
+  relocations: readonly CanonicalAtlasCompaction['relocations'][number][],
+  counters: CanonicalAtlasCompaction['counters']
+): CanonicalAtlasCompaction {
+  const frozenRelocations = Object.freeze([...relocations]);
+  return Object.freeze({
+    generation,
+    relocations: frozenRelocations,
+    counters,
+    checksum: textChecksum(JSON.stringify({ generation, relocations: frozenRelocations, counters }))
+  });
+}
+
+function assertAtlasScale(count: number, tileSize: number): void {
+  if (!Number.isSafeInteger(count) || count <= 0) {
+    throw new Error('Shadow atlas compaction count must be a positive integer.');
+  }
+  if (!Number.isSafeInteger(tileSize) || tileSize <= 0) {
+    throw new Error('Shadow atlas compaction tileSize must be a positive integer.');
+  }
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function textChecksum(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 function referenceSphereIntersects(
