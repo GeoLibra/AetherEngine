@@ -122,21 +122,47 @@ export function applyEditorCommandsReference(
 
 /**
  * Subject under benchmark: Fast flat-memory SoA state loop for command batches.
- * Uses contiguous typed arrays and index table instead of object map.
+ * Dynamically reallocates typed arrays on capacity growth without silent overflow or data corruption.
  */
 export function applyEditorCommandBatch(
-  commands: readonly EditorCommandRecord[]
+  commands: readonly EditorCommandRecord[],
+  initialCapacity: number = 64
 ): EditorSnapshotState {
-  const MAX_CAPACITY = 256;
+  let capacity = Math.max(16, initialCapacity);
   const nodeIndexMap = new Map<string, number>();
   let nodeCount = 0;
 
-  const posX = new Float64Array(MAX_CAPACITY);
-  const posY = new Float64Array(MAX_CAPACITY);
-  const posZ = new Float64Array(MAX_CAPACITY);
-  const opacity = new Float64Array(MAX_CAPACITY);
-  const selected = new Uint8Array(MAX_CAPACITY);
-  const revision = new Int32Array(MAX_CAPACITY);
+  let posX = new Float64Array(capacity);
+  let posY = new Float64Array(capacity);
+  let posZ = new Float64Array(capacity);
+  let opacity = new Float64Array(capacity);
+  let selected = new Uint8Array(capacity);
+  let revision = new Int32Array(capacity);
+
+  const grow = (): void => {
+    const nextCapacity = capacity * 2;
+    const nextPosX = new Float64Array(nextCapacity);
+    const nextPosY = new Float64Array(nextCapacity);
+    const nextPosZ = new Float64Array(nextCapacity);
+    const nextOpacity = new Float64Array(nextCapacity);
+    const nextSelected = new Uint8Array(nextCapacity);
+    const nextRevision = new Int32Array(nextCapacity);
+
+    nextPosX.set(posX);
+    nextPosY.set(posY);
+    nextPosZ.set(posZ);
+    nextOpacity.set(opacity);
+    nextSelected.set(selected);
+    nextRevision.set(revision);
+
+    posX = nextPosX;
+    posY = nextPosY;
+    posZ = nextPosZ;
+    opacity = nextOpacity;
+    selected = nextSelected;
+    revision = nextRevision;
+    capacity = nextCapacity;
+  };
 
   let documentRevision = 0;
 
@@ -146,6 +172,9 @@ export function applyEditorCommandBatch(
 
     let idx = nodeIndexMap.get(cmd.targetId);
     if (idx === undefined) {
+      if (nodeCount >= capacity) {
+        grow();
+      }
       idx = nodeCount++;
       nodeIndexMap.set(cmd.targetId, idx);
       posX[idx] = 0;
