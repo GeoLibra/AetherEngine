@@ -70,6 +70,10 @@ describe('camera extraction', () => {
     expect(Mat4.multiply(extracted.viewProjection, extracted.inverseViewProjection)).toEqual(
       expect.any(Float32Array)
     );
+    expect(Object.isFrozen(extracted.view)).toBe(true);
+    expect(Object.isFrozen(extracted.projection)).toBe(true);
+    expect(() => ((extracted.view as number[])[0] = 99)).toThrow();
+    expect(extracted.view[0]).toBe(1);
   });
 
   test('rejects invalid projection, viewport, and singular matrices', () => {
@@ -118,7 +122,10 @@ describe('camera extraction', () => {
     });
 
     expect(visibilityView.frustum?.planes).toEqual(Frustum.fromViewProjection(unjittered).planes);
-    expect(visibilityView.viewMatrix).toEqual(extracted.view);
+    expect(visibilityView.viewMatrix).toEqual(Array.from(extracted.view));
+    expect(Object.isFrozen(visibilityView.viewMatrix)).toBe(true);
+    expect(() => ((visibilityView.viewMatrix as number[])[0] = 99)).toThrow();
+    expect(visibilityView.viewMatrix?.[0]).toBe(extracted.view[0]);
   });
 
   test('copies and freezes caller-owned jitter pixels', () => {

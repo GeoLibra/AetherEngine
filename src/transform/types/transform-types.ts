@@ -38,9 +38,9 @@ export interface TransformExtractOptions {
 
 export interface RenderTransformSnapshot {
   readonly entity: Entity;
-  readonly matrix: Float32Array;
-  readonly previousMatrix: Float32Array;
-  readonly normalMatrix: Float32Array;
+  readonly matrix: readonly number[];
+  readonly previousMatrix: readonly number[];
+  readonly normalMatrix: readonly number[];
   readonly determinantSign: number;
   readonly worldVersion: number;
 }

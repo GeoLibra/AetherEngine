@@ -345,6 +345,15 @@ describe('shadow requests, atlas, cache, and graph', () => {
           .end();
       }
     });
+    const mutableLayers = declared.layerByRequestKey as unknown as Map<string, number>;
+    try {
+      mutableLayers.set(shadowRequestKey(request(1, 3)), 99);
+    } catch {
+      // The public facade rejects mutation attempted through an unsound cast.
+    }
+    expect(Object.isFrozen(declared.layerByRequestKey)).toBe(true);
+    expect(Reflect.ownKeys(declared.layerByRequestKey)).toEqual([]);
+    expect(declared.layerByRequestKey.get(shadowRequestKey(request(1, 3)))).toBe(0);
     graph.addPass({
       id: 'shadow-consumer',
       setup(pass) {

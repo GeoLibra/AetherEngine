@@ -4,6 +4,8 @@ import {
   type RenderFieldCandidate
 } from './extractor-registry';
 import { PersistentEntityMap, type RenderEntityFields } from './persistent-entity-map';
+import { copyRenderFieldValue, snapshotRenderFieldValue } from './render-field-snapshot';
+import { ReadonlySetSnapshot } from './readonly-collection-snapshot';
 
 export type RenderEntityId = number & { readonly __renderEntity: unique symbol };
 
@@ -42,7 +44,11 @@ export function defineExtractorToken<const W extends readonly RenderFieldToken<u
   name: string,
   writes: W
 ): ExtractorToken<W> {
-  return Object.freeze({ id: Symbol(name), name, writes: new Set(writes) }) as ExtractorToken<W>;
+  return Object.freeze({
+    id: Symbol(name),
+    name,
+    writes: new ReadonlySetSnapshot<RenderFieldToken<unknown>>(writes)
+  }) as ExtractorToken<W>;
 }
 
 export type RenderWorldChange =
@@ -282,7 +288,7 @@ export class RenderWorld {
     const edit = (entity: RenderEntityId): Map<RenderFieldToken<unknown>, unknown> => {
       let values = edited.get(entity);
       if (!values) {
-        values = new Map(next.get(entity));
+        values = copyCommittedFields(next.get(entity));
         edited.set(entity, values);
       }
       return values;
@@ -300,7 +306,16 @@ export class RenderWorld {
           a.extractor.name.localeCompare(b.extractor.name)
         );
         const candidates = ordered.map((candidate) =>
-          Object.freeze(candidate)
+          Object.freeze({
+            extractor: candidate.extractor,
+            operation:
+              candidate.operation.kind === 'upsert'
+                ? Object.freeze({
+                    kind: 'upsert' as const,
+                    value: copyRenderFieldValue(candidate.operation.value)
+                  })
+                : Object.freeze({ kind: 'remove' as const })
+          })
         ) as readonly RenderFieldCandidate<unknown>[];
         const previous = this.root.snapshot.get(entity)?.get(field);
         const arbitrator = this.extractorPlan.arbitrator(field);
@@ -309,7 +324,7 @@ export class RenderWorld {
           : candidates[0]?.operation.kind === 'upsert'
             ? { kind: 'publish' as const, value: candidates[0].operation.value }
             : { kind: 'remove' as const };
-        if (result.kind === 'publish') values.set(field, freezeValue(result.value));
+        if (result.kind === 'publish') values.set(field, snapshotRenderFieldValue(result.value));
         else if (result.kind === 'remove') values.delete(field);
         else continue;
         const dirty = touched.get(entity) ?? new Set();
@@ -538,7 +553,14 @@ export class ExtractTransaction {
     this.candidates.set(entity, fields);
     const candidates = fields.get(field) ?? new Map();
     fields.set(field, candidates);
-    candidates.set(owner.id, { extractor: owner, operation });
+    const retainedOperation =
+      operation.kind === 'upsert'
+        ? Object.freeze({
+            kind: 'upsert' as const,
+            value: snapshotRenderFieldValue(operation.value)
+          })
+        : Object.freeze({ kind: 'remove' as const });
+    candidates.set(owner.id, Object.freeze({ extractor: owner, operation: retainedOperation }));
   }
 
   private assertOpen(): void {
@@ -563,31 +585,43 @@ export class ScopedRenderDraft<W extends readonly RenderFieldToken<unknown>[]> {
   }
 }
 
+const FROZEN_MAP_INNERS = new WeakMap<object, ReadonlyMap<unknown, unknown>>();
+
 class FrozenMap<K, V> implements ReadonlyMap<K, V> {
-  constructor(private readonly inner: ReadonlyMap<K, V>) {}
+  #inner: ReadonlyMap<K, V>;
+  #copyValue: (value: V) => V;
+
+  constructor(inner: ReadonlyMap<K, V>, copyValue: (value: V) => V = identity) {
+    this.#inner = inner;
+    this.#copyValue = copyValue;
+    FROZEN_MAP_INNERS.set(this, inner as ReadonlyMap<unknown, unknown>);
+    Object.freeze(this);
+  }
+
   get size(): number {
-    return this.inner.size;
+    return this.#inner.size;
   }
   get(key: K): V | undefined {
-    return this.inner.get(key);
+    const value = this.#inner.get(key);
+    return value === undefined ? undefined : this.#copyValue(value);
   }
   has(key: K): boolean {
-    return this.inner.has(key);
+    return this.#inner.has(key);
   }
   forEach(callbackfn: (value: V, key: K, map: ReadonlyMap<K, V>) => void, thisArg?: unknown): void {
     for (const [key, value] of this) callbackfn.call(thisArg, value, key, this);
   }
   entries(): MapIterator<[K, V]> {
-    return this.inner.entries();
+    return new Map([...this.#inner].map(([key, value]) => [key, this.#copyValue(value)])).entries();
   }
   keys(): MapIterator<K> {
-    return this.inner.keys();
+    return this.#inner.keys();
   }
   values(): MapIterator<V> {
-    return this.inner.values();
+    return new Map([...this.#inner].map(([key, value]) => [key, this.#copyValue(value)])).values();
   }
   [Symbol.iterator](): MapIterator<[K, V]> {
-    return this.inner.entries();
+    return this.entries();
   }
   get [Symbol.toStringTag](): string {
     return 'FrozenMap';
@@ -595,10 +629,18 @@ class FrozenMap<K, V> implements ReadonlyMap<K, V> {
 }
 
 function freezeFields(values: Map<RenderFieldToken<unknown>, unknown>): RenderEntityFields {
-  return new FrozenMap(values);
+  return new FrozenMap(values, copyRenderFieldValue);
 }
-function freezeValue(value: unknown): unknown {
-  return Array.isArray(value) ? Object.freeze([...value]) : value;
+
+function copyCommittedFields(
+  fields: RenderEntityFields | undefined
+): Map<RenderFieldToken<unknown>, unknown> {
+  const inner = fields && FROZEN_MAP_INNERS.get(fields);
+  return new Map((inner ?? fields) as ReadonlyMap<RenderFieldToken<unknown>, unknown> | undefined);
+}
+
+function identity<T>(value: T): T {
+  return value;
 }
 function stableValueEqual(left: unknown, right: unknown): boolean {
   if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null)

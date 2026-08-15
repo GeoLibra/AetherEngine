@@ -210,9 +210,9 @@ export class TransformRuntime {
         entity,
         Object.freeze({
           entity,
-          matrix,
-          previousMatrix,
-          normalMatrix: safeNormalMatrix(matrix),
+          matrix: snapshotMatrix(matrix),
+          previousMatrix: snapshotMatrix(previousMatrix),
+          normalMatrix: snapshotMatrix(safeNormalMatrix(matrix)),
           determinantSign: Math.sign(Mat4.determinant(matrix)),
           worldVersion: derived.worldVersion
         })
@@ -402,6 +402,10 @@ export class TransformRuntime {
     }
     return world;
   }
+}
+
+function snapshotMatrix(matrix: ArrayLike<number>): readonly number[] {
+  return Object.freeze(Array.from(matrix));
 }
 
 function interpolateTransform(

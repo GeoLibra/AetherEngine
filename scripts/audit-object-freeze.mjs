@@ -92,6 +92,63 @@ function freezeCategory(argument) {
   return undefined;
 }
 
+function unwrapExpression(expression) {
+  let value = expression;
+  while (
+    ts.isAsExpression(value) ||
+    ts.isParenthesizedExpression(value) ||
+    ts.isSatisfiesExpression(value)
+  ) {
+    value = value.expression;
+  }
+  return value;
+}
+
+function propertyName(property) {
+  if (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) {
+    return ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
+      ? property.name.text
+      : undefined;
+  }
+  return undefined;
+}
+
+function propertyValue(property) {
+  if (ts.isPropertyAssignment(property)) return property.initializer;
+  return ts.isShorthandPropertyAssignment(property) ? property.name : undefined;
+}
+
+function nestedMutableKind(expression, declarations, seen = new Set()) {
+  const value = unwrapExpression(expression);
+  if (seen.has(value)) return undefined;
+  seen.add(value);
+  if (ts.isNewExpression(value) && ts.isIdentifier(value.expression)) {
+    const name = value.expression.text;
+    if (MUTABLE_BUILT_INS.has(name) || TYPED_ARRAYS.has(name)) return name;
+  }
+  if (ts.isIdentifier(value) && declarations.has(value.text)) {
+    return nestedMutableKind(declarations.get(value.text), declarations, seen);
+  }
+  return undefined;
+}
+
+function nestedMutableProperties(object, declarations, prefix = '') {
+  const results = [];
+  for (const property of object.properties) {
+    const name = propertyName(property);
+    const value = propertyValue(property);
+    if (!name || !value) continue;
+    const propertyPath = prefix ? `${prefix}.${name}` : name;
+    if (ts.isObjectLiteralExpression(value)) {
+      results.push(...nestedMutableProperties(value, declarations, propertyPath));
+      continue;
+    }
+    const kind = nestedMutableKind(value, declarations);
+    if (kind) results.push({ propertyPath, kind });
+  }
+  return results;
+}
+
 function auditFile(path) {
   const source = ts.createSourceFile(
     path,
@@ -107,6 +164,15 @@ function auditFile(path) {
     throw new Error(diagnostics.join('\n'));
   }
 
+  const declarations = new Map();
+  const collectDeclarations = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      declarations.set(node.name.text, node.initializer);
+    }
+    ts.forEachChild(node, collectDeclarations);
+  };
+  collectDeclarations(source);
+
   const calls = [];
   const visit = (node) => {
     if (isFreeze(node) && node.arguments.length === 1) {
@@ -120,7 +186,10 @@ function auditFile(path) {
         argumentKind: ts.SyntaxKind[argument.kind],
         enclosingFunction: enclosingFunction ? functionName(enclosingFunction) : null,
         argumentIsFunctionParameter: argumentIsFunctionParameter(argument, enclosingFunction),
-        category: freezeCategory(argument) ?? null
+        category: freezeCategory(argument) ?? null,
+        nestedMutableBuiltIns: ts.isObjectLiteralExpression(argument)
+          ? nestedMutableProperties(argument, declarations)
+          : []
       });
     }
     ts.forEachChild(node, visit);
@@ -142,8 +211,20 @@ try {
       calls.filter((call) => call.category === category)
     ])
   );
+  const nestedMutableBuiltIns = calls.flatMap((call) =>
+    call.nestedMutableBuiltIns.map((exposure) => ({
+      path: call.path,
+      line: call.line,
+      column: call.column,
+      ...exposure
+    }))
+  );
   process.stdout.write(
-    `${JSON.stringify({ total: calls.length, byArgumentKind, banned, calls }, null, 2)}\n`
+    `${JSON.stringify(
+      { total: calls.length, byArgumentKind, banned, nestedMutableBuiltIns, calls },
+      null,
+      2
+    )}\n`
   );
 } catch (error) {
   process.stderr.write(

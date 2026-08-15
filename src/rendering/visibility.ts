@@ -104,8 +104,9 @@ export function createCpuVisibilityView(
     historyKey: options.historyKey,
     viewRevision: extracted.revision,
     frustum: Frustum.fromViewProjection(extracted.unjitteredViewProjection),
-    // Typed arrays remain mutable at runtime even when the containing snapshot is frozen.
-    viewMatrix: extracted.view.slice()
+    // The CPU view crosses into a published snapshot; use immutable scalar data rather than a
+    // mutable typed-array facade. Hot loops only require `ArrayLike<number>`.
+    viewMatrix: Object.freeze(Array.from(extracted.view))
   });
 }
 

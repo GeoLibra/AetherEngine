@@ -7,6 +7,7 @@ import {
 } from '../../render-graph';
 import { shadowRequestKey } from './shadow';
 import type { ShadowRequest } from './types';
+import { ReadonlyMapSnapshot } from '../readonly-collection-snapshot';
 
 export interface ShadowGraphDeclaration {
   readonly texture: TextureHandle | undefined;
@@ -45,7 +46,7 @@ export function declareShadowDepthPasses(
     return Object.freeze({
       texture: undefined,
       passes: NO_SHADOW_PASSES,
-      layerByRequestKey: new Map()
+      layerByRequestKey: new ReadonlyMapSnapshot<string, number>([])
     });
   }
   const edge = Math.max(...requests.map((request) => request.resolutionClass));
@@ -97,6 +98,6 @@ export function declareShadowDepthPasses(
   return Object.freeze({
     texture,
     passes: Object.freeze(passes),
-    layerByRequestKey
+    layerByRequestKey: new ReadonlyMapSnapshot(layerByRequestKey)
   });
 }

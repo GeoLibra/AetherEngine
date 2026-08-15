@@ -46,6 +46,31 @@ describe('packed static BVH', () => {
     expect(first.nodeCount).toBeGreaterThan(0);
   });
 
+  test('does not expose packed storage whose mutation can invalidate its checksum', () => {
+    const bvh = buildPackedStaticBvh([entry(1, -1), entry(2, 1)]);
+    const checksum = bvh.checksum;
+    const original = {
+      bounds: [...bvh.bounds],
+      childOrEntry: [...bvh.childOrEntry],
+      metadata: [...bvh.metadata],
+      entityIds: [...bvh.entityIds],
+      boundsRevisions: [...bvh.boundsRevisions]
+    };
+
+    bvh.bounds[0] = 99;
+    bvh.childOrEntry[0] = 99;
+    bvh.metadata[0] = 99;
+    bvh.entityIds[0] = 99;
+    bvh.boundsRevisions[0] = 99;
+
+    expect(bvh.checksum).toBe(checksum);
+    expect([...bvh.bounds]).toEqual(original.bounds);
+    expect([...bvh.childOrEntry]).toEqual(original.childOrEntry);
+    expect([...bvh.metadata]).toEqual(original.metadata);
+    expect([...bvh.entityIds]).toEqual(original.entityIds);
+    expect([...bvh.boundsRevisions]).toEqual(original.boundsRevisions);
+  });
+
   test('detaches packed entry snapshots from caller-owned bounds', () => {
     const nestedExtra = { callerOwned: true };
     const source = {

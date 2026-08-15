@@ -20,12 +20,12 @@ export interface ExtractedView {
   readonly viewId: string;
   readonly camera: RenderEntityId;
   readonly revision: number;
-  readonly view: Float32Array;
-  readonly projection: Float32Array;
-  readonly viewProjection: Float32Array;
-  readonly inverseViewProjection: Float32Array;
-  readonly unjitteredProjection: Float32Array;
-  readonly unjitteredViewProjection: Float32Array;
+  readonly view: ArrayLike<number>;
+  readonly projection: ArrayLike<number>;
+  readonly viewProjection: ArrayLike<number>;
+  readonly inverseViewProjection: ArrayLike<number>;
+  readonly unjitteredProjection: ArrayLike<number>;
+  readonly unjitteredViewProjection: ArrayLike<number>;
   readonly viewportPixels: Readonly<{ x: number; y: number; width: number; height: number }>;
   readonly layerMask: number;
   readonly jitterPixels: readonly [number, number];
@@ -138,17 +138,21 @@ export function extractView(options: ExtractViewOptions): ExtractedView {
     viewId: options.viewId,
     camera: options.camera,
     revision: options.revision,
-    view,
-    projection,
-    viewProjection,
-    inverseViewProjection,
-    unjitteredProjection,
-    unjitteredViewProjection,
+    view: snapshotMatrix(view),
+    projection: snapshotMatrix(projection),
+    viewProjection: snapshotMatrix(viewProjection),
+    inverseViewProjection: snapshotMatrix(inverseViewProjection),
+    unjitteredProjection: snapshotMatrix(unjitteredProjection),
+    unjitteredViewProjection: snapshotMatrix(unjitteredViewProjection),
     viewportPixels: computeViewportPixels(options.viewport),
     layerMask: options.layerMask,
     jitterPixels,
     depthMode: options.depthMode ?? 'standard'
   });
+}
+
+function snapshotMatrix(matrix: ArrayLike<number>): readonly number[] {
+  return Object.freeze(Array.from(matrix));
 }
 
 export class CameraViewError extends Error {
