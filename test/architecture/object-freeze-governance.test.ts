@@ -148,6 +148,77 @@ describe('Object.freeze governance', () => {
     ]);
   });
 
+  test('resolves statically reachable built-in type graphs without trusting local names', () => {
+    const exposures = nestedMutableExposures(
+      [
+        'const { table } = { table: new Map<string, number>() };',
+        'Object.freeze(table);',
+        'const readonlyFactory: () => ReadonlyMap<string, number> = () => new Map();',
+        'Object.freeze(readonlyFactory());',
+        'class MemberHolder { table = new Set<string>(); }',
+        'Object.freeze(new MemberHolder());',
+        'class AssignedHolder {',
+        '  table!: ReadonlyMap<string, number>;',
+        '  constructor() { this.table = new Map<string, number>(); }',
+        '}',
+        'Object.freeze(new AssignedHolder());',
+        'class GetterHolder { get bytes(): Uint8Array { return new Uint8Array([1]); } }',
+        'Object.freeze(new GetterHolder().bytes);',
+        'interface ExtendedMap extends Map<string, number> {}',
+        'const extended = {} as ExtendedMap;',
+        'Object.freeze(extended);',
+        'type AliasedSet = Set<string>;',
+        'const aliased = {} as AliasedSet;',
+        'Object.freeze(aliased);',
+        'interface IndexedMap { [name: string]: Map<string, number>; }',
+        'const indexed = {} as IndexedMap;',
+        'Object.freeze(indexed);',
+        'function freezeConstrained<T extends Set<string>>(value: T) { Object.freeze(value); }'
+      ].join('\n')
+    );
+
+    expect(exposures.map(({ propertyPath, kind }) => ({ propertyPath, kind }))).toEqual([
+      { propertyPath: '<root>', kind: 'Map' },
+      { propertyPath: '<root>', kind: 'Map' },
+      { propertyPath: 'table', kind: 'Set' },
+      { propertyPath: 'table', kind: 'Map' },
+      { propertyPath: '<root>', kind: 'Uint8Array' },
+      { propertyPath: '<root>', kind: 'Map' },
+      { propertyPath: '<root>', kind: 'Set' },
+      { propertyPath: '[index]', kind: 'Map' },
+      { propertyPath: '<root>', kind: 'Set' }
+    ]);
+  });
+
+  test('does not mistake local Map Set or typed-array spellings for standard mutable built-ins', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class Map<K, V> {}',
+          'class Set<T> {}',
+          'class Uint8Array { constructor(_value: unknown) {} }',
+          'Object.freeze(new Map<string, number>());',
+          'Object.freeze(new Set<string>());',
+          'Object.freeze(new Uint8Array([1]));',
+          'Object.freeze(new globalThis.Map<string, number>());'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([{ propertyPath: '<root>', kind: 'Map' }]);
+  });
+
+  test('does not treat a prototype getter as retained state when freezing a class instance', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class GetterFacade {',
+          '  get table(): Map<string, number> { return new Map<string, number>(); }',
+          '}',
+          'Object.freeze(new GetterFacade());'
+        ].join('\n')
+      )
+    ).toEqual([]);
+  });
+
   test('bounds cyclic alias resolution', () => {
     expect(
       nestedMutableExposures('const first = second; const second = first; Object.freeze(first);')

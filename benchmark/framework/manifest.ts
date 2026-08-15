@@ -23,6 +23,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       description: 'Transform propagation and extraction snapshot paths.',
       pathPrefixes: Object.freeze([
         'engine/design/v2/01-foundation/02-math-transform.md',
+        'engine/design/v2/02-runtime/02-ecs-world.md',
         'engine/requirements.md',
         'src/transform/'
       ])
@@ -166,6 +167,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'benchmark/transform-runtime-runner-guard.mjs',
         'benchmark/transform-runtime-scenario.ts',
         'engine/design/v2/01-foundation/02-math-transform.md',
+        'engine/design/v2/02-runtime/02-ecs-world.md',
         'engine/requirements.md',
         'src/transform/',
         'test/benchmark/transform-runtime.test.ts',

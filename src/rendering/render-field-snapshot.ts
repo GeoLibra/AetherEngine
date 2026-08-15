@@ -31,6 +31,10 @@ const TYPED_ARRAY_LENGTH = (() => {
   return getter;
 })();
 const TYPED_ARRAY_SET = Uint8Array.prototype.set;
+const STRUCTURED_CLONE =
+  typeof globalThis.structuredClone === 'function'
+    ? globalThis.structuredClone.bind(globalThis)
+    : undefined;
 
 /**
  * RenderWorld retains only detached value data. Typed arrays are copied but cannot be frozen by
@@ -42,6 +46,7 @@ export function snapshotRenderFieldValue(value: unknown): unknown {
 }
 
 export function copyRenderFieldValue(value: unknown): unknown {
+  assertSnapshotBoundary(value);
   return copyValue(value, new WeakSet<object>());
 }
 
@@ -53,7 +58,6 @@ function copyValue(value: unknown, visiting: WeakSet<object>): unknown {
     throw new Error(`Render field values cannot contain ${type} values.`);
   }
   if (type !== 'object') throw new Error('Render field value is unsupported.');
-  assertProxyFree(value);
   if (
     value instanceof Map ||
     value instanceof Set ||
@@ -80,29 +84,37 @@ function copyValue(value: unknown, visiting: WeakSet<object>): unknown {
  * engine runtimes provide structuredClone, which rejects every Proxy before it can become an
  * owner-retained field value. This probe never retains or mutates the caller's object.
  */
-function assertProxyFree(value: object): void {
-  assertDataProperties(value);
-  if (typeof structuredClone !== 'function') {
+function assertSnapshotBoundary(value: unknown): void {
+  if (value === null || typeof value !== 'object') return;
+  assertDataPropertiesRecursively(value, new WeakSet<object>());
+  if (STRUCTURED_CLONE === undefined) {
     throw new Error('Render field snapshots require structuredClone proxy validation support.');
   }
   try {
-    structuredClone(value);
+    STRUCTURED_CLONE(value);
   } catch {
     throw new Error('Render field values cannot contain proxy or non-cloneable objects.');
   }
 }
 
-function assertDataProperties(value: object): void {
+function assertDataPropertiesRecursively(value: object, visiting: WeakSet<object>): void {
+  if (visiting.has(value)) return;
+  visiting.add(value);
   try {
     for (const key of Reflect.ownKeys(value)) {
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor?.get !== undefined || descriptor?.set !== undefined) {
         throw new Error('Render field values must contain data properties only.');
       }
+      if (descriptor?.value !== null && typeof descriptor?.value === 'object') {
+        assertDataPropertiesRecursively(descriptor.value, visiting);
+      }
     }
   } catch (error) {
     if (error instanceof Error && /data properties/.test(error.message)) throw error;
     throw new Error('Render field values cannot contain proxy or non-cloneable objects.');
+  } finally {
+    visiting.delete(value);
   }
 }
 

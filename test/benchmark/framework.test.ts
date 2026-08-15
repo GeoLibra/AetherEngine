@@ -72,6 +72,16 @@ describe('changed-file routing', () => {
     }
   });
 
+  test('routes the ECS transform contract through both ECS and transform extraction suites', () => {
+    const route = routeChangedFiles(BENCHMARK_MANIFEST, [
+      'engine/design/v2/02-runtime/02-ecs-world.md'
+    ]);
+
+    expect(route.domainIds).toEqual(['ecs', 'transform']);
+    expect(route.suiteIds).toEqual(['ecs', 'transform-runtime']);
+    expect(route.missingDomainIds).toEqual([]);
+  });
+
   test('requires a suite when Rendering work starts', () => {
     const route = routeChangedFiles(BENCHMARK_MANIFEST, ['src/rendering/render-graph.ts']);
 

@@ -194,6 +194,39 @@ describe('Render field typed-array snapshots', () => {
     expect(reads).toBe(0);
   });
 
+  test('rejects nested accessors before the single root proxy probe invokes caller code', () => {
+    let reads = 0;
+    const source = {
+      nested: Object.defineProperty({}, 'hidden', {
+        enumerable: true,
+        get() {
+          reads++;
+          return 1;
+        }
+      })
+    };
+
+    expect(() => copyRenderFieldValue(source)).toThrow(/data properties/i);
+    expect(reads).toBe(0);
+  });
+
+  test('uses the module-captured structuredClone intrinsic after the global is replaced', () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'structuredClone');
+    const hostile = new Proxy({ value: 1 }, { ownKeys: () => [] });
+    try {
+      Object.defineProperty(globalThis, 'structuredClone', {
+        configurable: true,
+        value: () => ({ accepted: true }),
+        writable: true
+      });
+
+      expect(() => copyRenderFieldValue(hostile)).toThrow(/proxy|clone/i);
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'structuredClone', original);
+      else Reflect.deleteProperty(globalThis, 'structuredClone');
+    }
+  });
+
   test('rejects DataView values instead of treating bytes as a field typed array', () => {
     expect(() => copyRenderFieldValue(new DataView(new ArrayBuffer(8)))).toThrow(/typed-array/i);
   });

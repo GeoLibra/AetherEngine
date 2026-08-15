@@ -47,6 +47,16 @@ function collectValue(expression, propertyPath, context, results, emitted) {
       collectObject(value, propertyPath, context, results, emitted);
     } else if (ts.isArrayLiteralExpression(value)) {
       collectArray(value, propertyPath, context, results, emitted);
+    } else if (ts.isNewExpression(value)) {
+      for (const initializer of classInstanceInitializers(value, context, false)) {
+        collectValue(
+          initializer.value,
+          appendPath(propertyPath, initializer.name),
+          context,
+          results,
+          emitted
+        );
+      }
     } else if (ts.isIdentifier(value)) {
       withSymbolInitializers(value, context, (initializer) =>
         collectValue(initializer, propertyPath, context, results, emitted)
@@ -80,6 +90,7 @@ function collectValue(expression, propertyPath, context, results, emitted) {
         );
       }
     }
+    collectTypedPropertyExposures(value, propertyPath, context, results, emitted);
   } finally {
     context.resolvingNodes.delete(value);
   }
@@ -183,6 +194,11 @@ function memberInitializers(containerExpression, memberName, context) {
       ? [ts.isSpreadElement(element) ? element.expression : element]
       : [];
   }
+  if (ts.isNewExpression(container)) {
+    return classInstanceInitializers(container, context, true)
+      .filter((entry) => entry.name === memberName)
+      .map((entry) => entry.value);
+  }
   if (ts.isIdentifier(container)) {
     return symbolInitializers(container, context).flatMap((initializer) =>
       memberInitializers(initializer, memberName, context)
@@ -226,6 +242,43 @@ function thisPropertyInitializers(thisExpression, context) {
   return [...values].map(([name, value]) => ({ name, value }));
 }
 
+function classInstanceInitializers(expression, context, includeGetters) {
+  const type = context.checker.getTypeAtLocation(expression);
+  const symbol = resolvedSymbol(type.aliasSymbol ?? type.getSymbol(), context);
+  if (!symbol) return [];
+  const values = new Map();
+  for (const declaration of symbol.declarations ?? []) {
+    if (!ts.isClassDeclaration(declaration) && !ts.isClassExpression(declaration)) continue;
+    for (const member of declaration.members) {
+      if (
+        ts.isPropertyDeclaration(member) &&
+        member.initializer &&
+        !hasModifier(member, ts.SyntaxKind.StaticKeyword) &&
+        !ts.isPrivateIdentifier(member.name)
+      ) {
+        const name = memberName(member.name, context);
+        if (name !== undefined) values.set(name, member.initializer);
+      }
+      if (
+        includeGetters &&
+        ts.isGetAccessorDeclaration(member) &&
+        !hasModifier(member, ts.SyntaxKind.StaticKeyword) &&
+        !ts.isPrivateIdentifier(member.name)
+      ) {
+        const name = memberName(member.name, context);
+        const returned = returnExpressions(member);
+        if (name !== undefined && returned.length > 0) values.set(name, returned.at(-1));
+      }
+      if (ts.isConstructorDeclaration(member) && member.body) {
+        for (const assignment of constructorAssignments(member, context.freeze)) {
+          values.set(assignment.name, assignment.value);
+        }
+      }
+    }
+  }
+  return [...values].map(([name, value]) => ({ name, value }));
+}
+
 function constructorAssignments(constructor, freeze) {
   const results = [];
   const freezeStart =
@@ -260,7 +313,14 @@ function callableReturnExpressions(expression, context) {
     const symbol = symbolFor(value, context);
     return symbol
       ? (symbol.declarations ?? []).flatMap((declaration) =>
-          ts.isFunctionDeclaration(declaration) ? returnExpressions(declaration) : []
+          ts.isFunctionDeclaration(declaration)
+            ? returnExpressions(declaration)
+            : ts.isVariableDeclaration(declaration) &&
+                declaration.initializer &&
+                (ts.isArrowFunction(declaration.initializer) ||
+                  ts.isFunctionExpression(declaration.initializer))
+              ? returnExpressions(declaration.initializer)
+              : []
         )
       : [];
   }
@@ -280,45 +340,133 @@ function returnExpressions(fn) {
 }
 
 function mutableBuiltinKind(expression, context) {
-  if (ts.isNewExpression(expression)) {
-    const constructor = constructorName(expression.expression, context);
-    if (constructor && (MUTABLE_BUILT_INS.has(constructor) || TYPED_ARRAYS.has(constructor))) {
-      return constructor;
-    }
-  }
-  return mutableKindFromType(expression, context);
-}
-
-function constructorName(expression, context) {
   const value = unwrapExpression(expression);
   if (
-    ts.isIdentifier(value) &&
-    (MUTABLE_BUILT_INS.has(value.text) || TYPED_ARRAYS.has(value.text))
+    ts.isObjectLiteralExpression(value) ||
+    ts.isArrayLiteralExpression(value) ||
+    ts.isConditionalExpression(value) ||
+    ts.isArrowFunction(value) ||
+    ts.isFunctionExpression(value) ||
+    ts.isFunctionDeclaration(value)
   ) {
-    return value.text;
+    return undefined;
   }
-  if (
-    ts.isPropertyAccessExpression(value) &&
-    ts.isIdentifier(value.expression) &&
-    value.expression.text === 'globalThis' &&
-    (MUTABLE_BUILT_INS.has(value.name.text) || TYPED_ARRAYS.has(value.name.text))
-  ) {
-    return value.name.text;
+  return mutableKindFromType(value, context, ts.isCallExpression(value));
+}
+
+function mutableKindFromType(expression, context, includeCallReturns = false) {
+  return mutableBuiltinTypeKind(
+    context.checker.getTypeAtLocation(expression),
+    context,
+    new Set(),
+    includeCallReturns
+  );
+}
+
+function mutableBuiltinTypeKind(type, context, seen, includeCallReturns = false) {
+  if (!type || seen.has(type)) return undefined;
+  seen.add(type);
+  const symbol = resolvedSymbol(type.aliasSymbol ?? type.getSymbol(), context);
+  const direct = standardBuiltinKind(symbol);
+  if (direct) return direct;
+  const candidates = [
+    type.target,
+    context.checker.getApparentType(type),
+    context.checker.getBaseConstraintOfType(type),
+    ...(type.aliasTypeArguments ?? []),
+    ...(type.types ?? []),
+    ...(includeCallReturns ? callReturnTypes(type, context) : [])
+  ];
+  try {
+    candidates.push(...(context.checker.getBaseTypes(type) ?? []));
+  } catch {
+    // Only interface/class object types have base types.
   }
-  if (ts.isIdentifier(value)) {
-    for (const initializer of symbolInitializers(value, context)) {
-      const name = constructorName(initializer, context);
-      if (name) return name;
-    }
+  for (const candidate of candidates) {
+    const kind = mutableBuiltinTypeKind(candidate, context, seen, includeCallReturns);
+    if (kind) return kind;
   }
   return undefined;
 }
 
-function mutableKindFromType(expression, context) {
-  const type = context.checker.getTypeAtLocation(expression);
-  const symbol = type.aliasSymbol ?? type.getSymbol();
-  const name = symbol?.getName();
-  return name && (MUTABLE_BUILT_INS.has(name) || TYPED_ARRAYS.has(name)) ? name : undefined;
+function callReturnTypes(type, context) {
+  return context.checker
+    .getSignaturesOfType(type, ts.SignatureKind.Call)
+    .map((signature) => context.checker.getReturnTypeOfSignature(signature));
+}
+
+function standardBuiltinKind(symbol) {
+  if (!symbol || !symbol.declarations?.some(isStandardLibraryDeclaration)) return undefined;
+  const name = symbol.getName();
+  return MUTABLE_BUILT_INS.has(name) || TYPED_ARRAYS.has(name) ? name : undefined;
+}
+
+function isStandardLibraryDeclaration(declaration) {
+  return /(?:^|[\\/])typescript[\\/]lib[\\/]lib\..*\.d\.ts$/.test(
+    declaration.getSourceFile().fileName
+  );
+}
+
+function collectTypedPropertyExposures(expression, propertyPath, context, results, emitted) {
+  collectTypeProperties(
+    context.checker.getTypeAtLocation(expression),
+    propertyPath,
+    context,
+    results,
+    emitted,
+    new Set()
+  );
+}
+
+function collectTypeProperties(type, propertyPath, context, results, emitted, seen) {
+  if (!type || seen.has(type) || mutableBuiltinTypeKind(type, context, new Set())) return;
+  seen.add(type);
+  for (const property of context.checker.getPropertiesOfType(type)) {
+    const declarations = (property.declarations ?? []).filter(isRuntimePropertyDeclaration);
+    if (declarations.length === 0) continue;
+    const name = property.getName();
+    if (name.startsWith('#')) continue;
+    for (const declaration of declarations) {
+      const propertyType = context.checker.getTypeOfSymbolAtLocation(property, declaration);
+      const kind = mutableBuiltinTypeKind(propertyType, context, new Set());
+      if (kind) emitExposure(appendPath(propertyPath, name), kind, context, results, emitted);
+      else
+        collectTypeProperties(
+          propertyType,
+          appendPath(propertyPath, name),
+          context,
+          results,
+          emitted,
+          seen
+        );
+    }
+  }
+  try {
+    for (const indexInfo of context.checker.getIndexInfosOfType(type)) {
+      if (indexInfo.declaration && isStandardLibraryDeclaration(indexInfo.declaration)) continue;
+      const kind = mutableBuiltinTypeKind(indexInfo.type, context, new Set());
+      if (kind) emitExposure(appendIndexPath(propertyPath), kind, context, results, emitted);
+      else
+        collectTypeProperties(
+          indexInfo.type,
+          appendIndexPath(propertyPath),
+          context,
+          results,
+          emitted,
+          seen
+        );
+    }
+  } catch {
+    // Primitive and non-indexable types do not have index information.
+  }
+}
+
+function isRuntimePropertyDeclaration(declaration) {
+  return ts.isPropertyDeclaration(declaration) || ts.isPropertySignature(declaration);
+}
+
+function appendIndexPath(prefix) {
+  return prefix ? `${prefix}[index]` : '[index]';
 }
 
 function withSymbolInitializers(identifier, context, visit) {
@@ -337,7 +485,10 @@ function symbolInitializers(identifier, context) {
 }
 
 function symbolFor(identifier, context) {
-  let symbol = context.checker.getSymbolAtLocation(identifier);
+  return resolvedSymbol(context.checker.getSymbolAtLocation(identifier), context);
+}
+
+function resolvedSymbol(symbol, context) {
   if (!symbol) return undefined;
   if (symbol.flags & ts.SymbolFlags.Alias) symbol = context.checker.getAliasedSymbol(symbol);
   return symbol;
@@ -352,12 +503,36 @@ function initializerForSymbol(symbol, context, seen = new Set()) {
       results.push(declaration.initializer);
     if (ts.isPropertyDeclaration(declaration) && declaration.initializer)
       results.push(declaration.initializer);
+    if (ts.isBindingElement(declaration)) {
+      results.push(...bindingElementInitializers(declaration, context));
+    }
     if (ts.isShorthandPropertyAssignment(declaration)) {
       const valueSymbol = context.checker.getShorthandAssignmentValueSymbol(declaration);
       if (valueSymbol) results.push(...initializerForSymbol(valueSymbol, context, seen));
     }
   }
   return results;
+}
+
+function bindingElementInitializers(element, context) {
+  const pattern = element.parent;
+  const declaration = pattern.parent;
+  if (!ts.isVariableDeclaration(declaration) || !declaration.initializer) return [];
+  if (ts.isObjectBindingPattern(pattern)) {
+    const name = element.propertyName
+      ? memberName(element.propertyName, context)
+      : ts.isIdentifier(element.name)
+        ? element.name.text
+        : undefined;
+    return name === undefined ? [] : memberInitializers(declaration.initializer, name, context);
+  }
+  if (ts.isArrayBindingPattern(pattern)) {
+    const index = pattern.elements.indexOf(element);
+    return index < 0
+      ? []
+      : iterableElements(declaration.initializer, context).slice(index, index + 1);
+  }
+  return [];
 }
 
 function emitExposure(propertyPath, kind, context, results, emitted) {
