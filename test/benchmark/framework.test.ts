@@ -101,15 +101,60 @@ describe('changed-file routing', () => {
     }
   });
 
-  test('routes Simulation and Editor paths to their registered suites and keeps Experience gap explicit', () => {
-    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/vfx/emitter.ts']).suiteIds).toEqual([
-      'simulation-vfx'
-    ]);
-    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/editor/document.ts']).suiteIds).toEqual([
-      'editor-workflow'
-    ]);
+  test('routes VFX and Editor design paths to their registered baseline suites and keeps Runtime, Animation, Physics, Navigation, Networking, Experience gaps explicit', () => {
+    // Design documents route to registered baseline suites
+    expect(
+      routeChangedFiles(BENCHMARK_MANIFEST, ['engine/design/v2/06-simulation/02-particle-vfx.md'])
+        .suiteIds
+    ).toEqual(['simulation-vfx']);
 
-    const expRoute = routeChangedFiles(BENCHMARK_MANIFEST, ['src/input/actions.ts']);
+    expect(
+      routeChangedFiles(BENCHMARK_MANIFEST, ['engine/design/v2/08-tooling/02-editor.md']).suiteIds
+    ).toEqual(['editor-workflow']);
+
+    // Production runtime paths remain blocked until production suites are ready
+    const vfxRuntime = routeChangedFiles(BENCHMARK_MANIFEST, ['src/vfx/emitter.ts']);
+    expect(vfxRuntime.suiteIds).toEqual([]);
+    expect(vfxRuntime.missingDomainIds).toEqual(['vfx-runtime']);
+
+    const editorRuntime = routeChangedFiles(BENCHMARK_MANIFEST, ['src/editor/document.ts']);
+    expect(editorRuntime.suiteIds).toEqual([]);
+    expect(editorRuntime.missingDomainIds).toEqual(['editor-runtime']);
+
+    // Real simulation & networking design docs and source paths
+    const animRoute = routeChangedFiles(BENCHMARK_MANIFEST, [
+      'engine/design/v2/06-simulation/01-animation.md',
+      'src/animation/controller.ts'
+    ]);
+    expect(animRoute.suiteIds).toEqual([]);
+    expect(animRoute.missingDomainIds).toEqual(['animation']);
+
+    const physRoute = routeChangedFiles(BENCHMARK_MANIFEST, [
+      'engine/design/v2/06-simulation/03-physics.md',
+      'src/physics/world.ts'
+    ]);
+    expect(physRoute.suiteIds).toEqual([]);
+    expect(physRoute.missingDomainIds).toEqual(['physics']);
+
+    const navRoute = routeChangedFiles(BENCHMARK_MANIFEST, [
+      'engine/design/v2/06-simulation/05-ai-navigation.md',
+      'src/navigation/navmesh.ts'
+    ]);
+    expect(navRoute.suiteIds).toEqual([]);
+    expect(navRoute.missingDomainIds).toEqual(['navigation']);
+
+    const netRoute = routeChangedFiles(BENCHMARK_MANIFEST, [
+      'engine/design/v2/06-simulation/04-networking.md',
+      'engine/design/v2/06-simulation/06-session-room-matchmaking.md',
+      'src/networking/transport.ts'
+    ]);
+    expect(netRoute.suiteIds).toEqual([]);
+    expect(netRoute.missingDomainIds).toEqual(['networking']);
+
+    const expRoute = routeChangedFiles(BENCHMARK_MANIFEST, [
+      'engine/design/v2/07-experience/01-input.md',
+      'src/input/actions.ts'
+    ]);
     expect(expRoute.suiteIds).toEqual([]);
     expect(expRoute.missingDomainIds).toEqual(['experience']);
   });

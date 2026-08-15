@@ -60,15 +60,49 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       ])
     }),
     Object.freeze({
-      id: 'simulation',
+      id: 'simulation-vfx',
       description:
-        'Animation, VFX, physics, navigation, and other fixed or budgeted simulation paths.',
+        'VFX effect/emitter execution plans, parameter sampling, and vertex-analytic/GPU simulation paths.',
+      pathPrefixes: Object.freeze(['engine/design/v2/06-simulation/02-particle-vfx.md'])
+    }),
+    Object.freeze({
+      id: 'vfx-runtime',
+      description:
+        'Production VFX simulation, compute shaders, GPU storage buffers, and emitter runtime.',
+      pathPrefixes: Object.freeze(['src/vfx/'])
+    }),
+    Object.freeze({
+      id: 'animation',
+      description:
+        'Animation targets, tracks, curve evaluation, blending, and skeletal/morph skinning paths.',
       pathPrefixes: Object.freeze([
-        'engine/design/v2/06-simulation/',
-        'src/animation/',
-        'src/vfx/',
-        'src/physics/',
+        'engine/design/v2/06-simulation/01-animation.md',
+        'src/animation/'
+      ])
+    }),
+    Object.freeze({
+      id: 'physics',
+      description:
+        'Physics fixed-step authority, Rapier adapter, colliders, character controllers, and query paths.',
+      pathPrefixes: Object.freeze(['engine/design/v2/06-simulation/03-physics.md', 'src/physics/'])
+    }),
+    Object.freeze({
+      id: 'navigation',
+      description: 'Crowd simulation, navmesh queries, spatial pathfinding, and avoidance paths.',
+      pathPrefixes: Object.freeze([
+        'engine/design/v2/06-simulation/05-ai-navigation.md',
         'src/navigation/'
+      ])
+    }),
+    Object.freeze({
+      id: 'networking',
+      description:
+        'Networking replication, state sync, room sessions, matchmaking, and transport paths.',
+      pathPrefixes: Object.freeze([
+        'engine/design/v2/06-simulation/04-networking.md',
+        'engine/design/v2/06-simulation/06-session-room-matchmaking.md',
+        'src/networking/',
+        'src/session/'
       ])
     }),
     Object.freeze({
@@ -85,7 +119,13 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
     Object.freeze({
       id: 'editor',
       description: 'Editor document, command, snapshot, picking, and large-scene workflows.',
-      pathPrefixes: Object.freeze(['engine/design/v2/08-tooling/02-editor.md', 'src/editor/'])
+      pathPrefixes: Object.freeze(['engine/design/v2/08-tooling/02-editor.md'])
+    }),
+    Object.freeze({
+      id: 'editor-runtime',
+      description:
+        'Production Editor document state, undo/redo stacks, and UI tools implementation.',
+      pathPrefixes: Object.freeze(['src/editor/'])
     })
   ]),
   suites: Object.freeze([
@@ -303,17 +343,13 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
     Object.freeze({
       id: 'simulation-vfx',
       description:
-        'Simulation VFX vertex-analytic and CPU interpreter determinism, spawn batches, and state oracle baselines.',
-      domainIds: Object.freeze(['simulation']),
+        'Simulation VFX vertex-analytic raw baseline and scalar reference determinism, spawn batches, and state oracle.',
+      domainIds: Object.freeze(['simulation-vfx']),
       pathPrefixes: Object.freeze([
         'benchmark/simulation-vfx.bench.ts',
         'benchmark/simulation-vfx-runner.mjs',
         'benchmark/simulation-vfx/',
-        'engine/design/v2/06-simulation/',
-        'src/animation/',
-        'src/vfx/',
-        'src/physics/',
-        'src/navigation/',
+        'engine/design/v2/06-simulation/02-particle-vfx.md',
         'test/benchmark/simulation-vfx.test.ts'
       ]),
       command: Object.freeze({
@@ -331,7 +367,6 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'benchmark/editor-workflow-runner.mjs',
         'benchmark/editor-workflow/',
         'engine/design/v2/08-tooling/02-editor.md',
-        'src/editor/',
         'test/benchmark/editor-workflow.test.ts'
       ]),
       command: Object.freeze({
