@@ -197,7 +197,7 @@ export class DynamicPluginHost {
       phase: 'validating',
       grantedCapabilities: NO_CAPABILITIES,
       deniedOptionalCapabilities: NO_CAPABILITIES,
-      contributionCounts: Object.freeze({}),
+      contributionCounts: {},
       pendingWork: 0,
       scope
     };
@@ -207,8 +207,8 @@ export class DynamicPluginHost {
     try {
       validateDynamicPluginManifest(manifest, this.options.verifier);
       const plan = this.authorizationPlan(manifest);
-      record.grantedCapabilities = Object.freeze(plan.granted.map(({ id }) => id));
-      record.deniedOptionalCapabilities = Object.freeze(plan.deniedOptional.map(({ id }) => id));
+      record.grantedCapabilities = plan.granted.map(({ id }) => id);
+      record.deniedOptionalCapabilities = plan.deniedOptional.map(({ id }) => id);
       record.phase = 'activating';
       const session = await this.options.broker.open(plan, scope);
       record.session = session;

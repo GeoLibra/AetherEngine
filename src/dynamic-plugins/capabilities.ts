@@ -86,7 +86,7 @@ export class DynamicCapabilityBroker {
           hostKind: scope.hostKind,
           signal: scope.signal
         });
-        opened.push(Object.freeze({ token: provider.token, lease }));
+        opened.push({ token: provider.token, lease });
         await lease.prepare();
       }
     } catch (cause) {
