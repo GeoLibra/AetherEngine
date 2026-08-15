@@ -291,9 +291,9 @@ function semanticIncoming(
       }
     }
   }
-  return new Map(
-    [...incoming].map(([id, predecessors]) => [id, Object.freeze(unique(predecessors))])
-  );
+  // Scheduling consumes these normalized predecessors before this compilation returns;
+  // no caller can observe the private adjacency arrays.
+  return new Map([...incoming].map(([id, predecessors]) => [id, unique(predecessors)]));
 }
 
 function setupContextFor(instance: ActiveRenderSystemInstance): RenderSystemSetupContext<unknown> {

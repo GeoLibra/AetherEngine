@@ -49,7 +49,9 @@ export class PersistentEntityMap {
     const page = branch.get(address.middle) ?? new Map();
     const existed = page.get(address.slot)?.[0] === entity;
     const nextPage = new Map(page);
-    nextPage.set(address.slot, Object.freeze([entity, fields]));
+    // Leaf tuples stay inside the persistent trie. Public snapshots expose freshly yielded
+    // entry pairs and immutable field maps, never this implementation detail.
+    nextPage.set(address.slot, [entity, fields]);
     const nextBranch = new Map(branch);
     nextBranch.set(address.middle, nextPage);
     const nextDirectory = new Map(this.directory);

@@ -501,26 +501,22 @@ function historyDebugStates(
   plan: RenderGraphExecutionPlan,
   inputs: RenderGraphExecutionInputs
 ): ReadonlyMap<number, RenderGraphHistoryDebugBinding> {
+  // This map exists only while createRenderGraphDebugIR validates and snapshots it. That
+  // public boundary clones and freezes every binding, so these intermediary records do
+  // not need a second integrity transition.
   const states = new Map<number, RenderGraphHistoryDebugBinding>();
   for (const resource of retainedHistoryResources(plan)) {
     const binding = inputs.histories?.get(resource.versions[0]?.handle as GraphHandle);
     if (binding === undefined) continue;
-    states.set(
-      resource.resourceId,
-      Object.freeze({
-        readableSlot: binding.readable?.slot,
-        writableSlot: binding.writable.slot,
-        versionSlots: Object.freeze(
-          resource.versions.map((version) =>
-            Object.freeze({
-              version: version.version,
-              slot: version.version === 0 ? binding.readable?.slot : binding.writable.slot
-            })
-          )
-        ),
-        slots: binding.registry.debugState(binding.identity)
-      })
-    );
+    states.set(resource.resourceId, {
+      readableSlot: binding.readable?.slot,
+      writableSlot: binding.writable.slot,
+      versionSlots: resource.versions.map((version) => ({
+        version: version.version,
+        slot: version.version === 0 ? binding.readable?.slot : binding.writable.slot
+      })),
+      slots: binding.registry.debugState(binding.identity)
+    });
   }
   return states;
 }

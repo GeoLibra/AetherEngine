@@ -315,6 +315,9 @@ describe('shadow requests, atlas, cache, and graph', () => {
 
     expect(compacted.generation).toBe(2);
     expect(compacted.relocations.map(({ key }) => key).sort()).toEqual(['first', 'second']);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(compacted.relocations[0])).toBe(true);
+    expect(() => Object.assign(compacted.relocations[0]!, { key: 'rewritten' })).toThrow();
     expect(atlas.isValid(first)).toBe(false);
     expect(atlas.isValid(second)).toBe(false);
     for (const relocation of compacted.relocations)
