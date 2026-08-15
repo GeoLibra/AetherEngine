@@ -82,18 +82,20 @@ export class QueryState<TComponents extends readonly ComponentType<object>[]> im
 }
 
 function freezeQueryFilter(filter: QueryFilter): QueryFilter {
-  return Object.freeze({
-    ...(filter.with === undefined ? {} : { with: Object.freeze([...filter.with]) }),
-    ...(filter.without === undefined ? {} : { without: Object.freeze([...filter.without]) }),
-    ...(filter.changed === undefined ? {} : { changed: Object.freeze([...filter.changed]) }),
-    ...(filter.added === undefined ? {} : { added: Object.freeze([...filter.added]) }),
+  // The query owns this defensive copy and never publishes it. Freezing a private
+  // filter has no boundary value; the copies isolate it from later caller mutation.
+  return {
+    ...(filter.with === undefined ? {} : { with: [...filter.with] }),
+    ...(filter.without === undefined ? {} : { without: [...filter.without] }),
+    ...(filter.changed === undefined ? {} : { changed: [...filter.changed] }),
+    ...(filter.added === undefined ? {} : { added: [...filter.added] }),
     ...(filter.relation === undefined
       ? {}
       : {
-          relation: Object.freeze([...filter.relation]) as readonly [
+          relation: [...filter.relation] as readonly [
             (typeof filter.relation)[0],
             (typeof filter.relation)[1]
           ]
         })
-  });
+  };
 }

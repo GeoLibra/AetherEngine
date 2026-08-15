@@ -1,9 +1,5 @@
 import { cloneUnknown, freezeUnknown } from '../schema/migration';
-import type {
-  EventChannelDiagnostics,
-  EventChannelOptions,
-  EventReaderOptions
-} from './types';
+import type { EventChannelDiagnostics, EventChannelOptions, EventReaderOptions } from './types';
 
 interface EventEntry<T> {
   readonly sequence: number;
@@ -101,14 +97,12 @@ export class EventChannel<T> {
     }
 
     const value = freezeUnknown(cloneUnknown(event)) as T;
-    this.entries.push(
-      Object.freeze({
-        sequence: this.nextSequence++,
-        value,
-        frame: this.frame,
-        fixedTick: this.fixedTick
-      })
-    );
+    this.entries.push({
+      sequence: this.nextSequence++,
+      value,
+      frame: this.frame,
+      fixedTick: this.fixedTick
+    });
     this.publishedCount++;
     return true;
   }
@@ -179,9 +173,7 @@ export class EventChannel<T> {
       return;
     }
     if (stage === undefined || !allowed.has(stage)) {
-      throw new Error(
-        `EventChannel ${kind} stage "${stage ?? '<unspecified>'}" is not allowed.`
-      );
+      throw new Error(`EventChannel ${kind} stage "${stage ?? '<unspecified>'}" is not allowed.`);
     }
   }
 }

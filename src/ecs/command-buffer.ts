@@ -368,14 +368,12 @@ function entityKey(target: VirtualTarget): string {
 }
 
 function cloneBundle(bundle: ComponentBundle): ComponentBundle {
-  return Object.freeze(
-    bundle.map((value) =>
-      Object.freeze({
-        component: value.component,
-        ...(value.data === undefined ? {} : { data: cloneInput(value.data) })
-      })
-    )
-  );
+  // Commands retain this clone privately until their explicit apply point. The
+  // copy, rather than a runtime integrity transition, preserves caller ownership.
+  return bundle.map((value) => ({
+    component: value.component,
+    ...(value.data === undefined ? {} : { data: cloneInput(value.data) })
+  }));
 }
 
 function cloneInput(data: ComponentInput): ComponentInput {
