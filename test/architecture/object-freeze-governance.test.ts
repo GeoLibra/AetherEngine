@@ -302,6 +302,86 @@ describe('Object.freeze governance', () => {
     ]);
   });
 
+  test('threads public-surface provenance through getter aliases, branches, and arrays', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class GetterPaths {',
+          '  #table = new Map<string, number>();',
+          '  #tables = [new Map<string, number>()];',
+          '  #record = { table: new Map<string, number>() };',
+          '  get alias(): ReadonlyMap<string, number> {',
+          '    const local = this.#table;',
+          '    return local;',
+          '  }',
+          '  get conditional(): ReadonlyMap<string, number> | undefined {',
+          '    return Math.random() > 0.5 ? this.#table : undefined;',
+          '  }',
+          '  get call(): ReadonlyMap<string, number> { return (() => this.#table)(); }',
+          '  get tables(): readonly ReadonlyMap<string, number>[] { return [this.#table]; }',
+          '  get spread(): readonly ReadonlyMap<string, number>[] { return [...this.#tables]; }',
+          '  get destructured(): ReadonlyMap<string, number> {',
+          '    const [local] = this.#tables;',
+          '    return local;',
+          '  }',
+          '  get member(): ReadonlyMap<string, number> { return { ...this.#record }.table; }',
+          '  get directMember(): ReadonlyMap<string, number> { return this.#record.table; }',
+          '}',
+          'Object.freeze(new GetterPaths());',
+          'class PublicField {',
+          '  #table = new Map<string, number>();',
+          '  table = this.#table;',
+          '}',
+          'Object.freeze(new PublicField());',
+          'class PrivateOnly {',
+          '  #table = new Map<string, number>();',
+          '}',
+          'Object.freeze(new PrivateOnly());'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([
+      { propertyPath: 'alias', kind: 'Map' },
+      { propertyPath: 'conditional', kind: 'Map' },
+      { propertyPath: 'call', kind: 'Map' },
+      { propertyPath: 'tables[0]', kind: 'Map' },
+      { propertyPath: 'spread[0]', kind: 'Map' },
+      { propertyPath: 'destructured', kind: 'Map' },
+      { propertyPath: 'member', kind: 'Map' },
+      { propertyPath: 'directMember', kind: 'Map' },
+      { propertyPath: 'table', kind: 'Map' }
+    ]);
+  });
+
+  test('retains conditional private constructor writes as possible getter values', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class ConditionalClear {',
+          '  #table: ReadonlyMap<string, number> | undefined = new Map<string, number>();',
+          '  constructor(clear: boolean) { if (clear) this.#table = undefined; }',
+          '  get table(): ReadonlyMap<string, number> | undefined { return this.#table; }',
+          '}',
+          'Object.freeze(new ConditionalClear(Math.random() > 0.5));'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([{ propertyPath: 'table', kind: 'Map' }]);
+  });
+
+  test('uses generic alias positions instead of treating every alias argument as mutable', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'type Tables<T> = ReadonlyArray<T>;',
+          'function freezeTables(tables: Tables<Map<string, number>>) { Object.freeze(tables); }',
+          'type Phantom<T> = { readonly id: string };',
+          'function freezePhantom(value: Phantom<Map<string, number>>) { Object.freeze(value); }',
+          'type Recursive<T> = { readonly child?: Recursive<T> };',
+          'function freezeRecursive(value: Recursive<Map<string, number>>) { Object.freeze(value); }'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([{ propertyPath: '[index]', kind: 'Map' }]);
+  });
+
   test('does not widen concretely materialized values to their mutable annotations', () => {
     expect(
       nestedMutableExposures(
