@@ -18,5 +18,5 @@ export function collectDeviceRequestDifferences(
       missing.push({ kind: 'limit', limit, minimum, actual });
     }
   }
-  return Object.freeze(missing);
+  return Object.freeze(missing.map((difference) => Object.freeze(difference)));
 }

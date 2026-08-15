@@ -106,4 +106,30 @@ describe('NullAdapter negotiation', () => {
     });
     await expect(request).rejects.toBeInstanceOf(RHIDeviceRequestError);
   });
+
+  test('publishes mutation-resistant device request differences', async () => {
+    const adapter = new NullAdapter({ limits: { maxBufferSize: 512 } });
+    let failure: RHIDeviceRequestError | undefined;
+
+    try {
+      await adapter.requestDevice({
+        requiredFeatures: ['compute'],
+        optionalFeatures: [],
+        requiredLimits: { maxBufferSize: 1024 }
+      });
+    } catch (error) {
+      if (error instanceof RHIDeviceRequestError) failure = error;
+      else throw error;
+    }
+
+    expect(failure).toBeDefined();
+    expect(Object.isFrozen(failure!.missing)).toBe(true);
+    expect(Object.isFrozen(failure!.missing[0])).toBe(true);
+    expect(() => Object.assign(failure!.missing[0]!, { feature: 'timestamp-query' })).toThrow();
+    expect(() => Object.assign(failure!.missing[1]!, { minimum: 1 })).toThrow();
+    expect(failure!.missing).toEqual([
+      { kind: 'feature', feature: 'compute' },
+      { kind: 'limit', limit: 'maxBufferSize', minimum: 1024, actual: 512 }
+    ]);
+  });
 });
