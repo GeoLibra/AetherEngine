@@ -165,14 +165,11 @@ describe('Object.freeze governance', () => {
         'class GetterHolder { get bytes(): Uint8Array { return new Uint8Array([1]); } }',
         'Object.freeze(new GetterHolder().bytes);',
         'interface ExtendedMap extends Map<string, number> {}',
-        'const extended = {} as ExtendedMap;',
-        'Object.freeze(extended);',
+        'function freezeExtended(value: ExtendedMap) { Object.freeze(value); }',
         'type AliasedSet = Set<string>;',
-        'const aliased = {} as AliasedSet;',
-        'Object.freeze(aliased);',
+        'function freezeAliased(value: AliasedSet) { Object.freeze(value); }',
         'interface IndexedMap { [name: string]: Map<string, number>; }',
-        'const indexed = {} as IndexedMap;',
-        'Object.freeze(indexed);',
+        'function freezeIndexed(value: IndexedMap) { Object.freeze(value); }',
         'function freezeConstrained<T extends Set<string>>(value: T) { Object.freeze(value); }'
       ].join('\n')
     );
@@ -206,7 +203,7 @@ describe('Object.freeze governance', () => {
     ).toEqual([{ propertyPath: '<root>', kind: 'Map' }]);
   });
 
-  test('does not treat a prototype getter as retained state when freezing a class instance', () => {
+  test('treats a public prototype getter as a mutable publication surface', () => {
     expect(
       nestedMutableExposures(
         [
@@ -214,6 +211,53 @@ describe('Object.freeze governance', () => {
           '  get table(): Map<string, number> { return new Map<string, number>(); }',
           '}',
           'Object.freeze(new GetterFacade());'
+        ].join('\n')
+      )
+    ).toEqual([{ location: 'snippet.ts:4:1', propertyPath: 'table', kind: 'Map' }]);
+  });
+
+  test('follows standard array element types and public getter return surfaces', () => {
+    const exposures = nestedMutableExposures(
+      [
+        'function freezeReadonlyMaps(values: readonly Map<string, number>[]) { Object.freeze(values); }',
+        'function freezeReadonlySets(values: ReadonlyArray<Set<string>>) { Object.freeze(values); }',
+        'Object.freeze({ get table(): Map<string, number> { return new Map<string, number>(); } });',
+        'class ReturningGetter { get table(): Uint8Array { return new Uint8Array([1]); } }',
+        'Object.freeze(new ReturningGetter());',
+        'const aliases = new Set<string>();',
+        'class AliasingGetter { get table(): ReadonlySet<string> { return aliases; } }',
+        'Object.freeze(new AliasingGetter());'
+      ].join('\n')
+    );
+
+    expect(exposures.map(({ propertyPath, kind }) => ({ propertyPath, kind }))).toEqual([
+      { propertyPath: '[index]', kind: 'Map' },
+      { propertyPath: '[index]', kind: 'Set' },
+      { propertyPath: 'table', kind: 'Map' },
+      { propertyPath: 'table', kind: 'Uint8Array' },
+      { propertyPath: 'table', kind: 'Set' }
+    ]);
+  });
+
+  test('does not widen concretely materialized values to their mutable annotations', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'const empty: ReadonlyArray<Map<string, number>> = [];',
+          'Object.freeze(empty);',
+          'function freezeNumbers(values: readonly number[]) { Object.freeze(values); }',
+          'function freezeRecords(values: ReadonlyArray<Readonly<{ id: string }>>) { Object.freeze(values); }',
+          'const absent: { readonly table?: ReadonlyMap<string, number> } = {};',
+          'Object.freeze(absent);',
+          'const cleared: { readonly table?: ReadonlyMap<string, number> | undefined } = { table: undefined };',
+          'Object.freeze(cleared);',
+          'class DeclaredOnly { declare table: ReadonlyMap<string, number>; }',
+          'Object.freeze(new DeclaredOnly());',
+          'class UndefinedField { table!: ReadonlyMap<string, number>; }',
+          'Object.freeze(new UndefinedField());',
+          'const ownedBytes = new Uint8Array([1]);',
+          'class CopyingGetter { get bytes(): Uint8Array { return ownedBytes.slice(); } }',
+          'Object.freeze(new CopyingGetter());'
         ].join('\n')
       )
     ).toEqual([]);
