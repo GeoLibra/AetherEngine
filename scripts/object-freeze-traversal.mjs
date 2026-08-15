@@ -47,7 +47,7 @@ function collectValue(
   context.resolvingNodes.add(value);
   try {
     if (ts.isIdentifier(value)) {
-      const initializers = symbolInitializers(value, context);
+      const initializers = symbolInitializers(value, context, traversal);
       if (initializers.length > 0) {
         for (const initializer of initializers) {
           collectValue(initializer, propertyPath, context, results, emitted, traversal);
@@ -58,7 +58,12 @@ function collectValue(
       if (ts.isPrivateIdentifier(value.name)) {
         // A private backing field is only relevant while resolving a public slot that returned it.
         if (traversal !== 'public-surface') return;
-        const initializers = privateMemberInitializers(value.expression, value.name.text, context);
+        const initializers = privateMemberInitializers(
+          value.expression,
+          value.name.text,
+          context,
+          traversal
+        );
         if (initializers.length > 0) {
           for (const initializer of initializers) {
             collectValue(initializer, propertyPath, context, results, emitted, traversal);
@@ -201,16 +206,19 @@ function iterableElements(expression, context, traversal = 'publication') {
     return initial ? iterableElements(initial, context, traversal) : [];
   }
   if (ts.isIdentifier(value)) {
-    return symbolInitializers(value, context).flatMap((initializer) =>
+    return symbolInitializers(value, context, traversal).flatMap((initializer) =>
       iterableElements(initializer, context, traversal)
     );
   }
   if (ts.isPropertyAccessExpression(value)) {
     if (ts.isPrivateIdentifier(value.name)) {
       if (traversal !== 'public-surface') return [];
-      return privateMemberInitializers(value.expression, value.name.text, context).flatMap(
-        (initializer) => iterableElements(initializer, context, traversal)
-      );
+      return privateMemberInitializers(
+        value.expression,
+        value.name.text,
+        context,
+        traversal
+      ).flatMap((initializer) => iterableElements(initializer, context, traversal));
     }
     return memberMaterialization(
       value.expression,
@@ -229,16 +237,19 @@ function materializeObjectProperties(expression, context, traversal = 'publicati
   const object = unwrapExpression(expression);
   if (!ts.isObjectLiteralExpression(object)) {
     if (ts.isIdentifier(object)) {
-      return symbolInitializers(object, context).flatMap((initializer) =>
+      return symbolInitializers(object, context, traversal).flatMap((initializer) =>
         materializeObjectProperties(initializer, context, traversal)
       );
     }
     if (ts.isPropertyAccessExpression(object)) {
       if (ts.isPrivateIdentifier(object.name)) {
         if (traversal !== 'public-surface') return [];
-        return privateMemberInitializers(object.expression, object.name.text, context).flatMap(
-          (initializer) => materializeObjectProperties(initializer, context, traversal)
-        );
+        return privateMemberInitializers(
+          object.expression,
+          object.name.text,
+          context,
+          traversal
+        ).flatMap((initializer) => materializeObjectProperties(initializer, context, traversal));
       }
       return memberMaterialization(
         object.expression,
@@ -272,12 +283,6 @@ function materializeObjectProperties(expression, context, traversal = 'publicati
     if (name !== undefined && valuesForProperty.length > 0) values.set(name, valuesForProperty);
   }
   return [...values];
-}
-
-function memberInitializers(containerExpression, memberName, context) {
-  return memberMaterialization(containerExpression, memberName, context).values.map(
-    (entry) => entry.value
-  );
 }
 
 /** A concrete object decides missing/undefined properties from its own materialization, not type. */
@@ -320,7 +325,7 @@ function memberMaterialization(
     };
   }
   if (ts.isIdentifier(container)) {
-    const initializers = symbolInitializers(container, context);
+    const initializers = symbolInitializers(container, context, traversal);
     if (initializers.length === 0) return { isConcrete: false, values: [] };
     const materializations = initializers.map((initializer) =>
       memberMaterialization(initializer, memberName, context, traversal)
@@ -336,7 +341,8 @@ function memberMaterialization(
       const materializations = privateMemberInitializers(
         container.expression,
         container.name.text,
-        context
+        context,
+        traversal
       ).map((initializer) => memberMaterialization(initializer, memberName, context, traversal));
       return {
         isConcrete: materializations.every((materialization) => materialization.isConcrete),
@@ -448,9 +454,14 @@ function classInstanceInitializers(expression, context, includeGetters) {
 }
 
 /** Getter provenance may inspect a private backing field without treating it as directly published. */
-function privateMemberInitializers(containerExpression, memberName, context) {
+function privateMemberInitializers(
+  containerExpression,
+  memberName,
+  context,
+  traversal = 'publication'
+) {
   const container = unwrapExpression(containerExpression);
-  if (container.kind !== ts.SyntaxKind.ThisKeyword) return [];
+  if (traversal !== 'public-surface' || !resolvesToLiteralThis(container, context)) return [];
   const classNode = nearestClass(container) ?? nearestClass(context.freeze);
   if (!classNode) return [];
   const values = new Map();
@@ -470,6 +481,26 @@ function privateMemberInitializers(containerExpression, memberName, context) {
   return values.get(memberName) ?? [];
 }
 
+/** A public accessor may retain a lexical alias of its receiver, never an arbitrary lookalike. */
+function resolvesToLiteralThis(expression, context, seenSymbols = new Set()) {
+  const value = unwrapExpression(expression);
+  if (value.kind === ts.SyntaxKind.ThisKeyword) return true;
+  if (!ts.isIdentifier(value)) return false;
+  const symbol = symbolFor(value, context);
+  if (!symbol || seenSymbols.has(symbol)) return false;
+  seenSymbols.add(symbol);
+  for (const declaration of symbol.declarations ?? []) {
+    if (
+      ts.isVariableDeclaration(declaration) &&
+      declaration.initializer &&
+      resolvesToLiteralThis(declaration.initializer, context, seenSymbols)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function constructorAssignments(constructor, freeze, includePrivate = false) {
   const results = [];
   const freezeStart =
@@ -486,7 +517,9 @@ function constructorAssignments(constructor, freeze, includePrivate = false) {
       results.push({
         name: node.left.name.text,
         value: node.right,
-        unconditional: isUnconditionalConstructorWrite(node, constructor.body)
+        unconditional:
+          isUnconditionalConstructorWrite(node, constructor.body) &&
+          !hasEarlierSuccessfulConstructorExit(constructor.body, node)
       });
     }
     if (node !== constructor && ts.isFunctionLike(node)) return;
@@ -494,6 +527,23 @@ function constructorAssignments(constructor, freeze, includePrivate = false) {
   };
   ts.forEachChild(constructor.body, visit);
   return results;
+}
+
+/** A throw never produces an instance; an earlier return means the later write cannot dominate it. */
+function hasEarlierSuccessfulConstructorExit(body, assignment) {
+  let hasExit = false;
+  const assignmentStart = assignment.getStart();
+  const visit = (node) => {
+    if (hasExit || node.getStart() >= assignmentStart) return;
+    if (ts.isReturnStatement(node)) {
+      hasExit = true;
+      return;
+    }
+    if (ts.isFunctionLike(node)) return;
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(body, visit);
+  return hasExit;
 }
 
 /** A conditional write can supplement an initializer but cannot erase it on every construction path. */
@@ -664,6 +714,12 @@ function collectTypedPropertyExposures(expression, propertyPath, context, result
 function collectTypeProperties(type, propertyPath, context, results, emitted, seen) {
   if (!type || seen.has(type) || mutableBuiltinTypeKind(type, context, new Set())) return;
   seen.add(type);
+  for (const element of tupleElementTypes(type, context)) {
+    const elementPath = appendTupleElementPath(propertyPath, element.index);
+    const kind = mutableBuiltinTypeKind(element.type, context, new Set());
+    if (kind) emitExposure(elementPath, kind, context, results, emitted);
+    else collectTypeProperties(element.type, elementPath, context, results, emitted, seen);
+  }
   for (const elementType of standardArrayElementTypes(type, context)) {
     const kind = mutableBuiltinTypeKind(elementType, context, new Set());
     if (kind) emitExposure(appendIndexPath(propertyPath), kind, context, results, emitted);
@@ -720,6 +776,7 @@ function collectTypeProperties(type, propertyPath, context, results, emitted, se
 function standardArrayElementTypes(type, context, seen = new Set()) {
   if (!type || seen.has(type)) return [];
   seen.add(type);
+  if (tupleElementTypes(type, context).length > 0) return [];
   const elements = [];
   const typeArguments = typeArgumentsOf(type, context);
   const candidates = [type, type.target, context.checker.getApparentType(type)];
@@ -750,6 +807,28 @@ function standardArrayElementTypes(type, context, seen = new Set()) {
     elements.push(...standardArrayElementTypes(candidate, context, seen));
   }
   return elements;
+}
+
+function tupleElementTypes(type, context, seen = new Set()) {
+  if (!type || seen.has(type)) return [];
+  seen.add(type);
+  const candidates = [type, type.target, context.checker.getApparentType(type)];
+  for (const candidate of candidates) {
+    if (!candidate || (candidate !== type && seen.has(candidate))) continue;
+    if (candidate !== type) seen.add(candidate);
+    if (context.checker.isTupleType(candidate)) {
+      const target = candidate.target ?? candidate;
+      const typeArguments = typeArgumentsOf(type, context);
+      const elements =
+        typeArguments.length > 0 ? typeArguments : typeArgumentsOf(candidate, context);
+      const flags = target.elementFlags ?? [];
+      return elements.map((element, index) => ({
+        type: element,
+        index: flags[index] & ts.ElementFlags.Rest ? undefined : index
+      }));
+    }
+  }
+  return [];
 }
 
 function typeArgumentsOf(type, context) {
@@ -793,12 +872,16 @@ function appendIndexPath(prefix) {
   return prefix ? `${prefix}[index]` : '[index]';
 }
 
-function symbolInitializers(identifier, context) {
+function appendTupleElementPath(prefix, index) {
+  return index === undefined ? appendIndexPath(prefix) : `${prefix}[${index}]`;
+}
+
+function symbolInitializers(identifier, context, traversal = 'publication') {
   const symbol = symbolFor(identifier, context);
   if (!symbol || context.resolvingSymbols.has(symbol)) return [];
   context.resolvingSymbols.add(symbol);
   try {
-    return initializerForSymbol(symbol, context);
+    return initializerForSymbol(symbol, context, new Set(), traversal);
   } finally {
     context.resolvingSymbols.delete(symbol);
   }
@@ -814,7 +897,7 @@ function resolvedSymbol(symbol, context) {
   return symbol;
 }
 
-function initializerForSymbol(symbol, context, seen = new Set()) {
+function initializerForSymbol(symbol, context, seen = new Set(), traversal = 'publication') {
   if (seen.has(symbol)) return [];
   seen.add(symbol);
   const results = [];
@@ -824,17 +907,17 @@ function initializerForSymbol(symbol, context, seen = new Set()) {
     if (ts.isPropertyDeclaration(declaration) && declaration.initializer)
       results.push(declaration.initializer);
     if (ts.isBindingElement(declaration)) {
-      results.push(...bindingElementInitializers(declaration, context));
+      results.push(...bindingElementInitializers(declaration, context, traversal));
     }
     if (ts.isShorthandPropertyAssignment(declaration)) {
       const valueSymbol = context.checker.getShorthandAssignmentValueSymbol(declaration);
-      if (valueSymbol) results.push(...initializerForSymbol(valueSymbol, context, seen));
+      if (valueSymbol) results.push(...initializerForSymbol(valueSymbol, context, seen, traversal));
     }
   }
   return results;
 }
 
-function bindingElementInitializers(element, context) {
+function bindingElementInitializers(element, context, traversal = 'publication') {
   const pattern = element.parent;
   const declaration = pattern.parent;
   if (!ts.isVariableDeclaration(declaration) || !declaration.initializer) return [];
@@ -844,13 +927,17 @@ function bindingElementInitializers(element, context) {
       : ts.isIdentifier(element.name)
         ? element.name.text
         : undefined;
-    return name === undefined ? [] : memberInitializers(declaration.initializer, name, context);
+    return name === undefined
+      ? []
+      : memberMaterialization(declaration.initializer, name, context, traversal).values.map(
+          (entry) => entry.value
+        );
   }
   if (ts.isArrayBindingPattern(pattern)) {
     const index = pattern.elements.indexOf(element);
     return index < 0
       ? []
-      : iterableElements(declaration.initializer, context).slice(index, index + 1);
+      : iterableElements(declaration.initializer, context, traversal).slice(index, index + 1);
   }
   return [];
 }

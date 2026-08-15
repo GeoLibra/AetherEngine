@@ -382,6 +382,97 @@ describe('Object.freeze governance', () => {
     ).toEqual([{ propertyPath: '[index]', kind: 'Map' }]);
   });
 
+  test('keeps public provenance through typed destructuring and literal-this aliases', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class BindingAndSelf {',
+          '  #items: unknown = [new Map<string, number>()];',
+          '  #record: unknown = { table: new Set<string>() };',
+          '  #bytes: unknown = new Uint8Array([1]);',
+          '  get fromArray(): unknown {',
+          '    const [item] = this.#items as readonly unknown[];',
+          '    return item;',
+          '  }',
+          '  get fromObject(): unknown {',
+          '    const { table } = this.#record as { readonly table: unknown };',
+          '    return table;',
+          '  }',
+          '  get fromSelf(): unknown {',
+          '    const self = this;',
+          '    const alias = self;',
+          '    return alias.#bytes;',
+          '  }',
+          '}',
+          'Object.freeze(new BindingAndSelf());',
+          'class PrivateAliasOnly {',
+          '  #table: unknown = new Map<string, number>();',
+          '  constructor() {',
+          '    const self = this;',
+          '    const alias = self;',
+          '    Object.freeze(alias.#table);',
+          '  }',
+          '}'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([
+      { propertyPath: 'fromArray', kind: 'Map' },
+      { propertyPath: 'fromObject', kind: 'Set' },
+      { propertyPath: 'fromSelf', kind: 'Uint8Array' }
+    ]);
+  });
+
+  test('retains values when a successful constructor exit can precede an overwrite', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class ReturnBeforeClear {',
+          '  #table: unknown = new Map<string, number>();',
+          '  constructor(keep: boolean) { if (keep) return; this.#table = undefined; }',
+          '  get table(): unknown { return this.#table; }',
+          '}',
+          'Object.freeze(new ReturnBeforeClear(Math.random() > 0.5));',
+          'class DirectClear {',
+          '  #table: unknown = new Map<string, number>();',
+          '  constructor() { this.#table = undefined; }',
+          '  get table(): unknown { return this.#table; }',
+          '}',
+          'Object.freeze(new DirectClear());',
+          'class ThrowBeforeClear {',
+          '  #table: unknown = new Map<string, number>();',
+          "  constructor(fail: boolean) { if (fail) throw new Error('fail'); this.#table = undefined; }",
+          '  get table(): unknown { return this.#table; }',
+          '}',
+          'Object.freeze(new ThrowBeforeClear(false));'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([{ propertyPath: 'table', kind: 'Map' }]);
+  });
+
+  test('traverses direct named and generic readonly tuple elements at their indexes', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'function direct(value: readonly [Map<string, number>, number]) { Object.freeze(value); }',
+          'type Named = readonly [Set<string>, number];',
+          'function named(value: Named) { Object.freeze(value); }',
+          'type Generic<T> = readonly [T, number];',
+          'function generic(value: Generic<Uint8Array>) { Object.freeze(value); }',
+          'type Recursive<T> = readonly [T, Recursive<T>?];',
+          'function recursive(value: Recursive<Map<string, number>>) { Object.freeze(value); }',
+          'function rest(value: readonly [number, ...Map<string, number>[]]) { Object.freeze(value); }',
+          'function safe(value: readonly [number, string]) { Object.freeze(value); }'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([
+      { propertyPath: '[0]', kind: 'Map' },
+      { propertyPath: '[0]', kind: 'Set' },
+      { propertyPath: '[0]', kind: 'Uint8Array' },
+      { propertyPath: '[0]', kind: 'Map' },
+      { propertyPath: '[index]', kind: 'Map' }
+    ]);
+  });
+
   test('does not widen concretely materialized values to their mutable annotations', () => {
     expect(
       nestedMutableExposures(
