@@ -197,9 +197,14 @@ function collectArraySpread(expression, prefix, context, results, emitted) {
 function iterableElements(expression, context, traversal = 'publication') {
   const value = unwrapExpression(expression);
   if (ts.isArrayLiteralExpression(value)) {
-    return value.elements
-      .filter((element) => !ts.isOmittedExpression(element))
-      .map((element) => (ts.isSpreadElement(element) ? element.expression : element));
+    // An elision evaluates as undefined, but it still occupies its source index for destructuring.
+    return value.elements.map((element) =>
+      ts.isOmittedExpression(element)
+        ? ts.factory.createVoidExpression(ts.factory.createNumericLiteral(0))
+        : ts.isSpreadElement(element)
+          ? element.expression
+          : element
+    );
   }
   if (ts.isNewExpression(value) && mutableBuiltinKind(value, context) === 'Set') {
     const initial = value.arguments?.[0];
@@ -1036,7 +1041,9 @@ function bindingMayUseInitializer(sourceValues, context) {
 }
 
 function mayBeUndefined(expression, context, seen = new Set()) {
-  const type = context.checker.getTypeAtLocation(unwrapExpression(expression));
+  const value = unwrapExpression(expression);
+  if (value.kind === ts.SyntaxKind.VoidExpression) return true;
+  const type = context.checker.getTypeAtLocation(value);
   if (!type || seen.has(type)) return false;
   seen.add(type);
   return (

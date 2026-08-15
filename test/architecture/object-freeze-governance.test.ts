@@ -506,6 +506,38 @@ describe('Object.freeze governance', () => {
     ]);
   });
 
+  test('materializes array holes as undefined without shifting destructured bindings', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'class HoleDefaults {',
+          '  #items: unknown = [, new Set<string>()];',
+          '  get defaultFromHole(): unknown {',
+          '    const [value = new Map<string, number>()] = this.#items as readonly unknown[];',
+          '    return value;',
+          '  }',
+          '  get laterBinding(): unknown {',
+          '    const [, value] = this.#items as readonly unknown[];',
+          '    return value;',
+          '  }',
+          '}',
+          'Object.freeze(new HoleDefaults());',
+          'class HoleWithoutDefault {',
+          '  #items: unknown = [,];',
+          '  get safe(): unknown {',
+          '    const [value] = this.#items as readonly unknown[];',
+          '    return value;',
+          '  }',
+          '}',
+          'Object.freeze(new HoleWithoutDefault());'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([
+      { propertyPath: 'defaultFromHole', kind: 'Map' },
+      { propertyPath: 'laterBinding', kind: 'Set' }
+    ]);
+  });
+
   test('resolves public literal-this provenance through binding and member aliases only', () => {
     expect(
       nestedMutableExposures(
