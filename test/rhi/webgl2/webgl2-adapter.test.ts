@@ -83,6 +83,20 @@ function adapterConstructor() {
 }
 
 describe('WebGL2 adapter capability negotiation', () => {
+  test('seals the read-only extension set without exposing its copied backing set', () => {
+    const native = new NativeContext();
+    const adapter = new (adapterConstructor())(native);
+    const extensions = adapter.facts.extensions;
+
+    expect(Object.isFrozen(extensions)).toBe(true);
+    expect(() => Object.assign(extensions, { debugState: true })).toThrow();
+    expect(() => Object.assign(extensions, { size: 999 })).toThrow();
+    expect(Reflect.ownKeys(extensions)).toEqual([]);
+    expect(Object.values(extensions).some((value) => value instanceof Set)).toBe(false);
+    expect(extensions.has('EXT_disjoint_timer_query_webgl2')).toBe(true);
+    expect([...extensions]).toEqual(['EXT_disjoint_timer_query_webgl2']);
+  });
+
   test('snapshots probed limits, formats, extensions, precision, and one graphics queue', () => {
     const native = new NativeContext();
     const adapter = new (adapterConstructor())(native);
@@ -102,13 +116,22 @@ describe('WebGL2 adapter capability negotiation', () => {
     expect(adapter.facts.precision).toEqual({ fragmentHighFloatBits: 23 });
     expect(adapter.facts.clipDepthMode).toBe('vertex-remap');
     expect([...adapter.facts.extensions]).toEqual(['EXT_disjoint_timer_query_webgl2']);
+    expect(Object.keys(adapter.facts.extensions)).toEqual([]);
+    expect(Object.getOwnPropertyNames(adapter.facts.extensions)).toEqual([]);
+    expect('valuesSet' in adapter.facts.extensions).toBe(false);
+    expect(
+      (adapter.facts.extensions as unknown as { valuesSet?: Set<string> }).valuesSet
+    ).toBeUndefined();
+    expect('add' in adapter.facts.extensions).toBe(false);
 
     native.limits.uniformBufferOffsetAlignment = 4;
     native.formats.get('rgba8unorm')?.sampleCounts.splice(0, 2, 8);
     native.extensions.clear();
+    (native.precision as Record<string, number | object>).nestedExtra = { callerOwned: true };
     expect(adapter.capabilities.limits.uniformBufferOffsetAlignment).toBe(256);
     expect(adapter.capabilities.formats.get('rgba8unorm')?.sampleCounts).toEqual([1, 4]);
     expect([...adapter.facts.extensions]).toEqual(['EXT_disjoint_timer_query_webgl2']);
+    expect('nestedExtra' in adapter.facts.precision).toBe(false);
   });
 
   test('selects zero-to-one clip depth and initializes EXT_clip_control per device', async () => {

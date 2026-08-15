@@ -1,4 +1,4 @@
-import { definePlugin } from '../app/plugin';
+import { definePlugin } from '../app/utils';
 import {
   FixedTime,
   FixedTimeResource,
@@ -13,7 +13,7 @@ import {
   TimeRuntime,
   TimeRuntimeResource
 } from '../app/time';
-import type { TimePolicyOptions } from '../app/time-types';
+import type { TimePolicyOptions } from '../app/types';
 
 export function createTimePlugin(options: TimePolicyOptions = {}) {
   const policyOptions = Object.freeze({ ...options });

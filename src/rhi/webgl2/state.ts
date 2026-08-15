@@ -1,6 +1,6 @@
 import type { GPUIndexFormat } from '../contracts/webgpu';
 import type { WebGL2Metrics } from './metrics';
-import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
+import type { WebGL2NativeContextPort, WebGL2NativeObject } from './types';
 
 const UNKNOWN = Symbol('unknown-webgl2-state');
 
@@ -18,7 +18,8 @@ export class WebGL2StateVM {
   private vertexArray: WebGL2NativeObject | typeof UNKNOWN = UNKNOWN;
   private viewport: readonly number[] | typeof UNKNOWN = UNKNOWN;
   private scissor: readonly number[] | typeof UNKNOWN = UNKNOWN;
-  private indexBuffer: (BufferState & { readonly format: GPUIndexFormat }) | typeof UNKNOWN = UNKNOWN;
+  private indexBuffer: (BufferState & { readonly format: GPUIndexFormat }) | typeof UNKNOWN =
+    UNKNOWN;
   private readonly vertexBuffers = new Map<number, BufferState>();
   private readonly uniformBuffers = new Map<number, BufferState>();
   private readonly textures = new Map<number, WebGL2NativeObject>();
@@ -97,14 +98,29 @@ export class WebGL2StateVM {
     this.vertexBuffers.set(slot, optionalSize(handle, offset, size));
   }
 
-  applyIndexBuffer(handle: WebGL2NativeObject, format: GPUIndexFormat, offset: number, size?: number): void {
+  applyIndexBuffer(
+    handle: WebGL2NativeObject,
+    format: GPUIndexFormat,
+    offset: number,
+    size?: number
+  ): void {
     const current = this.indexBuffer;
-    if (current !== UNKNOWN && current.format === format && sameBuffer(current, handle, offset, size)) return this.skip();
+    if (
+      current !== UNKNOWN &&
+      current.format === format &&
+      sameBuffer(current, handle, offset, size)
+    )
+      return this.skip();
     this.call('bindIndexBuffer', handle, format, offset, size);
     this.indexBuffer = { ...optionalSize(handle, offset, size), format };
   }
 
-  applyUniformBuffer(binding: number, handle: WebGL2NativeObject, offset: number, size: number): void {
+  applyUniformBuffer(
+    binding: number,
+    handle: WebGL2NativeObject,
+    offset: number,
+    size: number
+  ): void {
     const current = this.uniformBuffers.get(binding);
     if (sameBuffer(current, handle, offset, size)) return this.skip();
     this.call('bindUniformBuffer', binding, handle, offset, size);
@@ -125,20 +141,40 @@ export class WebGL2StateVM {
 
   private call(name: keyof WebGL2NativeContextPort, ...args: unknown[]): void {
     const operation = this.native[name];
-    if (typeof operation !== 'function') throw new Error(`Native WebGL2 context does not support ${String(name)}.`);
+    if (typeof operation !== 'function')
+      throw new Error(`Native WebGL2 context does not support ${String(name)}.`);
     (operation as (...values: unknown[]) => void).call(this.native, ...args);
     this.metrics.recordGLCall();
   }
 
-  private skip(): void { this.metrics.recordStateSkip(); }
+  private skip(): void {
+    this.metrics.recordStateSkip();
+  }
 }
 
-function sameNumbers(current: readonly number[] | typeof UNKNOWN, next: readonly number[]): boolean {
-  return current !== UNKNOWN && current.length === next.length && current.every((value, index) => value === next[index]);
+function sameNumbers(
+  current: readonly number[] | typeof UNKNOWN,
+  next: readonly number[]
+): boolean {
+  return (
+    current !== UNKNOWN &&
+    current.length === next.length &&
+    current.every((value, index) => value === next[index])
+  );
 }
 
-function sameBuffer(current: BufferState | undefined, handle: WebGL2NativeObject, offset: number, size?: number): boolean {
-  return current !== undefined && current.handle === handle && current.offset === offset && current.size === size;
+function sameBuffer(
+  current: BufferState | undefined,
+  handle: WebGL2NativeObject,
+  offset: number,
+  size?: number
+): boolean {
+  return (
+    current !== undefined &&
+    current.handle === handle &&
+    current.offset === offset &&
+    current.size === size
+  );
 }
 
 function optionalSize(handle: WebGL2NativeObject, offset: number, size?: number): BufferState {

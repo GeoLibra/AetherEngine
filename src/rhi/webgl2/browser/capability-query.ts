@@ -1,6 +1,6 @@
 import type { FormatCapabilities } from '../../contracts/capability';
 import type { GPUTextureFormat } from '../../contracts/webgpu';
-import type { WebGL2NativeLimits } from '../native-types';
+import type { WebGL2NativeLimits } from '../types';
 import type { BrowserWebGL2Context, BrowserWebGL2Object } from './types';
 
 export function queryWebGL2Extensions(gl: BrowserWebGL2Context): Set<string> {

@@ -1,4 +1,4 @@
-import type { Vec3 } from '../math';
+import type { Vec3 } from '../math/types';
 import { defineResource } from '../ecs/resource';
 import type { WorldPosition } from './types';
 
@@ -26,10 +26,7 @@ export function updateWorldOrigin(origin: WorldOrigin, cell: Vec3): void {
   originCells.set(origin, [...cell] as Vec3);
 }
 
-export function normalizeWorldPosition(
-  position: WorldPosition,
-  cellSize: number
-): WorldPosition {
+export function normalizeWorldPosition(position: WorldPosition, cellSize: number): WorldPosition {
   assertCellSize(cellSize);
   assertCell(position.cell);
   assertFiniteVector(position.offset, 'World position offset');
@@ -50,10 +47,7 @@ export function normalizeWorldPosition(
   });
 }
 
-export function worldPositionRelativeToOrigin(
-  position: WorldPosition,
-  origin: WorldOrigin
-): Vec3 {
+export function worldPositionRelativeToOrigin(position: WorldPosition, origin: WorldOrigin): Vec3 {
   assertCell(position.cell);
   assertFiniteVector(position.offset, 'World position offset');
   return [
@@ -71,9 +65,7 @@ function assertCellSize(cellSize: number): void {
 
 function assertCell(cell: Vec3): void {
   if (
-    !cell.every(
-      (value) => Number.isInteger(value) && value >= -2147483648 && value <= 2147483647
-    )
+    !cell.every((value) => Number.isInteger(value) && value >= -2147483648 && value <= 2147483647)
   ) {
     throw new Error('World origin cells must contain signed 32-bit integers.');
   }

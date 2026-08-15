@@ -5,14 +5,15 @@ import type {
   RHIShaderModule
 } from '../contracts/resource';
 import { WebGL2ResourceBase, assertWebGL2Resource } from './resource';
-import type { WebGL2DeviceOwner } from './resource-types';
+import type { WebGL2DeviceOwner } from './types';
 import type {
   WebGL2BindingManifestEntry,
   WebGL2ProgramBinding,
   WebGL2ShaderStage,
   WebGL2ShaderTranslationPort
-} from './shader-types';
-import { finalizeWebGL2Shader, type WebGL2PhysicalBinding } from './shader-types';
+} from './types';
+import type { WebGL2PhysicalBinding } from './types';
+import { finalizeWebGL2Shader } from './shader-finalization';
 import { WebGL2ProgramCreationError } from './errors';
 import type { WebGL2ClipDepthMode } from './clip-depth';
 

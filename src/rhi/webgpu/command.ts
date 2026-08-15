@@ -27,7 +27,7 @@ import {
   recordIndexedDraw,
   recordIndirectDraw
 } from '../core/stats';
-import type { WebGPUNativeCommandEncoderPort, WebGPUNativeResourcePort } from './native-types';
+import type { WebGPUNativeCommandEncoderPort, WebGPUNativeResourcePort } from './types';
 import {
   WebGPUBuffer,
   WebGPUResourceBase,

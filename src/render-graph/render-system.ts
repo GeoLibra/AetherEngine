@@ -14,7 +14,7 @@ import type {
   RenderQuerySnapshot,
   RenderQuerySpec
 } from '../rendering/render-world';
-import type { RenderView } from '../rendering/visibility';
+import type { RenderView } from '../rendering/visibility/types';
 
 export type RenderSystemScope = 'global' | 'per-view';
 
@@ -97,10 +97,11 @@ interface ActiveRenderSystemInstance {
   readonly phases: readonly RenderPhaseSnapshot[];
 }
 
+const EMPTY_QUERY_ITEMS: readonly never[] = Object.freeze([]);
 const EMPTY_QUERY: RenderQuerySnapshot<never> = Object.freeze({
   queryId: 'render-system/empty',
   renderRevision: 0,
-  items: Object.freeze([])
+  items: EMPTY_QUERY_ITEMS
 });
 
 /** Creates a stable semantic token without creating a second scheduling domain. */
@@ -290,9 +291,9 @@ function semanticIncoming(
       }
     }
   }
-  return new Map(
-    [...incoming].map(([id, predecessors]) => [id, Object.freeze(unique(predecessors))])
-  );
+  // Scheduling consumes these normalized predecessors before this compilation returns;
+  // no caller can observe the private adjacency arrays.
+  return new Map([...incoming].map(([id, predecessors]) => [id, unique(predecessors)]));
 }
 
 function setupContextFor(instance: ActiveRenderSystemInstance): RenderSystemSetupContext<unknown> {

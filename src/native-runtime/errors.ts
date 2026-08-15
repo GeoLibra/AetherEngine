@@ -1,4 +1,4 @@
-import type { NativeHandshakeDifference } from './abi-types';
+import type { NativeHandshakeDifference } from './types';
 
 export class NativeHandshakeError extends Error {
   readonly differences: readonly NativeHandshakeDifference[];

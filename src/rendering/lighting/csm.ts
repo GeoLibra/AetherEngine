@@ -1,4 +1,4 @@
-import type { Vec3 } from '../../math';
+import type { Vec3 } from '../../math/types';
 import { normalizedLightDirection } from './light';
 
 export interface StableLightBasis {

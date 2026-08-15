@@ -1,4 +1,4 @@
-import type { RenderView } from './visibility';
+import type { RenderView } from './visibility/types';
 import {
   assertRenderGraphExecutionPlan,
   type RenderGraphExecutionPlan

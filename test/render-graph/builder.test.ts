@@ -354,7 +354,7 @@ describe('render graph pass declarations', () => {
     expect(replacement).not.toHaveBeenCalled();
   });
 
-  test('recursively freezes nested values behind an already frozen shell', () => {
+  test('snapshots nested setup declarations instead of freezing the contributor graph', () => {
     const graph = new RenderGraphBuilder();
     const nested = { handle: 'declaration' };
     const shell = Object.freeze({ nested });
@@ -362,6 +362,10 @@ describe('render graph pass declarations', () => {
     graph.addPass({ id: 'frozen-shell', setup: () => shell, run() {} });
     const resources = graph.build().passes[0]?.resources as typeof shell;
 
+    expect(Object.isExtensible(nested)).toBe(true);
+    nested.handle = 'caller-still-owns-this';
+    expect(resources.nested.handle).toBe('declaration');
+    expect(Object.isFrozen(resources)).toBe(true);
     expect(Object.isFrozen(resources.nested)).toBe(true);
     expect(() => {
       resources.nested.handle = 'mutated';

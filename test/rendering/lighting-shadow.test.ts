@@ -150,6 +150,43 @@ describe('CPU light-list fallback', () => {
     });
   });
 
+  test('detaches ordered light snapshots from caller-owned light records', () => {
+    const nestedExtra = { callerOwned: true };
+    const light = {
+      ...point(1, 0),
+      nestedExtra
+    } as Extract<PreparedLight, { readonly kind: 'point' }> & { nestedExtra: object };
+    const directionalLight = {
+      ...directional(2),
+      nestedExtra
+    } as Extract<PreparedLight, { readonly kind: 'directional' }> & { nestedExtra: object };
+    const spotLight = {
+      ...spot(3, 0),
+      nestedExtra
+    } as Extract<PreparedLight, { readonly kind: 'spot' }> & { nestedExtra: object };
+    const result = buildCpuLightLists({
+      viewLayerMask: 1,
+      lights: [light, directionalLight, spotLight],
+      receivers: [],
+      capacity: { maxDirectionalLights: 1, maxLightsPerReceiver: 1, maxLightIndices: 1 }
+    });
+
+    (light.position as [number, number, number])[0] = 99;
+    (light.colorLinear as [number, number, number])[0] = 0;
+
+    expect(result.orderedLights[0]).toMatchObject({ position: [0, 0, 0], colorLinear: [1, 1, 1] });
+    expect(result.orderedLights.every((published) => !('nestedExtra' in published))).toBe(true);
+    expect(
+      result.orderedLights.find((published) => published.kind === 'directional')
+    ).toMatchObject({
+      direction: [0, -1, 0]
+    });
+    expect(result.orderedLights.find((published) => published.kind === 'spot')).toMatchObject({
+      position: [0, 0, 0],
+      direction: [0, 0, -2]
+    });
+  });
+
   test('filters disabled and layer-mismatched light/receiver state observably', () => {
     const result = buildCpuLightLists({
       viewLayerMask: 1,
@@ -210,6 +247,26 @@ describe('shadow requests, atlas, cache, and graph', () => {
     expect(selected.usedTexels).toBe(2048);
   });
 
+  test('detaches selected shadow requests from caller-owned records', () => {
+    const nestedExtra = { callerOwned: true };
+    const accepted = { ...request(1, 2), nestedExtra } as ShadowRequest & { nestedExtra: object };
+    const rejected = { ...request(2, 1, 64), nestedExtra } as ShadowRequest & {
+      nestedExtra: object;
+    };
+    const selected = selectShadowRequests([accepted, rejected], {
+      maxRequests: 1,
+      maxTexels: 32 * 32
+    });
+
+    (accepted as { importance: number }).importance = 99;
+    (rejected as { resolutionClass: number }).resolutionClass = 1;
+
+    expect(selected.accepted[0]).toMatchObject({ importance: 2, resolutionClass: 32 });
+    expect(selected.rejected[0]?.request).toMatchObject({ importance: 1, resolutionClass: 64 });
+    expect('nestedExtra' in selected.accepted[0]!).toBe(false);
+    expect('nestedExtra' in selected.rejected[0]!.request).toBe(false);
+  });
+
   test('invalidates generation-bearing atlas tiles on resize and keys every cache revision', () => {
     const atlas = new ShadowAtlasAllocator({ width: 64, height: 64 });
     const first = atlas.allocate('first', 32)!;
@@ -258,6 +315,9 @@ describe('shadow requests, atlas, cache, and graph', () => {
 
     expect(compacted.generation).toBe(2);
     expect(compacted.relocations.map(({ key }) => key).sort()).toEqual(['first', 'second']);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(compacted.relocations[0])).toBe(true);
+    expect(() => Object.assign(compacted.relocations[0]!, { key: 'rewritten' })).toThrow();
     expect(atlas.isValid(first)).toBe(false);
     expect(atlas.isValid(second)).toBe(false);
     for (const relocation of compacted.relocations)
@@ -285,6 +345,15 @@ describe('shadow requests, atlas, cache, and graph', () => {
           .end();
       }
     });
+    const mutableLayers = declared.layerByRequestKey as unknown as Map<string, number>;
+    try {
+      mutableLayers.set(shadowRequestKey(request(1, 3)), 99);
+    } catch {
+      // The public facade rejects mutation attempted through an unsound cast.
+    }
+    expect(Object.isFrozen(declared.layerByRequestKey)).toBe(true);
+    expect(Reflect.ownKeys(declared.layerByRequestKey)).toEqual([]);
+    expect(declared.layerByRequestKey.get(shadowRequestKey(request(1, 3)))).toBe(0);
     graph.addPass({
       id: 'shadow-consumer',
       setup(pass) {
@@ -311,6 +380,49 @@ describe('shadow requests, atlas, cache, and graph', () => {
     expect(compiled.edges.filter((edge) => edge.kind === 'raw')).toHaveLength(2);
     expect(recorded).toEqual([shadowRequestKey(request(1, 3)), shadowRequestKey(request(2, 2))]);
     expect(execution.commandStats.renderPasses).toBe(2);
+  });
+
+  test('captures request facts and the recorder at shadow declaration time', () => {
+    const graph = new RenderGraphBuilder();
+    const mutableRequest = request(1, 3);
+    const recorded: ShadowRequest[] = [];
+    const options = {
+      record(_context: RestrictedPassContext, pass: { readonly request: ShadowRequest }): void {
+        recorded.push(pass.request);
+      }
+    };
+    const declared = declareShadowDepthPasses(graph, [mutableRequest], options);
+    (mutableRequest as { viewId: string; resolutionClass: number; casterRevision: number }).viewId =
+      'rewritten';
+    (
+      mutableRequest as { viewId: string; resolutionClass: number; casterRevision: number }
+    ).resolutionClass = 1;
+    (
+      mutableRequest as { viewId: string; resolutionClass: number; casterRevision: number }
+    ).casterRevision = 99;
+    options.record = () => {
+      throw new Error('late recorder must not run');
+    };
+    graph.addPass({
+      id: 'retain-shadow-declaration',
+      setup(pass) {
+        const texture = pass.readTexture(declared.texture!, 'sampled');
+        pass.sideEffect('retain shadow declaration');
+        return { texture };
+      },
+      run(context: RestrictedPassContext, resources) {
+        context.texture(resources.texture, 'sampled');
+      }
+    });
+
+    const snapshot = graph.build();
+    const compiled = compileRenderGraph(snapshot);
+    const plan = createRenderGraphExecutionPlan(snapshot, compiled);
+    new RenderGraphExecutor().execute(plan, { device: new NullDevice() });
+
+    expect(declared.layerByRequestKey.get(shadowRequestKey(request(1, 3)))).toBe(0);
+    expect(recorded).toEqual([request(1, 3)]);
+    expect(Object.isFrozen(recorded[0])).toBe(true);
   });
 });
 

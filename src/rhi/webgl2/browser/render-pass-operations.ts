@@ -1,4 +1,4 @@
-import type { WebGL2NativeContextPort } from '../native-types';
+import type { WebGL2NativeContextPort } from '../types';
 import { constant } from './capability-query';
 import type { BrowserWebGL2FramebufferState } from './framebuffer-port';
 import { glCall, glObject } from './gl-call';

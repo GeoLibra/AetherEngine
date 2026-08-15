@@ -16,9 +16,15 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
     Object.freeze({
       id: 'ecs',
       description: 'ECS storage, queries, relations, change tracking, and transform data paths.',
+      pathPrefixes: Object.freeze(['engine/design/v2/02-runtime/02-ecs-world.md', 'src/ecs/'])
+    }),
+    Object.freeze({
+      id: 'transform',
+      description: 'Transform propagation and extraction snapshot paths.',
       pathPrefixes: Object.freeze([
+        'engine/design/v2/01-foundation/02-math-transform.md',
         'engine/design/v2/02-runtime/02-ecs-world.md',
-        'src/ecs/',
+        'engine/requirements.md',
         'src/transform/'
       ])
     }),
@@ -121,6 +127,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'engine/design/v2/02-runtime/01-app-plugin.md',
         'engine/design/v2/02-runtime/03-jobs-workers.md',
         'src/app/',
+        'src/ecs/command-buffer.ts',
         'src/events/',
         'src/jobs/',
         'test/benchmark/runtime-jobs.test.ts'
@@ -150,6 +157,28 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       })
     }),
     Object.freeze({
+      id: 'transform-runtime',
+      description:
+        'Transform propagation and RenderTransformSnapshot matrix extraction with detached publication boundaries.',
+      domainIds: Object.freeze(['transform']),
+      pathPrefixes: Object.freeze([
+        'benchmark/transform-runtime.bench.ts',
+        'benchmark/transform-runtime-runner.mjs',
+        'benchmark/transform-runtime-runner-guard.mjs',
+        'benchmark/transform-runtime-scenario.ts',
+        'engine/design/v2/01-foundation/02-math-transform.md',
+        'engine/design/v2/02-runtime/02-ecs-world.md',
+        'engine/requirements.md',
+        'src/transform/',
+        'test/benchmark/transform-runtime.test.ts',
+        'test/transform/'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/transform-runtime-runner.mjs', '{profile}'])
+      })
+    }),
+    Object.freeze({
       id: 'rhi',
       description: 'RHI validation, command recording, and submission baseline.',
       domainIds: Object.freeze(['rhi']),
@@ -176,9 +205,11 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       domainIds: Object.freeze(['rendering']),
       pathPrefixes: Object.freeze([
         'benchmark/render-world.bench.ts',
+        'benchmark/render-world/',
         'engine/design/v2/04-rendering/01-render-world.md',
         'src/rendering/',
-        'test/rendering/'
+        'test/rendering/',
+        'test/benchmark/render-world.test.ts'
       ]),
       command: Object.freeze({
         executable: 'node',

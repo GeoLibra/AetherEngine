@@ -55,6 +55,8 @@ interface FunctionInfo {
 const ERROR_TYPE = '<error>' as ShaderTypeId;
 const BUILTIN_SCALARS = new Set(['f32', 'i32', 'u32', 'bool']);
 const ADDRESS_SPACES = new Set(['uniform', 'storage', 'in', 'out', 'handle', 'private']);
+const NO_SHADER_DIAGNOSTICS: readonly ShaderDiagnostic[] = Object.freeze([]);
+const NO_RELATED_SPANS: readonly SourceSpan[] = Object.freeze([]);
 
 /**
  * Lowers, typechecks, and validates FluxSL AST modules into a unified compiled ShaderModuleIR.
@@ -242,18 +244,18 @@ export function lowerFluxModules(
   const functions = new Map<string, FunctionInfo>();
   for (const declaration of declarations) {
     if (declaration.kind !== 'function') continue;
-    const info: FunctionInfo = Object.freeze({
+    // FunctionInfo is an owner-private analysis record. Its public counterpart is
+    // the fully frozen ShaderFunctionIR returned after lowering succeeds.
+    const info: FunctionInfo = {
       id: nextFunction++ as ShaderFunctionId,
       declaration,
-      parameters: Object.freeze(
-        declaration.parameters.map((parameter) =>
-          resolveType(parameter.type.name, parameter.type.span)
-        )
+      parameters: declaration.parameters.map((parameter) =>
+        resolveType(parameter.type.name, parameter.type.span)
       ),
       ...(declaration.returnType
         ? { returnType: resolveType(declaration.returnType.name, declaration.returnType.span) }
         : {})
-    });
+    };
     const existing = functions.get(declaration.name);
     if (existing)
       diagnostics.push(
@@ -319,7 +321,7 @@ export function lowerFluxModules(
     sourceMap: Object.freeze({ spans }),
     sourceClosureHash
   });
-  return Object.freeze({ ir, diagnostics: Object.freeze([]) });
+  return Object.freeze({ ir, diagnostics: NO_SHADER_DIAGNOSTICS });
 }
 
 class FunctionAnalyzer {
@@ -821,7 +823,7 @@ function typeDiagnostic(code: string, message: string, primary: SourceSpan): Sha
     message,
     stage: 'typecheck',
     primary,
-    related: Object.freeze([])
+    related: NO_RELATED_SPANS
   });
 }
 function relatedDiagnostic(

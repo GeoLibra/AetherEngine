@@ -108,6 +108,27 @@ describe('material schema view', () => {
 });
 
 describe('immutable material parameter blocks', () => {
+  test('keeps parameter values outside the frozen block facade', () => {
+    const block = createMaterialParameterBlock(PbrSchema);
+
+    expect(Object.isFrozen(block)).toBe(true);
+    expect(() => Object.assign(block, { schemaId: 'replacement' })).toThrow();
+    expect(() => Object.assign(block, { debugValues: new Map() })).toThrow();
+    expect(Reflect.ownKeys(block).sort()).toEqual([
+      'fingerprint',
+      'schema',
+      'schemaId',
+      'schemaVersion'
+    ]);
+    expect(Object.values(block).some((value) => value instanceof Map || Array.isArray(value))).toBe(
+      false
+    );
+
+    const edited = block.with(PbrSchema.fields.roughness, 0.35);
+    expect(edited).not.toBe(block);
+    expect(edited.get(PbrSchema.fields.roughness)).toBe(0.35);
+  });
+
   test('typed, name/alias, and internal index writes converge on identical values', () => {
     const defaults = createMaterialParameterBlock(PbrSchema);
     const typed = defaults.with(PbrSchema.fields.roughness, 0.35);

@@ -4,7 +4,7 @@ import type { RHIResource } from '../contracts/resource';
 import type { RHISubmission, RHISubmissionStatus } from '../contracts/submission';
 import { WebGL2CommandBuffer } from './command';
 import { WebGL2Metrics, type WebGL2MetricsSnapshot } from './metrics';
-import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
+import type { WebGL2NativeContextPort, WebGL2NativeObject } from './types';
 import { WebGL2ReplayExecutor } from './replay';
 import { decrementLeaseCount } from './lease-count';
 import {
@@ -13,7 +13,7 @@ import {
   assertWebGL2Resource,
   releaseWebGL2Native
 } from './resource';
-import type { WebGL2DeviceOwner } from './resource-types';
+import type { WebGL2DeviceOwner } from './types';
 import { WebGL2Submission } from './submission';
 import { WebGL2UploadQueue } from './upload';
 

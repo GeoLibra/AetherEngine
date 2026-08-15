@@ -15,8 +15,8 @@ import type {
 } from '../contracts/descriptor';
 import type { GPUMapModeFlags, GPUExtent3D } from '../contracts/webgpu';
 import { textureMipDimension, validateTextureViewMipLevel } from '../core/texture-dimensions';
-import type { WebGL2DeviceOwner } from './resource-types';
-import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
+import type { WebGL2DeviceOwner } from './types';
+import type { WebGL2NativeContextPort, WebGL2NativeObject } from './types';
 
 interface NativeEntry {
   readonly handle: WebGL2NativeObject;

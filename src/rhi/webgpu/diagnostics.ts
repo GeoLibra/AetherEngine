@@ -1,5 +1,5 @@
-import type { Diagnostic } from '../../diagnostics';
-import type { WebGPUNativeErrorPort } from './native-types';
+import type { Diagnostic } from '../../diagnostics/types';
+import type { WebGPUNativeErrorPort } from './types';
 
 export function normalizeWebGPUNativeError(cause: unknown): WebGPUNativeErrorPort {
   if (isNativeError(cause)) return cause;
@@ -47,7 +47,11 @@ export function createWebGPUPipelineDiagnostic(
 function isNativeError(value: unknown): value is WebGPUNativeErrorPort {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Partial<WebGPUNativeErrorPort>;
-  return typeof candidate.message === 'string' &&
-    (candidate.type === 'validation' || candidate.type === 'out-of-memory' ||
-      candidate.type === 'internal' || candidate.type === 'unknown');
+  return (
+    typeof candidate.message === 'string' &&
+    (candidate.type === 'validation' ||
+      candidate.type === 'out-of-memory' ||
+      candidate.type === 'internal' ||
+      candidate.type === 'unknown')
+  );
 }

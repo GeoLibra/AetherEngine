@@ -55,6 +55,35 @@ export interface MaterialParameterWrite {
 
 const PARAMETER_WRITE_BYTES = new WeakMap<MaterialParameterWrite, Uint8Array>();
 
+/**
+ * Parameter writes retain their upload bytes privately. A read returns a detached upload view so
+ * consumer mutation cannot alter the revision reused for dirty-range comparison on the next write.
+ */
+class MaterialParameterWriteSnapshot implements MaterialParameterWrite {
+  readonly layoutHash: string;
+  readonly dirtyRanges: readonly MaterialDirtyRange[];
+  readonly counters: Readonly<MaterialParameterWriteCounters>;
+
+  constructor(
+    layoutHash: string,
+    bytes: Uint8Array,
+    dirtyRanges: readonly MaterialDirtyRange[],
+    counters: Readonly<MaterialParameterWriteCounters>
+  ) {
+    this.layoutHash = layoutHash;
+    this.dirtyRanges = dirtyRanges;
+    this.counters = counters;
+    PARAMETER_WRITE_BYTES.set(this, bytes.slice());
+    Object.freeze(this);
+  }
+
+  get bytes(): Uint8Array {
+    const ownedBytes = PARAMETER_WRITE_BYTES.get(this);
+    if (!ownedBytes) throw new Error('Material parameter write bytes are unavailable.');
+    return ownedBytes.slice();
+  }
+}
+
 type MaterialNumericShape =
   | Readonly<{ kind: 'scalar' }>
   | Readonly<{ kind: 'vector'; length: 2 | 3 | 4 }>
@@ -163,18 +192,16 @@ export function writeMaterialParameters(
   }
   const mergedRanges = mergeDirtyRanges(dirtyRanges);
   const writtenBytes = mergedRanges.reduce((total, range) => total + range.byteLength, 0);
-  const result = Object.freeze({
-    layoutHash: layout.bufferLayoutHash,
+  return new MaterialParameterWriteSnapshot(
+    layout.bufferLayoutHash,
     bytes,
-    dirtyRanges: mergedRanges,
-    counters: Object.freeze({
+    mergedRanges,
+    Object.freeze({
       resolvedFields: layout.fields.length,
       writtenFields,
       writtenBytes
     })
-  });
-  PARAMETER_WRITE_BYTES.set(result, bytes.slice());
-  return result;
+  );
 }
 
 function indexBufferFields(

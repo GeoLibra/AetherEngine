@@ -1,4 +1,4 @@
-import type { WebGL2NativeContextPort } from '../native-types';
+import type { WebGL2NativeContextPort } from '../types';
 import {
   queryWebGL2Extensions,
   queryWebGL2Formats,

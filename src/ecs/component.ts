@@ -1,6 +1,6 @@
 import { FIELD_TYPE_SIZES } from './constants';
 import { defineSchema } from '../schema';
-import type { ValidationIssue, ValidationResult, ValueTypeDefinition } from '../schema';
+import type { ValidationIssue, ValidationResult, ValueTypeDefinition } from '../schema/types';
 import { cloneUnknown } from '../schema/migration';
 import type {
   ComponentDefinition,
@@ -42,6 +42,8 @@ const FLOAT_VECTOR_LENGTHS: Partial<Record<ComponentFieldType, number>> = {
 const INTEGER_VECTOR_LENGTHS: Partial<Record<ComponentFieldType, number>> = {
   ivec3: 3
 };
+
+const NO_TAG_COMPONENT_FIELDS: readonly [] = Object.freeze([]);
 
 const VIEW_ACCESSOR = Symbol('ComponentView.accessor');
 const VIEW_MARK_CHANGED = Symbol('ComponentView.markChanged');
@@ -145,9 +147,7 @@ export function defineObjectComponent<TView extends object>(
   });
 }
 
-export function defineTagComponent(
-  definition: TagComponentDefinition
-): TagComponentSchema {
+export function defineTagComponent(definition: TagComponentDefinition): TagComponentSchema {
   assertComponentName(definition.name);
   const schema = defineSchema<Record<string, never>>({
     id: definition.id,
@@ -166,7 +166,7 @@ export function defineTagComponent(
     kind: 'component' as const,
     name: definition.name,
     storage: 'tag' as const,
-    fields: Object.freeze([]) as readonly []
+    fields: NO_TAG_COMPONENT_FIELDS
   });
 }
 
@@ -274,8 +274,7 @@ export function compileComponentViewFactory<TView extends object>(
     });
   }
 
-  return (getStorage, markChanged) =>
-    new SchemaComponentView(getStorage, markChanged) as TView;
+  return (getStorage, markChanged) => new SchemaComponentView(getStorage, markChanged) as TView;
 }
 
 function writeField(view: DataView, field: ComponentField, value: unknown): void {
@@ -453,7 +452,9 @@ function isArrayLike(value: unknown): value is ArrayLike<number> {
 }
 
 function isNumericProperty(property: string | symbol): boolean {
-  return typeof property === 'string' && property.trim() !== '' && Number.isInteger(Number(property));
+  return (
+    typeof property === 'string' && property.trim() !== '' && Number.isInteger(Number(property))
+  );
 }
 
 function toNumber(value: unknown, fallback = 0): number {

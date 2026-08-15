@@ -5,11 +5,8 @@ import { createCapabilitySnapshot, RHI_FEATURES } from '../core/capabilities';
 import type { AdapterCapabilities, FeatureSupport, RHIFeature } from '../contracts/capability';
 import { RHIDeviceRequestError, WebGPUNativeDeviceRequestError } from '../contracts/errors';
 import { WebGPUDevice } from './device';
-import {
-  WEBGPU_CORE_FEATURES,
-  type WebGPUNativeAdapterPort,
-  type WebGPUNativeDeviceRequest
-} from './native-types';
+import type { WebGPUNativeAdapterPort, WebGPUNativeDeviceRequest } from './types';
+import { WEBGPU_CORE_FEATURES } from './core-features';
 
 const WEBGPU_QUEUES = Object.freeze([
   Object.freeze({ role: 'graphics' as const, status: 'native' as const }),
@@ -35,7 +32,10 @@ export class WebGPUAdapter implements RHIAdapter {
 
     const selectedExtensions = new Set<RHIFeature>();
     for (const feature of [...request.requiredFeatures, ...request.optionalFeatures]) {
-      if (feature === 'timestamp-query' && this.capabilities.features.get(feature)?.status === 'native') {
+      if (
+        feature === 'timestamp-query' &&
+        this.capabilities.features.get(feature)?.status === 'native'
+      ) {
         selectedExtensions.add(feature);
       }
     }
@@ -71,7 +71,11 @@ function createWebGPUCapabilities(
   for (const feature of RHI_FEATURES) {
     if (WEBGPU_CORE_FEATURES.includes(feature)) {
       features.set(feature, { status: 'native' });
-    } else if (feature === 'timestamp-query' && native.features.has(feature) && selectedExtensions.has(feature)) {
+    } else if (
+      feature === 'timestamp-query' &&
+      native.features.has(feature) &&
+      selectedExtensions.has(feature)
+    ) {
       features.set(feature, { status: 'native' });
     } else {
       features.set(feature, {

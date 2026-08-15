@@ -1,5 +1,5 @@
 import type { RenderEntityId } from '../render-world';
-import type { RenderView } from '../visibility';
+import type { RenderView } from '../visibility/types';
 import {
   compareSpatialEntries,
   isSpatialEntryVisible,
@@ -45,7 +45,7 @@ export class StaticBvhSpatialIndex implements SpatialIndex {
       implementation: this.implementation,
       indexRevision: this.indexRevision,
       sourceRenderRevision: this.sourceRenderRevision,
-      entryCount: this.active?.entries.length ?? 0,
+      entryCount: this.active?.entryCount ?? 0,
       nodeCount: this.active?.nodeCount ?? 0,
       rootNode: this.active?.rootNode ?? null,
       ...(this.active ? { checksum: this.active.checksum } : {})

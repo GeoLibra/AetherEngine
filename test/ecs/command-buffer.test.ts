@@ -37,6 +37,21 @@ describe('CommandBuffer', () => {
     expect(commands.length).toBe(0);
   });
 
+  test('retains a private component-bundle copy until its apply point', () => {
+    const world = new World();
+    world.registerComponent(Position);
+    const commands = new CommandBuffer();
+    const data = { x: 1 };
+    const bundle = [{ component: Position, data }];
+    const ticket = commands.spawn(bundle);
+
+    data.x = 9;
+    bundle[0] = { component: Position, data: { x: 7 } };
+
+    const entity = commands.apply(world).resolve(ticket);
+    expect(world.getComponent(entity, Position)?.x).toBe(1);
+  });
+
   test('validates the whole batch before commit and preserves World on failure', () => {
     const world = new World();
     world.registerComponent(Position);
@@ -128,9 +143,9 @@ describe('CommandBuffer', () => {
           builder.addSystem('Update', {
             id: 'queue-spawn',
             run(world) {
-              world.getResource(CommandBufferResource)!.spawn([
-                { component: Position, data: { x: 9 } }
-              ]);
+              world
+                .getResource(CommandBufferResource)!
+                .spawn([{ component: Position, data: { x: 9 } }]);
             }
           });
           builder.addSystem('PostUpdate', {
@@ -167,9 +182,9 @@ describe('CommandBuffer', () => {
           builder.addSystem('Update', {
             id: 'queue-position',
             run(world) {
-              world.getResource(CommandBufferResource)!.spawn([
-                { component: Position, data: { x: 7 } }
-              ]);
+              world
+                .getResource(CommandBufferResource)!
+                .spawn([{ component: Position, data: { x: 7 } }]);
             }
           });
           builder.addCommandApplyPoint('Update', {

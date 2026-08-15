@@ -3,7 +3,7 @@ import type {
   WebGPUNativeComputePassPort,
   WebGPUNativeRenderPassPort,
   WebGPUNativeResourcePort
-} from '../native-types';
+} from '../types';
 import { lowerBrowserDescriptor } from './descriptor-lowering';
 import {
   BrowserWebGPUResourcePort,
@@ -24,12 +24,22 @@ export function createBrowserWebGPUCommandEncoderPort(
   );
 
   return {
-    pushDebugGroup(label): void { callRequired(native, 'pushDebugGroup', [label]); },
-    popDebugGroup(): void { callRequired(native, 'popDebugGroup', []); },
+    pushDebugGroup(label): void {
+      callRequired(native, 'pushDebugGroup', [label]);
+    },
+    popDebugGroup(): void {
+      callRequired(native, 'popDebugGroup', []);
+    },
     beginRenderPass(passDescriptor): WebGPUNativeRenderPassPort {
       const lowered = lowerBrowserDescriptor(
         passDescriptor,
-        ['label', 'colorAttachments', 'depthStencilAttachment', 'occlusionQuerySet', 'timestampWrites'],
+        [
+          'label',
+          'colorAttachments',
+          'depthStencilAttachment',
+          'occlusionQuerySet',
+          'timestampWrites'
+        ],
         (value) => lowerResource(value, owner)
       );
       return createRenderPassPort(
@@ -50,55 +60,82 @@ export function createBrowserWebGPUCommandEncoderPort(
     },
     copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size): void {
       callRequired(native, 'copyBufferToBuffer', [
-        unwrapBrowserWebGPUResource(source, owner), sourceOffset,
-        unwrapBrowserWebGPUResource(destination, owner), destinationOffset, size
+        unwrapBrowserWebGPUResource(source, owner),
+        sourceOffset,
+        unwrapBrowserWebGPUResource(destination, owner),
+        destinationOffset,
+        size
       ]);
     },
     copyTextureToTexture(source, destination, size): void {
       callRequired(native, 'copyTextureToTexture', [
-        lowerRecord(source, owner), lowerRecord(destination, owner), size
+        lowerRecord(source, owner),
+        lowerRecord(destination, owner),
+        size
       ]);
     },
     copyBufferToTexture(source, destination, size): void {
       callRequired(native, 'copyBufferToTexture', [
-        lowerRecord(source, owner), lowerRecord(destination, owner), size
+        lowerRecord(source, owner),
+        lowerRecord(destination, owner),
+        size
       ]);
     },
     copyTextureToBuffer(source, destination, size): void {
       callRequired(native, 'copyTextureToBuffer', [
-        lowerRecord(source, owner), lowerRecord(destination, owner), size
+        lowerRecord(source, owner),
+        lowerRecord(destination, owner),
+        size
       ]);
     },
     finish(finishDescriptor): WebGPUNativeResourcePort {
-      const commandBuffer = requireObject(callRequired(native, 'finish', [
-        lowerBrowserDescriptor(finishDescriptor, ['label'], identity)
-      ]), 'GPUCommandBuffer');
+      const commandBuffer = requireObject(
+        callRequired(native, 'finish', [
+          lowerBrowserDescriptor(finishDescriptor, ['label'], identity)
+        ]),
+        'GPUCommandBuffer'
+      );
       return new BrowserWebGPUResourcePort(owner, commandBuffer);
     }
   };
 }
 
-function createRenderPassPort(native: object, owner: BrowserWebGPUDeviceOwner): WebGPUNativeRenderPassPort {
+function createRenderPassPort(
+  native: object,
+  owner: BrowserWebGPUDeviceOwner
+): WebGPUNativeRenderPassPort {
   return {
-    pushDebugGroup(label): void { callRequired(native, 'pushDebugGroup', [label]); },
-    popDebugGroup(): void { callRequired(native, 'popDebugGroup', []); },
+    pushDebugGroup(label): void {
+      callRequired(native, 'pushDebugGroup', [label]);
+    },
+    popDebugGroup(): void {
+      callRequired(native, 'popDebugGroup', []);
+    },
     setPipeline(pipeline): void {
       callRequired(native, 'setPipeline', [unwrapBrowserWebGPUResource(pipeline, owner)]);
     },
     setBindGroup(index, bindGroup, dynamicOffsets): void {
       callRequired(native, 'setBindGroup', [
-        index, unwrapBrowserWebGPUResource(bindGroup, owner), dynamicOffsets
+        index,
+        unwrapBrowserWebGPUResource(bindGroup, owner),
+        dynamicOffsets
       ]);
     },
     setVertexBuffer(slot, buffer, offset, size): void {
-      callOptionalSize(native, 'setVertexBuffer', [
-        slot, unwrapBrowserWebGPUResource(buffer, owner), offset
-      ], size);
+      callOptionalSize(
+        native,
+        'setVertexBuffer',
+        [slot, unwrapBrowserWebGPUResource(buffer, owner), offset],
+        size
+      );
     },
     setIndexBuffer(buffer, format, offset, size): void {
-      callOptionalSize(native, 'setIndexBuffer', [
-        unwrapBrowserWebGPUResource(buffer, owner), format, offset
-      ], size);
+      callOptionalSize(
+        native,
+        'setIndexBuffer',
+        [unwrapBrowserWebGPUResource(buffer, owner), format, offset],
+        size
+      );
     },
     setViewport(x, y, width, height, minDepth, maxDepth): void {
       callRequired(native, 'setViewport', [x, y, width, height, minDepth, maxDepth]);
@@ -111,35 +148,55 @@ function createRenderPassPort(native: object, owner: BrowserWebGPUDeviceOwner): 
     },
     drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance): void {
       callRequired(native, 'drawIndexed', [
-        indexCount, instanceCount, firstIndex, baseVertex, firstInstance
+        indexCount,
+        instanceCount,
+        firstIndex,
+        baseVertex,
+        firstInstance
       ]);
     },
     drawIndirect(buffer, offset): void {
       callRequired(native, 'drawIndirect', [unwrapBrowserWebGPUResource(buffer, owner), offset]);
     },
-    end(): void { callRequired(native, 'end', []); }
+    end(): void {
+      callRequired(native, 'end', []);
+    }
   };
 }
 
-function createComputePassPort(native: object, owner: BrowserWebGPUDeviceOwner): WebGPUNativeComputePassPort {
+function createComputePassPort(
+  native: object,
+  owner: BrowserWebGPUDeviceOwner
+): WebGPUNativeComputePassPort {
   return {
-    pushDebugGroup(label): void { callRequired(native, 'pushDebugGroup', [label]); },
-    popDebugGroup(): void { callRequired(native, 'popDebugGroup', []); },
+    pushDebugGroup(label): void {
+      callRequired(native, 'pushDebugGroup', [label]);
+    },
+    popDebugGroup(): void {
+      callRequired(native, 'popDebugGroup', []);
+    },
     setPipeline(pipeline): void {
       callRequired(native, 'setPipeline', [unwrapBrowserWebGPUResource(pipeline, owner)]);
     },
     setBindGroup(index, bindGroup, dynamicOffsets): void {
       callRequired(native, 'setBindGroup', [
-        index, unwrapBrowserWebGPUResource(bindGroup, owner), dynamicOffsets
+        index,
+        unwrapBrowserWebGPUResource(bindGroup, owner),
+        dynamicOffsets
       ]);
     },
-    dispatchWorkgroups(x, y, z): void { callRequired(native, 'dispatchWorkgroups', [x, y, z]); },
+    dispatchWorkgroups(x, y, z): void {
+      callRequired(native, 'dispatchWorkgroups', [x, y, z]);
+    },
     dispatchWorkgroupsIndirect(buffer, offset): void {
       callRequired(native, 'dispatchWorkgroupsIndirect', [
-        unwrapBrowserWebGPUResource(buffer, owner), offset
+        unwrapBrowserWebGPUResource(buffer, owner),
+        offset
       ]);
     },
-    end(): void { callRequired(native, 'end', []); }
+    end(): void {
+      callRequired(native, 'end', []);
+    }
   };
 }
 
@@ -147,7 +204,9 @@ function lowerRecord(
   record: Readonly<Record<string, unknown>>,
   owner: BrowserWebGPUDeviceOwner
 ): Readonly<Record<string, unknown>> {
-  return lowerBrowserDescriptor(record, Object.keys(record), (value) => lowerResource(value, owner));
+  return lowerBrowserDescriptor(record, Object.keys(record), (value) =>
+    lowerResource(value, owner)
+  );
 }
 
 function lowerResource(value: unknown, owner: BrowserWebGPUDeviceOwner): unknown {
@@ -167,13 +226,17 @@ function callOptionalSize(
 
 function callRequired(target: object, key: string, args: readonly unknown[]): unknown {
   const method = Reflect.get(target, key);
-  if (typeof method !== 'function') throw new TypeError(`Native WebGPU object does not implement ${key}().`);
+  if (typeof method !== 'function')
+    throw new TypeError(`Native WebGPU object does not implement ${key}().`);
   return Reflect.apply(method, target, args);
 }
 
 function requireObject(value: unknown, label: string): object {
-  if (typeof value !== 'object' || value === null) throw new TypeError(`${label} is not an object.`);
+  if (typeof value !== 'object' || value === null)
+    throw new TypeError(`${label} is not an object.`);
   return value;
 }
 
-function identity(value: unknown): unknown { return value; }
+function identity(value: unknown): unknown {
+  return value;
+}

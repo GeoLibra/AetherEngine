@@ -1,7 +1,7 @@
 import type { ResourceToken } from '../ecs/types';
 import type { World } from '../ecs/world';
 import { SchemaRegistry, SchemaRegistryResource } from '../schema';
-import type { SchemaMigration, TypeSchema } from '../schema';
+import type { SchemaMigration, TypeSchema } from '../schema/types';
 import type { ObserverDescriptor } from '../ecs/observer';
 import { CommandBufferResource } from '../ecs/command-buffer';
 import { EventRegistryResource } from '../events/event-registry';
@@ -49,10 +49,7 @@ export class RegistrationTransaction implements AppBuilder {
     this.handles.push(createHandle(() => schedule.removeSystem(registration)));
   }
 
-  addCommandApplyPoint(
-    stage: ScheduleLabel,
-    descriptor: CommandApplyPointDescriptor
-  ): void {
+  addCommandApplyPoint(stage: ScheduleLabel, descriptor: CommandApplyPointDescriptor): void {
     this.assertOpen();
     if (descriptor.id.trim() === '') {
       throw new Error('Command apply point id must not be empty.');
@@ -110,10 +107,7 @@ export class RegistrationTransaction implements AppBuilder {
     this.handles.push(this.host.services.replace(token, registration));
   }
 
-  addExtension<T>(
-    point: ExtensionPoint<T>,
-    contribution: ExtensionContribution<T>
-  ): void {
+  addExtension<T>(point: ExtensionPoint<T>, contribution: ExtensionContribution<T>): void {
     this.assertOpen();
     this.handles.push(this.host.extensions.add(point, this.ownerPlugin, contribution));
   }

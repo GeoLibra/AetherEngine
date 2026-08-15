@@ -1,8 +1,8 @@
-import type { NativeNegotiatedHandshake } from '../native-runtime/abi-types';
+import type { NativeNegotiatedHandshake } from '../native-runtime/types';
 import type {
   NativeServiceModule,
   NativeServiceUnavailableDiagnostic
-} from '../native-runtime/module-types';
+} from '../native-runtime/types';
 import { createPlatformServiceToken, MutablePlatformServiceRegistry } from './services';
 import type {
   NativeAudioService,
@@ -16,17 +16,25 @@ import type {
   NativeSensorPort,
   NativeSensorsService,
   NativeXrService
-} from './native-service-types';
+} from './types';
 
-export const NativeFilesystemServiceToken = createPlatformServiceToken<NativeFilesystemService>('native.filesystem');
-export const NativePermissionsServiceToken = createPlatformServiceToken<NativePermissionsService>('native.permissions');
-export const NativeClipboardServiceToken = createPlatformServiceToken<NativeClipboardService>('native.clipboard');
-export const NativeSensorsServiceToken = createPlatformServiceToken<NativeSensorsService>('native.sensors');
-export const NativeAudioServiceToken = createPlatformServiceToken<NativeAudioService>('native.audio');
-export const NativeNetworkServiceToken = createPlatformServiceToken<NativeNetworkService>('native.network');
+export const NativeFilesystemServiceToken =
+  createPlatformServiceToken<NativeFilesystemService>('native.filesystem');
+export const NativePermissionsServiceToken =
+  createPlatformServiceToken<NativePermissionsService>('native.permissions');
+export const NativeClipboardServiceToken =
+  createPlatformServiceToken<NativeClipboardService>('native.clipboard');
+export const NativeSensorsServiceToken =
+  createPlatformServiceToken<NativeSensorsService>('native.sensors');
+export const NativeAudioServiceToken =
+  createPlatformServiceToken<NativeAudioService>('native.audio');
+export const NativeNetworkServiceToken =
+  createPlatformServiceToken<NativeNetworkService>('native.network');
 export const NativeXrServiceToken = createPlatformServiceToken<NativeXrService>('native.xr');
 
-export function defineNativeServiceModule<T>(module: NativeServiceModule<T>): NativeServiceModule<T> {
+export function defineNativeServiceModule<T>(
+  module: NativeServiceModule<T>
+): NativeServiceModule<T> {
   if (!/^[a-z][a-z0-9-]*$/.test(module.name) || module.name === 'rhi') {
     throw new Error('Native service module name is invalid or reserved.');
   }
@@ -50,7 +58,9 @@ export function registerNativeServiceModules(
   // Validate the complete module set before factories run or registry state becomes observable.
   for (const module of modules) {
     if (tokens.has(module.token.key)) {
-      throw new Error(`Native service token "${module.token.name}" is registered more than once in the module set.`);
+      throw new Error(
+        `Native service token "${module.token.name}" is registered more than once in the module set.`
+      );
     }
     tokens.add(module.token.key);
     if (existingTokens.has(module.token.key)) {
@@ -61,12 +71,14 @@ export function registerNativeServiceModules(
       if (module.required) {
         throw new Error(`Native service module "${module.name}" version requirement was not met.`);
       }
-      diagnostics.push(Object.freeze({
-        kind: 'optional-module-unavailable',
-        module: module.name,
-        requiredVersion: module.version,
-        actualVersion
-      }));
+      diagnostics.push(
+        Object.freeze({
+          kind: 'optional-module-unavailable',
+          module: module.name,
+          requiredVersion: module.version,
+          actualVersion
+        })
+      );
       continue;
     }
     admitted.push(module);
@@ -79,7 +91,8 @@ export function registerNativeServiceModules(
 }
 
 export function normalizeNativeMountUri(uri: string): string {
-  if (uri.includes('?') || uri.includes('#') || uri.includes('\\') || uri.includes('%')) throw invalidUri();
+  if (uri.includes('?') || uri.includes('#') || uri.includes('\\') || uri.includes('%'))
+    throw invalidUri();
   const match = /^([a-z][a-z0-9-]*):\/\/(.*)$/.exec(uri);
   if (match === null) throw invalidUri();
   const segments = match[2]!.split('/').filter((segment) => segment.length > 0);
@@ -130,4 +143,6 @@ function snapshotSensorEvent(event: NativeSensorEvent): NativeSensorEvent {
   return Object.freeze({ timestamp: event.timestamp, values: Object.freeze([...event.values]) });
 }
 
-function invalidUri(): Error { return new Error('Native filesystem URI is invalid.'); }
+function invalidUri(): Error {
+  return new Error('Native filesystem URI is invalid.');
+}

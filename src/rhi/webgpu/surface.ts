@@ -9,7 +9,7 @@ import type {
   RHISurfaceState
 } from '../contracts/surface';
 import { WebGPUDevice } from './device';
-import type { WebGPUNativeCanvasContextPort } from './native-types';
+import type { WebGPUNativeCanvasContextPort } from './types';
 import type { WebGPUTexture } from './resource';
 
 export class WebGPUSurface implements RHISurface {
@@ -25,9 +25,15 @@ export class WebGPUSurface implements RHISurface {
     private readonly context: WebGPUNativeCanvasContextPort
   ) {}
 
-  get state(): RHISurfaceState { return this.currentState; }
-  get generation(): number { return this.currentGeneration; }
-  get configuration(): RHISurfaceConfiguration | undefined { return this.currentConfiguration; }
+  get state(): RHISurfaceState {
+    return this.currentState;
+  }
+  get generation(): number {
+    return this.currentGeneration;
+  }
+  get configuration(): RHISurfaceConfiguration | undefined {
+    return this.currentConfiguration;
+  }
 
   configure(
     device: RHIDevice,
@@ -59,7 +65,11 @@ export class WebGPUSurface implements RHISurface {
   acquire(): RHISurfaceAcquireResult {
     this.assertNotDisposed();
     if (this.currentState === 'lost') return frozenStatus('lost');
-    if (this.currentState !== 'configured' || this.currentDevice === undefined || this.currentConfiguration === undefined) {
+    if (
+      this.currentState !== 'configured' ||
+      this.currentDevice === undefined ||
+      this.currentConfiguration === undefined
+    ) {
       throw new Error('WebGPUSurface must be configured before acquire.');
     }
     if (this.currentDevice.state !== 'live') return frozenStatus('device-lost');
@@ -83,7 +93,9 @@ export class WebGPUSurface implements RHISurface {
       texture,
       this.currentGeneration,
       () => this.context.present?.(),
-      () => { if (this.activeFrame === frame) this.activeFrame = undefined; }
+      () => {
+        if (this.activeFrame === frame) this.activeFrame = undefined;
+      }
     );
     this.activeFrame = frame;
     this.frameCount += 1;
@@ -115,11 +127,15 @@ class WebGPUSurfaceFrame implements RHISurfaceFrame {
     private readonly onTerminal: () => void
   ) {}
 
-  get state(): RHISurfaceFrameState { return this.currentState; }
+  get state(): RHISurfaceFrameState {
+    return this.currentState;
+  }
 
   present(): void {
-    if (this.currentState === 'presented') throw new Error('Surface frame has already been presented.');
-    if (this.currentState === 'released') throw new Error('Released surface frame cannot be presented.');
+    if (this.currentState === 'presented')
+      throw new Error('Surface frame has already been presented.');
+    if (this.currentState === 'released')
+      throw new Error('Released surface frame cannot be presented.');
     this.presentNative();
     this.currentState = 'presented';
     this.texture.dispose();
@@ -127,8 +143,10 @@ class WebGPUSurfaceFrame implements RHISurfaceFrame {
   }
 
   release(): void {
-    if (this.currentState === 'presented') throw new Error('Presented surface frame cannot be released.');
-    if (this.currentState === 'released') throw new Error('Surface frame has already been released.');
+    if (this.currentState === 'presented')
+      throw new Error('Presented surface frame cannot be released.');
+    if (this.currentState === 'released')
+      throw new Error('Surface frame has already been released.');
     this.abandon();
   }
 

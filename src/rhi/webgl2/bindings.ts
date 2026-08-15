@@ -10,7 +10,7 @@ import type {
 } from '../contracts/resource';
 import type { GPUBindGroupLayoutDescriptor, GPUBindGroupLayoutEntry } from '../contracts/webgpu';
 import { WebGL2ResourceBase, assertWebGL2Resource } from './resource';
-import type { WebGL2DeviceOwner } from './resource-types';
+import type { WebGL2DeviceOwner } from './types';
 
 export class WebGL2BindGroupLayout extends WebGL2ResourceBase implements RHIBindGroupLayout {
   readonly kind = 'bind-group-layout';

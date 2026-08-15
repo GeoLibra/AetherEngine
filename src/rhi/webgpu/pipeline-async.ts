@@ -2,7 +2,7 @@ import type {
   WebGPUNativeDevicePort,
   WebGPUNativeErrorPort,
   WebGPUNativeResourcePort
-} from './native-types';
+} from './types';
 import { normalizeWebGPUNativeError } from './diagnostics';
 
 export type WebGPUNativePipelineResult =
@@ -35,13 +35,14 @@ export async function createWebGPUNativePipeline(
 
   const [creationResult, scoped] = await Promise.all([
     creation.then(
-      (native) => ({ native } as const),
-      (cause: unknown) => ({ error: normalizeWebGPUNativeError(cause) } as const)
+      (native) => ({ native }) as const,
+      (cause: unknown) => ({ error: normalizeWebGPUNativeError(cause) }) as const
     ),
     scopeResult.catch((cause: unknown) => normalizeWebGPUNativeError(cause))
   ]);
   const error = scoped ?? ('error' in creationResult ? creationResult.error : undefined);
   if (error !== undefined) return Object.freeze({ status: 'failed', error });
-  if ('native' in creationResult) return Object.freeze({ status: 'success', native: creationResult.native });
+  if ('native' in creationResult)
+    return Object.freeze({ status: 'success', native: creationResult.native });
   return Object.freeze({ status: 'failed', error: creationResult.error });
 }

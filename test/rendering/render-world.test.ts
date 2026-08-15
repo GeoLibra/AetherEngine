@@ -5,7 +5,8 @@ import {
   defineExtractorToken,
   defineRenderField,
   defineRenderTag,
-  type RenderEntityId
+  type RenderEntityId,
+  type RenderFieldToken
 } from '../../src/rendering';
 
 const Transform = defineRenderField<[number, number, number]>('transform');
@@ -61,6 +62,154 @@ describe('RenderWorld', () => {
     expect(world.read(entity, Transform)).toEqual([2, 0, 0]);
     expect('set' in first.snapshot.get(entity)!).toBe(false);
     expect('set' in first.snapshot).toBe(false);
+  });
+
+  test('does not let a post-plan extractor write-set mutation authorize an undeclared field', () => {
+    const Declared = defineRenderField<number>('declared');
+    const Undeclared = defineRenderField<number>('undeclared');
+    const owner = defineExtractorToken('declared-owner', [Declared]);
+    const world = new RenderWorld({
+      extractorPlan: new RenderExtractorRegistryBuilder().registerExtractor(owner).build()
+    });
+    const maliciousWrites = owner.writes as unknown as Set<typeof Undeclared | typeof Declared>;
+    try {
+      maliciousWrites.add(Undeclared);
+    } catch {
+      // A runtime-enforced read-only set rejects the cast-based mutation.
+    }
+
+    const tx = world.beginExtract(1, 0);
+    const entity = tx.mapEntity('undeclared-write');
+    const draft = tx.draft(owner) as unknown as {
+      upsert(entity: RenderEntityId, field: typeof Undeclared, value: number): void;
+    };
+
+    expect(() => draft.upsert(entity, Undeclared, 1)).toThrow('does not own');
+  });
+
+  test('snapshots nested caller field values at write time and keeps public reads detached', () => {
+    const Facts = defineRenderField<{
+      readonly nested: readonly { readonly label: string; readonly values: readonly number[] }[];
+      readonly matrix: Float32Array;
+    }>('facts');
+    const owner = defineExtractorToken('facts-owner', [Facts]);
+    const world = new RenderWorld({
+      extractorPlan: new RenderExtractorRegistryBuilder().registerExtractor(owner).build()
+    });
+    const source = {
+      nested: [{ label: 'initial', values: [1, 2] }],
+      matrix: new Float32Array([1, 2, 3, 4])
+    };
+    const tx = world.beginExtract(1, 0);
+    const entity = tx.mapEntity('facts');
+    tx.draft(owner).upsert(entity, Facts, source);
+    source.nested[0]!.values[0] = 99;
+    source.matrix[0] = 99;
+
+    tx.commit().release();
+    source.nested[0]!.values[1] = 88;
+    source.matrix[1] = 88;
+
+    const first = world.read(entity, Facts)!;
+    expect(first).toMatchObject({ nested: [{ label: 'initial', values: [1, 2] }] });
+    expect([...first.matrix]).toEqual([1, 2, 3, 4]);
+    first.matrix[0] = 7;
+    expect([...world.read(entity, Facts)!.matrix]).toEqual([1, 2, 3, 4]);
+    expect(Object.isExtensible(source)).toBe(true);
+  });
+
+  test('rejects cyclic render field values at the write boundary', () => {
+    const Facts = defineRenderField<readonly unknown[]>('cyclic-facts');
+    const owner = defineExtractorToken('cyclic-owner', [Facts]);
+    const world = new RenderWorld({
+      extractorPlan: new RenderExtractorRegistryBuilder().registerExtractor(owner).build()
+    });
+    const value: unknown[] = [];
+    value.push(value);
+    const tx = world.beginExtract(1, 0);
+
+    expect(() => tx.draft(owner).upsert(tx.mapEntity('cyclic'), Facts, value)).toThrow(/cycle/i);
+    expect(Object.isExtensible(value)).toBe(true);
+  });
+
+  test('rejects mutable Map render field values at the write boundary', () => {
+    const Facts = defineRenderField<ReadonlyMap<string, number>>('map-facts');
+    const owner = defineExtractorToken('map-owner', [Facts]);
+    const world = new RenderWorld({
+      extractorPlan: new RenderExtractorRegistryBuilder().registerExtractor(owner).build()
+    });
+    const value = new Map([['one', 1]]);
+    const tx = world.beginExtract(1, 0);
+
+    expect(() => tx.draft(owner).upsert(tx.mapEntity('map'), Facts, value)).toThrow(/Map/i);
+    expect(value.get('one')).toBe(1);
+  });
+
+  test('does not turn an invalid replacement write into a field removal on commit', () => {
+    const Facts = defineRenderField<readonly unknown[]>('atomic-facts');
+    const owner = defineExtractorToken('atomic-owner', [Facts]);
+    const world = new RenderWorld({
+      extractorPlan: new RenderExtractorRegistryBuilder().registerExtractor(owner).build()
+    });
+    let entity!: RenderEntityId;
+    publish(world, 1, (tx) => {
+      entity = tx.mapEntity('existing-facts');
+      tx.draft(owner).upsert(entity, Facts, [1, 2]);
+    });
+    const invalid: unknown[] = [];
+    invalid.push(invalid);
+    const transaction = world.beginExtract(2, 1);
+
+    expect(() => transaction.draft(owner).upsert(entity, Facts, invalid)).toThrow(/cycle/i);
+    const revision = transaction.commit();
+
+    expect(world.read(entity, Facts)).toEqual([1, 2]);
+    expect(revision.diff.changes).toEqual([]);
+    revision.release();
+  });
+
+  test('does not publish an empty entity after its first write fails validation', () => {
+    const Facts = defineRenderField<readonly unknown[]>('first-invalid-facts');
+    const owner = defineExtractorToken('first-invalid-owner', [Facts]);
+    const world = new RenderWorld({
+      extractorPlan: new RenderExtractorRegistryBuilder().registerExtractor(owner).build()
+    });
+    const invalid: unknown[] = [];
+    invalid.push(invalid);
+    const transaction = world.beginExtract(1, 0);
+    const entity = transaction.mapEntity('first-invalid');
+
+    expect(() => transaction.draft(owner).upsert(entity, Facts, invalid)).toThrow(/cycle/i);
+    const revision = transaction.commit();
+
+    expect(revision.snapshot.has(entity)).toBe(false);
+    expect(revision.diff.changes).toEqual([]);
+    revision.release();
+  });
+
+  test('seals revision map facades without reflectively exposing their backing maps', () => {
+    const world = createWorld();
+    const revision = publish(world, 1, (tx) =>
+      tx.draft(extractor).upsert(tx.mapEntity('snapshot'), Transform, [1, 2, 3])
+    );
+    const fields = revision.snapshot.get(world.mapEntity('snapshot'))!;
+
+    expect(Object.isFrozen(revision.snapshot)).toBe(true);
+    expect(Object.isFrozen(fields)).toBe(true);
+    expect(Reflect.ownKeys(revision.snapshot)).toEqual([]);
+    expect(Reflect.ownKeys(fields)).toEqual([]);
+    expect(() => Object.assign(revision.snapshot, { debug: true })).toThrow();
+    expect(() => Object.assign(fields, { debug: true })).toThrow();
+    expect(() =>
+      (revision.snapshot as unknown as Map<RenderEntityId, unknown>).set(
+        world.mapEntity('forged'),
+        fields
+      )
+    ).toThrow();
+    expect(() =>
+      (fields as unknown as Map<RenderFieldToken<unknown>, unknown>).set(Transform, [9, 9, 9])
+    ).toThrow();
+    expect(world.read(world.mapEntity('snapshot'), Transform)).toEqual([1, 2, 3]);
   });
 
   test('requires explicit removal and emits deterministic field diffs', () => {
@@ -188,7 +337,11 @@ describe('RenderWorld', () => {
   });
 
   test('does not compare unchanged fields while deriving an incremental diff', () => {
-    const Opaque = defineRenderField<{ readonly toJSON: () => never }>('opaque');
+    const Opaque = defineRenderField<{ readonly value: number }>('opaque', {
+      compare: () => {
+        throw new Error('unchanged field was compared');
+      }
+    });
     const opaqueExtractor = defineExtractorToken('opaque', [Opaque]);
     const extractorPlan = new RenderExtractorRegistryBuilder()
       .registerExtractor(extractor)
@@ -196,11 +349,7 @@ describe('RenderWorld', () => {
       .build();
     const world = new RenderWorld({ extractorPlan });
     publish(world, 1, (tx) =>
-      tx.draft(opaqueExtractor).upsert(tx.mapEntity('opaque'), Opaque, {
-        toJSON: () => {
-          throw new Error('unchanged field was compared');
-        }
-      })
+      tx.draft(opaqueExtractor).upsert(tx.mapEntity('opaque'), Opaque, { value: 1 })
     );
 
     expect(() =>

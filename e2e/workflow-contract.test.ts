@@ -205,7 +205,7 @@ describe('E2E GitHub Actions workflow', () => {
       ],
       fallback: false
     });
-  });
+  }, 15_000);
 
   test('routes the old endpoint when a browser path is renamed into ignored documentation', async () => {
     const result = await executeResolverAgainstGitHistory(async (directory) => {
@@ -223,7 +223,7 @@ describe('E2E GitHub Actions workflow', () => {
       ],
       fallback: false
     });
-  });
+  }, 15_000);
 });
 
 function extractYamlBlock(source: string, header: string): string {

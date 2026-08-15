@@ -70,6 +70,10 @@ describe('camera extraction', () => {
     expect(Mat4.multiply(extracted.viewProjection, extracted.inverseViewProjection)).toEqual(
       expect.any(Float32Array)
     );
+    expect(Object.isFrozen(extracted.view)).toBe(true);
+    expect(Object.isFrozen(extracted.projection)).toBe(true);
+    expect(() => ((extracted.view as number[])[0] = 99)).toThrow();
+    expect(extracted.view[0]).toBe(1);
   });
 
   test('rejects invalid projection, viewport, and singular matrices', () => {
@@ -118,7 +122,72 @@ describe('camera extraction', () => {
     });
 
     expect(visibilityView.frustum?.planes).toEqual(Frustum.fromViewProjection(unjittered).planes);
-    expect(visibilityView.viewMatrix).toEqual(extracted.view);
+    expect(visibilityView.viewMatrix).toEqual(Array.from(extracted.view));
+    expect(Object.isFrozen(visibilityView.viewMatrix)).toBe(true);
+    expect(() => ((visibilityView.viewMatrix as number[])[0] = 99)).toThrow();
+    expect(visibilityView.viewMatrix?.[0]).toBe(extracted.view[0]);
+  });
+
+  test('copies and freezes caller-owned jitter pixels', () => {
+    const jitterPixels: [number, number] = [1, -1];
+    const extracted = extractView({
+      viewId: 'jitter-owned',
+      camera: entity(7),
+      revision: 4,
+      view: Mat4.identity(),
+      projection: Mat4.perspective(Math.PI / 2, 1, 0.1, 10),
+      unjitteredProjection: Mat4.perspective(Math.PI / 2, 1, 0.1, 10),
+      projectionDescriptor: {
+        kind: 'perspective',
+        near: 0.1,
+        far: 10,
+        verticalFovRadians: Math.PI / 2
+      },
+      viewport: { logicalWidth: 100, logicalHeight: 100, devicePixelRatio: 1 },
+      layerMask: 3,
+      jitterPixels
+    });
+
+    jitterPixels[0] = 99;
+
+    expect(extracted.jitterPixels).toEqual([1, -1]);
+    expect(Object.isFrozen(extracted.jitterPixels)).toBe(true);
+  });
+
+  test('detaches CPU visibility data from an externally owned extracted view', () => {
+    const source = extractView({
+      viewId: 'external',
+      camera: entity(9),
+      revision: 5,
+      view: Mat4.identity(),
+      projection: Mat4.perspective(Math.PI / 2, 1, 0.1, 10),
+      projectionDescriptor: {
+        kind: 'perspective',
+        near: 0.1,
+        far: 10,
+        verticalFovRadians: Math.PI / 2
+      },
+      viewport: { logicalWidth: 100, logicalHeight: 100, devicePixelRatio: 1 },
+      layerMask: 1
+    });
+    const nestedExtra = { callerOwned: true };
+    const extracted = {
+      ...source,
+      view: new Float32Array(source.view),
+      viewportPixels: { ...source.viewportPixels, nestedExtra }
+    };
+    const visibilityView = createCpuVisibilityView(extracted, {
+      surface: 'main',
+      featurePolicyKey: 'cpu',
+      historyKey: 'main'
+    });
+
+    extracted.view[0] = 99;
+    extracted.viewportPixels.width = 7;
+
+    expect(visibilityView.viewMatrix?.[0]).toBe(1);
+    expect(visibilityView.viewport.width).toBe(100);
+    expect('nestedExtra' in visibilityView.viewport).toBe(false);
   });
 
   test('reports camera identity when a view cannot be published', () => {
@@ -144,7 +213,11 @@ describe('camera extraction', () => {
   });
 
   test('expands spheres by the maximum absolute non-uniform scale', () => {
-    expect(conservativeSphereFromScale([1, 2, 3], 2, [-1, 4, 0.5])).toEqual({
+    const center: [number, number, number] = [1, 2, 3];
+    const sphere = conservativeSphereFromScale(center, 2, [-1, 4, 0.5]);
+    center[0] = 99;
+
+    expect(sphere).toEqual({
       center: [1, 2, 3],
       radius: 8
     });

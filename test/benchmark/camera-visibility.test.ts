@@ -1,14 +1,25 @@
 import { describe, expect, test } from 'vitest';
 import {
   createVisibilityCandidates,
+  createCameraSnapshotWorkload,
   createSpatialEntries,
   prepareDynamicSpatialQuery,
   runSpatialSubject,
+  runCameraSnapshotReference,
+  runCameraSnapshotSubject,
   runVisibilityReference,
   runVisibilitySubject
 } from '../../benchmark/camera-visibility/scenario';
 
 describe('camera visibility benchmark oracle', () => {
+  test('keeps camera snapshot boundaries exact across the declared view scale axis', () => {
+    for (const count of [100, 1_000, 10_000]) {
+      const workload = createCameraSnapshotWorkload(count, 59);
+      expect(createCameraSnapshotWorkload(count, 59)).toEqual(workload);
+      expect(runCameraSnapshotSubject(workload)).toEqual(runCameraSnapshotReference(workload));
+    }
+  });
+
   test('generates deterministic workloads and agrees with the independent clip oracle', () => {
     for (const kind of ['sphere', 'aabb', 'mixed'] as const) {
       const candidates = createVisibilityCandidates(256, 23, kind);

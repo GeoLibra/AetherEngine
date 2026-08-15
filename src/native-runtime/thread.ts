@@ -1,4 +1,4 @@
-import type { NativeThreadDiagnostic, NativeThreadPort } from './runtime-types';
+import type { NativeThreadDiagnostic, NativeThreadPort } from './types';
 
 export class NativeThreadContractError extends Error {
   readonly diagnostic: NativeThreadDiagnostic;
@@ -7,7 +7,7 @@ export class NativeThreadContractError extends Error {
     const frozen = Object.freeze({ ...diagnostic });
     super(
       `Native operation "${frozen.operation}" requires thread "${frozen.requiredThread}", ` +
-      `actual thread is "${frozen.actualThread}".`
+        `actual thread is "${frozen.actualThread}".`
     );
     this.name = 'NativeThreadContractError';
     this.diagnostic = frozen;

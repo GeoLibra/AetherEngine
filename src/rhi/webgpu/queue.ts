@@ -2,9 +2,14 @@ import type { RHICommandBuffer } from '../contracts/command';
 import type { RHIQueue } from '../contracts/device';
 import type { GPUImageCopyTexture, RHIBuffer } from '../contracts/resource';
 import type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus } from '../contracts/submission';
-import type { BufferWriteRange, GPUExtent3D, GPUImageDataLayout, RHIUploadData } from '../contracts/webgpu';
+import type {
+  BufferWriteRange,
+  GPUExtent3D,
+  GPUImageDataLayout,
+  RHIUploadData
+} from '../contracts/webgpu';
 import { WebGPUCommandBuffer } from './command';
-import type { WebGPUNativeQueuePort, WebGPUNativeResourcePort } from './native-types';
+import type { WebGPUNativeQueuePort, WebGPUNativeResourcePort } from './types';
 import {
   WebGPUBuffer,
   WebGPUResourceBase,
@@ -59,7 +64,9 @@ export class WebGPUQueue implements RHIQueue {
     for (const commandBuffer of commandBuffers) {
       const webgpuCommandBuffer = assertWebGPUCommandBuffer(commandBuffer, this.owner);
       if (seen.has(commandBuffer)) {
-        throw new Error(`Command buffer "${commandBuffer.label ?? 'command-buffer'}" has already been submitted.`);
+        throw new Error(
+          `Command buffer "${commandBuffer.label ?? 'command-buffer'}" has already been submitted.`
+        );
       }
       seen.add(commandBuffer);
       webgpuCommandBuffer.assertReadyForSubmit();
@@ -177,7 +184,8 @@ export class WebGPUQueue implements RHIQueue {
     if (!(resource instanceof WebGPUBuffer)) {
       throw new Error('WebGPUQueue only accepts buffers created by WebGPUDevice.');
     }
-    if (resource.isMapped) throw new Error(`Buffer "${buffer.label ?? buffer.id}" is currently mapped.`);
+    if (resource.isMapped)
+      throw new Error(`Buffer "${buffer.label ?? buffer.id}" is currently mapped.`);
     return resource;
   }
 

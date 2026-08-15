@@ -9,6 +9,10 @@ import type {
   SourceSpan
 } from './types';
 
+const NO_SHADER_DIAGNOSTICS: readonly ShaderDiagnostic[] = Object.freeze([]);
+const NO_RELATED_SPANS: readonly SourceSpan[] = Object.freeze([]);
+const NO_SHADER_IR_ITEMS: readonly never[] = Object.freeze([]);
+
 export interface ShaderGraphNode {
   readonly id: string;
   readonly kind: string;
@@ -29,7 +33,7 @@ export class ShaderGraphCompiler {
   private readonly nodeCache = new Map<string, ShaderExpressionIR>();
   async lower(graph: ShaderGraph, signal?: AbortSignal): Promise<GraphResult> {
     if (signal?.aborted)
-      return Object.freeze({ ok: false, cancelled: true, diagnostics: Object.freeze([]) });
+      return Object.freeze({ ok: false, cancelled: true, diagnostics: NO_SHADER_DIAGNOSTICS });
     const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
     const order: ShaderGraphNode[] = [];
     const active = new Set<string>();
@@ -63,7 +67,7 @@ export class ShaderGraphCompiler {
     const nodeHashes = new Map<string, string>();
     for (const node of order) {
       if (signal?.aborted)
-        return Object.freeze({ ok: false, cancelled: true, diagnostics: Object.freeze([]) });
+        return Object.freeze({ ok: false, cancelled: true, diagnostics: NO_SHADER_DIAGNOSTICS });
       for (const dependency of Object.values(node.inputs ?? {})) {
         const source = nodes.get(dependency)!;
         if (source.outputType !== node.outputType)
@@ -125,16 +129,16 @@ export class ShaderGraphCompiler {
     const span = graphSpan();
     const ir: ShaderModuleIR = Object.freeze({
       version: 1,
-      types: Object.freeze([]),
-      globals: Object.freeze([]),
-      functions: Object.freeze([]),
+      types: NO_SHADER_IR_ITEMS,
+      globals: NO_SHADER_IR_ITEMS,
+      functions: NO_SHADER_IR_ITEMS,
       entryPoints: Object.freeze(
         Object.entries(graph.outputs).map(([stage, id], index) =>
           Object.freeze({
             id: (index + 1) as ShaderFunctionId,
             name: `${stage}Main`,
             stage: stage as 'vertex' | 'fragment' | 'compute',
-            parameters: Object.freeze([]),
+            parameters: NO_SHADER_IR_ITEMS,
             body: Object.freeze([
               Object.freeze({
                 kind: 'declare' as const,
@@ -150,7 +154,7 @@ export class ShaderGraphCompiler {
           })
         )
       ),
-      variants: Object.freeze([]),
+      variants: NO_SHADER_IR_ITEMS,
       sourceMap: Object.freeze({ spans: Object.freeze([span]) }),
       sourceClosureHash: stableHash(graph)
     });
@@ -248,6 +252,6 @@ function graphDiagnostic(code: string, message: string): ShaderDiagnostic {
     message,
     stage: 'typecheck',
     primary: graphSpan(),
-    related: Object.freeze([])
+    related: NO_RELATED_SPANS
   });
 }

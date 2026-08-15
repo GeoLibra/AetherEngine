@@ -20,12 +20,12 @@ export interface ExtractedView {
   readonly viewId: string;
   readonly camera: RenderEntityId;
   readonly revision: number;
-  readonly view: Float32Array;
-  readonly projection: Float32Array;
-  readonly viewProjection: Float32Array;
-  readonly inverseViewProjection: Float32Array;
-  readonly unjitteredProjection: Float32Array;
-  readonly unjitteredViewProjection: Float32Array;
+  readonly view: ArrayLike<number>;
+  readonly projection: ArrayLike<number>;
+  readonly viewProjection: ArrayLike<number>;
+  readonly inverseViewProjection: ArrayLike<number>;
+  readonly unjitteredProjection: ArrayLike<number>;
+  readonly unjitteredViewProjection: ArrayLike<number>;
   readonly viewportPixels: Readonly<{ x: number; y: number; width: number; height: number }>;
   readonly layerMask: number;
   readonly jitterPixels: readonly [number, number];
@@ -121,6 +121,9 @@ export function extractView(options: ExtractViewOptions): ExtractedView {
   );
   const viewProjection = Mat4.multiply(projection, view);
   const unjitteredViewProjection = Mat4.multiply(unjitteredProjection, view);
+  const jitterPixels = Object.freeze(
+    options.jitterPixels === undefined ? [0, 0] : [options.jitterPixels[0], options.jitterPixels[1]]
+  ) as readonly [number, number];
   let inverseViewProjection: Float32Array;
   try {
     inverseViewProjection = Mat4.invert(viewProjection);
@@ -135,17 +138,21 @@ export function extractView(options: ExtractViewOptions): ExtractedView {
     viewId: options.viewId,
     camera: options.camera,
     revision: options.revision,
-    view,
-    projection,
-    viewProjection,
-    inverseViewProjection,
-    unjitteredProjection,
-    unjitteredViewProjection,
+    view: snapshotMatrix(view),
+    projection: snapshotMatrix(projection),
+    viewProjection: snapshotMatrix(viewProjection),
+    inverseViewProjection: snapshotMatrix(inverseViewProjection),
+    unjitteredProjection: snapshotMatrix(unjitteredProjection),
+    unjitteredViewProjection: snapshotMatrix(unjitteredViewProjection),
     viewportPixels: computeViewportPixels(options.viewport),
     layerMask: options.layerMask,
-    jitterPixels: options.jitterPixels ?? ([0, 0] as const),
+    jitterPixels,
     depthMode: options.depthMode ?? 'standard'
   });
+}
+
+function snapshotMatrix(matrix: ArrayLike<number>): readonly number[] {
+  return Object.freeze(Array.from(matrix));
 }
 
 export class CameraViewError extends Error {
@@ -179,7 +186,7 @@ export function conservativeSphereFromScale(
   )
     throw new Error('Sphere transform inputs must be finite with a non-negative radius.');
   return Object.freeze({
-    center,
+    center: Object.freeze([...center]) as Vec3,
     radius: localRadius * Math.max(Math.abs(scale[0]), Math.abs(scale[1]), Math.abs(scale[2]))
   });
 }
