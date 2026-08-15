@@ -1,0 +1,5 @@
+{
+  "backend": "webgl2",
+  "graphicsQueue": "native",
+  "hostServices": ["main-cpu"]
+}

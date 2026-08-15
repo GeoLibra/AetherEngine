@@ -1,0 +1,40 @@
+{
+  "viewLayerMask": 1,
+  "capacity": {
+    "maxDirectionalLights": 1,
+    "maxLightsPerReceiver": 4,
+    "maxLightIndices": 4
+  },
+  "lights": [
+    {
+      "entity": 1,
+      "payloadVersion": 1,
+      "colorLinear": [1, 1, 1],
+      "enabled": true,
+      "layerMask": 1,
+      "castsShadow": false,
+      "kind": "directional",
+      "direction": [0, -1, 0],
+      "illuminanceLux": 10000
+    },
+    {
+      "entity": 2,
+      "payloadVersion": 1,
+      "colorLinear": [1, 0, 0],
+      "enabled": true,
+      "layerMask": 1,
+      "castsShadow": false,
+      "kind": "point",
+      "position": [0, 0, 0],
+      "luminousIntensityCandela": 100,
+      "range": 5
+    }
+  ],
+  "receivers": [
+    {
+      "renderEntity": 10,
+      "layerMask": 1,
+      "bounds": { "kind": "sphere", "center": [0, 0, 0], "radius": 1 }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "backend": "webgpu",
+  "graphicsQueue": "native",
+  "hostServices": ["main-cpu"]
+}
