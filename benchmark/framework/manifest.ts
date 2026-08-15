@@ -299,6 +299,45 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         executable: 'node',
         args: Object.freeze(['benchmark/asset-pipeline-runner.mjs', '{profile}'])
       })
+    }),
+    Object.freeze({
+      id: 'simulation-vfx',
+      description:
+        'Simulation VFX vertex-analytic and CPU interpreter determinism, spawn batches, and state oracle baselines.',
+      domainIds: Object.freeze(['simulation']),
+      pathPrefixes: Object.freeze([
+        'benchmark/simulation-vfx.bench.ts',
+        'benchmark/simulation-vfx-runner.mjs',
+        'benchmark/simulation-vfx/',
+        'engine/design/v2/06-simulation/',
+        'src/animation/',
+        'src/vfx/',
+        'src/physics/',
+        'src/navigation/',
+        'test/benchmark/simulation-vfx.test.ts'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/simulation-vfx-runner.mjs', '{profile}'])
+      })
+    }),
+    Object.freeze({
+      id: 'editor-workflow',
+      description:
+        'Editor document command batches, snapshot revision tracking, and state checksum baselines.',
+      domainIds: Object.freeze(['editor']),
+      pathPrefixes: Object.freeze([
+        'benchmark/editor-workflow.bench.ts',
+        'benchmark/editor-workflow-runner.mjs',
+        'benchmark/editor-workflow/',
+        'engine/design/v2/08-tooling/02-editor.md',
+        'src/editor/',
+        'test/benchmark/editor-workflow.test.ts'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/editor-workflow-runner.mjs', '{profile}'])
+      })
     })
   ])
 });
