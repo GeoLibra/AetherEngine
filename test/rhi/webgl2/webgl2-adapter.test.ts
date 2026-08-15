@@ -83,6 +83,20 @@ function adapterConstructor() {
 }
 
 describe('WebGL2 adapter capability negotiation', () => {
+  test('seals the read-only extension set without exposing its copied backing set', () => {
+    const native = new NativeContext();
+    const adapter = new (adapterConstructor())(native);
+    const extensions = adapter.facts.extensions;
+
+    expect(Object.isFrozen(extensions)).toBe(true);
+    expect(() => Object.assign(extensions, { debugState: true })).toThrow();
+    expect(() => Object.assign(extensions, { size: 999 })).toThrow();
+    expect(Reflect.ownKeys(extensions)).toEqual([]);
+    expect(Object.values(extensions).some((value) => value instanceof Set)).toBe(false);
+    expect(extensions.has('EXT_disjoint_timer_query_webgl2')).toBe(true);
+    expect([...extensions]).toEqual(['EXT_disjoint_timer_query_webgl2']);
+  });
+
   test('snapshots probed limits, formats, extensions, precision, and one graphics queue', () => {
     const native = new NativeContext();
     const adapter = new (adapterConstructor())(native);

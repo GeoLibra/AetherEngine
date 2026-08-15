@@ -10,6 +10,25 @@ import type {
 } from '../../../src/rhi/contracts/capability';
 
 describe('NullAdapter negotiation', () => {
+  test('seals the read-only capability map without exposing its copied backing map', () => {
+    const snapshot = createCapabilitySnapshot({
+      backend: 'null',
+      features: new Map([['compute', { status: 'native' }]]),
+      limits: {},
+      formats: new Map(),
+      queues: []
+    });
+    const features = snapshot.features;
+
+    expect(Object.isFrozen(features)).toBe(true);
+    expect(() => Object.assign(features, { debugState: true })).toThrow();
+    expect(() => Object.assign(features, { size: 999 })).toThrow();
+    expect(Reflect.ownKeys(features)).toEqual([]);
+    expect(Object.values(features).some((value) => value instanceof Map)).toBe(false);
+    expect(features.get('compute')).toEqual({ status: 'native' });
+    expect([...features.keys()]).toEqual(['compute']);
+  });
+
   test('publishes detached capability maps through an enforcing read-only facade', () => {
     const nestedExtra = { callerOwned: true };
     const feature = { status: 'native', nestedExtra } as FeatureSupport & { nestedExtra: object };

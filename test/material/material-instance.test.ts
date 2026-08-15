@@ -12,6 +12,22 @@ import {
 import { PbrSchema, createPbrAsset, createPbrInstance, definePbrSchema } from './material-fixtures';
 
 describe('immutable material assets and instances', () => {
+  test('keeps the immutable instance facade sealed while edit state remains private', () => {
+    const { instance } = createPbrInstance();
+
+    expect(Object.isFrozen(instance)).toBe(true);
+    expect(() => Object.assign(instance, { revision: 999 })).toThrow();
+    expect(() => Object.assign(instance, { debugState: new Map() })).toThrow();
+    expect(Reflect.ownKeys(instance)).toEqual(['asset', 'revision', 'parameters', 'keywords']);
+    expect(
+      Object.values(instance).some((value) => value instanceof Map || value instanceof Set)
+    ).toBe(false);
+
+    const edited = instance.edit((draft) => draft.set(PbrSchema.fields.roughness, 0.4));
+    expect(edited.revision).toBe(1);
+    expect(edited.parameters.get(PbrSchema.fields.roughness)).toBe(0.4);
+  });
+
   test('commits a multi-field/keyword transaction as exactly one revision', () => {
     const { instance } = createPbrInstance();
     const noOp = instance.edit(() => undefined);
