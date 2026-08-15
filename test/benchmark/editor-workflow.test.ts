@@ -54,4 +54,13 @@ describe('editor workflow benchmark oracle and state machine reference', () => {
     expect(result.documentRevision).toBe(EDITOR_GOLDEN_1000_SEED_4242.documentRevision);
     expect(result.stateChecksum).toBe(EDITOR_GOLDEN_1000_SEED_4242.stateChecksum);
   });
+
+  test('fails fast on invalid initialCapacity inputs (NaN, float, zero, negative, infinity)', () => {
+    const batch = createEditorCommandBatch(10, 0x4242);
+    const invalidCapacities = [NaN, 16.5, 0, -1, -100, Infinity, -Infinity];
+
+    for (const invalidCap of invalidCapacities) {
+      expect(() => applyEditorCommandBatch(batch, invalidCap)).toThrowError(RangeError);
+    }
+  });
 });
