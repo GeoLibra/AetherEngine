@@ -244,18 +244,18 @@ export function lowerFluxModules(
   const functions = new Map<string, FunctionInfo>();
   for (const declaration of declarations) {
     if (declaration.kind !== 'function') continue;
-    const info: FunctionInfo = Object.freeze({
+    // FunctionInfo is an owner-private analysis record. Its public counterpart is
+    // the fully frozen ShaderFunctionIR returned after lowering succeeds.
+    const info: FunctionInfo = {
       id: nextFunction++ as ShaderFunctionId,
       declaration,
-      parameters: Object.freeze(
-        declaration.parameters.map((parameter) =>
-          resolveType(parameter.type.name, parameter.type.span)
-        )
+      parameters: declaration.parameters.map((parameter) =>
+        resolveType(parameter.type.name, parameter.type.span)
       ),
       ...(declaration.returnType
         ? { returnType: resolveType(declaration.returnType.name, declaration.returnType.span) }
         : {})
-    });
+    };
     const existing = functions.get(declaration.name);
     if (existing)
       diagnostics.push(

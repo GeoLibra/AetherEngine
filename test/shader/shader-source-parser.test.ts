@@ -112,7 +112,8 @@ describe('FluxSL source and parser', () => {
       kind: 'if',
       condition: { kind: 'literal', value: true }
     });
-    expect(entry?.body[0] && Object.isFrozen(entry.body[0])).toBe(true);
+    expect(() => Object.assign(entry?.body[0] as object, { kind: 'discard' })).toThrow();
+    expect(entry?.body[0]).toMatchObject({ kind: 'if' });
   });
 
   test('returns source-mapped diagnostics for unsupported language and malformed declarations', async () => {
