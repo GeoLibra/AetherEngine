@@ -53,6 +53,7 @@ function copyValue(value: unknown, visiting: WeakSet<object>): unknown {
     throw new Error(`Render field values cannot contain ${type} values.`);
   }
   if (type !== 'object') throw new Error('Render field value is unsupported.');
+  assertProxyFree(value);
   if (
     value instanceof Map ||
     value instanceof Set ||
@@ -71,6 +72,37 @@ function copyValue(value: unknown, visiting: WeakSet<object>): unknown {
     return Array.isArray(value) ? copyArray(value, visiting) : copyRecord(value, visiting);
   } finally {
     visiting.delete(value);
+  }
+}
+
+/**
+ * Proxies can forge a plain prototype and hide keys from reflective validation. The supported
+ * engine runtimes provide structuredClone, which rejects every Proxy before it can become an
+ * owner-retained field value. This probe never retains or mutates the caller's object.
+ */
+function assertProxyFree(value: object): void {
+  assertDataProperties(value);
+  if (typeof structuredClone !== 'function') {
+    throw new Error('Render field snapshots require structuredClone proxy validation support.');
+  }
+  try {
+    structuredClone(value);
+  } catch {
+    throw new Error('Render field values cannot contain proxy or non-cloneable objects.');
+  }
+}
+
+function assertDataProperties(value: object): void {
+  try {
+    for (const key of Reflect.ownKeys(value)) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor?.get !== undefined || descriptor?.set !== undefined) {
+        throw new Error('Render field values must contain data properties only.');
+      }
+    }
+  } catch (error) {
+    if (error instanceof Error && /data properties/.test(error.message)) throw error;
+    throw new Error('Render field values cannot contain proxy or non-cloneable objects.');
   }
 }
 

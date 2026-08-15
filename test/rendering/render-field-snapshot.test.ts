@@ -151,7 +151,47 @@ describe('Render field typed-array snapshots', () => {
   test('rejects a proxy instead of consulting proxy-controlled typed-array properties', () => {
     const source = new Proxy(new Uint16Array([1, 2]), {});
 
-    expect(() => copyRenderFieldValue(source)).toThrow(/typed array/i);
+    expect(() => copyRenderFieldValue(source)).toThrow(/proxy|typed array/i);
+  });
+
+  test('rejects transparent and ownKeys-hiding record proxies at the field boundary', () => {
+    const transparent = new Proxy({ nested: { value: 1 } }, {});
+    const hidden = new Proxy(
+      { nested: new Uint8Array([1]) },
+      {
+        getPrototypeOf: () => Object.prototype,
+        ownKeys: () => [],
+        getOwnPropertyDescriptor: () => undefined
+      }
+    );
+
+    expect(() => copyRenderFieldValue(transparent)).toThrow(/proxy|clone/i);
+    expect(() => copyRenderFieldValue(hidden)).toThrow(/proxy|clone/i);
+  });
+
+  test('continues to snapshot ordinary plain and null-prototype records without freezing callers', () => {
+    const plain = { nested: [1, 2] };
+    const nullRecord = Object.assign(Object.create(null), { plain });
+    const copy = copyRenderFieldValue(nullRecord) as { plain: { nested: readonly number[] } };
+
+    plain.nested[0] = 9;
+
+    expect(copy.plain.nested).toEqual([1, 2]);
+    expect(Object.isExtensible(plain)).toBe(true);
+  });
+
+  test('rejects accessor records before a proxy probe can invoke caller code', () => {
+    let reads = 0;
+    const source = Object.defineProperty({}, 'hidden', {
+      enumerable: true,
+      get() {
+        reads++;
+        return 1;
+      }
+    });
+
+    expect(() => copyRenderFieldValue(source)).toThrow(/data properties/i);
+    expect(reads).toBe(0);
   });
 
   test('rejects DataView values instead of treating bytes as a field typed array', () => {

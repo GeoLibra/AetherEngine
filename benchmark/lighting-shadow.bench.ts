@@ -12,8 +12,12 @@ import {
   runShadowSelectionSubject
 } from './lighting-shadow/scenario';
 import { RenderGraphBuilder } from '../src/render-graph';
-import { declareShadowDepthPasses, type ShadowRequest } from '../src/rendering';
+import { declareShadowDepthPasses } from '../src/rendering';
 import { ReadonlyMapSnapshot } from '../src/rendering/readonly-collection-snapshot';
+import {
+  assertDeclaredShadowLayers,
+  createShadowDeclarationWorkload
+} from './lighting-shadow/declaration-scenario';
 
 for (const count of [100, 1_000, 10_000]) {
   const workload = createShadowSelectionWorkload(count);
@@ -74,7 +78,8 @@ bench(
 );
 
 for (const count of [16, 64, 256]) {
-  const requests = createShadowDeclarationRequests(count);
+  const declarationWorkload = createShadowDeclarationWorkload(count);
+  const { requests } = declarationWorkload;
   const entries = new Map(requests.map((request, index) => [`key-${index}`, index] as const));
   bench(
     `constructs ${count} shadow ReadonlyMapSnapshot entries`,
@@ -92,24 +97,10 @@ for (const count of [16, 64, 256]) {
       const declaration = declareShadowDepthPasses(graph, requests, { record: () => undefined });
       expect(declaration.passes).toHaveLength(count);
       expect(declaration.layerByRequestKey.size).toBe(count);
-      expect(declaration.layerByRequestKey.get(`shadow:unused`)).toBeUndefined();
+      expect(
+        assertDeclaredShadowLayers(declarationWorkload, declaration.layerByRequestKey)
+      ).toEqual(declarationWorkload.expectedLayers);
     },
     { iterations: 1, warmupIterations: 0 }
-  );
-}
-
-function createShadowDeclarationRequests(count: number): readonly ShadowRequest[] {
-  return Object.freeze(
-    Array.from({ length: count }, (_, index) =>
-      Object.freeze({
-        lightEntity: (index + 1) as ShadowRequest['lightEntity'],
-        viewId: 'benchmark-view',
-        kind: 'spot' as const,
-        subresourceIndex: index,
-        resolutionClass: 32,
-        importance: count - index,
-        casterRevision: 1
-      })
-    )
   );
 }

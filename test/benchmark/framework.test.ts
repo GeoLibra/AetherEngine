@@ -60,6 +60,18 @@ describe('changed-file routing', () => {
     expect(route.missingDomainIds).toEqual([]);
   });
 
+  test('routes the transform design and requirement contract to its dedicated suite', () => {
+    for (const path of [
+      'engine/design/v2/01-foundation/02-math-transform.md',
+      'engine/requirements.md'
+    ]) {
+      const route = routeChangedFiles(BENCHMARK_MANIFEST, [path]);
+      expect(route.domainIds).toEqual(['transform']);
+      expect(route.suiteIds).toEqual(['transform-runtime']);
+      expect(route.missingDomainIds).toEqual([]);
+    }
+  });
+
   test('requires a suite when Rendering work starts', () => {
     const route = routeChangedFiles(BENCHMARK_MANIFEST, ['src/rendering/render-graph.ts']);
 

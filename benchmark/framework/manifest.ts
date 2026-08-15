@@ -21,7 +21,11 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
     Object.freeze({
       id: 'transform',
       description: 'Transform propagation and extraction snapshot paths.',
-      pathPrefixes: Object.freeze(['src/transform/'])
+      pathPrefixes: Object.freeze([
+        'engine/design/v2/01-foundation/02-math-transform.md',
+        'engine/requirements.md',
+        'src/transform/'
+      ])
     }),
     Object.freeze({
       id: 'jobs',
@@ -159,7 +163,12 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       pathPrefixes: Object.freeze([
         'benchmark/transform-runtime.bench.ts',
         'benchmark/transform-runtime-runner.mjs',
+        'benchmark/transform-runtime-runner-guard.mjs',
+        'benchmark/transform-runtime-scenario.ts',
+        'engine/design/v2/01-foundation/02-math-transform.md',
+        'engine/requirements.md',
         'src/transform/',
+        'test/benchmark/transform-runtime.test.ts',
         'test/transform/'
       ]),
       command: Object.freeze({

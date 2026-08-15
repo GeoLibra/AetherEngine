@@ -103,6 +103,51 @@ describe('Object.freeze governance', () => {
     ).toEqual([]);
   });
 
+  test('uses checker-backed symbol and initializer resolution for publication roots', () => {
+    const exposures = nestedMutableExposures(
+      [
+        'const MapCtor = globalThis.Map;',
+        'const table: ReadonlyMap<string, number> = new MapCtor<string, number>();',
+        'const holder = { table };',
+        "Object.freeze(holder['table']);",
+        'function freezeParameter(value: Map<string, number>) { Object.freeze(value); }',
+        'function factory() { return new Set<string>(); }',
+        'Object.freeze(factory());',
+        'Object.freeze([...new Set([new Uint16Array([1])])]);',
+        'class ConstructorAssigned {',
+        '  private table!: ReadonlyMap<string, number>;',
+        '  constructor() { this.table = new Map<string, number>(); Object.freeze(this); }',
+        '}'
+      ].join('\n')
+    );
+
+    expect(exposures.map(({ propertyPath, kind }) => ({ propertyPath, kind }))).toEqual([
+      { propertyPath: '<root>', kind: 'Map' },
+      { propertyPath: '<root>', kind: 'Map' },
+      { propertyPath: '<root>', kind: 'Set' },
+      { propertyPath: '[0]', kind: 'Uint16Array' },
+      { propertyPath: 'table', kind: 'Map' }
+    ]);
+  });
+
+  test('follows conditional and computed paths and preserves object last-write semantics', () => {
+    expect(
+      nestedMutableExposures(
+        [
+          'const base = { table: new Map<string, number>() };',
+          "const property = 'table' as const;",
+          'Object.freeze({ ...base, table: undefined });',
+          'Object.freeze({ ...base, [property]: new Set<string>() });',
+          'Object.freeze(Math.random() > 0.5 ? base.table : new Uint8Array([1]));'
+        ].join('\n')
+      ).map(({ propertyPath, kind }) => ({ propertyPath, kind }))
+    ).toEqual([
+      { propertyPath: 'table', kind: 'Set' },
+      { propertyPath: '<root>', kind: 'Map' },
+      { propertyPath: '<root>', kind: 'Uint8Array' }
+    ]);
+  });
+
   test('bounds cyclic alias resolution', () => {
     expect(
       nestedMutableExposures('const first = second; const second = first; Object.freeze(first);')

@@ -11,8 +11,18 @@ import {
   runShadowSelectionReference,
   runShadowSelectionSubject
 } from '../../benchmark/lighting-shadow/scenario';
+import {
+  assertDeclaredShadowLayers,
+  createShadowDeclarationWorkload
+} from '../../benchmark/lighting-shadow/declaration-scenario';
 
 describe('lighting-shadow benchmark oracle', () => {
+  test('checks every declaration key against an independent stable-layer oracle', () => {
+    const workload = createShadowDeclarationWorkload(64);
+    expect(createShadowDeclarationWorkload(64)).toEqual(workload);
+    expect(assertDeclaredShadowLayers(workload)).toEqual(workload.expectedLayers);
+  });
+
   test('keeps shadow selection exact across the declared request scale axis', () => {
     for (const count of [100, 1_000, 10_000]) {
       const workload = createShadowSelectionWorkload(count, 127);
