@@ -1,4 +1,4 @@
-import type { NativeCancellationToken } from './bridge-types';
+import type { NativeCancellationToken } from './types';
 
 export class NativeCancellationSource {
   private cancelledValue = false;
@@ -8,7 +8,9 @@ export class NativeCancellationSource {
   constructor() {
     const source = this;
     this.token = Object.freeze({
-      get cancelled(): boolean { return source.cancelledValue; },
+      get cancelled(): boolean {
+        return source.cancelledValue;
+      },
       subscribe(listener: () => void): () => boolean {
         if (source.cancelledValue) {
           listener();

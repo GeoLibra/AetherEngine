@@ -1,8 +1,4 @@
-import type {
-  NativeHandle,
-  NativeHandleLease,
-  NativeHandleRegistryOptions
-} from './handle-types';
+import type { NativeHandle, NativeHandleLease, NativeHandleRegistryOptions } from './types';
 
 interface HandleEntry<T> {
   readonly id: number;
@@ -33,12 +29,19 @@ export class NativeHandleRegistry<T> {
     this.destroyValue = options.destroy;
   }
 
-  get liveEntries(): number { return this.entries.size; }
+  get liveEntries(): number {
+    return this.entries.size;
+  }
 
   create<U extends T>(type: string, value: U): NativeHandle<U> {
     if (type.length === 0) throw new Error('Native handle type must not be empty.');
     const entry: HandleEntry<T> = {
-      id: this.nextId++, generation: this.generation, type, value, logical: true, leases: 0
+      id: this.nextId++,
+      generation: this.generation,
+      type,
+      value,
+      logical: true,
+      leases: 0
     };
     this.entries.set(entry.id, entry);
     return Object.freeze({ id: entry.id, generation: entry.generation, owner: this.owner });
@@ -73,7 +76,9 @@ export class NativeHandleRegistry<T> {
     return true;
   }
 
-  finalize(handle: NativeHandle<T>): boolean { return this.release(handle); }
+  finalize(handle: NativeHandle<T>): boolean {
+    return this.release(handle);
+  }
 
   loseGeneration(): void {
     if (this.generation === Number.MAX_SAFE_INTEGER) {

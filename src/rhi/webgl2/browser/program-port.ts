@@ -1,5 +1,8 @@
-import type { WebGL2NativeContextPort } from '../native-types';
-import type { WebGL2BindingManifestEntry, WebGL2ProgramBinding } from '../shader-types';
+import type {
+  WebGL2BindingManifestEntry,
+  WebGL2NativeContextPort,
+  WebGL2ProgramBinding
+} from '../types';
 import { constant } from './capability-query';
 import { glCall, glObject } from './gl-call';
 import type { BrowserWebGL2Object } from './types';

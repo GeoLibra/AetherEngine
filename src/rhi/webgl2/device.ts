@@ -26,8 +26,8 @@ import type {
   RHIShaderModule,
   RHITexture
 } from '../contracts/resource';
-import type { WebGL2NativeContextLostInfo, WebGL2NativeContextPort } from './native-types';
-import type { WebGL2DeviceOwner } from './resource-types';
+import type { WebGL2NativeContextLostInfo, WebGL2NativeContextPort } from './types';
+import type { WebGL2DeviceOwner } from './types';
 import {
   WebGL2Buffer,
   WebGL2Sampler,
@@ -40,12 +40,13 @@ import { WebGL2Queue } from './queue';
 import { WebGL2ShaderModule } from './shader';
 import { WebGL2BindGroup, WebGL2BindGroupLayout, WebGL2PipelineLayout } from './bindings';
 import { createWebGL2RenderPipeline } from './pipeline';
-import type { WebGL2ShaderTranslationPort } from './shader-types';
+import type { WebGL2ShaderTranslationPort } from './types';
 import { throwWebGL2Unsupported } from './unsupported';
 import { WebGL2CommandEncoder } from './command';
 import { createWebGL2ContextControl } from './context-control';
 import { createWebGL2LossDiagnostic } from './diagnostics';
-import { WebGL2ContextControlExtension, type WebGL2ContextControl } from './extension-types';
+import type { WebGL2ContextControl } from './types';
+import { WebGL2ContextControlExtension } from './context-control';
 import {
   initializeWebGL2ClipDepth,
   selectWebGL2ClipDepthMode,

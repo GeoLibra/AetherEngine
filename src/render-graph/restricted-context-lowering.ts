@@ -15,7 +15,7 @@ import type {
   RestrictedRenderPipelineDescriptor,
   RestrictedShaderModule,
   RestrictedVertexState
-} from './restricted-context-types';
+} from './types';
 
 type ResolveLayout = (layout: RestrictedPipelineLayout) => RHIPipelineLayout;
 type ResolveShader = (module: RestrictedShaderModule) => RHIShaderModule;

@@ -4,9 +4,9 @@ import { collectDeviceRequestDifferences } from '../core/adapter-validation';
 import type { AdapterCapabilities, RHIFeature } from '../contracts/capability';
 import { RHIDeviceRequestError } from '../contracts/errors';
 import { WebGPUDevice } from '../webgpu/device';
-import type { WebGPUNativeDeviceRequest } from '../webgpu/native-types';
+import type { WebGPUNativeDeviceRequest } from '../webgpu/types';
 import { createNativeDawnCapabilities } from './capabilities';
-import type { NativeDawnAdapterFacts, NativeDawnAdapterPort } from './native-types';
+import type { NativeDawnAdapterFacts, NativeDawnAdapterPort } from './types';
 
 export class NativeDawnDeviceRequestError extends Error {
   readonly code = 'rhi/native-dawn-device-request-failed' as const;
@@ -29,7 +29,8 @@ export class NativeDawnAdapter implements RHIAdapter {
     private readonly native: NativeDawnAdapterPort,
     readonly diagnostics = new DiagnosticStore()
   ) {
-    if (native.dawn.version.trim().length === 0) throw new Error('Native Dawn version must not be empty.');
+    if (native.dawn.version.trim().length === 0)
+      throw new Error('Native Dawn version must not be empty.');
     if (!['metal', 'vulkan', 'd3d12'].includes(native.dawn.backend)) {
       throw new Error('Native Dawn backend is unsupported.');
     }
@@ -53,7 +54,11 @@ export class NativeDawnAdapter implements RHIAdapter {
     try {
       const device = await this.native.requestDevice(createNativeRequest(request, extensions));
       // The WebGPU-like Dawn port is the RHI hot path; generic bridge dispatch is intentionally absent.
-      return new WebGPUDevice(createNativeDawnCapabilities(this.native, extensions), device, this.diagnostics);
+      return new WebGPUDevice(
+        createNativeDawnCapabilities(this.native, extensions),
+        device,
+        this.diagnostics
+      );
     } catch (cause) {
       throw new NativeDawnDeviceRequestError(this.info.name, request.label, cause);
     }

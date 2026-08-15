@@ -1,7 +1,7 @@
 export { DEFAULT_DEVICE_PIXEL_RATIO, DEFAULT_WINDOW_TITLE } from './constants';
 export { BrowserHost } from './browser-host';
 export { createBrowserGraphics } from './browser-graphics';
-export { BrowserGraphicsBootstrapError } from './browser-graphics-types';
+export { BrowserGraphicsBootstrapError } from './browser-graphics-error';
 export type {
   BrowserGraphicsAttempt,
   BrowserGraphicsLoss,
@@ -9,7 +9,7 @@ export type {
   BrowserGraphicsSession,
   BrowserSurfaceOptions,
   PhysicalSize
-} from './browser-graphics-types';
+} from './types';
 export type { BrowserPlatformPort, BrowserWindowPort } from './browser-host';
 export { MutablePlatformServiceRegistry, createPlatformServiceToken } from './services';
 export { HostBoundaryRunner } from './host-runner';
@@ -24,7 +24,7 @@ export type {
   NativePlatformLifecycleEvent,
   NativePlatformPort,
   NativeWindowPort
-} from './native-host-types';
+} from './types';
 export {
   NativeAudioServiceToken,
   NativeClipboardServiceToken,
@@ -51,12 +51,8 @@ export type {
   NativeSensorPort,
   NativeSensorsService,
   NativeXrService
-} from './native-service-types';
-export {
-  createWindowMetrics,
-  equalWindowMetrics,
-  updateWindowMetrics
-} from './window-metrics';
+} from './types';
+export { createWindowMetrics, equalWindowMetrics, updateWindowMetrics } from './window-metrics';
 export type {
   Host,
   HostKind,

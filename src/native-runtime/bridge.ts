@@ -6,7 +6,7 @@ import type {
   NativeBridgeResponse,
   NativeCancellationToken,
   NativeMethodDescriptor
-} from './bridge-types';
+} from './types';
 
 export class NativeBridgeError extends Error {
   constructor(readonly code: NativeBridgeErrorCode) {
@@ -20,12 +20,17 @@ export class NativeBridgeDispatcher {
   private nextRequestId = 1;
 
   constructor(private readonly options: NativeBridgeDispatcherOptions) {
-    const modules = new Map(options.handshake.modules.map((module) => [module.name, module.version]));
+    const modules = new Map(
+      options.handshake.modules.map((module) => [module.name, module.version])
+    );
     for (const method of options.methods) {
-      if (method.module === 'rhi') throw new Error('The rhi module is reserved for the direct native RHI path.');
+      if (method.module === 'rhi')
+        throw new Error('The rhi module is reserved for the direct native RHI path.');
       const version = modules.get(method.module);
-      if (version === undefined) throw new Error(`Native bridge module "${method.module}" was not negotiated.`);
-      if (version < method.version) throw new Error(`Native bridge module "${method.module}" version is too old.`);
+      if (version === undefined)
+        throw new Error(`Native bridge module "${method.module}" was not negotiated.`);
+      if (version < method.version)
+        throw new Error(`Native bridge module "${method.module}" version is too old.`);
       if (!Number.isSafeInteger(method.version) || method.version <= 0) {
         throw new Error('Native bridge method version must be a positive safe integer.');
       }
@@ -45,7 +50,8 @@ export class NativeBridgeDispatcher {
   ): Promise<O> {
     const registered = this.methods.get(methodKey(descriptor));
     if (registered !== descriptor) return Promise.reject(new NativeBridgeError('unknown-method'));
-    if (!descriptor.validateRequest(payload)) return Promise.reject(new NativeBridgeError('invalid-request'));
+    if (!descriptor.validateRequest(payload))
+      return Promise.reject(new NativeBridgeError('invalid-request'));
     const encoded = encodePayload(payload);
     if (encoded === undefined || !descriptor.validateRequest(encoded.payload)) {
       return Promise.reject(new NativeBridgeError('invalid-request'));
@@ -80,17 +86,21 @@ export class NativeBridgeDispatcher {
         const responsePayload = responseOk ? encodePayload(response.payload)?.payload : undefined;
         terminal = true;
         unsubscribe();
-        this.onJsOwner(`bridge.${request.module}.${request.method}`, () => {
-          if (!responseOk) {
-            reject(new NativeBridgeError('native-failure'));
-            return;
-          }
-          if (!descriptor.validateResponse(responsePayload)) {
-            reject(new NativeBridgeError('invalid-response'));
-            return;
-          }
-          resolve(responsePayload);
-        }, reject);
+        this.onJsOwner(
+          `bridge.${request.module}.${request.method}`,
+          () => {
+            if (!responseOk) {
+              reject(new NativeBridgeError('native-failure'));
+              return;
+            }
+            if (!descriptor.validateResponse(responsePayload)) {
+              reject(new NativeBridgeError('invalid-response'));
+              return;
+            }
+            resolve(responsePayload);
+          },
+          reject
+        );
       };
       const cancel = (): void => {
         if (terminal) return;
@@ -99,9 +109,13 @@ export class NativeBridgeDispatcher {
         if (invocation === undefined) cancelPending = true;
         else invocation.cancel();
         unsubscribe();
-        this.onJsOwner(`bridge.${request.module}.${request.method}.cancel`, () => {
-          reject(new NativeBridgeError('cancelled'));
-        }, reject);
+        this.onJsOwner(
+          `bridge.${request.module}.${request.method}.cancel`,
+          () => {
+            reject(new NativeBridgeError('cancelled'));
+          },
+          reject
+        );
       };
       unsubscribe = cancellation?.subscribe(cancel) ?? unsubscribe;
       if (terminal) return;
@@ -111,9 +125,13 @@ export class NativeBridgeDispatcher {
       } catch {
         terminal = true;
         unsubscribe();
-        this.onJsOwner(`bridge.${request.module}.${request.method}.invoke`, () => {
-          reject(new NativeBridgeError('native-failure'));
-        }, reject);
+        this.onJsOwner(
+          `bridge.${request.module}.${request.method}.invoke`,
+          () => {
+            reject(new NativeBridgeError('native-failure'));
+          },
+          reject
+        );
       }
     });
   }
@@ -125,16 +143,21 @@ export class NativeBridgeDispatcher {
   }
 
   private allocateRequestId(): number {
-    if (this.nextRequestId === Number.MAX_SAFE_INTEGER) throw new Error('Native bridge request ids exhausted.');
+    if (this.nextRequestId === Number.MAX_SAFE_INTEGER)
+      throw new Error('Native bridge request ids exhausted.');
     return this.nextRequestId++;
   }
 }
 
-function methodKey(method: Pick<NativeMethodDescriptor<unknown, unknown>, 'module' | 'method'>): string {
+function methodKey(
+  method: Pick<NativeMethodDescriptor<unknown, unknown>, 'module' | 'method'>
+): string {
   return `${method.module}:${method.method}`;
 }
 
-function encodePayload(value: unknown): { readonly bytes: number; readonly payload: unknown } | undefined {
+function encodePayload(
+  value: unknown
+): { readonly bytes: number; readonly payload: unknown } | undefined {
   try {
     const text = JSON.stringify(value);
     if (text === undefined) return undefined;

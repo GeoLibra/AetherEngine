@@ -3,9 +3,9 @@ import type {
   NativeHandshakeDifference,
   NativeHandshakeModule,
   NativeNegotiatedHandshake
-} from './abi-types';
+} from './types';
 import { NativeHandshakeError } from './errors';
-import type { NativeBuildManifest } from './manifest-types';
+import type { NativeBuildManifest } from './types';
 
 const ARRAY_BUFFER_CAPABILITIES = Object.freeze(['transfer', 'mapped', 'shared'] as const);
 
@@ -17,13 +17,20 @@ export function negotiateNativeHandshake(
   const differences: NativeHandshakeDifference[] = [];
   compareScalar(differences, 'build-id', manifest.buildId, actual.buildId);
   compareScalar(differences, 'engine-abi', manifest.engineAbiVersion, actual.engineAbiVersion);
-  compareScalar(differences, 'rhi-contract', manifest.rhiContractVersion, actual.rhiContractVersion);
+  compareScalar(
+    differences,
+    'rhi-contract',
+    manifest.rhiContractVersion,
+    actual.rhiContractVersion
+  );
   compareScalar(differences, 'endianness', manifest.abi.endianness, actual.abi.endianness);
   compareScalar(differences, 'pointer-bits', manifest.abi.pointerBits, actual.abi.pointerBits);
   for (const capability of ARRAY_BUFFER_CAPABILITIES) {
     if (manifest.abi.arrayBuffer[capability] && !actual.abi.arrayBuffer[capability]) {
       differences.push({
-        kind: 'array-buffer', capability, required: true,
+        kind: 'array-buffer',
+        capability,
+        required: true,
         actual: actual.abi.arrayBuffer[capability]
       });
     }
@@ -34,7 +41,9 @@ export function negotiateNativeHandshake(
     if (available === undefined || available.version < requirement.version) {
       if (requirement.required) {
         differences.push({
-          kind: 'module', module: requirement.name, required: requirement.version,
+          kind: 'module',
+          module: requirement.name,
+          required: requirement.version,
           actual: available?.version
         });
       }
@@ -56,20 +65,28 @@ export function negotiateNativeHandshake(
   });
 }
 
-function indexModules(modules: readonly NativeHandshakeModule[]): ReadonlyMap<string, NativeHandshakeModule> {
+function indexModules(
+  modules: readonly NativeHandshakeModule[]
+): ReadonlyMap<string, NativeHandshakeModule> {
   const result = new Map<string, NativeHandshakeModule>();
   for (const module of modules) {
-    if (module.name.trim() === '') throw new Error('Native handshake module name must not be empty.');
+    if (module.name.trim() === '')
+      throw new Error('Native handshake module name must not be empty.');
     if (!Number.isSafeInteger(module.version) || module.version <= 0) {
-      throw new Error(`Native handshake module "${module.name}" version must be a positive safe integer.`);
+      throw new Error(
+        `Native handshake module "${module.name}" version must be a positive safe integer.`
+      );
     }
-    if (result.has(module.name)) throw new Error(`Native handshake contains duplicate module "${module.name}".`);
+    if (result.has(module.name))
+      throw new Error(`Native handshake contains duplicate module "${module.name}".`);
     result.set(module.name, module);
   }
   return result;
 }
 
-function compareScalar<K extends 'build-id' | 'engine-abi' | 'rhi-contract' | 'endianness' | 'pointer-bits'>(
+function compareScalar<
+  K extends 'build-id' | 'engine-abi' | 'rhi-contract' | 'endianness' | 'pointer-bits'
+>(
   differences: NativeHandshakeDifference[],
   kind: K,
   required: Extract<NativeHandshakeDifference, { kind: K }>['required'],

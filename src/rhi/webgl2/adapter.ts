@@ -4,8 +4,8 @@ import type { AdapterCapabilities } from '../contracts/capability';
 import { RHIDeviceRequestError } from '../contracts/errors';
 import { createWebGL2Capabilities, createWebGL2Facts } from './capabilities';
 import { WebGL2Device } from './device';
-import type { WebGL2AdapterFacts, WebGL2NativeContextPort } from './native-types';
-import type { WebGL2ShaderTranslationPort } from './shader-types';
+import type { WebGL2AdapterFacts, WebGL2NativeContextPort } from './types';
+import type { WebGL2ShaderTranslationPort } from './types';
 
 export class WebGL2Adapter implements RHIAdapter {
   readonly info: AdapterInfo;

@@ -1,5 +1,5 @@
 import { ALL_FRUSTUM_PLANES } from '../../math';
-import type { RenderView } from '../visibility';
+import type { RenderView } from '../visibility/types';
 import type { SpatialEntry } from './types';
 
 export function isSpatialEntryVisible(

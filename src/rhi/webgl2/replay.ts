@@ -3,10 +3,10 @@ import type { WebGL2IndexBufferState, WebGL2VertexBufferState } from './cache-ke
 import { WebGL2FramebufferCache } from './framebuffer-cache';
 import { WebGL2RenderPipeline } from './pipeline';
 import { WebGL2Buffer, getWebGL2Handle } from './resource';
-import type { WebGL2DeviceOwner } from './resource-types';
-import type { WebGL2ImageCopyTexture, WebGL2ReplayCommand } from './command-types';
+import type { WebGL2DeviceOwner } from './types';
+import type { WebGL2ImageCopyTexture, WebGL2ReplayCommand } from './types';
 import type { WebGL2Metrics } from './metrics';
-import type { WebGL2NativeContextPort } from './native-types';
+import type { WebGL2NativeContextPort } from './types';
 import { WebGL2StateVM } from './state';
 import { WebGL2VertexArrayCache } from './vertex-array-cache';
 
@@ -283,10 +283,7 @@ export class WebGL2ReplayExecutor {
   }
 }
 
-function lowerBufferCopy(
-  copy: import('./command-types').WebGL2ImageCopyBuffer,
-  owner: WebGL2DeviceOwner
-) {
+function lowerBufferCopy(copy: import('./types').WebGL2ImageCopyBuffer, owner: WebGL2DeviceOwner) {
   return Object.freeze({
     buffer: getWebGL2Handle(copy.buffer, owner),
     offset: copy.offset,

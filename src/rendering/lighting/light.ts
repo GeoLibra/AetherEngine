@@ -1,4 +1,4 @@
-import type { Vec3 } from '../../math';
+import type { Vec3 } from '../../math/types';
 import type { PreparedLight } from './types';
 
 const UINT32_MAX = 0xffff_ffff;
@@ -32,13 +32,62 @@ export function validatePreparedLight(light: PreparedLight): void {
 
 export function orderLightsForGpu(lights: readonly PreparedLight[]): readonly PreparedLight[] {
   for (const light of lights) validatePreparedLight(light);
-  const ordered = [...lights].sort((left, right) => left.entity - right.entity);
+  const ordered = lights
+    .map(snapshotPreparedLight)
+    .sort((left, right) => left.entity - right.entity);
   for (let index = 1; index < ordered.length; index++) {
     if (ordered[index - 1]!.entity === ordered[index]!.entity) {
       throw new Error(`Duplicate prepared light entity ${ordered[index]!.entity}.`);
     }
   }
   return Object.freeze(ordered);
+}
+
+function snapshotPreparedLight(light: PreparedLight): PreparedLight {
+  if (light.kind === 'directional')
+    return Object.freeze({
+      entity: light.entity,
+      payloadVersion: light.payloadVersion,
+      kind: 'directional',
+      direction: snapshotVec3(light.direction),
+      illuminanceLux: light.illuminanceLux,
+      colorLinear: snapshotVec3(light.colorLinear),
+      enabled: light.enabled,
+      layerMask: light.layerMask,
+      castsShadow: light.castsShadow
+    }) as PreparedLight;
+  if (light.kind === 'point')
+    return Object.freeze({
+      entity: light.entity,
+      payloadVersion: light.payloadVersion,
+      kind: 'point',
+      position: snapshotVec3(light.position),
+      luminousIntensityCandela: light.luminousIntensityCandela,
+      range: light.range,
+      colorLinear: snapshotVec3(light.colorLinear),
+      enabled: light.enabled,
+      layerMask: light.layerMask,
+      castsShadow: light.castsShadow
+    }) as PreparedLight;
+  return Object.freeze({
+    entity: light.entity,
+    payloadVersion: light.payloadVersion,
+    kind: 'spot',
+    position: snapshotVec3(light.position),
+    direction: snapshotVec3(light.direction),
+    luminousIntensityCandela: light.luminousIntensityCandela,
+    range: light.range,
+    innerRadians: light.innerRadians,
+    outerRadians: light.outerRadians,
+    colorLinear: snapshotVec3(light.colorLinear),
+    enabled: light.enabled,
+    layerMask: light.layerMask,
+    castsShadow: light.castsShadow
+  }) as PreparedLight;
+}
+
+function snapshotVec3(value: Vec3): Vec3 {
+  return Object.freeze([value[0], value[1], value[2]]) as Vec3;
 }
 
 export function normalizedLightDirection(direction: Vec3): Vec3 {

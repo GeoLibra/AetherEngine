@@ -2,6 +2,8 @@ import type { ExtractorToken, RenderFieldToken } from './render-world';
 
 export type AnyExtractorToken = ExtractorToken<readonly RenderFieldToken<unknown>[]>;
 
+const NO_EXTRACTOR_CONTRIBUTORS: readonly AnyExtractorToken[] = Object.freeze([]);
+
 /**
  * Represents a value proposal for a field on an entity, proposed by a specific extractor.
  */
@@ -128,7 +130,7 @@ export class RenderExtractorPlan {
   }
 
   contributors(field: RenderFieldToken<unknown>): readonly AnyExtractorToken[] {
-    return this.owners.get(field) ?? Object.freeze([]);
+    return this.owners.get(field) ?? NO_EXTRACTOR_CONTRIBUTORS;
   }
 
   arbitrator<T>(field: RenderFieldToken<T>): RenderFieldArbitrator<T> | undefined {

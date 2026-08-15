@@ -2,11 +2,24 @@ import { bench, expect } from 'vitest';
 import {
   createSpatialEntries,
   createVisibilityCandidates,
+  createCameraSnapshotWorkload,
   buildSpatialSubject,
   prepareDynamicSpatialQuery,
   prepareSpatialQuery,
+  runCameraSnapshotReference,
+  runCameraSnapshotSubject,
   runVisibilitySubject
 } from './camera-visibility/scenario';
+
+for (const count of [100, 1_000, 10_000]) {
+  const workload = createCameraSnapshotWorkload(count);
+  const reference = runCameraSnapshotReference(workload);
+  bench(
+    `camera snapshot boundaries ${count} views`,
+    () => expect(runCameraSnapshotSubject(workload)).toEqual(reference),
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
 
 for (const boundsKind of ['sphere', 'aabb', 'mixed'] as const) {
   for (const count of [100, 1_000, 10_000]) {

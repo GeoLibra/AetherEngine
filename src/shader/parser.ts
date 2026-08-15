@@ -23,6 +23,11 @@ import type {
   SourceSpan
 } from './types';
 
+const NO_ATTRIBUTES: readonly FluxAttribute[] = Object.freeze([]);
+const NO_CONTINUING_STATEMENTS: readonly FluxStatementNode[] = Object.freeze([]);
+const NO_TYPE_ARGUMENTS: readonly FluxTypeNode[] = Object.freeze([]);
+const NO_RELATED_SPANS: readonly SourceSpan[] = Object.freeze([]);
+
 export interface ShaderParseResult {
   readonly ir?: ShaderModuleIR;
   readonly diagnostics: readonly ShaderDiagnostic[];
@@ -55,7 +60,7 @@ export function parseFluxShader(closure: ResolvedShaderSource): ShaderParseResul
     }
   }
   if (diagnostics.length > 0) return Object.freeze({ diagnostics: Object.freeze(diagnostics) });
-  return lowerFluxModules(Object.freeze(modules), closure.hash);
+  return lowerFluxModules(modules, closure.hash);
 }
 
 /**
@@ -78,6 +83,10 @@ class FluxParser {
     private readonly module: ShaderSourceModule,
     private readonly tokens: readonly FluxToken[]
   ) {}
+
+  // Frontend AST values are consumed synchronously by lowerFluxModules() and never
+  // escape parseFluxShader(). Source spans and the resulting typed IR retain their
+  // own public snapshot boundaries, so these owner-private parser records stay mutable.
 
   /**
    * Main parsing loop to construct a FluxModuleNode.
@@ -103,7 +112,7 @@ class FluxParser {
       else if (this.at('fn')) declarations.push(this.parseFunction(attributes));
       else this.unsupported(`Unsupported top-level declaration "${this.current().text}".`);
     }
-    return Object.freeze({ uri: this.module.uri, declarations: Object.freeze(declarations) });
+    return { uri: this.module.uri, declarations };
   }
 
   private parseVariant(): FluxVariantNode {
@@ -133,14 +142,14 @@ class FluxParser {
           : kind.text === 'enum'
             ? fallbackToken.text
             : Number(fallbackToken.text);
-    return Object.freeze({
+    return {
       kind: 'variant',
       name: name.text,
       variantKind: kind.text === 'bool' ? 'boolean' : 'enum',
-      values: Object.freeze(values),
+      values,
       fallback,
       span: this.span(start, end)
-    });
+    };
   }
 
   private parseStruct(): FluxStructNode {
@@ -163,16 +172,16 @@ class FluxParser {
       const end = this.current();
       if (!this.at('}') && !this.match(',') && !this.match(';'))
         this.unexpected('Expected "," or ";" after struct field.');
-      fields.push(Object.freeze({ name: field.text, type, span: this.span(field, end) }));
+      fields.push({ name: field.text, type, span: this.span(field, end) });
     }
     this.expect('}');
     const end = this.expect(';');
-    return Object.freeze({
+    return {
       kind: 'struct',
       name: name.text,
-      fields: Object.freeze(fields),
+      fields,
       span: this.span(start, end)
-    });
+    };
   }
 
   private parseGlobal(attributes: readonly FluxAttribute[]): FluxGlobalNode {
@@ -188,7 +197,7 @@ class FluxParser {
     this.expect(':');
     const type = this.parseType();
     const end = this.expect(';');
-    return Object.freeze({
+    return {
       kind: 'global',
       name: name.text,
       type,
@@ -196,7 +205,7 @@ class FluxParser {
       access,
       attributes,
       span: this.span(start, end)
-    });
+    };
   }
 
   private parseFunction(attributes: readonly FluxAttribute[]): FluxFunctionNode {
@@ -210,19 +219,17 @@ class FluxParser {
       const parameterName = this.expectIdentifier();
       this.expect(':');
       const type = this.parseType();
-      parameters.push(
-        Object.freeze({
-          name: parameterName.text,
-          type,
-          attributes: parameterAttributes,
-          span: this.span(parameterStart, this.previous())
-        })
-      );
+      parameters.push({
+        name: parameterName.text,
+        type,
+        attributes: parameterAttributes,
+        span: this.span(parameterStart, this.previous())
+      });
       if (!this.match(',')) break;
     }
     this.expect(')');
     let returnType: FluxTypeNode | undefined;
-    let returnAttributes: readonly FluxAttribute[] = Object.freeze([]);
+    let returnAttributes: readonly FluxAttribute[] = NO_ATTRIBUTES;
     if (this.match('->')) {
       returnAttributes = this.parseAttributes();
       returnType = this.parseType();
@@ -232,16 +239,16 @@ class FluxParser {
       (attribute) =>
         attribute.name === 'vertex' || attribute.name === 'fragment' || attribute.name === 'compute'
     )?.name as FluxFunctionNode['stage'];
-    return Object.freeze({
+    return {
       kind: 'function',
       name: name.text,
-      parameters: Object.freeze(parameters),
+      parameters,
       ...(returnType ? { returnType } : {}),
       returnAttributes,
       body,
       ...(stage ? { stage } : {}),
       span: this.span(start, this.previous())
-    });
+    };
   }
 
   private parseAttributes(): readonly FluxAttribute[] {
@@ -258,15 +265,13 @@ class FluxParser {
         value = Number(token.text.replace(/[uif]$/, ''));
         end = this.expect(')');
       }
-      attributes.push(
-        Object.freeze({
-          name: name.text,
-          ...(value === undefined ? {} : { value }),
-          span: this.span(start, end)
-        })
-      );
+      attributes.push({
+        name: name.text,
+        ...(value === undefined ? {} : { value }),
+        span: this.span(start, end)
+      });
     }
-    return Object.freeze(attributes);
+    return attributes;
   }
 
   private parseType(): FluxTypeNode {
@@ -285,7 +290,7 @@ class FluxParser {
       end = this.expect('>');
       name += `<${arguments_.join(',')}>`;
     }
-    return Object.freeze({ name, span: this.span(start, end) });
+    return { name, span: this.span(start, end) };
   }
 
   private parseBlock(): readonly FluxStatementNode[] {
@@ -296,7 +301,7 @@ class FluxParser {
       statements.push(this.parseStatement());
     }
     this.expect('}');
-    return Object.freeze(statements);
+    return statements;
   }
 
   private parseStatement(): FluxStatementNode {
@@ -309,10 +314,10 @@ class FluxParser {
     if (this.at('break') || this.at('continue') || this.at('discard')) {
       const keyword = this.consume();
       const end = this.expect(';');
-      return Object.freeze({
+      return {
         kind: keyword.text as 'break' | 'continue' | 'discard',
         span: this.span(keyword, end)
-      });
+      };
     }
     if (this.at('for') || this.at('{') || this.at('continuing'))
       this.unsupported(`Unsupported statement "${this.current().text}".`);
@@ -320,19 +325,19 @@ class FluxParser {
     if (this.match('=')) {
       const value = this.parseExpression();
       const end = this.expect(';');
-      return Object.freeze({
+      return {
         kind: 'assign',
         target: expression,
         value,
         span: this.spanFrom(expression.span, end)
-      });
+      };
     }
     const end = this.expect(';');
-    return Object.freeze({
+    return {
       kind: 'expression',
       expression,
       span: this.spanFrom(expression.span, end)
-    });
+    };
   }
 
   private parseDeclarationStatement(): FluxStatementNode {
@@ -344,14 +349,14 @@ class FluxParser {
     if (this.match('=')) value = this.parseExpression();
     if (!type && !value) this.unexpected('A declaration requires a type or initializer.', name);
     const end = this.expect(';');
-    return Object.freeze({
+    return {
       kind: 'declare',
       mutable: start.text === 'var',
       name: name.text,
       ...(type ? { type } : {}),
       ...(value ? { value } : {}),
       span: this.span(start, end)
-    });
+    };
   }
 
   private parseIf(): FluxStatementNode {
@@ -361,15 +366,14 @@ class FluxParser {
     this.expect(')');
     const then = this.parseBlock();
     let otherwise: readonly FluxStatementNode[] | undefined;
-    if (this.match('else'))
-      otherwise = this.at('if') ? Object.freeze([this.parseIf()]) : this.parseBlock();
-    return Object.freeze({
+    if (this.match('else')) otherwise = this.at('if') ? [this.parseIf()] : this.parseBlock();
+    return {
       kind: 'if',
       condition,
       then,
       ...(otherwise ? { otherwise } : {}),
       span: this.span(start, this.previous())
-    });
+    };
   }
 
   private parseSwitch(): FluxStatementNode {
@@ -391,36 +395,34 @@ class FluxParser {
       }
       this.expect(':');
       const body = this.at('{') ? this.parseBlock() : this.parseCaseBody();
-      cases.push(
-        Object.freeze({
-          selectors: Object.freeze(selectors),
-          default: isDefault,
-          body,
-          span: this.span(caseStart, this.previous())
-        })
-      );
+      cases.push({
+        selectors,
+        default: isDefault,
+        body,
+        span: this.span(caseStart, this.previous())
+      });
     }
     const end = this.expect('}');
-    return Object.freeze({
+    return {
       kind: 'switch',
       selector,
-      cases: Object.freeze(cases),
+      cases,
       span: this.span(start, end)
-    });
+    };
   }
 
   private parseCaseBody(): readonly FluxStatementNode[] {
     const body: FluxStatementNode[] = [];
     while (!this.at('case') && !this.at('default') && !this.at('}'))
       body.push(this.parseStatement());
-    return Object.freeze(body);
+    return body;
   }
 
   private parseLoop(): FluxStatementNode {
     const start = this.expect('loop');
     this.expect('{');
     const body: FluxStatementNode[] = [];
-    let continuing: readonly FluxStatementNode[] = Object.freeze([]);
+    let continuing: readonly FluxStatementNode[] = NO_CONTINUING_STATEMENTS;
     while (!this.at('}')) {
       if (this.at('eof')) this.unexpectedEof('Unterminated loop statement.');
       if (this.match('continuing')) {
@@ -430,12 +432,12 @@ class FluxParser {
       body.push(this.parseStatement());
     }
     const end = this.expect('}');
-    return Object.freeze({
+    return {
       kind: 'loop',
-      body: Object.freeze(body),
+      body,
       continuing,
       span: this.span(start, end)
-    });
+    };
   }
 
   private parseWhile(): FluxStatementNode {
@@ -444,23 +446,23 @@ class FluxParser {
     const condition = this.parseExpression();
     this.expect(')');
     const body = this.parseBlock();
-    return Object.freeze({
+    return {
       kind: 'while',
       condition,
       body,
       span: this.span(start, this.previous())
-    });
+    };
   }
 
   private parseReturn(): FluxStatementNode {
     const start = this.expect('return');
     const value = this.at(';') ? undefined : this.parseExpression();
     const end = this.expect(';');
-    return Object.freeze({
+    return {
       kind: 'return',
       ...(value ? { value } : {}),
       span: this.span(start, end)
-    });
+    };
   }
 
   private parseExpression(minimumPrecedence = 0): FluxExpressionNode {
@@ -470,13 +472,13 @@ class FluxParser {
       if (precedence === undefined || precedence < minimumPrecedence) break;
       const operator = this.consume();
       const right = this.parseExpression(precedence + 1);
-      left = Object.freeze({
+      left = {
         kind: 'binary',
         operator: operator.text,
         left,
         right,
         span: this.spanFrom(left.span, this.previous())
-      });
+      };
     }
     return left;
   }
@@ -485,12 +487,12 @@ class FluxParser {
     if (this.at('!') || this.at('-') || this.at('+') || this.at('~')) {
       const operator = this.consume();
       const operand = this.parseUnary();
-      return Object.freeze({
+      return {
         kind: 'unary',
         operator: operator.text,
         operand,
         span: this.span(operator, this.previous())
-      });
+      };
     }
     return this.parsePostfix();
   }
@@ -500,21 +502,21 @@ class FluxParser {
     while (true) {
       if (this.match('.')) {
         const field = this.expectIdentifier();
-        expression = Object.freeze({
+        expression = {
           kind: 'field',
           base: expression,
           field: field.text,
           span: this.spanFrom(expression.span, field)
-        });
+        };
       } else if (this.match('[')) {
         const index = this.parseExpression();
         const end = this.expect(']');
-        expression = Object.freeze({
+        expression = {
           kind: 'index',
           base: expression,
           index,
           span: this.spanFrom(expression.span, end)
-        });
+        };
       } else break;
     }
     return expression;
@@ -534,21 +536,21 @@ class FluxParser {
               ? 'f32'
               : 'i32';
       const normalized = token.text.replace(/[fiu]$/, '');
-      return Object.freeze({
+      return {
         kind: 'literal',
         value: Number(normalized),
         literalType,
         span: token.span
-      });
+      };
     }
     if (token.text === 'true' || token.text === 'false') {
       this.consume();
-      return Object.freeze({
+      return {
         kind: 'literal',
         value: token.text === 'true',
         literalType: 'bool',
         span: token.span
-      });
+      };
     }
     if (this.match('(')) {
       const expression = this.parseExpression();
@@ -559,7 +561,7 @@ class FluxParser {
       this.unsupported(`Expected expression, received "${token.text}".`, token);
     const start = this.consume();
     const checkpoint = this.index;
-    let typeArguments: readonly FluxTypeNode[] = Object.freeze([]);
+    let typeArguments: readonly FluxTypeNode[] = NO_TYPE_ARGUMENTS;
     if (this.at('<')) {
       try {
         this.consume();
@@ -568,7 +570,7 @@ class FluxParser {
         while (this.match(','));
         this.expect('>');
         if (!this.at('(')) this.index = checkpoint;
-        else typeArguments = Object.freeze(arguments_);
+        else typeArguments = arguments_;
       } catch {
         this.index = checkpoint;
       }
@@ -580,15 +582,15 @@ class FluxParser {
         if (!this.match(',')) break;
       }
       const end = this.expect(')');
-      return Object.freeze({
+      return {
         kind: 'call',
         callee: start.text,
         typeArguments,
-        arguments: Object.freeze(arguments_),
+        arguments: arguments_,
         span: this.span(start, end)
-      });
+      };
     }
-    return Object.freeze({ kind: 'name', name: start.text, span: start.span });
+    return { kind: 'name', name: start.text, span: start.span };
   }
 
   private current(): FluxToken {
@@ -688,6 +690,6 @@ function diagnostic(code: string, message: string, primary: SourceSpan): ShaderD
     message,
     stage: 'parse',
     primary,
-    related: Object.freeze([])
+    related: NO_RELATED_SPANS
   });
 }

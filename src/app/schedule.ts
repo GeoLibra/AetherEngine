@@ -112,8 +112,8 @@ export class Schedule {
       after: descriptor.after ?? [],
       optionalBefore: descriptor.optionalBefore ?? [],
       optionalAfter: descriptor.optionalAfter ?? [],
-      reads: Object.freeze([...(descriptor.reads ?? [])]),
-      writes: Object.freeze([...(descriptor.writes ?? [])])
+      reads: [...(descriptor.reads ?? [])],
+      writes: [...(descriptor.writes ?? [])]
     };
 
     if (descriptor.runIf) {
@@ -174,9 +174,7 @@ export class Schedule {
       }
     }
 
-    const queue = this.systems
-      .filter((node) => inDegree.get(node.id) === 0)
-      .map((node) => node.id);
+    const queue = this.systems.filter((node) => inDegree.get(node.id) === 0).map((node) => node.id);
     const ordered: SystemNode[] = [];
 
     while (queue.length > 0) {
@@ -200,7 +198,10 @@ export class Schedule {
     }
 
     if (ordered.length !== this.systems.length) {
-      const cycle = findCyclePath(this.systems.map((node) => node.id), dependents);
+      const cycle = findCyclePath(
+        this.systems.map((node) => node.id),
+        dependents
+      );
       throw new Error(`Schedule "${this.label}" contains a cycle: ${cycle.join(' -> ')}.`);
     }
 

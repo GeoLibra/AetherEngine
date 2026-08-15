@@ -9,6 +9,12 @@ import {
   assertRenderGraphScenarioComparison,
   createRenderGraphCompilerScenario
 } from '../../benchmark/render-graph/scenarios';
+import {
+  runHistoryDebugReference,
+  runHistoryDebugSubject,
+  runRenderSystemReference,
+  runRenderSystemSubject
+} from '../../benchmark/render-graph/integrity-scenarios';
 
 describe('render graph benchmark oracle', () => {
   test('is deterministic for the same versioned seed', () => {
@@ -62,6 +68,31 @@ describe('render graph benchmark oracle', () => {
     expect(subject.counters.commandCount).toBe(64 * 2);
     expect(subject.counters.subresourceKeyCount).toBeGreaterThan(0);
     expect(subject.counters.physicalAllocationCount).toBe(subject.counters.allocations);
+  });
+
+  test('executes real history debug and render-system ordering lanes across scale axes', () => {
+    for (const scale of [4, 16, 64]) {
+      const history = runHistoryDebugSubject(scale);
+      const renderSystems = runRenderSystemSubject(scale);
+
+      expect(history).toEqual(runHistoryDebugReference(scale));
+      expect(history.counters).toEqual({
+        historyResources: scale,
+        versionSlots: scale * 2,
+        boundVersionSlots: scale,
+        pendingSubmissionReferences: scale,
+        scheduledSteps: scale + 2
+      });
+      expect(renderSystems).toEqual(runRenderSystemReference(scale));
+      expect(renderSystems.counters).toEqual({
+        instances: scale,
+        semanticEdges: scale - 1,
+        scheduleSteps: scale + 2,
+        internalNodes: 2
+      });
+      expect(history.checksum).toMatch(/^[0-9a-f]{8}$/);
+      expect(renderSystems.checksum).toMatch(/^[0-9a-f]{8}$/);
+    }
   });
 
   test('publishes schema-versioned smoke evidence with raw cold and warm samples', () => {

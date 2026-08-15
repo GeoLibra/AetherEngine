@@ -1,6 +1,6 @@
 import { ALL_FRUSTUM_PLANES, type Vec3 } from '../../math';
 import type { RenderEntityId } from '../render-world';
-import type { RenderView, WorldBounds } from '../visibility';
+import type { RenderView, WorldBounds } from '../visibility/types';
 import { compareSpatialEntries, isSpatialEntryVisible } from './linear-culler';
 import type { SpatialEntry, SpatialQueryCounters, StaticBvhProfile } from './types';
 
@@ -19,11 +19,85 @@ export interface PackedStaticBvh {
   readonly entityIds: Uint32Array;
   readonly boundsRevisions: Uint32Array;
   readonly entries: readonly SpatialEntry[];
+  readonly entryCount: number;
   readonly nodeCount: number;
   readonly rootNode: number | null;
   readonly checksum: number;
   readonly depth: number;
   readonly packedBytes: number;
+}
+
+const NO_SPATIAL_ENTRIES: readonly SpatialEntry[] = Object.freeze([]);
+
+interface PackedStaticBvhData {
+  readonly bounds: Float32Array;
+  readonly childOrEntry: Uint32Array;
+  readonly metadata: Uint32Array;
+  readonly entityIds: Uint32Array;
+  readonly boundsRevisions: Uint32Array;
+  readonly entries: readonly SpatialEntry[];
+  readonly entryCount: number;
+  readonly nodeCount: number;
+  readonly rootNode: number | null;
+  readonly checksum: number;
+  readonly depth: number;
+  readonly packedBytes: number;
+}
+
+const PACKED_BVH_DATA = new WeakMap<PackedStaticBvh, PackedStaticBvhData>();
+
+/**
+ * The traversal storage stays private. Accessors deliberately return detached typed-array
+ * diagnostics so a consumer cannot make the published checksum disagree with the active BVH.
+ */
+class PackedStaticBvhSnapshot implements PackedStaticBvh {
+  constructor(data: PackedStaticBvhData) {
+    PACKED_BVH_DATA.set(this, data);
+    Object.freeze(this);
+  }
+
+  get bounds(): Float32Array {
+    return packedData(this).bounds.slice();
+  }
+  get childOrEntry(): Uint32Array {
+    return packedData(this).childOrEntry.slice();
+  }
+  get metadata(): Uint32Array {
+    return packedData(this).metadata.slice();
+  }
+  get entityIds(): Uint32Array {
+    return packedData(this).entityIds.slice();
+  }
+  get boundsRevisions(): Uint32Array {
+    return packedData(this).boundsRevisions.slice();
+  }
+  get entries(): readonly SpatialEntry[] {
+    return packedData(this).entries;
+  }
+  get entryCount(): number {
+    return packedData(this).entryCount;
+  }
+  get nodeCount(): number {
+    return packedData(this).nodeCount;
+  }
+  get rootNode(): number | null {
+    return packedData(this).rootNode;
+  }
+  get checksum(): number {
+    return packedData(this).checksum;
+  }
+  get depth(): number {
+    return packedData(this).depth;
+  }
+  get packedBytes(): number {
+    return packedData(this).packedBytes;
+  }
+}
+
+function packedData(bvh: PackedStaticBvh): PackedStaticBvhData {
+  const data = PACKED_BVH_DATA.get(bvh);
+  if (!data) throw new Error('Packed static BVH must be created by buildPackedStaticBvh.');
+  return data;
 }
 
 interface BuildNode {
@@ -42,7 +116,7 @@ export function buildPackedStaticBvh(
 ): PackedStaticBvh {
   const leafSize = Math.max(1, Math.floor(profile.leafSize ?? 8));
   const maxDepth = Math.max(1, Math.floor(profile.maxDepth ?? 32));
-  const normalized = [...input].sort(compareSpatialEntries);
+  const normalized = input.map(snapshotSpatialEntry).sort(compareSpatialEntries);
   if (normalized.length === 0) return emptyPackedBvh();
   const root = buildNode(normalized, 0, leafSize, maxDepth);
   const nodes: BuildNode[] = [];
@@ -70,13 +144,14 @@ export function buildPackedStaticBvh(
   const entityIds = Uint32Array.from(payload.map((entry) => entry.renderEntity));
   const boundsRevisions = Uint32Array.from(payload.map((entry) => entry.boundsRevision));
   const checksum = checksumArrays(bounds, childOrEntry, metadata, entityIds, boundsRevisions);
-  return Object.freeze({
+  return new PackedStaticBvhSnapshot({
     bounds,
     childOrEntry,
     metadata,
     entityIds,
     boundsRevisions,
     entries: Object.freeze(payload),
+    entryCount: payload.length,
     nodeCount: nodes.length,
     rootNode: 0,
     checksum,
@@ -87,6 +162,29 @@ export function buildPackedStaticBvh(
       metadata.byteLength +
       entityIds.byteLength +
       boundsRevisions.byteLength
+  });
+}
+
+function snapshotSpatialEntry(entry: SpatialEntry): SpatialEntry {
+  const bounds =
+    entry.bounds.kind === 'sphere'
+      ? Object.freeze({
+          kind: 'sphere' as const,
+          center: Object.freeze([...entry.bounds.center]) as Vec3,
+          radius: entry.bounds.radius
+        })
+      : Object.freeze({
+          kind: 'aabb' as const,
+          min: Object.freeze([...entry.bounds.min]) as Vec3,
+          max: Object.freeze([...entry.bounds.max]) as Vec3
+        });
+  return Object.freeze({
+    renderEntity: entry.renderEntity,
+    boundsRevision: entry.boundsRevision,
+    bounds,
+    layerMask: entry.layerMask,
+    enabled: entry.enabled,
+    insertionOrder: entry.insertionOrder
   });
 }
 
@@ -101,13 +199,14 @@ export function traversePackedStaticBvh(
   current: ReadonlyMap<RenderEntityId, SpatialEntry>,
   counters: MutableSpatialCounters
 ): SpatialEntry[] {
-  if (bvh.rootNode === null) return [];
+  const packed = packedData(bvh);
+  if (packed.rootNode === null) return [];
   const visible: SpatialEntry[] = [];
-  const stack: Array<readonly [number, number]> = [[bvh.rootNode, ALL_FRUSTUM_PLANES]];
+  const stack: Array<readonly [number, number]> = [[packed.rootNode, ALL_FRUSTUM_PLANES]];
   while (stack.length > 0) {
     const [node, mask] = stack.pop()!;
     counters.visitedNodes++;
-    if ((bvh.metadata[node * META_STRIDE + 1]! & view.layerMask) === 0) {
+    if ((packed.metadata[node * META_STRIDE + 1]! & view.layerMask) === 0) {
       counters.prunedNodes++;
       continue;
     }
@@ -115,12 +214,12 @@ export function traversePackedStaticBvh(
     if (view.frustum && mask !== 0) {
       const offset = node * 6;
       const result = view.frustum.classifyAabbValues(
-        bvh.bounds[offset]!,
-        bvh.bounds[offset + 1]!,
-        bvh.bounds[offset + 2]!,
-        bvh.bounds[offset + 3]!,
-        bvh.bounds[offset + 4]!,
-        bvh.bounds[offset + 5]!,
+        packed.bounds[offset]!,
+        packed.bounds[offset + 1]!,
+        packed.bounds[offset + 2]!,
+        packed.bounds[offset + 3]!,
+        packed.bounds[offset + 4]!,
+        packed.bounds[offset + 5]!,
         mask
       );
       counters.planeTests += result.planeTests;
@@ -131,12 +230,12 @@ export function traversePackedStaticBvh(
       if (result.intersection === 'inside') counters.insideNodes++;
       remaining = result.planeMask;
     }
-    if (bvh.metadata[node * META_STRIDE] === LEAF) {
-      const first = bvh.childOrEntry[node * NODE_STRIDE + 2]!;
-      const count = bvh.childOrEntry[node * NODE_STRIDE + 3]!;
+    if (packed.metadata[node * META_STRIDE] === LEAF) {
+      const first = packed.childOrEntry[node * NODE_STRIDE + 2]!;
+      const count = packed.childOrEntry[node * NODE_STRIDE + 3]!;
       for (let index = first; index < first + count; index++) {
         counters.indexedCandidates++;
-        const indexed = bvh.entries[index]!;
+        const indexed = packed.entries[index]!;
         const latest = current.get(indexed.renderEntity);
         if (!latest || latest.boundsRevision !== indexed.boundsRevision) {
           counters.staleIndexedSkipped++;
@@ -148,8 +247,8 @@ export function traversePackedStaticBvh(
       }
       continue;
     }
-    const left = bvh.childOrEntry[node * NODE_STRIDE]!;
-    const right = bvh.childOrEntry[node * NODE_STRIDE + 1]!;
+    const left = packed.childOrEntry[node * NODE_STRIDE]!;
+    const right = packed.childOrEntry[node * NODE_STRIDE + 1]!;
     stack.push([right, remaining], [left, remaining]);
   }
   return visible;
@@ -293,13 +392,14 @@ function checksumArrays(...arrays: readonly ArrayLike<number>[]): number {
 }
 
 function emptyPackedBvh(): PackedStaticBvh {
-  return Object.freeze({
+  return new PackedStaticBvhSnapshot({
     bounds: new Float32Array(),
     childOrEntry: new Uint32Array(),
     metadata: new Uint32Array(),
     entityIds: new Uint32Array(),
     boundsRevisions: new Uint32Array(),
-    entries: Object.freeze([]),
+    entries: NO_SPATIAL_ENTRIES,
+    entryCount: 0,
     nodeCount: 0,
     rootNode: null,
     checksum: 2166136261,

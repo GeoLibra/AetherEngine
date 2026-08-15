@@ -14,6 +14,7 @@ describe('benchmark manifest', () => {
     expect(result.errors).toEqual([]);
     expect(result.uncoveredDomainIds).not.toContain('rendering');
     expect(result.uncoveredDomainIds).not.toContain('ecs');
+    expect(result.uncoveredDomainIds).not.toContain('transform');
   });
 
   test('rejects duplicate IDs and suites that reference unknown domains', () => {
@@ -51,6 +52,36 @@ describe('changed-file routing', () => {
     ).toEqual(['ecs']);
   });
 
+  test('routes transform extraction changes only to the dedicated matrix snapshot suite', () => {
+    const route = routeChangedFiles(BENCHMARK_MANIFEST, ['src/transform/runtime.ts']);
+
+    expect(route.domainIds).toEqual(['transform']);
+    expect(route.suiteIds).toEqual(['transform-runtime']);
+    expect(route.missingDomainIds).toEqual([]);
+  });
+
+  test('routes the transform design and requirement contract to its dedicated suite', () => {
+    for (const path of [
+      'engine/design/v2/01-foundation/02-math-transform.md',
+      'engine/requirements.md'
+    ]) {
+      const route = routeChangedFiles(BENCHMARK_MANIFEST, [path]);
+      expect(route.domainIds).toEqual(['transform']);
+      expect(route.suiteIds).toEqual(['transform-runtime']);
+      expect(route.missingDomainIds).toEqual([]);
+    }
+  });
+
+  test('routes the ECS transform contract through both ECS and transform extraction suites', () => {
+    const route = routeChangedFiles(BENCHMARK_MANIFEST, [
+      'engine/design/v2/02-runtime/02-ecs-world.md'
+    ]);
+
+    expect(route.domainIds).toEqual(['ecs', 'transform']);
+    expect(route.suiteIds).toEqual(['ecs', 'transform-runtime']);
+    expect(route.missingDomainIds).toEqual([]);
+  });
+
   test('requires a suite when Rendering work starts', () => {
     const route = routeChangedFiles(BENCHMARK_MANIFEST, ['src/rendering/render-graph.ts']);
 
@@ -84,6 +115,10 @@ describe('changed-file routing', () => {
       'runtime-jobs'
     ]);
     expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/jobs/queue.ts']).suiteIds).toEqual([
+      'runtime-jobs'
+    ]);
+    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/ecs/command-buffer.ts']).suiteIds).toEqual([
+      'ecs',
       'runtime-jobs'
     ]);
   });

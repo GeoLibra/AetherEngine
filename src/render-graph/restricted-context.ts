@@ -66,7 +66,7 @@ import type {
   RestrictedShaderModule,
   RestrictedTextureView,
   RestrictedVertexState
-} from './restricted-context-types';
+} from './types';
 
 interface TextureCapability {
   readonly view: RHITextureView;

@@ -1,4 +1,45 @@
-export * from './types';
+export { assertGraphHandle, createGraphHandle, isGraphHandle } from './handles';
+export type {
+  BufferDescriptor,
+  BufferHandle,
+  BufferRange,
+  BufferReadUsage,
+  BufferUsage,
+  BufferWriteUsage,
+  DeclaredRasterColorAttachment,
+  DeclaredRasterDepthStencilAttachment,
+  DeclaredRasterPass,
+  ExternalAcquireToken,
+  ExternalResourceState,
+  GraphHandle,
+  GraphResourceKind,
+  GraphResourceOrigin,
+  PassToken,
+  RestrictedBindGroup,
+  RestrictedBindGroupDescriptor,
+  RestrictedBindGroupEntry,
+  RestrictedBindGroupLayout,
+  RestrictedBufferSlice,
+  RestrictedComputePassEncoder,
+  RestrictedComputePipeline,
+  RestrictedComputePipelineDescriptor,
+  RestrictedPassContext,
+  RestrictedPipelineLayout,
+  RestrictedPipelineLayoutDescriptor,
+  RestrictedPortableDevice,
+  RestrictedRenderPassEncoder,
+  RestrictedRenderPipeline,
+  RestrictedRenderPipelineDescriptor,
+  RestrictedSampler,
+  RestrictedShaderModule,
+  RestrictedTextureView,
+  TextureDescriptor,
+  TextureHandle,
+  TextureRange,
+  TextureReadUsage,
+  TextureUsage,
+  TextureWriteUsage
+} from './types';
 export * from './ranges';
 export * from './resources';
 export * from './builder';

@@ -200,6 +200,9 @@ describe('Material parameter layout and writer', () => {
     const first = writeMaterialParameters(fixture.layout, block);
     first.bytes[0] = 0xff;
     first.bytes[12] = 0xff;
+    expect(first.bytes[0]).toBe(new DataView(first.bytes.buffer).getUint8(0));
+    expect(first.bytes[0]).toBe(0);
+    expect(first.bytes[12]).toBe(0);
 
     const next = writeMaterialParameters(fixture.layout, block, first);
 

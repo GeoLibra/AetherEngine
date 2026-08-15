@@ -1,8 +1,4 @@
-import type {
-  NativeCrashReport,
-  NativeCrashReportInput,
-  NativeCrashReportOptions
-} from './lifecycle-types';
+import type { NativeCrashReport, NativeCrashReportInput, NativeCrashReportOptions } from './types';
 
 const SENSITIVE_KEY = /authorization|clipboard|cookie|password|payload|secret|text|token/i;
 const DEFAULT_COLLECTION_LIMIT = 32;
@@ -34,7 +30,9 @@ function sanitizeValue(value: unknown, maxLength: number, seen: WeakSet<object>)
   if (seen.has(value)) return '[REDACTED]';
   seen.add(value);
   if (Array.isArray(value)) {
-    return Object.freeze(value.slice(0, DEFAULT_COLLECTION_LIMIT).map((item) => sanitizeValue(item, maxLength, seen)));
+    return Object.freeze(
+      value.slice(0, DEFAULT_COLLECTION_LIMIT).map((item) => sanitizeValue(item, maxLength, seen))
+    );
   }
   const output: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value).slice(0, DEFAULT_COLLECTION_LIMIT)) {

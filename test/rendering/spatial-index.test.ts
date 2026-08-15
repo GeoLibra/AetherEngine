@@ -45,6 +45,60 @@ describe('packed static BVH', () => {
     expect([...first.entityIds]).toEqual([...second.entityIds]);
     expect(first.nodeCount).toBeGreaterThan(0);
   });
+
+  test('does not expose packed storage whose mutation can invalidate its checksum', () => {
+    const bvh = buildPackedStaticBvh([entry(1, -1), entry(2, 1)]);
+    const checksum = bvh.checksum;
+    const original = {
+      bounds: [...bvh.bounds],
+      childOrEntry: [...bvh.childOrEntry],
+      metadata: [...bvh.metadata],
+      entityIds: [...bvh.entityIds],
+      boundsRevisions: [...bvh.boundsRevisions]
+    };
+
+    bvh.bounds[0] = 99;
+    bvh.childOrEntry[0] = 99;
+    bvh.metadata[0] = 99;
+    bvh.entityIds[0] = 99;
+    bvh.boundsRevisions[0] = 99;
+
+    expect(bvh.checksum).toBe(checksum);
+    expect([...bvh.bounds]).toEqual(original.bounds);
+    expect([...bvh.childOrEntry]).toEqual(original.childOrEntry);
+    expect([...bvh.metadata]).toEqual(original.metadata);
+    expect([...bvh.entityIds]).toEqual(original.entityIds);
+    expect([...bvh.boundsRevisions]).toEqual(original.boundsRevisions);
+  });
+
+  test('detaches packed entry snapshots from caller-owned bounds', () => {
+    const nestedExtra = { callerOwned: true };
+    const source = {
+      ...entry(1, 0),
+      bounds: {
+        kind: 'aabb' as const,
+        min: [-1, -1, -3] as [number, number, number],
+        max: [1, 1, -1] as [number, number, number],
+        nestedExtra
+      },
+      nestedExtra
+    } as SpatialEntry & {
+      readonly bounds: {
+        readonly kind: 'aabb';
+        readonly min: readonly [number, number, number];
+        readonly max: readonly [number, number, number];
+        readonly nestedExtra: object;
+      };
+      readonly nestedExtra: object;
+    };
+    const bvh = buildPackedStaticBvh([source]);
+
+    (source.bounds.min as [number, number, number])[0] = 99;
+
+    expect(bvh.entries[0]?.bounds).toEqual({ kind: 'aabb', min: [-1, -1, -3], max: [1, 1, -1] });
+    expect('nestedExtra' in bvh.entries[0]!).toBe(false);
+    expect('nestedExtra' in bvh.entries[0]!.bounds).toBe(false);
+  });
 });
 
 describe('static BVH plus delta spatial index', () => {

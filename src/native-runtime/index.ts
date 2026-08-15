@@ -20,12 +20,12 @@ export type {
   NativeMemoryEvictor,
   NativeMemoryPressureEvent,
   NativeMemoryPressureResult
-} from './lifecycle-types';
+} from './types';
 export type {
   NativeServiceModule,
   NativeServiceToken,
   NativeServiceUnavailableDiagnostic
-} from './module-types';
+} from './types';
 export type {
   NativeBridgeDispatcherOptions,
   NativeBridgeErrorCode,
@@ -35,7 +35,7 @@ export type {
   NativeBridgeResponse,
   NativeCancellationToken,
   NativeMethodDescriptor
-} from './bridge-types';
+} from './types';
 export type {
   NativeHandle,
   NativeHandleLease,
@@ -46,19 +46,19 @@ export type {
   NativeTransferReleaseReason,
   NativeTransferState,
   NativeTransferView
-} from './handle-types';
+} from './types';
 export type {
   NativeHandshake,
   NativeHandshakeDifference,
   NativeHandshakeModule,
   NativeNegotiatedHandshake
-} from './abi-types';
+} from './types';
 export type {
   JsRuntimePort,
   NativeRuntimeControllerOptions,
   NativeThreadDiagnostic,
   NativeThreadPort
-} from './runtime-types';
+} from './types';
 export type {
   NativeAbiExpectation,
   NativeArrayBufferCapabilities,
@@ -70,4 +70,4 @@ export type {
   NativeRuntimeOwnership,
   NativeTargetConfiguration,
   NativeTargetPolicy
-} from './manifest-types';
+} from './types';

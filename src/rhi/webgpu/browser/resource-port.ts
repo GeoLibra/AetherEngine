@@ -2,7 +2,7 @@ import type {
   WebGPUNativeBufferPort,
   WebGPUNativeResourcePort,
   WebGPUNativeTexturePort
-} from '../native-types';
+} from '../types';
 
 export interface BrowserWebGPUDeviceOwner {
   readonly token: symbol;
@@ -25,7 +25,10 @@ export class BrowserWebGPUResourcePort implements WebGPUNativeResourcePort {
   }
 }
 
-export class BrowserWebGPUBufferPort extends BrowserWebGPUResourcePort implements WebGPUNativeBufferPort {
+export class BrowserWebGPUBufferPort
+  extends BrowserWebGPUResourcePort
+  implements WebGPUNativeBufferPort
+{
   readonly size: number;
   readonly usage: number;
 
@@ -43,7 +46,8 @@ export class BrowserWebGPUBufferPort extends BrowserWebGPUResourcePort implement
   getMappedRange(offset: number, size: number): ArrayBuffer {
     const native = unwrapBrowserWebGPUResource(this, this.owner);
     const result = callRequired(native, 'getMappedRange', [offset, size]);
-    if (!(result instanceof ArrayBuffer)) throw new TypeError('GPUBuffer.getMappedRange() did not return an ArrayBuffer.');
+    if (!(result instanceof ArrayBuffer))
+      throw new TypeError('GPUBuffer.getMappedRange() did not return an ArrayBuffer.');
     return result;
   }
 
@@ -52,11 +56,17 @@ export class BrowserWebGPUBufferPort extends BrowserWebGPUResourcePort implement
   }
 }
 
-export class BrowserWebGPUTexturePort extends BrowserWebGPUResourcePort implements WebGPUNativeTexturePort {
+export class BrowserWebGPUTexturePort
+  extends BrowserWebGPUResourcePort
+  implements WebGPUNativeTexturePort
+{
   createView(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort {
     const native = unwrapBrowserWebGPUResource(this, this.owner);
     const view = callRequired(native, 'createView', [descriptor]);
-    return new BrowserWebGPUResourcePort(this.owner, requireObject(view, 'GPUTexture.createView()'));
+    return new BrowserWebGPUResourcePort(
+      this.owner,
+      requireObject(view, 'GPUTexture.createView()')
+    );
   }
 }
 
@@ -64,7 +74,8 @@ export function unwrapBrowserWebGPUResource(
   resource: unknown,
   owner: BrowserWebGPUDeviceOwner
 ): object {
-  if (!(resource instanceof BrowserWebGPUResourcePort)) return requireObject(resource, 'WebGPU resource');
+  if (!(resource instanceof BrowserWebGPUResourcePort))
+    return requireObject(resource, 'WebGPU resource');
   if (resource.owner !== owner || resource.owner.generation !== owner.generation) {
     throw new Error('Browser WebGPU resource belongs to a different device generation.');
   }
@@ -80,11 +91,13 @@ function callOptional(target: object, key: string): void {
 
 function callRequired(target: object, key: string, args: readonly unknown[]): unknown {
   const method = Reflect.get(target, key);
-  if (typeof method !== 'function') throw new TypeError(`Native WebGPU object does not implement ${key}().`);
+  if (typeof method !== 'function')
+    throw new TypeError(`Native WebGPU object does not implement ${key}().`);
   return Reflect.apply(method, target, args);
 }
 
 function requireObject(value: unknown, label: string): object {
-  if (typeof value !== 'object' || value === null) throw new TypeError(`${label} is not an object.`);
+  if (typeof value !== 'object' || value === null)
+    throw new TypeError(`${label} is not an object.`);
   return value;
 }

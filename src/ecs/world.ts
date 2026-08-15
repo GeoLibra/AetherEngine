@@ -17,25 +17,14 @@ import { ResourceStore } from './resource';
 import { EntityBuilder } from './entity-builder';
 import { QueryBuilder } from './query';
 import { QueryState } from './query-state';
-import type { QueryCandidateSource } from './query-types';
+import type { QueryCandidateSource } from './types';
 import { RelationIndex } from './relation-index';
 import type { MonotonicClock, WorldMetricsSnapshot, WorldOptions } from './world-metrics';
 import { ObserverRegistry } from './observer';
-import type {
-  ObserverDescriptor,
-  ObserverEvent,
-  ObserverRegistration
-} from './observer';
-import {
-  ChildOfIndex,
-  createRelationAnyTag,
-  sameStringSet
-} from './relation';
+import type { ObserverDescriptor, ObserverEvent, ObserverRegistration } from './observer';
+import { ChildOfIndex, createRelationAnyTag, sameStringSet } from './relation';
 import { Table } from './table';
-import {
-  createComponentTag,
-  findMatchingTables as findTablesMatchingQuery
-} from './table-query';
+import { createComponentTag, findMatchingTables as findTablesMatchingQuery } from './table-query';
 import type {
   ComponentInput,
   ComponentSchema,
@@ -93,10 +82,7 @@ export class World {
   private currentState: WorldState = 'created';
   private readonly clock: MonotonicClock;
 
-  constructor(
-    schemaRegistry: SchemaRegistry = new SchemaRegistry(),
-    options: WorldOptions = {}
-  ) {
+  constructor(schemaRegistry: SchemaRegistry = new SchemaRegistry(), options: WorldOptions = {}) {
     this.id = createWorldId();
     this.clock = options.clock ?? { now: () => 0 };
     this.entityAllocator = new EntityAllocator(this.id);
@@ -197,29 +183,23 @@ export class World {
       .incomingTo(entity)
       .filter(({ source }) => source !== entity);
     const deferred = this.dispatchObservers([
-      ...entityComponentTypes.map(
-        (component): ObserverEvent => ({
-          kind: 'component-removed',
-          entity,
-          component
-        })
-      ),
-      ...outgoingRelations.map(
-        (value): ObserverEvent => ({
-          kind: 'relation-removed',
-          entity,
-          relation: value.relation,
-          target: value.target
-        })
-      ),
-      ...incomingRelations.map(
-        ({ source, relation }): ObserverEvent => ({
-          kind: 'relation-removed',
-          entity: source,
-          relation: relation.relation,
-          target: relation.target
-        })
-      ),
+      ...entityComponentTypes.map((component): ObserverEvent => ({
+        kind: 'component-removed',
+        entity,
+        component
+      })),
+      ...outgoingRelations.map((value): ObserverEvent => ({
+        kind: 'relation-removed',
+        entity,
+        relation: value.relation,
+        target: value.target
+      })),
+      ...incomingRelations.map(({ source, relation }): ObserverEvent => ({
+        kind: 'relation-removed',
+        entity: source,
+        relation: relation.relation,
+        target: relation.target
+      })),
       { kind: 'entity-despawned', entity }
     ]);
 
@@ -336,7 +316,10 @@ export class World {
     return this;
   }
 
-  getComponent<TView extends object>(entity: Entity, componentType: ComponentType<TView>): TView | null {
+  getComponent<TView extends object>(
+    entity: Entity,
+    componentType: ComponentType<TView>
+  ): TView | null {
     this.assertOwned(entity);
     if (!this.entityAllocator.isAlive(entity)) {
       return null;
@@ -408,10 +391,7 @@ export class World {
     );
     const remainingData = new Map<string, ArrayBuffer>();
     for (const remaining of remainingTypes) {
-      remainingData.set(
-        remaining.id,
-        location.table.readComponent(remaining, location.row)
-      );
+      remainingData.set(remaining.id, location.table.readComponent(remaining, location.row));
     }
     const tags = location.table.tags;
     this.removeFromTable(entity, location);
@@ -534,9 +514,7 @@ export class World {
     );
   }
 
-  private *iterateMatchedQuery<
-    const TComponents extends readonly ComponentType<object>[]
-  >(
+  private *iterateMatchedQuery<const TComponents extends readonly ComponentType<object>[]>(
     componentTypes: TComponents,
     filter: QueryFilter,
     matchingTables: readonly Table[],
@@ -622,12 +600,14 @@ export class World {
       return this;
     }
     const removedDeferred = previous
-      ? this.dispatchObservers([{
-          kind: 'relation-removed',
-          entity,
-          relation,
-          target: previous.target
-        }])
+      ? this.dispatchObservers([
+          {
+            kind: 'relation-removed',
+            entity,
+            relation,
+            target: previous.target
+          }
+        ])
       : undefined;
 
     if (previous) {
@@ -689,11 +669,7 @@ export class World {
     return this.relationIndex.get(entity, relation);
   }
 
-  wouldCreateRelationCycle(
-    source: Entity,
-    relation: RelationType,
-    target: Entity
-  ): boolean {
+  wouldCreateRelationCycle(source: Entity, relation: RelationType, target: Entity): boolean {
     this.assertOwned(source);
     this.assertOwned(target);
     const visited = new Set<Entity>();
@@ -730,9 +706,7 @@ export class World {
     visit(root, 0);
   }
 
-  addObserver<TView extends object>(
-    descriptor: ObserverDescriptor<TView>
-  ): ObserverRegistration {
+  addObserver<TView extends object>(descriptor: ObserverDescriptor<TView>): ObserverRegistration {
     this.assertUsable();
     return this.observerRegistry.add(descriptor);
   }
@@ -848,9 +822,13 @@ export class World {
   ): TView {
     // The closure resolves current storage on every field access so old views remain valid
     // after table growth, component insertion, or relation retagging.
-    return createComponentView(schema, () => this.getComponentStorage(entity, schema), () => {
-      this.changeTracker.markChanged(entity, schema.id);
-    });
+    return createComponentView(
+      schema,
+      () => this.getComponentStorage(entity, schema),
+      () => {
+        this.changeTracker.markChanged(entity, schema.id);
+      }
+    );
   }
 
   private entityMatchesFilter(entity: Entity, filter: QueryFilter, table?: Table): boolean {
@@ -905,9 +883,7 @@ export class World {
   }
 
   private isComponentTerm(term: QueryFilterTerm): term is ComponentType<object> {
-    return (
-      !isRelationTerm(term) && this.componentRegistry.get(term.id) === term
-    );
+    return !isRelationTerm(term) && this.componentRegistry.get(term.id) === term;
   }
 
   private assertAlive(entity: Entity): void {
@@ -927,10 +903,7 @@ export class World {
     }
   }
 
-  private assertOwnedEntityReferences(
-    schema: ComponentType<object>,
-    data: ComponentInput
-  ): void {
+  private assertOwnedEntityReferences(schema: ComponentType<object>, data: ComponentInput): void {
     if (schema.storage !== 'packed') {
       return;
     }
@@ -1116,10 +1089,7 @@ export class World {
   private readTableComponents(location: EntityLocation): Map<string, ArrayBuffer> {
     const components = new Map<string, ArrayBuffer>();
     for (const component of location.table.componentTypes) {
-      components.set(
-        component.id,
-        location.table.readComponent(component, location.row)
-      );
+      components.set(component.id, location.table.readComponent(component, location.row));
     }
     return components;
   }
@@ -1195,12 +1165,7 @@ export class World {
     }
 
     const operation = getTagTransitionOperation(location.table.tags, tags);
-    const table = this.archetypes.transition(
-      location.table,
-      operation,
-      componentTypes,
-      tags
-    );
+    const table = this.archetypes.transition(location.table, operation, componentTypes, tags);
     const row = table.insert(entity, components);
     this.entityLocations.set(entity, { table, row });
   }

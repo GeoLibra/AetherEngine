@@ -1,11 +1,33 @@
 import { bench, expect } from 'vitest';
 import {
   createLightingWorkload,
+  createShadowSelectionWorkload,
   runLightingReference,
   runLightingSubject,
+  runShadowAtlasCompactionReference,
+  runShadowAtlasCompactionSubject,
   runShadowAtlasReference,
-  runShadowAtlasSubject
+  runShadowAtlasSubject,
+  runShadowSelectionReference,
+  runShadowSelectionSubject
 } from './lighting-shadow/scenario';
+import { RenderGraphBuilder } from '../src/render-graph';
+import { declareShadowDepthPasses } from '../src/rendering';
+import { ReadonlyMapSnapshot } from '../src/rendering/readonly-collection-snapshot';
+import {
+  assertDeclaredShadowLayers,
+  createShadowDeclarationWorkload
+} from './lighting-shadow/declaration-scenario';
+
+for (const count of [100, 1_000, 10_000]) {
+  const workload = createShadowSelectionWorkload(count);
+  const reference = runShadowSelectionReference(workload);
+  bench(
+    `shadow request selection ${count} requests`,
+    () => expect(runShadowSelectionSubject(workload)).toEqual(reference),
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
 
 for (const receiverCount of [100, 1_000, 10_000]) {
   const workload = createLightingWorkload(receiverCount, 32, 71);
@@ -33,6 +55,19 @@ bench(
   { iterations: 1, warmupIterations: 0 }
 );
 
+for (const count of [16, 64, 256]) {
+  const reference = runShadowAtlasCompactionReference(count, 16);
+  bench(
+    `shadow atlas compaction ${count} uniform tiles`,
+    () => {
+      const subject = runShadowAtlasCompactionSubject(count, 16);
+      expect(subject).toEqual(reference);
+      expect(subject.counters.relocations).toBe(count);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
 const atlasReference = runShadowAtlasReference(32, 32, 32);
 bench(
   'shadow atlas allocation and lower-hole reclamation for 1024 uniform tiles',
@@ -41,3 +76,31 @@ bench(
   },
   { iterations: 1, warmupIterations: 0 }
 );
+
+for (const count of [16, 64, 256]) {
+  const declarationWorkload = createShadowDeclarationWorkload(count);
+  const { requests } = declarationWorkload;
+  const entries = new Map(requests.map((request, index) => [`key-${index}`, index] as const));
+  bench(
+    `constructs ${count} shadow ReadonlyMapSnapshot entries`,
+    () => {
+      const snapshot = new ReadonlyMapSnapshot(entries);
+      expect(snapshot.size).toBe(count);
+      expect(snapshot.get(`key-${count - 1}`)).toBe(count - 1);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+  bench(
+    `declares ${count} shadow layers with an immutable request map`,
+    () => {
+      const graph = new RenderGraphBuilder();
+      const declaration = declareShadowDepthPasses(graph, requests, { record: () => undefined });
+      expect(declaration.passes).toHaveLength(count);
+      expect(declaration.layerByRequestKey.size).toBe(count);
+      expect(
+        assertDeclaredShadowLayers(declarationWorkload, declaration.layerByRequestKey)
+      ).toEqual(declarationWorkload.expectedLayers);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}

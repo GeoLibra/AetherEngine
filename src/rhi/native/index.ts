@@ -5,4 +5,4 @@ export type {
   NativeDawnAdapterPort,
   NativeDawnBackend,
   NativeDawnFactsPort
-} from './native-types';
+} from './types';

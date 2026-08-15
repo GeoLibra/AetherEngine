@@ -5,7 +5,7 @@ import { parseFluxShader } from './parser';
 import { createShaderBindingManifest } from './layout';
 import { resolveShaderSource } from './source';
 import { resolveShaderVariants } from './variant';
-import type { WebGL2ShaderTranslationPort } from '../rhi/webgl2/shader-types';
+import type { WebGL2ShaderTranslationPort } from '../rhi/webgl2/types';
 import type { WebGL2ClipDepthMode } from '../rhi/webgl2/clip-depth';
 import type {
   ShaderBindingRequirement,
@@ -13,8 +13,12 @@ import type {
   ShaderCompileRequest,
   ShaderDiagnostic,
   ShaderSourceResolver,
-  ShaderTarget
+  ShaderTarget,
+  SourceSpan
 } from './types';
+
+const NO_SHADER_DIAGNOSTICS: readonly ShaderDiagnostic[] = Object.freeze([]);
+const NO_RELATED_SPANS: readonly SourceSpan[] = Object.freeze([]);
 
 /**
  * The compiled output artifact of the compiler, addressable by content hash fingerprint.
@@ -90,7 +94,7 @@ export class ShaderCompiler {
       return Object.freeze({
         status: 'cancelled',
         revision: request.revision,
-        diagnostics: Object.freeze([])
+        diagnostics: NO_SHADER_DIAGNOSTICS
       });
     let closure;
     try {
@@ -168,7 +172,7 @@ export class ShaderCompiler {
         revision: request.revision,
         key,
         artifact,
-        diagnostics: Object.freeze([])
+        diagnostics: NO_SHADER_DIAGNOSTICS
       });
     }
     const emitted = await emitShaderBackend(parsed.ir, {
@@ -197,7 +201,7 @@ export class ShaderCompiler {
         status: 'cancelled',
         revision: request.revision,
         key,
-        diagnostics: Object.freeze([])
+        diagnostics: NO_SHADER_DIAGNOSTICS
       });
     let manifest: ShaderBindingManifest;
     try {
@@ -231,7 +235,7 @@ export class ShaderCompiler {
       revision: request.revision,
       key,
       artifact,
-      diagnostics: Object.freeze([])
+      diagnostics: NO_SHADER_DIAGNOSTICS
     });
   }
   async prewarm(
@@ -279,7 +283,7 @@ function variantDiagnostic(uri: string, code: string, message: string): ShaderDi
     message,
     stage: 'capability',
     primary: Object.freeze({ uri, line: 1, column: 1, length: 1 }),
-    related: Object.freeze([])
+    related: NO_RELATED_SPANS
   });
 }
 function stageDiagnostic(
@@ -295,6 +299,6 @@ function stageDiagnostic(
     message,
     stage,
     primary: Object.freeze({ uri, line: 1, column: 1, length: 1 }),
-    related: Object.freeze([])
+    related: NO_RELATED_SPANS
   });
 }

@@ -47,6 +47,8 @@ interface ActivationRecord {
   session?: DynamicCapabilitySession;
 }
 
+const NO_CAPABILITIES: readonly string[] = Object.freeze([]);
+
 export class DynamicPluginHost {
   private readonly definitions = new Map<string, DynamicPluginDefinition>();
   private readonly definitionEntries = new Map<string, DynamicPluginInventoryEntry>();
@@ -77,8 +79,8 @@ export class DynamicPluginHost {
         versionId: stored.manifest.versionId,
         hostKind: this.options.hostKind,
         phase: 'defined',
-        grantedCapabilities: Object.freeze([]),
-        deniedOptionalCapabilities: Object.freeze([]),
+        grantedCapabilities: NO_CAPABILITIES,
+        deniedOptionalCapabilities: NO_CAPABILITIES,
         contributionCounts: Object.freeze({}),
         pendingWork: 0
       })
@@ -162,16 +164,15 @@ export class DynamicPluginHost {
   }
 
   destroy(): Promise<readonly PluginDiagnosticSnapshot[]> {
-    if (this.destroyed) {
-      return this.destruction ?? Promise.resolve(Object.freeze([]));
+    if (this.destruction !== undefined) {
+      return this.destruction;
     }
+
+    const completion = createDeferred<readonly PluginDiagnosticSnapshot[]>();
+    this.destruction = completion.promise;
     this.destroyed = true;
-    for (const scope of this.inFlightScopes) {
-      scope.abort('host-shutdown');
-    }
-    const destruction = this.performDestroy();
-    this.destruction = destruction;
-    return destruction;
+    void this.performDestroy().then(completion.resolve, completion.reject);
+    return completion.promise;
   }
 
   private async performActivation(
@@ -194,9 +195,9 @@ export class DynamicPluginHost {
       activationId,
       hostKind: this.options.hostKind,
       phase: 'validating',
-      grantedCapabilities: Object.freeze([]),
-      deniedOptionalCapabilities: Object.freeze([]),
-      contributionCounts: Object.freeze({}),
+      grantedCapabilities: NO_CAPABILITIES,
+      deniedOptionalCapabilities: NO_CAPABILITIES,
+      contributionCounts: {},
       pendingWork: 0,
       scope
     };
@@ -206,8 +207,8 @@ export class DynamicPluginHost {
     try {
       validateDynamicPluginManifest(manifest, this.options.verifier);
       const plan = this.authorizationPlan(manifest);
-      record.grantedCapabilities = Object.freeze(plan.granted.map(({ id }) => id));
-      record.deniedOptionalCapabilities = Object.freeze(plan.deniedOptional.map(({ id }) => id));
+      record.grantedCapabilities = plan.granted.map(({ id }) => id);
+      record.deniedOptionalCapabilities = plan.deniedOptional.map(({ id }) => id);
       record.phase = 'activating';
       const session = await this.options.broker.open(plan, scope);
       record.session = session;
@@ -510,4 +511,18 @@ function withTimeout<T, U>(
     }),
     timeout
   ]);
+}
+
+function createDeferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+  readonly reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }

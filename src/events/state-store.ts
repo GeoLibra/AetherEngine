@@ -11,18 +11,9 @@ export interface StateTransitionContext {
 }
 
 export interface StateHooks<S> {
-  readonly onExit?: (
-    transition: StateTransition<S>,
-    context: StateTransitionContext
-  ) => void;
-  readonly onCleanup?: (
-    transition: StateTransition<S>,
-    context: StateTransitionContext
-  ) => void;
-  readonly onEnter?: (
-    transition: StateTransition<S>,
-    context: StateTransitionContext
-  ) => void;
+  readonly onExit?: (transition: StateTransition<S>, context: StateTransitionContext) => void;
+  readonly onCleanup?: (transition: StateTransition<S>, context: StateTransitionContext) => void;
+  readonly onEnter?: (transition: StateTransition<S>, context: StateTransitionContext) => void;
 }
 
 interface StateRequest<S> {
@@ -66,7 +57,7 @@ export class StateStore<S> {
     if (reason.trim() === '') {
       throw new Error('State transition reason must not be empty.');
     }
-    this.queue.push(Object.freeze({ to, reason }));
+    this.queue.push({ to, reason });
     return true;
   }
 

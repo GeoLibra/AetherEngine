@@ -38,11 +38,7 @@ describe('QueryState', () => {
     expect(initial.matchedArchetypeIds).toHaveLength(1);
     expect(initial.catalogTablesExamined).toBe(1);
 
-    world
-      .spawn()
-      .insert(Position, { x: 3, y: 4 })
-      .insert(Velocity, { x: 5, y: 6 })
-      .build();
+    world.spawn().insert(Position, { x: 3, y: 4 }).insert(Velocity, { x: 5, y: 6 }).build();
 
     expect([...state]).toHaveLength(2);
     const updated = state.plan;
@@ -63,5 +59,18 @@ describe('QueryState', () => {
 
     world.spawn().insert(Position, { x: 3, y: 4 }).build();
     expect([...query].map(([entity]) => entity)).toHaveLength(2);
+  });
+
+  test('retains a private query-filter copy after the caller changes its arrays', () => {
+    const world = new World();
+    world.registerComponent(Position).registerComponent(Velocity);
+    world.spawn().insert(Position, { x: 1, y: 2 }).build();
+    world.spawn().insert(Position, { x: 3, y: 4 }).insert(Velocity, { x: 5, y: 6 }).build();
+    const withComponents = [Position];
+    const query = world.createQueryState([Position] as const, { with: withComponents });
+
+    withComponents[0] = Velocity;
+
+    expect([...query].map(([, position]) => position.x)).toEqual([1, 3]);
   });
 });

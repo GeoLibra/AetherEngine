@@ -1,4 +1,4 @@
-import type { WebGL2NativeContextPort } from '../native-types';
+import type { WebGL2NativeContextPort } from '../types';
 import { createBrowserWebGL2RenderPort } from './render-port';
 import { createBrowserWebGL2ResourcePort, type BrowserWebGL2TextureFacts } from './resource-port';
 import type { BrowserWebGL2Object } from './types';

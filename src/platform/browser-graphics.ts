@@ -11,14 +11,14 @@ import type { SurfaceTarget } from './types';
 import { WebGL2Adapter } from '../rhi/webgl2/adapter';
 import { createBrowserWebGL2ContextPort, WebGL2BrowserSurface } from '../rhi/webgl2/browser';
 import type { BrowserWebGL2Canvas } from '../rhi/webgl2/browser';
-import {
-  BrowserGraphicsBootstrapError,
-  type BrowserGraphicsAttempt,
-  type BrowserGraphicsLoss,
-  type BrowserGraphicsOptions,
-  type BrowserGraphicsSession,
-  type PhysicalSize
-} from './browser-graphics-types';
+import { BrowserGraphicsBootstrapError } from './browser-graphics-error';
+import type {
+  BrowserGraphicsAttempt,
+  BrowserGraphicsLoss,
+  BrowserGraphicsOptions,
+  BrowserGraphicsSession,
+  PhysicalSize
+} from './types';
 
 export async function createBrowserGraphics(
   options: BrowserGraphicsOptions

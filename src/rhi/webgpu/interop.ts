@@ -11,12 +11,12 @@ import type {
   WebGPUNativeImportKind,
   WebGPUNativeKind,
   WebGPUNativeResourceMap
-} from './interop-types';
+} from './types';
 import type {
   WebGPUNativeBufferPort,
   WebGPUNativeDevicePort,
   WebGPUNativeImportTexturePort
-} from './native-types';
+} from './types';
 import {
   WebGPUBuffer,
   WebGPUResourceBase,
@@ -50,7 +50,9 @@ export class WebGPUInteropController implements WebGPUInterop {
     if (this.owner.state !== 'live') throw new Error('WebGPU interop device is lost.');
     if (owner.trim() === '') throw new Error('Interop scope owner must not be empty.');
     if (submissionPolicy === 'independent-submission') {
-      throw new Error('Independent native queue submission requires an isolated WebGPU device and surface.');
+      throw new Error(
+        'Independent native queue submission requires an isolated WebGPU device and surface.'
+      );
     }
     return new WebGPUInteropScopeImpl(
       owner,
@@ -129,9 +131,18 @@ class WebGPUInteropScopeImpl implements WebGPUInteropScope {
     if (claimed !== undefined) {
       throw new Error(`Native resource is already owned by interop scope "${claimed.owner}".`);
     }
-    const resource = kind === 'buffer'
-      ? this.importBuffer(native as WebGPUNativeBufferPort, descriptor as NativeImportDescriptorMap['buffer'], adopted)
-      : this.importTexture(native as WebGPUNativeImportTexturePort, descriptor as NativeImportDescriptorMap['texture'], adopted);
+    const resource =
+      kind === 'buffer'
+        ? this.importBuffer(
+            native as WebGPUNativeBufferPort,
+            descriptor as NativeImportDescriptorMap['buffer'],
+            adopted
+          )
+        : this.importTexture(
+            native as WebGPUNativeImportTexturePort,
+            descriptor as NativeImportDescriptorMap['texture'],
+            adopted
+          );
     this.nativeOwners.set(native, this);
     this.resourceOwners.set(resource, this);
     this.imports.set(resource, native);
@@ -152,13 +163,21 @@ class WebGPUInteropScopeImpl implements WebGPUInteropScope {
       throw new Error('Imported buffer descriptor cannot set mappedAtCreation.');
     }
     if (native.size !== descriptor.size) {
-      throw new Error(`Native buffer size ${native.size} does not match descriptor size ${descriptor.size}.`);
+      throw new Error(
+        `Native buffer size ${native.size} does not match descriptor size ${descriptor.size}.`
+      );
     }
     if (native.usage !== descriptor.usage) {
-      throw new Error(`Native buffer usage ${native.usage} does not match descriptor usage ${descriptor.usage}.`);
+      throw new Error(
+        `Native buffer usage ${native.usage} does not match descriptor usage ${descriptor.usage}.`
+      );
     }
     return new WebGPUBuffer(
-      this.deviceOwner.allocateId(), this.deviceOwner, native, descriptor, adopted
+      this.deviceOwner.allocateId(),
+      this.deviceOwner,
+      native,
+      descriptor,
+      adopted
     );
   }
 
@@ -169,23 +188,30 @@ class WebGPUInteropScopeImpl implements WebGPUInteropScope {
   ): WebGPUTexture {
     const size = normalizeExtent(descriptor.size);
     if (
-      native.width !== size.width || native.height !== size.height ||
+      native.width !== size.width ||
+      native.height !== size.height ||
       native.depthOrArrayLayers !== size.depthOrArrayLayers
     ) {
       throw new Error(
         `Native texture extent ${native.width}x${native.height}x${native.depthOrArrayLayers} does not match ` +
-        `descriptor extent ${size.width}x${size.height}x${size.depthOrArrayLayers}.`
+          `descriptor extent ${size.width}x${size.height}x${size.depthOrArrayLayers}.`
       );
     }
     if (native.format !== descriptor.format) {
-      throw new Error(`Native texture format ${native.format} does not match descriptor format ${descriptor.format}.`);
+      throw new Error(
+        `Native texture format ${native.format} does not match descriptor format ${descriptor.format}.`
+      );
     }
     if (native.usage !== descriptor.usage) {
-      throw new Error(`Native texture usage ${native.usage} does not match descriptor usage ${descriptor.usage}.`);
+      throw new Error(
+        `Native texture usage ${native.usage} does not match descriptor usage ${descriptor.usage}.`
+      );
     }
     const dimension = descriptor.dimension ?? '2d';
     if (native.dimension !== dimension) {
-      throw new Error(`Native texture dimension ${native.dimension} does not match descriptor dimension ${dimension}.`);
+      throw new Error(
+        `Native texture dimension ${native.dimension} does not match descriptor dimension ${dimension}.`
+      );
     }
     const mipLevelCount = descriptor.mipLevelCount ?? 1;
     if (native.mipLevelCount !== mipLevelCount) {
@@ -200,7 +226,11 @@ class WebGPUInteropScopeImpl implements WebGPUInteropScope {
       );
     }
     return new WebGPUTexture(
-      this.deviceOwner.allocateId(), this.deviceOwner, native, descriptor, adopted
+      this.deviceOwner.allocateId(),
+      this.deviceOwner,
+      native,
+      descriptor,
+      adopted
     );
   }
 
@@ -216,8 +246,7 @@ function toNativeKind(kind: RHIResource['kind']): WebGPUNativeKind | undefined {
   if (kind === 'texture-view') return 'textureView';
   if (kind === 'render-pipeline') return 'renderPipeline';
   if (kind === 'compute-pipeline') return 'computePipeline';
-  if (
-    kind === 'buffer' || kind === 'texture' || kind === 'sampler' || kind === 'bind-group'
-  ) return kind === 'bind-group' ? 'bindGroup' : kind;
+  if (kind === 'buffer' || kind === 'texture' || kind === 'sampler' || kind === 'bind-group')
+    return kind === 'bind-group' ? 'bindGroup' : kind;
   return undefined;
 }

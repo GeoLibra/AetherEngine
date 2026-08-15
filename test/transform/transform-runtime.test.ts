@@ -99,9 +99,7 @@ describe('TransformRuntime', () => {
     transforms.reparent(child, oldParent, 'keep-local');
     transforms.propagate();
 
-    expect(() => transforms.reparent(child, singularParent, 'keep-world')).toThrow(
-      'singular'
-    );
+    expect(() => transforms.reparent(child, singularParent, 'keep-world')).toThrow('singular');
     expect(world.getParent(child)).toBe(oldParent);
   });
 
@@ -126,19 +124,20 @@ describe('TransformRuntime', () => {
     transforms.propagate();
     transforms.setLocal(entity, { translation: [10, 0, 0] });
     transforms.propagate();
-    const authoritative = new Float32Array(
-      world.getComponent(entity, WorldTransform)!.matrix
-    );
+    const authoritative = new Float32Array(world.getComponent(entity, WorldTransform)!.matrix);
 
     const extracted = transforms.extract({
       interpolationAlpha: 0.25,
       camera: { cell: [0, 0, 0], offset: [1, 0, 0] }
     });
 
-    expectVector(
-      Mat4.transformPoint(extracted.get(entity)!.matrix, [0, 0, 0]),
-      [1.5, 0, 0]
-    );
+    expectVector(Mat4.transformPoint(extracted.get(entity)!.matrix, [0, 0, 0]), [1.5, 0, 0]);
+    const renderTransform = extracted.get(entity)!;
+    expect(Object.isFrozen(renderTransform.matrix)).toBe(true);
+    expect(Object.isFrozen(renderTransform.previousMatrix)).toBe(true);
+    expect(Object.isFrozen(renderTransform.normalMatrix)).toBe(true);
+    expect(() => ((renderTransform.matrix as number[])[12] = 99)).toThrow();
+    expect(renderTransform.matrix[12]).toBe(1.5);
     expect(Array.from(world.getComponent(entity, WorldTransform)!.matrix)).toEqual(
       Array.from(authoritative)
     );
@@ -194,16 +193,13 @@ describe('TransformRuntime', () => {
       [30, 0, 0]
     );
     expect(transforms.history.reason).toBe('origin-rebase');
-    expect(
-      Array.from(world.getComponent(child, WorldTransform)!.previousMatrix)
-    ).toEqual(Array.from(world.getComponent(child, WorldTransform)!.matrix));
+    expect(Array.from(world.getComponent(child, WorldTransform)!.previousMatrix)).toEqual(
+      Array.from(world.getComponent(child, WorldTransform)!.matrix)
+    );
   });
 
   test('normalizes cell plus offset positions with stable absolute coordinates', () => {
-    const normalized = normalizeWorldPosition(
-      { cell: [3, -2, 0], offset: [175, -151, 49] },
-      100
-    );
+    const normalized = normalizeWorldPosition({ cell: [3, -2, 0], offset: [175, -151, 49] }, 100);
 
     expect(normalized).toEqual({ cell: [5, -4, 0], offset: [-25, 49, 49] });
   });
@@ -233,11 +229,7 @@ describe('TransformRuntime', () => {
   });
 });
 
-function expectVector(
-  actual: ArrayLike<number>,
-  expected: readonly number[],
-  digits = 5
-): void {
+function expectVector(actual: ArrayLike<number>, expected: readonly number[], digits = 5): void {
   expect(actual.length).toBe(expected.length);
   expected.forEach((value, index) => expect(actual[index]).toBeCloseTo(value, digits));
 }

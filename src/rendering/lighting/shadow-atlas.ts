@@ -81,7 +81,7 @@ export class ShadowAtlasAllocator {
   compact(): ShadowAtlasCompactionResult | undefined {
     const nextGeneration = incrementGeneration(this.generationValue);
     const requests = [...this.tiles.values()]
-      .map((tile) => Object.freeze({ key: tile.key, resolution: tile.width, previous: tile }))
+      .map((tile) => ({ key: tile.key, resolution: tile.width, previous: tile }))
       .sort(
         (left, right) => right.resolution - left.resolution || compareCodeUnits(left.key, right.key)
       );
@@ -149,6 +149,8 @@ function packRequests(
   height: number,
   generation: number
 ): AtlasPacking | undefined {
+  // The packing result is consumed by compact() before any tile becomes public. Keep its
+  // scratch containers owner-private; compact() publishes frozen relocation snapshots.
   const tiles = new Map<string, ShadowAtlasTileHandle>();
   let free: readonly FreeRectangle[] = [fullRectangle(width, height)];
   for (const request of requests) {
@@ -157,7 +159,7 @@ function packRequests(
     tiles.set(request.key, tile);
     free = subtractFromFree(free, tile);
   }
-  return Object.freeze({ tiles, free: Object.freeze(free) });
+  return { tiles, free };
 }
 
 function allocateTile(
@@ -235,11 +237,11 @@ function containsRectangle(container: FreeRectangle, candidate: FreeRectangle): 
 }
 
 function rectangle(x: number, y: number, width: number, height: number): FreeRectangle | undefined {
-  return width > 0 && height > 0 ? Object.freeze({ x, y, width, height }) : undefined;
+  return width > 0 && height > 0 ? { x, y, width, height } : undefined;
 }
 
 function fullRectangle(width: number, height: number): FreeRectangle {
-  return Object.freeze({ x: 0, y: 0, width, height });
+  return { x: 0, y: 0, width, height };
 }
 
 function replaceMap<K, V>(target: Map<K, V>, source: ReadonlyMap<K, V>): void {
