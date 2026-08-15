@@ -136,16 +136,17 @@ describe('changed-file routing', () => {
     }
   });
 
-  test('keeps planned Simulation, Experience, and Editor gaps explicit', () => {
-    for (const path of [
-      'src/animation/controller.ts',
-      'src/input/actions.ts',
-      'src/editor/document.ts'
-    ]) {
-      const route = routeChangedFiles(BENCHMARK_MANIFEST, [path]);
-      expect(route.suiteIds).toEqual([]);
-      expect(route.missingDomainIds).toHaveLength(1);
-    }
+  test('routes Simulation and Editor paths to their registered suites and keeps Experience gap explicit', () => {
+    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/vfx/emitter.ts']).suiteIds).toEqual([
+      'simulation-vfx'
+    ]);
+    expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/editor/document.ts']).suiteIds).toEqual([
+      'editor-workflow'
+    ]);
+
+    const expRoute = routeChangedFiles(BENCHMARK_MANIFEST, ['src/input/actions.ts']);
+    expect(expRoute.suiteIds).toEqual([]);
+    expect(expRoute.missingDomainIds).toEqual(['experience']);
   });
 
   test('routes Material-owned paths only to the dedicated material suite', () => {
