@@ -1,13 +1,24 @@
 import type { Vec3 } from '../math/types';
 import { defineResource } from '../ecs/resource';
+import { DEFAULT_CELL_SIZE } from './constants';
 import type { WorldPosition } from './types';
 
-const DEFAULT_CELL_SIZE = 1_000;
 const originCells = new WeakMap<WorldOrigin, Vec3>();
 
+/**
+ * Manages the floating origin grid cell coordinates and cell size.
+ *
+ * Floating origin rebasing prevents 32-bit floating point precision loss
+ * when simulating and rendering large-scale virtual worlds.
+ */
 export class WorldOrigin {
   readonly cellSize: number;
 
+  /**
+   * Creates a new WorldOrigin instance.
+   * @param cellSize Size of each cubic coordinate grid cell (must be a positive finite number).
+   * @param cell Initial integer cell coordinates [cx, cy, cz].
+   */
   constructor(cellSize = DEFAULT_CELL_SIZE, cell: Vec3 = [0, 0, 0]) {
     assertCellSize(cellSize);
     assertCell(cell);
@@ -15,6 +26,9 @@ export class WorldOrigin {
     originCells.set(this, [...cell] as Vec3);
   }
 
+  /**
+   * Returns a copy of the current integer cell coordinates [cx, cy, cz].
+   */
   get cell(): Vec3 {
     return [...requireOriginCell(this)] as Vec3;
   }
@@ -26,6 +40,15 @@ export function updateWorldOrigin(origin: WorldOrigin, cell: Vec3): void {
   originCells.set(origin, [...cell] as Vec3);
 }
 
+/**
+ * Normalizes a large-world coordinate by shifting offset overflows into cell index increments.
+ *
+ * Ensures that the continuous sub-cell offset along each axis remains within `[-cellSize/2, cellSize/2]`.
+ *
+ * @param position Raw world position consisting of cell index and offset vector.
+ * @param cellSize The dimension of each grid cell.
+ * @returns A new immutable normalized `WorldPosition`.
+ */
 export function normalizeWorldPosition(position: WorldPosition, cellSize: number): WorldPosition {
   assertCellSize(cellSize);
   assertCell(position.cell);
@@ -41,12 +64,19 @@ export function normalizeWorldPosition(position: WorldPosition, cellSize: number
   if (!cell.every(Number.isSafeInteger)) {
     throw new Error('Normalized world position exceeds the safe integer cell range.');
   }
-  return Object.freeze({
-    cell: Object.freeze(cell) as Vec3,
-    offset: Object.freeze(offset) as Vec3
-  });
+  return {
+    cell: cell as Vec3,
+    offset: offset as Vec3
+  };
 }
 
+/**
+ * Converts a large-world coordinate into a continuous 3D position vector relative to the active WorldOrigin.
+ *
+ * @param position Absolute world position (cell + offset).
+ * @param origin Active world origin reference.
+ * @returns Localized 3D vector [x, y, z] relative to the current origin cell.
+ */
 export function worldPositionRelativeToOrigin(position: WorldPosition, origin: WorldOrigin): Vec3 {
   assertCell(position.cell);
   assertFiniteVector(position.offset, 'World position offset');
@@ -85,4 +115,7 @@ function assertFiniteVector(vector: Vec3, label: string): void {
   }
 }
 
+/**
+ * ECS Resource token for accessing the active `WorldOrigin`.
+ */
 export const WorldOriginResource = defineResource<WorldOrigin>('aether.transform.world-origin');

@@ -8,29 +8,39 @@ interface HistoryState {
 
 const histories = new WeakMap<TransformHistory, HistoryState>();
 
+/**
+ * Tracks historical transform reset events to communicate temporal discontinuities
+ * (such as teleports, origin rebasing, or camera cuts) to downstream rendering systems.
+ */
 export class TransformHistory {
   constructor() {
     histories.set(this, { version: 0 });
   }
 
+  /**
+   * The most recent reset reason, or undefined if no reset has occurred or history was cleared.
+   */
   get reason(): HistoryResetReason | undefined {
     return requireHistory(this).reason;
   }
 
+  /**
+   * Monotonically increasing version counter bumped on each history mark/reset.
+   */
   get version(): number {
     return requireHistory(this).version;
   }
 
+  /**
+   * Clears the current reset reason flag.
+   */
   clear(): void {
     delete requireHistory(this).reason;
   }
 }
 
 /** TransformRuntime-only mutation seam; intentionally omitted from the package barrel. */
-export function markTransformHistory(
-  history: TransformHistory,
-  reason: HistoryResetReason
-): void {
+export function markTransformHistory(history: TransformHistory, reason: HistoryResetReason): void {
   const state = requireHistory(history);
   state.reason = reason;
   state.version = (state.version + 1) >>> 0;
@@ -44,6 +54,9 @@ function requireHistory(history: TransformHistory): HistoryState {
   return state;
 }
 
+/**
+ * ECS Resource token for accessing the active `TransformHistory`.
+ */
 export const TransformHistoryResource = defineResource<TransformHistory>(
   'aether.transform.history'
 );
