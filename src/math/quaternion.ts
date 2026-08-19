@@ -4,7 +4,7 @@ const MIN_QUATERNION_LENGTH = 1e-8;
 const SINGULAR_COSINE_EPSILON = Math.sqrt(Number.EPSILON) * 2;
 const TWO_PI = Math.PI * 2;
 
-export const Quat = Object.freeze({
+export const Quat = {
   identity(): Quaternion {
     return [0, 0, 0, 1];
   },
@@ -108,7 +108,7 @@ export const Quat = Object.freeze({
       from[3] * fromWeight + to[3] * toWeight
     ]);
   }
-});
+};
 
 function assertFiniteEuler(value: EulerYXZ, label: string): void {
   if (!value.every(Number.isFinite)) {
