@@ -1,24 +1,23 @@
 import { performance } from 'node:perf_hooks';
 import { type Entity } from '../../src';
 import { serializeComponent } from '../../src/ecs/component';
-import { Table } from '../../src/ecs/table';
+import { Table } from '../../src/ecs/storage';
 import type { BenchmarkChecksum, ScenarioInput } from '../harness/types';
 import { expectedDenseChecksum, initialPosition, initialVelocity } from '../scenarios/definitions';
 import { BenchmarkPosition, BenchmarkVelocity } from '../scenarios/components';
 import type { BenchmarkSubject, PreparedBenchmark, PrepareResult } from './types';
 import { unsupported } from './types';
 
-export const AETHER_TABLE_STORAGE_SUBJECT: BenchmarkSubject =
-  Object.freeze<BenchmarkSubject>({
-    id: 'aether-table-storage',
-    version: 'workspace-diagnostic',
-    prepare(scenario, input) {
-      if (scenario.id !== 'dense-update') {
-        return unsupported('Aether direct Table storage is a dense-update diagnostic lane only.');
-      }
-      return prepareTableStorage(input);
+export const AETHER_TABLE_STORAGE_SUBJECT: BenchmarkSubject = Object.freeze<BenchmarkSubject>({
+  id: 'aether-table-storage',
+  version: 'workspace-diagnostic',
+  prepare(scenario, input) {
+    if (scenario.id !== 'dense-update') {
+      return unsupported('Aether direct Table storage is a dense-update diagnostic lane only.');
     }
-  });
+    return prepareTableStorage(input);
+  }
+});
 
 function prepareTableStorage(input: ScenarioInput): PrepareResult {
   const setupStartedAt = performance.now();
@@ -29,7 +28,10 @@ function prepareTableStorage(input: ScenarioInput): PrepareResult {
     table.insert(
       (index + 1) as Entity,
       new Map([
-        [BenchmarkPosition.id, serializeComponent(BenchmarkPosition, initialPosition(index, input.seedOffset))],
+        [
+          BenchmarkPosition.id,
+          serializeComponent(BenchmarkPosition, initialPosition(index, input.seedOffset))
+        ],
         [BenchmarkVelocity.id, serializeComponent(BenchmarkVelocity, initialVelocity(index))]
       ])
     );
@@ -54,7 +56,8 @@ function prepareTableStorage(input: ScenarioInput): PrepareResult {
       const positionBase = positionStorage.row * BenchmarkPosition.size;
       const velocityBase = velocityStorage.row * BenchmarkVelocity.size;
       const x = position.getFloat32(positionBase, true) + velocity.getFloat32(velocityBase, true);
-      const y = position.getFloat32(positionBase + 4, true) + velocity.getFloat32(velocityBase + 4, true);
+      const y =
+        position.getFloat32(positionBase + 4, true) + velocity.getFloat32(velocityBase + 4, true);
       position.setFloat32(positionBase, x, true);
       position.setFloat32(positionBase + 4, y, true);
       value += x + y;

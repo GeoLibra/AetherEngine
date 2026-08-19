@@ -1,4 +1,4 @@
-import { CommandBuffer } from '../ecs/command-buffer';
+import { CommandBuffer } from '../ecs/command';
 import { defineResource } from '../ecs/resource';
 import type { StateStore, StateTransition } from './state-store';
 

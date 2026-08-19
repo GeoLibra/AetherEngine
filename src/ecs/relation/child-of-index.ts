@@ -1,9 +1,21 @@
-import { ChildOf } from './component';
-import type { Entity, Relation, RelationType } from './types';
+import type { Entity, Relation } from '../types';
+import { ChildOf } from './constants';
 
+/**
+ * Specialized fast lookup index for the hierarchical `ChildOf` relation.
+ *
+ * Maintains a parent-to-children multi-map (`parent -> Set<Entity>`) for O(1)
+ * children resolution, while filtering dead entities at read time.
+ */
 export class ChildOfIndex {
   private readonly childrenByParent = new Map<Entity, Set<Entity>>();
 
+  /**
+   * Registers a child-parent relation edge in the index if it matches `ChildOf`.
+   *
+   * @param entity - The child entity.
+   * @param relation - The relation instance.
+   */
   add(entity: Entity, relation: Relation): void {
     if (relation.relation.id !== ChildOf.id) {
       return;
@@ -17,6 +29,12 @@ export class ChildOfIndex {
     children.add(entity);
   }
 
+  /**
+   * Removes a child-parent relation edge from the index if it matches `ChildOf`.
+   *
+   * @param entity - The child entity.
+   * @param relation - The relation instance.
+   */
   remove(entity: Entity, relation: Relation): void {
     if (relation.relation.id !== ChildOf.id) {
       return;
@@ -29,35 +47,22 @@ export class ChildOfIndex {
     }
   }
 
+  /**
+   * Retrieves all live children for a given parent entity.
+   *
+   * @param parent - The parent entity whose children should be retrieved.
+   * @param isAlive - Predicate to filter out despawned or dead entities at query time.
+   * @returns An array of alive child entities.
+   */
   getChildren(parent: Entity, isAlive: (entity: Entity) => boolean): Entity[] {
     // Filter liveness at read time so stale children from external lifecycle changes cannot leak.
     return [...(this.childrenByParent.get(parent) ?? [])].filter(isAlive);
   }
 
+  /**
+   * Clears all indexed parent-child relations.
+   */
   clear(): void {
     this.childrenByParent.clear();
   }
-}
-
-export function createRelationAnyTag(relation: RelationType): string {
-  // Matches "entity has this relation type", regardless of target.
-  return `relation:${relation.key}`;
-}
-
-export function createRelationTargetTag(relation: RelationType, target: Entity): string {
-  // Matches exact relation pairs, e.g. ChildOf(parent).
-  return `relation:${relation.key}:target:${target}`;
-}
-
-export function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
-  // Used before archetype retagging to avoid unnecessary table migration.
-  if (left.size !== right.size) {
-    return false;
-  }
-  for (const value of left) {
-    if (!right.has(value)) {
-      return false;
-    }
-  }
-  return true;
 }

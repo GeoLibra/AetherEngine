@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { World, defineComponent } from '../../src';
-import { ArchetypeCatalog } from '../../src/ecs/archetype-catalog';
+import { ArchetypeCatalog } from '../../src/ecs/storage';
 
 interface PositionView {
   x: number;
@@ -32,18 +32,8 @@ describe('ArchetypeCatalog', () => {
     const catalog = new ArchetypeCatalog();
     const empty = catalog.getOrCreate([], []);
 
-    const first = catalog.transition(
-      empty,
-      'add:component:test.catalog-position',
-      [Position],
-      []
-    );
-    const second = catalog.transition(
-      empty,
-      'add:component:test.catalog-position',
-      [Position],
-      []
-    );
+    const first = catalog.transition(empty, 'add:component:test.catalog-position', [Position], []);
+    const second = catalog.transition(empty, 'add:component:test.catalog-position', [Position], []);
 
     expect(first).toBe(second);
     expect(first.id).toBeGreaterThan(empty.id);

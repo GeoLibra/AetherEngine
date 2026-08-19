@@ -1,6 +1,11 @@
-import type { Table } from './table';
-import type { QueryCandidateSource, QueryDebugPlan } from './types';
-import type { ComponentType, QueryFilter, QueryItem } from './types';
+import type { Table } from '../storage/table';
+import type {
+  ComponentType,
+  QueryCandidateSource,
+  QueryDebugPlan,
+  QueryFilter,
+  QueryItem
+} from '../types';
 
 export interface QueryTableRefresh {
   readonly version: number;

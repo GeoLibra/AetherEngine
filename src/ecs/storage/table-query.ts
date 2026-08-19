@@ -1,6 +1,6 @@
-import { createRelationAnyTag } from './relation';
+import { createRelationAnyTag } from '../relation';
 import type { Table } from './table';
-import type { ComponentType, QueryFilter, QueryFilterTerm } from './types';
+import type { ComponentType, QueryFilter, QueryFilterTerm } from '../types';
 
 export function createComponentTag(componentId: string): string {
   return `component:${componentId}`;

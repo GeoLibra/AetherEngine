@@ -1,4 +1,4 @@
-import type { ObserverDescriptor } from '../../ecs/observer';
+import type { ObserverDescriptor } from '../../ecs/reactive';
 import type { ResourceToken } from '../../ecs/types';
 import type { EventChannel } from '../../events/event-channel';
 import type { StateStore } from '../../events/state-store';

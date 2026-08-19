@@ -1,8 +1,5 @@
-import {
-  DEFAULT_TABLE_CHUNK_CAPACITY,
-  DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY
-} from './constants';
-import type { Entity, PackedComponentSchema } from './types';
+import { DEFAULT_TABLE_CHUNK_CAPACITY, DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY } from '../constants';
+import type { Entity, PackedComponentSchema } from '../types';
 
 export interface TableRemoval {
   readonly removed: Entity;
@@ -56,7 +53,9 @@ export class Table {
     options: TableOptions = {}
   ) {
     this.id = resolveTableId(options.id);
-    this.componentTypes = [...componentTypes].sort((left, right) => left.id.localeCompare(right.id));
+    this.componentTypes = [...componentTypes].sort((left, right) =>
+      left.id.localeCompare(right.id)
+    );
     this.tags = new Set([...tags].sort());
     this.archetypeId = createArchetypeId(this.componentTypes, this.tags);
     this.initialChunkCapacity = resolveChunkCapacity(
@@ -186,7 +185,8 @@ export class Table {
   }
 
   private allocateChunk(): void {
-    const capacity = this.entityChunks.length === 0 ? this.initialChunkCapacity : this.chunkCapacity;
+    const capacity =
+      this.entityChunks.length === 0 ? this.initialChunkCapacity : this.chunkCapacity;
     this.entityChunks.push({
       rows: new Float64Array(capacity),
       capacity
@@ -198,7 +198,11 @@ export class Table {
     this.allocatedRows += capacity;
   }
 
-  private copyComponent(schema: PackedComponentSchema<object>, sourceRow: number, targetRow: number): void {
+  private copyComponent(
+    schema: PackedComponentSchema<object>,
+    sourceRow: number,
+    targetRow: number
+  ): void {
     const source = this.getComponentStorage(schema.id, sourceRow);
     const target = this.getComponentStorage(schema.id, targetRow);
     new Uint8Array(target.buffer, target.row * schema.size, schema.size).set(
@@ -243,7 +247,9 @@ export class Table {
 
   private locateWritableRow(row: number): RowLocation {
     if (row < 0 || row > this.count || row >= this.capacity) {
-      throw new Error(`Row ${row} is outside writable table "${this.archetypeId}" capacity ${this.capacity}.`);
+      throw new Error(
+        `Row ${row} is outside writable table "${this.archetypeId}" capacity ${this.capacity}.`
+      );
     }
     return this.locateRow(row);
   }

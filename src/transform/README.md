@@ -138,7 +138,7 @@ graph TD
 
 | 维度         | `Query ({ changed, added })`                                                      | `Observer`                                                                             |
 | :----------- | :-------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
-| **所属层级** | **ECS 核心通用能力**（[`ChangeTracker`](../ecs/change-tracker.ts)）               | **ECS 核心通用能力**（[`ObserverRegistry`](../ecs/observer.ts)）                       |
+| **所属层级** | **ECS 核心通用能力**（[`ChangeTracker`](../ecs/reactive/change-tracker.ts)）      | **ECS 核心通用能力**（[`ObserverRegistry`](../ecs/reactive/observer.ts)）              |
 | **设计哲学** | **拉取模型 (Pull / Batch / Polling)**                                             | **推送模型 (Push / Reactive / Immediate)**                                             |
 | **触发时机** | **按帧/按 Tick 延迟批量拉取**：在 System 调度时按需过滤                           | **即时响应 (Immediate Hook)**：在 `insertComponent` / `addRelation` 发生的瞬间同步回调 |
 | **核心优势** | 适合高频数值计算、连续内存批量扫描，零回调开销与零上下文分配                      | 适合低频结构变更、拓扑关系联动、跨子系统生命周期资源同步                               |

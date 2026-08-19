@@ -1,5 +1,5 @@
 import { createArchetypeId, Table } from './table';
-import type { PackedComponentSchema } from './types';
+import type { PackedComponentSchema } from '../types';
 
 export type ArchetypeTransitionOperation = `add:${string}` | `remove:${string}`;
 
