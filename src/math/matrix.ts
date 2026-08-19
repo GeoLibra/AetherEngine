@@ -2,7 +2,7 @@ import { STANDARD_DEPTH } from './depth';
 import { Quat } from './quaternion';
 import type { DepthConvention, Quaternion, Vec3, Vec4 } from './types';
 
-export const Mat4 = Object.freeze({
+export const Mat4 = {
   identity(): Float32Array {
     return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
   },
@@ -186,13 +186,13 @@ export const Mat4 = Object.freeze({
     ) {
       throw new Error('Transform matrix contains shear beyond the supported tolerance.');
     }
-    return Object.freeze({
+    return {
       translation,
       rotation: quaternionFromAxes(axis0, axis1, axis2),
       scale: [scaleX, scaleY, scaleZ] as Vec3
-    });
+    };
   }
-});
+};
 
 function invertMatrix(matrix: ArrayLike<number>): Float32Array | undefined {
   const m = matrix;

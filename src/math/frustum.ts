@@ -24,16 +24,14 @@ export class Frustum {
     const row1 = row(matrix, 1);
     const row2 = row(matrix, 2);
     const row3 = row(matrix, 3);
-    return new Frustum(
-      Object.freeze([
-        plane(add(row3, row0)),
-        plane(subtract(row3, row0)),
-        plane(add(row3, row1)),
-        plane(subtract(row3, row1)),
-        plane(row2),
-        plane(subtract(row3, row2))
-      ])
-    );
+    return new Frustum([
+      plane(add(row3, row0)),
+      plane(subtract(row3, row0)),
+      plane(add(row3, row1)),
+      plane(subtract(row3, row1)),
+      plane(row2),
+      plane(subtract(row3, row2))
+    ]);
   }
 
   containsPoint(point: Vec3): boolean {
@@ -156,8 +154,8 @@ function plane(value: readonly [number, number, number, number]): Plane {
   if (length < 1e-12) {
     throw new Error('Cannot normalize a degenerate frustum plane.');
   }
-  return Object.freeze({
-    normal: Object.freeze([value[0] / length, value[1] / length, value[2] / length]) as Vec3,
+  return {
+    normal: [value[0] / length, value[1] / length, value[2] / length],
     distance: value[3] / length
-  });
+  };
 }
