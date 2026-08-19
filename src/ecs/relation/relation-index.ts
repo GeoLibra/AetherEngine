@@ -1,10 +1,12 @@
-import type { Entity, Relation, RelationType } from './types';
+import type { Entity, IncomingRelation, Relation, RelationType } from '../types';
+import { deleteFromNestedSet, deleteFromSet, getOrCreateNestedSet, getOrCreateSet } from './utils';
 
-export interface IncomingRelation {
-  readonly source: Entity;
-  readonly relation: Relation;
-}
-
+/**
+ * Multi-dimensional bi-directional relation index.
+ *
+ * Manages outgoing relations (source -> type -> relation), incoming relations
+ * (target -> type -> sources), and type-level indexes for fast graph queries.
+ */
 export class RelationIndex {
   private readonly outgoingBySource = new Map<Entity, Map<symbol, Relation>>();
   private readonly sourcesByType = new Map<symbol, Set<Entity>>();
@@ -109,51 +111,5 @@ export class RelationIndex {
     this.incomingByTarget.clear();
     this.types.clear();
     this.count = 0;
-  }
-}
-
-function getOrCreateSet<K>(map: Map<K, Set<Entity>>, key: K): Set<Entity> {
-  let values = map.get(key);
-  if (!values) {
-    values = new Set();
-    map.set(key, values);
-  }
-  return values;
-}
-
-function getOrCreateNestedSet<Outer, Inner>(
-  map: Map<Outer, Map<Inner, Set<Entity>>>,
-  outer: Outer,
-  inner: Inner
-): Set<Entity> {
-  let nested = map.get(outer);
-  if (!nested) {
-    nested = new Map();
-    map.set(outer, nested);
-  }
-  return getOrCreateSet(nested, inner);
-}
-
-function deleteFromSet<K>(map: Map<K, Set<Entity>>, key: K, entity: Entity): void {
-  const values = map.get(key);
-  values?.delete(entity);
-  if (values?.size === 0) {
-    map.delete(key);
-  }
-}
-
-function deleteFromNestedSet<Outer, Inner>(
-  map: Map<Outer, Map<Inner, Set<Entity>>>,
-  outer: Outer,
-  inner: Inner,
-  entity: Entity
-): void {
-  const nested = map.get(outer);
-  if (!nested) {
-    return;
-  }
-  deleteFromSet(nested, inner, entity);
-  if (nested.size === 0) {
-    map.delete(outer);
   }
 }

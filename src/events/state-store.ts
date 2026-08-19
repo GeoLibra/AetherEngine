@@ -1,4 +1,4 @@
-import type { CommandBuffer } from '../ecs/command-buffer';
+import type { CommandBuffer } from '../ecs/command';
 
 export interface StateTransition<S> {
   readonly from: S;

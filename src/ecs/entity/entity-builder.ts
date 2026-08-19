@@ -1,5 +1,5 @@
-import type { World } from './world';
-import type { ComponentInput, ComponentType, Entity, RelationType } from './types';
+import type { World } from '../world';
+import type { ComponentInput, ComponentType, Entity, RelationType } from '../types';
 
 interface PendingComponent {
   readonly type: ComponentType<object>;
@@ -20,7 +20,10 @@ export class EntityBuilder {
     private readonly entity: Entity
   ) {}
 
-  insert<TView extends object>(componentType: ComponentType<TView>, data: ComponentInput = {}): this {
+  insert<TView extends object>(
+    componentType: ComponentType<TView>,
+    data: ComponentInput = {}
+  ): this {
     this.components.push({ type: componentType, data });
     return this;
   }

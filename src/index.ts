@@ -65,15 +65,15 @@ export {
   defineRelation,
   defineTagComponent
 } from './ecs/component';
-export { World } from './ecs/world';
-export type { QueryState } from './ecs/query-state';
+export { World, DeferredWorld } from './ecs/world';
+export type { QueryState } from './ecs/query';
 export type { QueryCandidateSource, QueryDebugPlan } from './ecs/types';
-export type { MonotonicClock, WorldMetricsSnapshot, WorldOptions } from './ecs/world-metrics';
+export type { MonotonicClock, WorldMetricsSnapshot, WorldOptions } from './ecs/types';
 export { defineResource } from './ecs/resource';
-export { ChangeReader } from './ecs/change-tracker';
-export { CommandBuffer, CommandBufferResource } from './ecs/command-buffer';
-export { SpawnTicket } from './ecs/spawn-ticket';
-export { DeferredWorld, ObserverRegistry } from './ecs/observer';
+export { ChangeReader } from './ecs/reactive';
+export { CommandBuffer, CommandBufferResource } from './ecs/command';
+export { SpawnTicket } from './ecs/entity';
+export { ObserverRegistry } from './ecs/reactive';
 export type {
   ChangeReaderOptions,
   ChangeWindow,
@@ -112,7 +112,7 @@ export type {
   ObserverEvent,
   ObserverEventKind,
   ObserverRegistration
-} from './ecs/observer';
+} from './ecs/reactive';
 export * from './events';
 export * from './diagnostics';
 export * from './math';

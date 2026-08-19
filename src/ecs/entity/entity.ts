@@ -5,8 +5,8 @@ import {
   ENTITY_INDEX_MULTIPLIER,
   ENTITY_LOCAL_MULTIPLIER,
   MAX_WORLD_ID
-} from './constants';
-import type { Entity, WorldId } from './types';
+} from '../constants';
+import type { Entity, WorldId } from '../types';
 
 interface EntityMeta {
   generation: number;
@@ -60,24 +60,25 @@ export class EntityAllocator {
   free(entity: Entity): boolean {
     const decoded = decodeEntity(entity);
     if (decoded.worldId !== this.worldId) {
-      throw new Error(
-        `Entity "${entity}" belongs to World "${decoded.worldId}" and cannot be used cross-world in World "${this.worldId}".`
-      );
+      return false;
     }
+
     const meta = this.entities[decoded.index];
-    if (!meta || meta.generation !== decoded.generation || !meta.alive) {
+    if (!meta || !meta.alive || meta.generation !== decoded.generation) {
       return false;
     }
 
     meta.alive = false;
-    // Retiring at the generation ceiling prevents an old handle from becoming valid again.
-    if (meta.generation === ENTITY_GENERATION_MASK) {
-      meta.retired = true;
-    } else {
-      meta.generation++;
-      this.freeList.push(decoded.index);
-    }
     this.livingCount--;
+
+    if (meta.generation >= ENTITY_GENERATION_MASK) {
+      // Retiring exhausted slots prevents ABA recycling bugs across long runtimes.
+      meta.retired = true;
+      return true;
+    }
+
+    meta.generation++;
+    this.freeList.push(decoded.index);
     return true;
   }
 
@@ -86,19 +87,18 @@ export class EntityAllocator {
     if (decoded.worldId !== this.worldId) {
       return false;
     }
+
     const meta = this.entities[decoded.index];
-    return meta?.alive === true && meta.generation === decoded.generation;
+    return meta !== undefined && meta.alive && meta.generation === decoded.generation;
   }
 
-  aliveEntities(): Entity[] {
-    const alive: Entity[] = [];
+  *aliveEntities(): IterableIterator<Entity> {
     for (let index = 0; index < this.entities.length; index++) {
-      const meta = this.entities[index];
-      if (meta?.alive === true) {
-        alive.push(encodeEntity(this.worldId, index, meta.generation));
+      const meta = this.entities[index]!;
+      if (meta.alive) {
+        yield encodeEntity(this.worldId, index, meta.generation);
       }
     }
-    return alive;
   }
 
   clear(): void {
@@ -107,40 +107,22 @@ export class EntityAllocator {
     this.livingCount = 0;
   }
 
-  get count(): number {
+  get length(): number {
     return this.livingCount;
   }
 }
 
 export function encodeEntity(worldId: WorldId, index: number, generation: number): Entity {
-  if (!Number.isInteger(worldId) || worldId < 0 || worldId > MAX_WORLD_ID) {
-    throw new Error(`World id must be between 0 and ${MAX_WORLD_ID}, received "${worldId}".`);
-  }
-  if (!Number.isInteger(index) || index < 0 || index > ENTITY_INDEX_MASK) {
-    throw new Error(
-      `Entity index must be between 0 and ${ENTITY_INDEX_MASK}, received "${index}".`
-    );
-  }
-  if (!Number.isInteger(generation) || generation < 0 || generation > ENTITY_GENERATION_MASK) {
-    throw new Error(
-      `Entity generation must fit in ${ENTITY_GENERATION_BITS} bits, received "${generation}".`
-    );
-  }
-  // Multiplication avoids signed 32-bit bitshift behavior while preserving safe integer handles.
-  return (worldId * ENTITY_LOCAL_MULTIPLIER +
-    index * ENTITY_INDEX_MULTIPLIER +
-    generation) as Entity;
+  const local = index * ENTITY_INDEX_MULTIPLIER + generation;
+  return (worldId * ENTITY_LOCAL_MULTIPLIER + local) as Entity;
 }
 
 export function decodeEntity(entity: Entity): DecodedEntity {
-  if (!Number.isSafeInteger(entity) || entity < 0) {
-    throw new Error(`Entity handle must be a non-negative safe integer, received "${entity}".`);
-  }
-  const worldId = Math.floor(entity / ENTITY_LOCAL_MULTIPLIER) as WorldId;
-  const localHandle = entity - worldId * ENTITY_LOCAL_MULTIPLIER;
-  return {
-    worldId,
-    index: Math.floor(localHandle / ENTITY_INDEX_MULTIPLIER),
-    generation: localHandle % ENTITY_INDEX_MULTIPLIER
-  };
+  const numeric = Number(entity);
+  const worldId = Math.floor(numeric / ENTITY_LOCAL_MULTIPLIER) as WorldId;
+  const local = numeric % ENTITY_LOCAL_MULTIPLIER;
+  const index = Math.floor(local / ENTITY_INDEX_MULTIPLIER);
+  const generation = local % ENTITY_INDEX_MULTIPLIER;
+
+  return { worldId, index, generation };
 }

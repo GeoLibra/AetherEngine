@@ -1,4 +1,4 @@
-import type { SpawnTicket } from '../spawn-ticket';
+import type { SpawnTicket } from '../entity/spawn-ticket';
 import type { ComponentInput, ComponentType, Entity, RelationType } from './ecs-types';
 
 export type CommandEntity = Entity | SpawnTicket;

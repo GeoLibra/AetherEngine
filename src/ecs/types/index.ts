@@ -9,6 +9,7 @@ export type {
   ComponentSchema,
   ComponentType,
   Entity,
+  IncomingRelation,
   ObjectComponentDefinition,
   ObjectComponentSchema,
   PackedComponentSchema,
@@ -22,9 +23,7 @@ export type {
   RemovedComponent,
   ResourceToken,
   TagComponentDefinition,
-  TagComponentSchema,
-  WorldId,
-  WorldState
+  TagComponentSchema
 } from './ecs-types';
 export type {
   CommandApplyResult,
@@ -34,3 +33,10 @@ export type {
   WorldCommand
 } from './command-types';
 export type { QueryCandidateSource, QueryDebugPlan } from './query-types';
+export type {
+  MonotonicClock,
+  WorldId,
+  WorldMetricsSnapshot,
+  WorldOptions,
+  WorldState
+} from './world-types';

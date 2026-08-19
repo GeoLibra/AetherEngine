@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { ChildOf, World, defineRelation, type Entity } from '../../src';
-import { RelationIndex } from '../../src/ecs/relation-index';
+import { RelationIndex } from '../../src/ecs/relation';
 
 const References = defineRelation('test.relation-index-references');
 

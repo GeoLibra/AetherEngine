@@ -15,9 +15,7 @@ export interface ResourceToken<T> {
   readonly __resourceType?: T;
 }
 
-export type WorldId = number & { readonly __worldId: unique symbol };
 export type Entity = number & { readonly __entity: unique symbol };
-export type WorldState = 'created' | 'running' | 'clearing' | 'destroyed';
 
 export interface ChangeWindow {
   readonly sinceExclusive: number;
@@ -126,6 +124,11 @@ export interface RelationOptions {
 export interface Relation {
   readonly relation: RelationType;
   readonly target: Entity;
+}
+
+export interface IncomingRelation {
+  readonly source: Entity;
+  readonly relation: Relation;
 }
 
 export type QueryFilterTerm = ComponentType<object> | RelationType;
