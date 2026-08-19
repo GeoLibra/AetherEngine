@@ -1,8 +1,5 @@
 import { cloneUnknown, freezeUnknown } from './migration';
-import type {
-  ReferenceResolutionIssue,
-  ResolvedReferenceEntry
-} from './types';
+import type { ReferenceResolutionIssue, ResolvedReferenceEntry } from './types';
 
 export class ReferenceResolutionError extends Error {
   readonly code = 'schema/reference-resolution-failed';

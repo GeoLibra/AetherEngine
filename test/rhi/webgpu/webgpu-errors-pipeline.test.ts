@@ -25,7 +25,9 @@ interface Deferred<T> {
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
   return { promise, resolve };
 }
 
@@ -47,7 +49,9 @@ class NativeDevice implements WebGPUNativeDevicePort {
   computeAsyncCalls = 0;
   private uncapturedHandler: ((error: NativeError) => void) | undefined;
 
-  createShaderModule(): WebGPUNativeResourcePort { return new NativeResource(); }
+  createShaderModule(): WebGPUNativeResourcePort {
+    return new NativeResource();
+  }
   createRenderPipeline(): WebGPUNativeResourcePort {
     if (this.syncPipelineError !== undefined) throw this.syncPipelineError;
     return new NativeResource();
@@ -72,9 +76,13 @@ class NativeDevice implements WebGPUNativeDevicePort {
   }
   setUncapturedErrorHandler(handler: (error: NativeError) => void): () => void {
     this.uncapturedHandler = handler;
-    return () => { this.uncapturedHandler = undefined; };
+    return () => {
+      this.uncapturedHandler = undefined;
+    };
   }
-  emitUncaptured(error: NativeError): void { this.uncapturedHandler?.(error); }
+  emitUncaptured(error: NativeError): void {
+    this.uncapturedHandler?.(error);
+  }
 }
 
 class NativeAdapter implements WebGPUNativeAdapterPort {
@@ -83,7 +91,9 @@ class NativeAdapter implements WebGPUNativeAdapterPort {
   readonly limits = {};
   readonly formats = new Map();
   readonly device = new NativeDevice();
-  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> { return this.device; }
+  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> {
+    return this.device;
+  }
 }
 
 async function createDevice() {
@@ -103,19 +113,25 @@ describe('WebGPU errors and async pipelines', () => {
     const cause = new Error('native validation failed');
     native.syncPipelineError = cause;
 
-    expect(() => device.createRenderPipeline({
-      label: 'main-pipeline',
-      vertex: { module: shader }
-    })).toThrow(WebGPUNativeOperationError);
-    expect(() => device.createRenderPipeline({
-      label: 'main-pipeline',
-      vertex: { module: shader }
-    })).toThrow(expect.objectContaining({
-      code: 'rhi/webgpu-native-operation-failed',
-      operation: 'createRenderPipeline',
-      resourceLabel: 'main-pipeline',
-      cause
-    }));
+    expect(() =>
+      device.createRenderPipeline({
+        label: 'main-pipeline',
+        vertex: { module: shader }
+      })
+    ).toThrow(WebGPUNativeOperationError);
+    expect(() =>
+      device.createRenderPipeline({
+        label: 'main-pipeline',
+        vertex: { module: shader }
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: 'rhi/webgpu-native-operation-failed',
+        operation: 'createRenderPipeline',
+        resourceLabel: 'main-pipeline',
+        cause
+      })
+    );
   });
 
   test('routes uncaptured native errors into the shared diagnostic store', async () => {
@@ -127,14 +143,16 @@ describe('WebGPU errors and async pipelines', () => {
       source: { uri: 'shader://material', line: 12, column: 4 }
     });
 
-    expect(diagnostics.list()).toEqual([{
-      code: 'rhi/webgpu-uncaptured-validation',
-      severity: 'error',
-      message: 'binding 3 is invalid',
-      subsystem: 'rhi.webgpu',
-      source: { uri: 'shader://material', line: 12, column: 4 },
-      context: { deviceGeneration: expect.any(Number), errorType: 'validation' }
-    }]);
+    expect(diagnostics.list()).toEqual([
+      {
+        code: 'rhi/webgpu-uncaptured-validation',
+        severity: 'error',
+        message: 'binding 3 is invalid',
+        subsystem: 'rhi.webgpu',
+        source: { uri: 'shader://material', line: 12, column: 4 },
+        context: { deviceGeneration: expect.any(Number), errorType: 'validation' }
+      }
+    ]);
   });
 
   test('creates render and compute pipelines asynchronously without using sync creation', async () => {
@@ -142,17 +160,20 @@ describe('WebGPU errors and async pipelines', () => {
     const vertex = device.createShaderModule({ code: '@vertex fn main() {}' });
     const compute = device.createShaderModule({ code: '@compute @workgroup_size(1) fn main() {}' });
 
-    const renderResult = await device.createRenderPipelineAsync({
+    const renderResult = (await device.createRenderPipelineAsync({
       label: 'async-render',
       vertex: { module: vertex }
-    }) as PipelineResult<RHIRenderPipeline>;
-    const computeResult = await device.createComputePipelineAsync({
+    })) as PipelineResult<RHIRenderPipeline>;
+    const computeResult = (await device.createComputePipelineAsync({
       label: 'async-compute',
       compute: { module: compute }
-    }) as PipelineResult<RHIComputePipeline>;
+    })) as PipelineResult<RHIComputePipeline>;
 
     expect(renderResult).toMatchObject({ status: 'success', pipeline: { label: 'async-render' } });
-    expect(computeResult).toMatchObject({ status: 'success', pipeline: { label: 'async-compute' } });
+    expect(computeResult).toMatchObject({
+      status: 'success',
+      pipeline: { label: 'async-compute' }
+    });
     expect(native.renderAsyncCalls).toBe(1);
     expect(native.computeAsyncCalls).toBe(1);
     expect(native.pushedScopes).toEqual(['validation', 'validation']);
@@ -167,10 +188,10 @@ describe('WebGPU errors and async pipelines', () => {
       source: { uri: 'flux://terrain', line: 8 }
     });
 
-    const result = await device.createRenderPipelineAsync({
+    const result = (await device.createRenderPipelineAsync({
       label: 'terrain-pipeline',
       vertex: { module: shader }
-    }) as PipelineResult<RHIRenderPipeline>;
+    })) as PipelineResult<RHIRenderPipeline>;
 
     expect(result).toEqual({
       status: 'failed',
@@ -197,7 +218,10 @@ describe('WebGPU errors and async pipelines', () => {
     native.controlledRenderPipelines.push(firstNative.promise, secondNative.promise);
 
     const first = device.createRenderPipelineAsync({ label: 'first', vertex: { module: shader } });
-    const second = device.createRenderPipelineAsync({ label: 'second', vertex: { module: shader } });
+    const second = device.createRenderPipelineAsync({
+      label: 'second',
+      vertex: { module: shader }
+    });
 
     expect(native.scopeEvents).toEqual(['push', 'pop', 'push', 'pop']);
     firstNative.resolve(new NativeResource());

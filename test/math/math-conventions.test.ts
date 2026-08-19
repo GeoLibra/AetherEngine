@@ -17,14 +17,8 @@ describe('Foundation math conventions', () => {
     const translation = Mat4.fromTranslation([1, 0, 0]);
     const scale = Mat4.fromScale([2, 2, 2]);
 
-    const translationAfterScale = Mat4.transformPoint(
-      Mat4.multiply(translation, scale),
-      [1, 0, 0]
-    );
-    const scaleAfterTranslation = Mat4.transformPoint(
-      Mat4.multiply(scale, translation),
-      [1, 0, 0]
-    );
+    const translationAfterScale = Mat4.transformPoint(Mat4.multiply(translation, scale), [1, 0, 0]);
+    const scaleAfterTranslation = Mat4.transformPoint(Mat4.multiply(scale, translation), [1, 0, 0]);
 
     expect(translationAfterScale).toEqual([3, 0, 0]);
     expect(scaleAfterTranslation).toEqual([4, 0, 0]);
@@ -91,12 +85,7 @@ describe('Foundation math conventions', () => {
 
   test('treats quaternion signs as equivalent and interpolates by the shortest path', () => {
     const rotation = Quat.fromEulerYXZ([0.2, -0.7, 0.4]);
-    const negated = [
-      -rotation[0],
-      -rotation[1],
-      -rotation[2],
-      -rotation[3]
-    ] as const;
+    const negated = [-rotation[0], -rotation[1], -rotation[2], -rotation[3]] as const;
     expectQuaternionEquivalent(rotation, negated);
     expectQuaternionEquivalent(Quat.slerp(rotation, negated, 0.5), rotation);
 
@@ -109,9 +98,9 @@ describe('Foundation math conventions', () => {
   test('rejects invalid Euler rotations and continuity references', () => {
     expect(() => Quat.fromEulerYXZ([Number.NaN, 0, 0])).toThrow('finite');
     expect(() => Quat.toEulerYXZ([0, 0, 0, 0])).toThrow('near-zero');
-    expect(() =>
-      Quat.toEulerYXZ(Quat.identity(), [0, Number.POSITIVE_INFINITY, 0])
-    ).toThrow('finite');
+    expect(() => Quat.toEulerYXZ(Quat.identity(), [0, Number.POSITIVE_INFINITY, 0])).toThrow(
+      'finite'
+    );
   });
 
   test('uses WebGPU zero-to-one depth and the z >= 0 near frustum plane', () => {

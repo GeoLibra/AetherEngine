@@ -2,13 +2,7 @@ import { HeadlessRunner } from '../app/runner';
 import type { MonotonicClock } from '../core/clock';
 import { HostBoundaryRunner } from './host-runner';
 import { MutablePlatformServiceRegistry } from './services';
-import type {
-  Host,
-  HostState,
-  RunnerOptions,
-  WindowId,
-  WindowOptions
-} from './types';
+import type { Host, HostState, RunnerOptions, WindowId, WindowOptions } from './types';
 import { PlatformWindow } from './window';
 
 export interface HeadlessHostOptions {

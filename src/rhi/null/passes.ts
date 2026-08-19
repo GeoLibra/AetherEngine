@@ -25,8 +25,16 @@ export interface NullPassController {
   readonly ownerToken: NullDeviceOwner;
   record(record: RHICommandRecord): void;
   lease(resource: RHIResource): void;
-  recordDraw(vertexCount: number, instanceCount: number, topology: GPUPrimitiveTopology | undefined): void;
-  recordIndexedDraw(indexCount: number, instanceCount: number, topology: GPUPrimitiveTopology | undefined): void;
+  recordDraw(
+    vertexCount: number,
+    instanceCount: number,
+    topology: GPUPrimitiveTopology | undefined
+  ): void;
+  recordIndexedDraw(
+    indexCount: number,
+    instanceCount: number,
+    topology: GPUPrimitiveTopology | undefined
+  ): void;
   recordIndirectDraw(): void;
   recordDispatchWorkgroups(): void;
   recordDispatchWorkgroupsIndirect(): void;
@@ -38,7 +46,10 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
   private pipeline: RHIRenderPipeline | undefined;
   private debugGroupDepth = 0;
   private readonly extent: RenderPassExtent;
-  private readonly bindGroups = new Map<number, { bindGroup: RHIBindGroup; dynamicOffsets: readonly number[] }>();
+  private readonly bindGroups = new Map<
+    number,
+    { bindGroup: RHIBindGroup; dynamicOffsets: readonly number[] }
+  >();
   private readonly vertexBuffers = new Map<number, RHIBuffer>();
   private indexBuffer: RHIBuffer | undefined;
 
@@ -58,7 +69,9 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
   popDebugGroup(): void {
     this.ensureActive();
     if (this.debugGroupDepth === 0) {
-      throw new Error(`Render pass "${this.descriptor.label ?? 'anonymous'}" has no debug group to pop.`);
+      throw new Error(
+        `Render pass "${this.descriptor.label ?? 'anonymous'}" has no debug group to pop.`
+      );
     }
     this.debugGroupDepth -= 1;
     this.encoder.record({ kind: 'popDebugGroup', scope: 'render-pass' });
@@ -74,9 +87,19 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     this.encoder.record({ kind: 'setRenderPipeline', pipeline: toResourceRef(pipeline) });
   }
 
-  setBindGroup(index: number, bindGroup: RHIBindGroup, dynamicOffsets: readonly number[] = []): void {
+  setBindGroup(
+    index: number,
+    bindGroup: RHIBindGroup,
+    dynamicOffsets: readonly number[] = []
+  ): void {
     this.ensureActive();
-    validateBindGroupSlot(index, bindGroup, dynamicOffsets, this.encoderOwner, this.pipeline?.layout);
+    validateBindGroupSlot(
+      index,
+      bindGroup,
+      dynamicOffsets,
+      this.encoderOwner,
+      this.pipeline?.layout
+    );
     this.bindGroups.set(index, { bindGroup, dynamicOffsets: [...dynamicOffsets] });
     this.encoder.lease(bindGroup);
     for (const resource of getBindGroupResources(bindGroup)) this.encoder.lease(resource);
@@ -96,7 +119,12 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     assertBufferUnmapped(buffer);
     this.vertexBuffers.set(slot, buffer);
     this.encoder.lease(buffer);
-    this.encoder.record(withOptionalSize({ kind: 'setVertexBuffer', slot, buffer: toResourceRef(buffer), offset }, size));
+    this.encoder.record(
+      withOptionalSize(
+        { kind: 'setVertexBuffer', slot, buffer: toResourceRef(buffer), offset },
+        size
+      )
+    );
   }
 
   setIndexBuffer(buffer: RHIBuffer, indexFormat: GPUIndexFormat, offset = 0, size?: number): void {
@@ -107,11 +135,21 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     this.indexBuffer = buffer;
     this.encoder.lease(buffer);
     this.encoder.record(
-      withOptionalSize({ kind: 'setIndexBuffer', buffer: toResourceRef(buffer), indexFormat, offset }, size)
+      withOptionalSize(
+        { kind: 'setIndexBuffer', buffer: toResourceRef(buffer), indexFormat, offset },
+        size
+      )
     );
   }
 
-  setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
+  setViewport(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    minDepth: number,
+    maxDepth: number
+  ): void {
     this.ensureActive();
     validateFiniteNumber(x, 'Viewport x');
     validateFiniteNumber(y, 'Viewport y');
@@ -154,9 +192,18 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     this.validateBoundGroups(this.pipeline?.layout, true);
     this.validateBoundBuffers();
     if (this.indexBuffer === undefined) {
-      throw new Error(`Render pass "${this.descriptor.label ?? 'anonymous'}" requires an index buffer before drawIndexed.`);
+      throw new Error(
+        `Render pass "${this.descriptor.label ?? 'anonymous'}" requires an index buffer before drawIndexed.`
+      );
     }
-    this.encoder.record({ kind: 'drawIndexed', indexCount, instanceCount, firstIndex, baseVertex, firstInstance });
+    this.encoder.record({
+      kind: 'drawIndexed',
+      indexCount,
+      instanceCount,
+      firstIndex,
+      baseVertex,
+      firstInstance
+    });
     this.encoder.recordIndexedDraw(indexCount, instanceCount, pipeline.topology);
   }
 
@@ -170,7 +217,11 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     assertResourceLive(indirectBuffer);
     assertBufferUnmapped(indirectBuffer);
     this.encoder.lease(indirectBuffer);
-    this.encoder.record({ kind: 'drawIndirect', buffer: toResourceRef(indirectBuffer), indirectOffset });
+    this.encoder.record({
+      kind: 'drawIndirect',
+      buffer: toResourceRef(indirectBuffer),
+      indirectOffset
+    });
     this.encoder.recordIndirectDraw();
   }
 
@@ -179,7 +230,9 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
       throw new Error(`Render pass "${this.descriptor.label ?? 'anonymous'}" has already ended.`);
     }
     if (this.debugGroupDepth > 0) {
-      throw new Error(`Render pass "${this.descriptor.label ?? 'anonymous'}" has unclosed debug groups.`);
+      throw new Error(
+        `Render pass "${this.descriptor.label ?? 'anonymous'}" has unclosed debug groups.`
+      );
     }
     this.ended = true;
     this.encoder.record(withOptionalLabel({ kind: 'endRenderPass' }, this.descriptor.label));
@@ -188,7 +241,9 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
 
   private ensureActive(): void {
     if (this.encoder.ownerToken.state !== 'live') {
-      throw new Error(`Render pass "${this.descriptor.label ?? 'anonymous'}" belongs to a lost device.`);
+      throw new Error(
+        `Render pass "${this.descriptor.label ?? 'anonymous'}" belongs to a lost device.`
+      );
     }
     if (this.ended) {
       throw new Error(`Render pass "${this.descriptor.label ?? 'anonymous'}" has already ended.`);
@@ -197,23 +252,36 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
 
   private requirePipeline(): RHIRenderPipeline {
     if (this.pipeline === undefined) {
-      throw new Error(`Render pass "${this.descriptor.label ?? 'anonymous'}" requires a render pipeline before drawing.`);
+      throw new Error(
+        `Render pass "${this.descriptor.label ?? 'anonymous'}" requires a render pipeline before drawing.`
+      );
     }
     assertResourceLive(this.pipeline);
     validatePipelineLayout(this.pipeline.layout, this.encoderOwner);
     return this.pipeline;
   }
 
-  private validateBoundGroups(pipelineLayout: RHIPipelineLayout | undefined, requireComplete: boolean): void {
+  private validateBoundGroups(
+    pipelineLayout: RHIPipelineLayout | undefined,
+    requireComplete: boolean
+  ): void {
     if (pipelineLayout !== undefined && requireComplete) {
       pipelineLayout.bindGroupLayouts.forEach((_, index) => {
         if (!this.bindGroups.has(index)) {
-          throw new Error(`Bind group slot ${index} required by the current pipeline layout is not bound.`);
+          throw new Error(
+            `Bind group slot ${index} required by the current pipeline layout is not bound.`
+          );
         }
       });
     }
     for (const [index, binding] of this.bindGroups) {
-      validateBindGroupSlot(index, binding.bindGroup, binding.dynamicOffsets, this.encoderOwner, pipelineLayout);
+      validateBindGroupSlot(
+        index,
+        binding.bindGroup,
+        binding.dynamicOffsets,
+        this.encoderOwner,
+        pipelineLayout
+      );
     }
   }
 
@@ -239,7 +307,10 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
   private ended = false;
   private debugGroupDepth = 0;
   private pipeline: RHIComputePipeline | undefined;
-  private readonly bindGroups = new Map<number, { bindGroup: RHIBindGroup; dynamicOffsets: readonly number[] }>();
+  private readonly bindGroups = new Map<
+    number,
+    { bindGroup: RHIBindGroup; dynamicOffsets: readonly number[] }
+  >();
 
   constructor(
     private readonly encoder: NullPassController,
@@ -271,9 +342,19 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
     this.encoder.record({ kind: 'setComputePipeline', pipeline: toResourceRef(pipeline) });
   }
 
-  setBindGroup(index: number, bindGroup: RHIBindGroup, dynamicOffsets: readonly number[] = []): void {
+  setBindGroup(
+    index: number,
+    bindGroup: RHIBindGroup,
+    dynamicOffsets: readonly number[] = []
+  ): void {
     this.ensureActive();
-    validateBindGroupSlot(index, bindGroup, dynamicOffsets, this.encoderOwner, this.pipeline?.layout);
+    validateBindGroupSlot(
+      index,
+      bindGroup,
+      dynamicOffsets,
+      this.encoderOwner,
+      this.pipeline?.layout
+    );
     this.bindGroups.set(index, { bindGroup, dynamicOffsets: [...dynamicOffsets] });
     this.encoder.lease(bindGroup);
     for (const resource of getBindGroupResources(bindGroup)) this.encoder.lease(resource);
@@ -303,7 +384,11 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
     assertResourceLive(indirectBuffer);
     assertBufferUnmapped(indirectBuffer);
     this.encoder.lease(indirectBuffer);
-    this.encoder.record({ kind: 'dispatchWorkgroupsIndirect', buffer: toResourceRef(indirectBuffer), indirectOffset });
+    this.encoder.record({
+      kind: 'dispatchWorkgroupsIndirect',
+      buffer: toResourceRef(indirectBuffer),
+      indirectOffset
+    });
     this.encoder.recordDispatchWorkgroupsIndirect();
   }
 
@@ -330,23 +415,36 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
 
   private requirePipeline(): RHIComputePipeline {
     if (this.pipeline === undefined) {
-      throw new Error(`Compute pass "${this.label ?? 'anonymous'}" requires a compute pipeline before dispatch.`);
+      throw new Error(
+        `Compute pass "${this.label ?? 'anonymous'}" requires a compute pipeline before dispatch.`
+      );
     }
     assertResourceLive(this.pipeline);
     validatePipelineLayout(this.pipeline.layout, this.encoderOwner);
     return this.pipeline;
   }
 
-  private validateBoundGroups(pipelineLayout: RHIPipelineLayout | undefined, requireComplete: boolean): void {
+  private validateBoundGroups(
+    pipelineLayout: RHIPipelineLayout | undefined,
+    requireComplete: boolean
+  ): void {
     if (pipelineLayout !== undefined && requireComplete) {
       pipelineLayout.bindGroupLayouts.forEach((_, index) => {
         if (!this.bindGroups.has(index)) {
-          throw new Error(`Bind group slot ${index} required by the current pipeline layout is not bound.`);
+          throw new Error(
+            `Bind group slot ${index} required by the current pipeline layout is not bound.`
+          );
         }
       });
     }
     for (const [index, binding] of this.bindGroups) {
-      validateBindGroupSlot(index, binding.bindGroup, binding.dynamicOffsets, this.encoderOwner, pipelineLayout);
+      validateBindGroupSlot(
+        index,
+        binding.bindGroup,
+        binding.dynamicOffsets,
+        this.encoderOwner,
+        pipelineLayout
+      );
     }
   }
 
@@ -355,14 +453,20 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
   }
 }
 
-function withOptionalLabel<T extends { kind: string }>(record: T, label: string | undefined): T & { label?: string } {
+function withOptionalLabel<T extends { kind: string }>(
+  record: T,
+  label: string | undefined
+): T & { label?: string } {
   if (label === undefined) {
     return record;
   }
   return { ...record, label };
 }
 
-function withOptionalSize<T extends { kind: string }>(record: T, size: number | undefined): T & { size?: number } {
+function withOptionalSize<T extends { kind: string }>(
+  record: T,
+  size: number | undefined
+): T & { size?: number } {
   if (size === undefined) {
     return record;
   }
@@ -406,15 +510,21 @@ interface RenderPassExtent {
 function resolveRenderPassExtent(descriptor: RHIRenderPassDescriptor): RenderPassExtent {
   const attachments = [
     ...descriptor.colorAttachments.map((attachment) => attachment.view),
-    ...(descriptor.depthStencilAttachment === undefined ? [] : [descriptor.depthStencilAttachment.view])
+    ...(descriptor.depthStencilAttachment === undefined
+      ? []
+      : [descriptor.depthStencilAttachment.view])
   ];
   if (attachments.length === 0) {
-    throw new Error(`Render pass "${descriptor.label ?? 'anonymous'}" requires at least one attachment.`);
+    throw new Error(
+      `Render pass "${descriptor.label ?? 'anonymous'}" requires at least one attachment.`
+    );
   }
 
   const first = attachments[0];
   if (first === undefined) {
-    throw new Error(`Render pass "${descriptor.label ?? 'anonymous'}" requires at least one attachment.`);
+    throw new Error(
+      `Render pass "${descriptor.label ?? 'anonymous'}" requires at least one attachment.`
+    );
   }
   const extent = { width: first.width, height: first.height };
   attachments.slice(1).forEach((view, index) => {

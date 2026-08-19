@@ -51,15 +51,11 @@ function snapshotDiagnostic(diagnostic: Diagnostic): Diagnostic {
     severity: diagnostic.severity,
     message: diagnostic.message,
     subsystem: diagnostic.subsystem,
-    ...(diagnostic.source === undefined
-      ? {}
-      : { source: Object.freeze({ ...diagnostic.source }) }),
+    ...(diagnostic.source === undefined ? {} : { source: Object.freeze({ ...diagnostic.source }) }),
     ...(diagnostic.context === undefined
       ? {}
       : {
-          context: freezeUnknown(
-            cloneUnknown(diagnostic.context) as Record<string, unknown>
-          )
+          context: freezeUnknown(cloneUnknown(diagnostic.context) as Record<string, unknown>)
         }),
     ...(diagnostic.cause === undefined ? {} : { cause: snapshotCause(diagnostic.cause) })
   });

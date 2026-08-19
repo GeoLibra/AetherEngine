@@ -15,10 +15,7 @@ import { defineResource } from '../ecs/resource';
 import { cloneRecord, cloneUnknown, freezeRecord, freezeUnknown } from './migration';
 import { decodeKnownPayload, encodeDecodedPayload, freezePayload } from './payload';
 import { mapSchemaReferences, visitSchemaReferences } from './references';
-import {
-  freezeResolvedEntries,
-  ReferenceResolutionError
-} from './reference-transaction';
+import { freezeResolvedEntries, ReferenceResolutionError } from './reference-transaction';
 import type {
   DecodedSchemaPayload,
   ReferenceResolutionIssue,
@@ -214,12 +211,7 @@ export class SchemaRegistry {
     return encodeDecodedPayload(decoded);
   }
 
-  visitReferences<T>(
-    id: string,
-    version: number,
-    value: T,
-    visitor: ReferenceVisitor
-  ): void {
+  visitReferences<T>(id: string, version: number, value: T, visitor: ReferenceVisitor): void {
     const schema = this.requireSchema<T>(id, version);
     visitSchemaReferences(schema, value, visitor);
   }
@@ -332,9 +324,7 @@ export class SchemaRegistry {
     });
   }
 
-  private createMigrationRegistration(
-    migration: SchemaMigration
-  ): SchemaMigrationRegistration {
+  private createMigrationRegistration(migration: SchemaMigration): SchemaMigrationRegistration {
     let active = true;
     return Object.freeze({
       migration,

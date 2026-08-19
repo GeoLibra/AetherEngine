@@ -47,9 +47,9 @@ describe('typed job registration', () => {
     };
 
     expect(() => defineJobType({ ...definition, id: '  ' })).toThrow('must not be empty');
-    expect(() => defineJobType({ ...definition, id: 'test.invalid-retry', retryLimit: -1 })).toThrow(
-      'retryLimit'
-    );
+    expect(() =>
+      defineJobType({ ...definition, id: 'test.invalid-retry', retryLimit: -1 })
+    ).toThrow('retryLimit');
 
     const InvalidEncoding = defineJobType({
       ...definition,

@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import {
-  MutablePlatformServiceRegistry,
-  createPlatformServiceToken
-} from '../../src';
+import { MutablePlatformServiceRegistry, createPlatformServiceToken } from '../../src';
 
 describe('Platform services', () => {
   test('preserve typed lookup and reject duplicate registration', () => {

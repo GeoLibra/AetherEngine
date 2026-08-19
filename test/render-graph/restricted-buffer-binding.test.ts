@@ -13,12 +13,24 @@ describe('RenderGraph restricted vertex/index bindings', () => {
     const device = new NullDevice();
     const physical = device.createBuffer({ size: 72, usage: 1 << 4 });
     const graph = new RenderGraphBuilder();
-    const index = graph.createBuffer({ size: 72, usage: ['index'] }, {
-      origin: { kind: 'imported', initialState: 'index', acquire: { kind: 'external-acquire', id: 'cube-index' } }
-    });
+    const index = graph.createBuffer(
+      { size: 72, usage: ['index'] },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'index',
+          acquire: { kind: 'external-acquire', id: 'cube-index' }
+        }
+      }
+    );
     const color = graph.createTexture({
-      width: 4, height: 4, depthOrArrayLayers: 1, mipLevelCount: 1, sampleCount: 1,
-      format: 'rgba8unorm', usage: ['color-attachment', 'copy-src']
+      width: 4,
+      height: 4,
+      depthOrArrayLayers: 1,
+      mipLevelCount: 1,
+      sampleCount: 1,
+      format: 'rgba8unorm',
+      usage: ['color-attachment', 'copy-src']
     });
     graph.addPass({
       id: 'indexed',
@@ -40,9 +52,11 @@ describe('RenderGraph restricted vertex/index bindings', () => {
     const snapshot = graph.build();
     const plan = createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot));
 
-    expect(() => new RenderGraphExecutor().execute(plan, {
-      device,
-      resources: new Map([[index, physical]])
-    })).not.toThrow();
+    expect(() =>
+      new RenderGraphExecutor().execute(plan, {
+        device,
+        resources: new Map([[index, physical]])
+      })
+    ).not.toThrow();
   });
 });

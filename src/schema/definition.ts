@@ -114,13 +114,9 @@ function freezeValueType(schemaId: string, type: ValueTypeDefinition): ValueType
       const element = freezeValueType(schemaId, type.element);
       if (type.elementKey !== undefined) {
         if (element.kind !== 'struct') {
-          throw new Error(
-            `Schema "${schemaId}" array elementKey requires a struct element type.`
-          );
+          throw new Error(`Schema "${schemaId}" array elementKey requires a struct element type.`);
         }
-        const keyField = element.fields.find(
-          (field) => String(field.id) === type.elementKey
-        );
+        const keyField = element.fields.find((field) => String(field.id) === type.elementKey);
         if (!keyField || !isStableKeyType(keyField.type)) {
           throw new Error(
             `Schema "${schemaId}" array elementKey "${type.elementKey}" must name a string, enum, or integer struct field.`
@@ -130,9 +126,7 @@ function freezeValueType(schemaId: string, type: ValueTypeDefinition): ValueType
       return Object.freeze({
         kind: 'array' as const,
         element,
-        ...(type.elementKey === undefined
-          ? {}
-          : { elementKey: type.elementKey as FieldId })
+        ...(type.elementKey === undefined ? {} : { elementKey: type.elementKey as FieldId })
       });
     }
     case 'map':
@@ -199,7 +193,9 @@ function isValueOfType(value: unknown, type: ValueType): boolean {
     case 'array':
       return Array.isArray(value) && value.every((entry) => isValueOfType(entry, type.element));
     case 'map':
-      return isRecord(value) && Object.values(value).every((entry) => isValueOfType(entry, type.value));
+      return (
+        isRecord(value) && Object.values(value).every((entry) => isValueOfType(entry, type.value))
+      );
     case 'struct':
       return (
         isRecord(value) &&

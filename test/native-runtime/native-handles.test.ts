@@ -30,7 +30,9 @@ describe('NativeHandleRegistry', () => {
     expect(registry.resolve(handle, 'buffer')).toEqual({ kind: 'buffer', label: 'vertices' });
     expect(() => registry.resolve({ ...handle, owner: 'device-b' }, 'buffer')).toThrow(/owner/i);
     expect(() => registry.release({ ...handle, owner: 'device-b' })).toThrow(/owner/i);
-    expect(() => registry.resolve({ ...handle, generation: handle.generation + 1 }, 'buffer')).toThrow(/generation/i);
+    expect(() =>
+      registry.resolve({ ...handle, generation: handle.generation + 1 }, 'buffer')
+    ).toThrow(/generation/i);
     expect(() => registry.resolve(handle, 'texture')).toThrow(/type/i);
   });
 
@@ -102,7 +104,9 @@ class TransferPort implements NativeTransferPort {
 
   constructor(readonly capabilities: NativeArrayBufferCapabilities = ALL_CAPABILITIES) {}
 
-  allocateId(): number { return this.nextId++; }
+  allocateId(): number {
+    return this.nextId++;
+  }
 
   takeOwnership(data: ArrayBuffer): ArrayBuffer {
     return structuredClone(data, { transfer: [data] });

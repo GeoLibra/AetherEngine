@@ -32,16 +32,40 @@ export class WebGL2Metrics {
   vertexArrayCacheHits = 0;
   vertexArrayCacheMisses = 0;
 
-  recordLogicalDraw(): void { this.logicalDraws += 1; }
-  recordPhysicalDraw(): void { this.physicalDraws += 1; }
-  recordGLCall(): void { this.glCalls += 1; }
-  recordStateSkip(): void { this.stateSkips += 1; }
-  recordUpload(byteLength: number): void { this.uploadBytes += byteLength; }
-  recordProgramCacheHit(): void { this.programCacheHits += 1; }
-  recordProgramCacheMiss(): void { this.programCacheMisses += 1; }
-  recordContextLoss(): void { this.contextLosses += 1; }
-  recordFramebufferCacheHit(): void { this.framebufferCacheHits += 1; }
-  recordFramebufferCacheMiss(): void { this.framebufferCacheMisses += 1; }
-  recordVertexArrayCacheHit(): void { this.vertexArrayCacheHits += 1; }
-  recordVertexArrayCacheMiss(): void { this.vertexArrayCacheMisses += 1; }
+  recordLogicalDraw(): void {
+    this.logicalDraws += 1;
+  }
+  recordPhysicalDraw(): void {
+    this.physicalDraws += 1;
+  }
+  recordGLCall(): void {
+    this.glCalls += 1;
+  }
+  recordStateSkip(): void {
+    this.stateSkips += 1;
+  }
+  recordUpload(byteLength: number): void {
+    this.uploadBytes += byteLength;
+  }
+  recordProgramCacheHit(): void {
+    this.programCacheHits += 1;
+  }
+  recordProgramCacheMiss(): void {
+    this.programCacheMisses += 1;
+  }
+  recordContextLoss(): void {
+    this.contextLosses += 1;
+  }
+  recordFramebufferCacheHit(): void {
+    this.framebufferCacheHits += 1;
+  }
+  recordFramebufferCacheMiss(): void {
+    this.framebufferCacheMisses += 1;
+  }
+  recordVertexArrayCacheHit(): void {
+    this.vertexArrayCacheHits += 1;
+  }
+  recordVertexArrayCacheMiss(): void {
+    this.vertexArrayCacheMisses += 1;
+  }
 }

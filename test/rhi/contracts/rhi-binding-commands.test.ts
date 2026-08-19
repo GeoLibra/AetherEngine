@@ -135,7 +135,11 @@ describe('RHI pass bind group commands', () => {
     const pipeline = device.createRenderPipeline({
       layout: device.createPipelineLayout({ bindGroupLayouts: [bufferLayout] })
     });
-    const buffer = device.createBuffer({ label: 'late-release', size: 64, usage: BUFFER_USAGE_UNIFORM });
+    const buffer = device.createBuffer({
+      label: 'late-release',
+      size: 64,
+      usage: BUFFER_USAGE_UNIFORM
+    });
     const bindGroup = device.createBindGroup({
       layout: bufferLayout,
       entries: [{ binding: 0, resource: { buffer } }]
@@ -199,7 +203,11 @@ describe('RHI pass bind group commands', () => {
     const layout = device.createBindGroupLayout({
       entries: [{ binding: 0, visibility: SHADER_STAGE_VERTEX, buffer: { type: 'uniform' } }]
     });
-    const buffer = device.createBuffer({ label: 'mapped-binding', size: 64, usage: BUFFER_USAGE_UNIFORM });
+    const buffer = device.createBuffer({
+      label: 'mapped-binding',
+      size: 64,
+      usage: BUFFER_USAGE_UNIFORM
+    });
     const { pass } = createPass(device);
 
     await buffer.mapAsync(0);
@@ -210,7 +218,9 @@ describe('RHI pass bind group commands', () => {
         entries: [{ binding: 0, resource: { buffer } }]
       })
     ).toThrow('Buffer "mapped-binding" is currently mapped.');
-    expect(() => pass.setVertexBuffer(0, buffer)).toThrow('Buffer "mapped-binding" is currently mapped.');
+    expect(() => pass.setVertexBuffer(0, buffer)).toThrow(
+      'Buffer "mapped-binding" is currently mapped.'
+    );
   });
 
   test('catches compatibility changes after setBindGroup and dynamic offset range overflow', () => {
@@ -227,7 +237,11 @@ describe('RHI pass bind group commands', () => {
     const incompatibleLayout = device.createBindGroupLayout({
       entries: [{ binding: 0, visibility: SHADER_STAGE_VERTEX, buffer: { type: 'uniform' } }]
     });
-    const buffer = device.createBuffer({ label: 'range-buffer', size: 64, usage: BUFFER_USAGE_UNIFORM });
+    const buffer = device.createBuffer({
+      label: 'range-buffer',
+      size: 64,
+      usage: BUFFER_USAGE_UNIFORM
+    });
     const bindGroup = device.createBindGroup({
       layout: dynamicLayout,
       entries: [{ binding: 0, resource: { buffer, size: 32 } }]
@@ -323,7 +337,11 @@ describe('RHI pass bind group commands', () => {
     const pipeline = device.createRenderPipeline({
       layout: device.createPipelineLayout({ bindGroupLayouts: [layout] })
     });
-    const vertex = device.createBuffer({ label: 'live-vertex', size: 64, usage: BUFFER_USAGE_UNIFORM });
+    const vertex = device.createBuffer({
+      label: 'live-vertex',
+      size: 64,
+      usage: BUFFER_USAGE_UNIFORM
+    });
     const { pass } = createPass(device);
 
     pass.setPipeline(pipeline);

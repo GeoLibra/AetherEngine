@@ -6,10 +6,14 @@ export class WebGL2Submission implements RHISubmission {
   readonly done: Promise<SubmissionResult>;
 
   constructor(readonly id: number) {
-    this.done = new Promise((resolve) => { this.resolveDone = resolve; });
+    this.done = new Promise((resolve) => {
+      this.resolveDone = resolve;
+    });
   }
 
-  get status(): RHISubmissionStatus { return this.currentStatus; }
+  get status(): RHISubmissionStatus {
+    return this.currentStatus;
+  }
 
   settle(status: Exclude<RHISubmissionStatus, 'pending'>, error?: unknown): void {
     if (this.currentStatus !== 'pending') return;

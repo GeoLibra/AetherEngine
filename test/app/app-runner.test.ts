@@ -94,9 +94,7 @@ describe('App runners', () => {
       })
     );
 
-    await expect(app.run(new HeadlessRunner({ frames: 1 }))).rejects.toThrow(
-      'frame failed'
-    );
+    await expect(app.run(new HeadlessRunner({ frames: 1 }))).rejects.toThrow('frame failed');
     expect(events).toEqual(['update', 'cleanup']);
   });
 

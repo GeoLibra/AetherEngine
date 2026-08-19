@@ -21,8 +21,12 @@ class Threads implements NativeThreadPort {
   readonly jsThread = 'js';
   current = 'native';
   readonly queued: Array<() => void> = [];
-  currentThread(): string { return this.current; }
-  dispatchToJs(operation: () => void): void { this.queued.push(operation); }
+  currentThread(): string {
+    return this.current;
+  }
+  dispatchToJs(operation: () => void): void {
+    this.queued.push(operation);
+  }
   drain(): void {
     this.current = this.jsThread;
     for (const operation of this.queued.splice(0)) operation();
@@ -35,7 +39,9 @@ class Runtime implements JsRuntimePort {
   destroys = 0;
   throwOnDestroy = false;
   constructor(private readonly events: string[]) {}
-  checkpointMicrotasks(): void { this.checkpoints += 1; }
+  checkpointMicrotasks(): void {
+    this.checkpoints += 1;
+  }
   destroy(): void {
     this.destroys += 1;
     this.events.push('runtime.destroy');
@@ -51,9 +57,12 @@ class Frames implements NativeFramePort {
     this.callbacks.set(id, callback);
     return id;
   }
-  cancel(id: number): void { this.callbacks.delete(id); }
+  cancel(id: number): void {
+    this.callbacks.delete(id);
+  }
   fire(timestampSeconds: number): void {
-    const entry = this.callbacks.entries().next().value as [number, (time: number) => void] | undefined;
+    const entry = this.callbacks.entries().next().value as
+      [number, (time: number) => void] | undefined;
     if (entry === undefined) throw new Error('No native frame is pending.');
     this.callbacks.delete(entry[0]);
     entry[1](timestampSeconds);
@@ -67,22 +76,37 @@ class WindowPort implements NativeWindowPort {
   closes = 0;
   throwOnClose = false;
 
-  constructor(readonly surfaceTarget: SurfaceTarget | undefined, private readonly events: string[]) {}
+  constructor(
+    readonly surfaceTarget: SurfaceTarget | undefined,
+    private readonly events: string[]
+  ) {}
   onMetrics(listener: (update: WindowMetricsUpdate) => void): () => void {
     this.metricsListener = listener;
-    return () => { this.metricsListener = () => undefined; };
+    return () => {
+      this.metricsListener = () => undefined;
+    };
   }
   onSurface(listener: (surface: SurfaceTarget | undefined) => void): () => void {
     this.surfaceListener = listener;
-    return () => { this.surfaceListener = () => undefined; };
+    return () => {
+      this.surfaceListener = () => undefined;
+    };
   }
   onClose(listener: () => void): () => void {
     this.closeListener = listener;
-    return () => { this.closeListener = () => undefined; };
+    return () => {
+      this.closeListener = () => undefined;
+    };
   }
-  emitMetrics(update: WindowMetricsUpdate): void { this.metricsListener(update); }
-  emitSurface(surface: SurfaceTarget | undefined): void { this.surfaceListener(surface); }
-  emitClose(): void { this.closeListener(); }
+  emitMetrics(update: WindowMetricsUpdate): void {
+    this.metricsListener(update);
+  }
+  emitSurface(surface: SurfaceTarget | undefined): void {
+    this.surfaceListener(surface);
+  }
+  emitClose(): void {
+    this.closeListener();
+  }
   close(): void {
     this.closes += 1;
     this.events.push('window.close');
@@ -110,9 +134,13 @@ class Platform implements NativePlatformPort {
   }
   onLifecycle(listener: (event: NativePlatformLifecycleEvent) => void): () => void {
     this.lifecycleListener = listener;
-    return () => { this.lifecycleListener = () => undefined; };
+    return () => {
+      this.lifecycleListener = () => undefined;
+    };
   }
-  emitLifecycle(event: NativePlatformLifecycleEvent): void { this.lifecycleListener(event); }
+  emitLifecycle(event: NativePlatformLifecycleEvent): void {
+    this.lifecycleListener(event);
+  }
   destroy(): void {
     this.destroys += 1;
     this.events.push('platform.destroy');
@@ -120,16 +148,20 @@ class Platform implements NativePlatformPort {
   }
 }
 
-const surface = (label: string): SurfaceTarget => Object.freeze({
-  id: Symbol(label), kind: 'native-window'
-});
+const surface = (label: string): SurfaceTarget =>
+  Object.freeze({
+    id: Symbol(label),
+    kind: 'native-window'
+  });
 
 async function setup() {
   const events: string[] = [];
   const threads = new Threads();
   const runtimePort = new Runtime(events);
   const runtime = new NativeRuntimeController({
-    ownership: 'dedicated', threads, createRuntime: () => runtimePort
+    ownership: 'dedicated',
+    threads,
+    createRuntime: () => runtimePort
   });
   const platform = new Platform(events);
   const host = new NativeHost(platform, runtime);
@@ -145,7 +177,10 @@ describe('NativeHost', () => {
     host.lifecycle.registerEvictor({
       name: 'test-cache',
       priority: 1,
-      evict: (budget) => { evictionBudgets.push(budget); return budget; }
+      evict: (budget) => {
+        evictionBudgets.push(budget);
+        return budget;
+      }
     });
 
     expect(() => platform.emitLifecycle({ kind: 'background' })).toThrow(/requires thread "js"/);
@@ -182,7 +217,10 @@ describe('NativeHost', () => {
     const runner = host.createRunner({ kind: 'native' });
     const run = runner.run({
       stopRequested: false,
-      frame(time) { calls.push(time); return { frame: calls.length }; }
+      frame(time) {
+        calls.push(time);
+        return { frame: calls.length };
+      }
     });
 
     platform.frames.fire(0.5);
@@ -197,14 +235,24 @@ describe('NativeHost', () => {
 
   test('publishes coalesced platform state before callback-driven App frames', async () => {
     const { host, platform, runtimePort, threads } = await setup();
-    const first = await host.createWindow({ logicalSize: [100, 50], surfaceTarget: surface('first') });
-    const second = await host.createWindow({ logicalSize: [40, 40], surfaceTarget: surface('second') });
+    const first = await host.createWindow({
+      logicalSize: [100, 50],
+      surfaceTarget: surface('first')
+    });
+    const second = await host.createWindow({
+      logicalSize: [40, 40],
+      surfaceTarget: surface('second')
+    });
     const observations: Array<{ time: number; width: number; generation: number }> = [];
     const runner = host.createRunner({ kind: 'native' });
     const run = runner.run({
       stopRequested: false,
       frame(time) {
-        observations.push({ time, width: first.metrics.logicalSize[0], generation: first.generation });
+        observations.push({
+          time,
+          width: first.metrics.logicalSize[0],
+          generation: first.generation
+        });
         return { frame: observations.length };
       }
     });
@@ -228,7 +276,10 @@ describe('NativeHost', () => {
     const { host, platform, threads } = await setup();
     const initialSurface = surface('initial');
     const replacement = surface('replacement');
-    const window = await host.createWindow({ logicalSize: [64, 64], surfaceTarget: initialSurface });
+    const window = await host.createWindow({
+      logicalSize: [64, 64],
+      surfaceTarget: initialSurface
+    });
     const runner = host.createRunner({ kind: 'native' });
     const run = runner.run({ stopRequested: false, frame: () => ({ frame: 0 }) });
     threads.current = threads.jsThread;
@@ -267,7 +318,9 @@ describe('NativeHost', () => {
     const failing = host.createRunner({ kind: 'native' });
     const failedRun = failing.run({
       stopRequested: false,
-      frame() { throw new Error('frame failed'); }
+      frame() {
+        throw new Error('frame failed');
+      }
     } as RunnerContext);
     platform.frames.fire(3);
     await expect(failedRun).rejects.toThrow('frame failed');
@@ -290,8 +343,14 @@ describe('NativeHost', () => {
 
   test('removes closed windows without skipping later host cleanup', async () => {
     const { host, platform } = await setup();
-    const first = await host.createWindow({ logicalSize: [10, 10], surfaceTarget: surface('first') });
-    const second = await host.createWindow({ logicalSize: [20, 20], surfaceTarget: surface('second') });
+    const first = await host.createWindow({
+      logicalSize: [10, 10],
+      surfaceTarget: surface('first')
+    });
+    const second = await host.createWindow({
+      logicalSize: [20, 20],
+      surfaceTarget: surface('second')
+    });
 
     platform.windows[0]!.emitClose();
     expect(host.windows()).toEqual([second]);
@@ -310,7 +369,11 @@ describe('NativeHost', () => {
     runtimePort.throwOnDestroy = true;
 
     let error: unknown;
-    try { host.destroy(); } catch (caught) { error = caught; }
+    try {
+      host.destroy();
+    } catch (caught) {
+      error = caught;
+    }
 
     expect(error).toBeInstanceOf(NativeHostDestroyError);
     expect((error as NativeHostDestroyError).errors).toHaveLength(3);
@@ -324,13 +387,21 @@ describe('NativeHost', () => {
     let closes = 0;
     platform.createWindow = () => ({
       surfaceTarget: undefined,
-      onMetrics: () => () => { metricUnsubscribes += 1; },
-      onSurface: () => { throw new Error('surface listener failed'); },
+      onMetrics: () => () => {
+        metricUnsubscribes += 1;
+      },
+      onSurface: () => {
+        throw new Error('surface listener failed');
+      },
       onClose: () => () => undefined,
-      close: () => { closes += 1; }
+      close: () => {
+        closes += 1;
+      }
     });
 
-    await expect(host.createWindow({ logicalSize: [1, 1] })).rejects.toThrow('surface listener failed');
+    await expect(host.createWindow({ logicalSize: [1, 1] })).rejects.toThrow(
+      'surface listener failed'
+    );
     expect(metricUnsubscribes).toBe(1);
     expect(closes).toBe(1);
     expect(host.windows()).toEqual([]);

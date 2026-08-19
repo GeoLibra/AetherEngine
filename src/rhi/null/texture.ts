@@ -58,7 +58,12 @@ export class NullTextureView extends NullResourceBase implements RHITextureView 
   readonly depthOrArrayLayers: number;
   readonly format: GPUTextureFormat;
 
-  constructor(id: number, owner: NullDeviceOwner, readonly texture: RHITexture, descriptor: GPUTextureViewDescriptor) {
+  constructor(
+    id: number,
+    owner: NullDeviceOwner,
+    readonly texture: RHITexture,
+    descriptor: GPUTextureViewDescriptor
+  ) {
     super(id, owner, descriptor.label ?? texture.label);
     this.descriptor = { ...descriptor };
     const mipLevel = validateTextureViewMipLevel(
@@ -73,7 +78,7 @@ export class NullTextureView extends NullResourceBase implements RHITextureView 
 
   override get state() {
     if (this.owner.state !== 'live') return 'device-lost' as const;
-    return this.isDisposed ? 'disposed' as const : this.texture.state;
+    return this.isDisposed ? ('disposed' as const) : this.texture.state;
   }
 }
 

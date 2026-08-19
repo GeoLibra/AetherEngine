@@ -10,7 +10,11 @@ describe('job commit queue', () => {
     queue.enqueue(entry('c', 2, true, committed));
 
     expect(queue.drain({ maxCost: 2 })).toEqual({
-      committed: 1, stale: 1, deferred: 1, cost: 1, outputBytes: 1
+      committed: 1,
+      stale: 1,
+      deferred: 1,
+      cost: 1,
+      outputBytes: 1
     });
     expect(committed).toEqual(['b']);
   });
@@ -48,13 +52,21 @@ class ClassCommitEntry {
     this.output = requestKey;
   }
 
-  isCurrent(): boolean { return true; }
-  commit(output: string): void { this.committed.push(output); }
+  isCurrent(): boolean {
+    return true;
+  }
+  commit(output: string): void {
+    this.committed.push(output);
+  }
 }
 
 function entry(key: string, cost: number, current: boolean, committed: string[]) {
   return {
-    requestKey: key, output: key, estimatedCost: cost, outputBytes: 1,
-    isCurrent: () => current, commit: (output: string) => committed.push(output)
+    requestKey: key,
+    output: key,
+    estimatedCost: cost,
+    outputBytes: 1,
+    isCurrent: () => current,
+    commit: (output: string) => committed.push(output)
   };
 }

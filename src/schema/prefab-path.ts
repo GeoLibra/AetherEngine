@@ -50,9 +50,7 @@ export function applyPrefabOverride<T>(
   replacement: unknown
 ): T {
   if (path.schema !== schema.id) {
-    throw new Error(
-      `Prefab override schema "${path.schema}" does not match "${schema.id}".`
-    );
+    throw new Error(`Prefab override schema "${path.schema}" does not match "${schema.id}".`);
   }
   const cloned = cloneUnknown(value);
   let cursor: unknown = cloned;
@@ -89,9 +87,7 @@ export function applyPrefabOverride<T>(
       }
       const matches = cursor
         .map((entry, entryIndex) =>
-          isRecord(entry) && String(entry[keyField.name]) === segment.key
-            ? entryIndex
-            : -1
+          isRecord(entry) && String(entry[keyField.name]) === segment.key ? entryIndex : -1
         )
         .filter((entryIndex) => entryIndex >= 0);
       if (matches.length > 1) {
@@ -134,10 +130,7 @@ export function applyPrefabOverride<T>(
   return cloneUnknown(validation.value) as T;
 }
 
-function findField(
-  fields: readonly FieldSchema[],
-  id: string
-): FieldSchema | undefined {
+function findField(fields: readonly FieldSchema[], id: string): FieldSchema | undefined {
   return fields.find((field) => String(field.id) === String(id));
 }
 

@@ -95,11 +95,7 @@ describe('Portable RHI public contracts', () => {
       Object.freeze({ kind: 'feature', feature: 'compute' })
     ]);
 
-    const error = new RHIUnsupportedOperationError(
-      'create-compute-pipeline',
-      required,
-      actual
-    );
+    const error = new RHIUnsupportedOperationError('create-compute-pipeline', required, actual);
 
     expect(error).toBeInstanceOf(Error);
     expect(error.code).toBe('rhi/unsupported-operation');

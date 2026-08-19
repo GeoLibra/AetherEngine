@@ -1,9 +1,4 @@
-import type {
-  BufferWriteRange,
-  GPUImageDataLayout,
-  GPUExtent3D,
-  RHIUploadData
-} from './webgpu';
+import type { BufferWriteRange, GPUImageDataLayout, GPUExtent3D, RHIUploadData } from './webgpu';
 import type {
   GPUImageCopyTexture,
   RHIBindGroup,

@@ -1,11 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import {
-  App,
-  HeadlessRunner,
-  StateStore,
-  definePlugin,
-  type Entity
-} from '../../src';
+import { App, HeadlessRunner, StateStore, definePlugin, type Entity } from '../../src';
 
 type GameState = 'menu' | 'playing' | 'paused';
 
@@ -30,11 +24,7 @@ describe('StateStore', () => {
 
     expect(transition).toEqual({ from: 'menu', to: 'playing', reason: 'start-game' });
     expect(state.current).toBe('playing');
-    expect(events).toEqual([
-      'exit:menu',
-      'cleanup:menu',
-      'enter:playing:current=playing'
-    ]);
+    expect(events).toEqual(['exit:menu', 'cleanup:menu', 'enter:playing:current=playing']);
     expect(state.history).toEqual([transition]);
   });
 

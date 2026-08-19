@@ -1,10 +1,5 @@
 import type { RHIDevice } from './device';
-import type {
-  AdapterCapabilities,
-  RHIBackend,
-  RHIFeature,
-  RHILimits
-} from './capability';
+import type { AdapterCapabilities, RHIBackend, RHIFeature, RHILimits } from './capability';
 
 export interface AdapterInfo {
   readonly name: string;

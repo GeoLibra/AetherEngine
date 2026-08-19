@@ -21,14 +21,18 @@ export class WebGPUFastPathCounter {
     this.commandWrapperAllocationCount += 1;
   }
 
-  recordPassWrapper(): void { this.commandWrapperAllocationCount += 1; }
+  recordPassWrapper(): void {
+    this.commandWrapperAllocationCount += 1;
+  }
 
   recordCommandBuffer(): void {
     this.nativeCommandBufferCount += 1;
     this.commandWrapperAllocationCount += 1;
   }
 
-  recordSubmit(): void { this.nativeQueueSubmitCount += 1; }
+  recordSubmit(): void {
+    this.nativeQueueSubmitCount += 1;
+  }
 
   recordUpload(bytes: number): void {
     this.uploadCallCount += 1;

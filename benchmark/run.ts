@@ -63,7 +63,12 @@ export function parseCliOptions(args: readonly string[]): CliOptions {
         throw new Error(`Unknown benchmark option "${option}".`);
     }
   }
-  return Object.freeze({ profile, ...(scenario ? { scenario } : {}), ...(subject ? { subject } : {}), ...(output ? { output } : {}) });
+  return Object.freeze({
+    profile,
+    ...(scenario ? { scenario } : {}),
+    ...(subject ? { subject } : {}),
+    ...(output ? { output } : {})
+  });
 }
 
 export async function runBenchmarks(options: CliOptions): Promise<string> {
@@ -78,14 +83,17 @@ export async function runBenchmarks(options: CliOptions): Promise<string> {
         for (const input of createScenarioInputs(scenario, scale, seed + round)) {
           for (const subject of BENCHMARK_SUBJECTS) {
             if (options.subject && subject.id !== options.subject) continue;
-            if (DENSE_UPDATE_DIAGNOSTICS.has(subject.id) && scenario.id !== 'dense-update') continue;
-            requests.push(Object.freeze({
-              scenarioId: scenario.id,
-              subjectId: subject.id,
-              input,
-              profile: profile.name,
-              round
-            }));
+            if (DENSE_UPDATE_DIAGNOSTICS.has(subject.id) && scenario.id !== 'dense-update')
+              continue;
+            requests.push(
+              Object.freeze({
+                scenarioId: scenario.id,
+                subjectId: subject.id,
+                input,
+                profile: profile.name,
+                round
+              })
+            );
           }
         }
       }

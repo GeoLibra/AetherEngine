@@ -1,8 +1,4 @@
-import type {
-  PlatformServiceEntry,
-  PlatformServiceRegistry,
-  PlatformServiceToken
-} from './types';
+import type { PlatformServiceEntry, PlatformServiceRegistry, PlatformServiceToken } from './types';
 
 interface StoredPlatformService {
   readonly token: PlatformServiceToken<unknown>;

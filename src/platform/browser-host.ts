@@ -148,7 +148,10 @@ function rollbackWindowSetup(window: PlatformWindow, setupError: unknown, hostNa
   try {
     window.close();
   } catch (cleanupError) {
-    throw new AggregateError([setupError, cleanupError], `${hostName} window setup and cleanup failed.`);
+    throw new AggregateError(
+      [setupError, cleanupError],
+      `${hostName} window setup and cleanup failed.`
+    );
   }
   throw setupError;
 }

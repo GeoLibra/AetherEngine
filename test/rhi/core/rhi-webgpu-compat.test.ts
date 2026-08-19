@@ -53,11 +53,13 @@ describe('webgpuCompat', () => {
   });
 
   test('rejects unknown native-bearing fields with a field diagnostic', () => {
-    expect(() => webgpuCompat.bufferDescriptor({
-      size: 64,
-      usage: 8,
-      buffer: { native: true }
-    } as never)).toThrow('WebGPU buffer descriptor field "buffer" is not portable.');
+    expect(() =>
+      webgpuCompat.bufferDescriptor({
+        size: 64,
+        usage: 8,
+        buffer: { native: true }
+      } as never)
+    ).toThrow('WebGPU buffer descriptor field "buffer" is not portable.');
   });
 
   test('rejects descriptors whose meaning depends on resource identity', () => {

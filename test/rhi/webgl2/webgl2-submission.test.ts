@@ -32,28 +32,53 @@ class SubmissionContext {
   createSubmissionFence: (() => Promise<void>) | undefined;
 
   constructor(withFence = true) {
-    this.createSubmissionFence = withFence ? () => {
-      this.calls.push('fence');
-      const fence = deferred<void>();
-      this.fences.push(fence);
-      return fence.promise;
-    } : undefined;
+    this.createSubmissionFence = withFence
+      ? () => {
+          this.calls.push('fence');
+          const fence = deferred<void>();
+          this.fences.push(fence);
+          return fence.promise;
+        }
+      : undefined;
   }
 
-  createBuffer(): object { this.calls.push('createBuffer'); return {}; }
-  createTexture(): object { this.calls.push('createTexture'); return {}; }
-  deleteBuffer(handle: object): void { this.deleted.push(handle); }
-  deleteTexture(handle: object): void { this.deleted.push(handle); }
-  writeBuffer(): void { this.calls.push('writeBuffer'); }
-  copyBufferToBuffer(): void { this.calls.push('copyBufferToBuffer'); }
-  beginRenderPass(): void { this.calls.push('beginRenderPass'); }
-  endRenderPass(): void { this.calls.push('endRenderPass'); }
-  lose(info: WebGL2NativeContextLostInfo): void { this.loss.resolve(info); }
+  createBuffer(): object {
+    this.calls.push('createBuffer');
+    return {};
+  }
+  createTexture(): object {
+    this.calls.push('createTexture');
+    return {};
+  }
+  deleteBuffer(handle: object): void {
+    this.deleted.push(handle);
+  }
+  deleteTexture(handle: object): void {
+    this.deleted.push(handle);
+  }
+  writeBuffer(): void {
+    this.calls.push('writeBuffer');
+  }
+  copyBufferToBuffer(): void {
+    this.calls.push('copyBufferToBuffer');
+  }
+  beginRenderPass(): void {
+    this.calls.push('beginRenderPass');
+  }
+  endRenderPass(): void {
+    this.calls.push('endRenderPass');
+  }
+  lose(info: WebGL2NativeContextLostInfo): void {
+    this.loss.resolve(info);
+  }
 }
 
 async function createDevice(native = new SubmissionContext()) {
   const Adapter = WebGL2Adapter as unknown as new (context: SubmissionContext) => WebGL2Adapter;
-  const device = await new Adapter(native).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+  const device = await new Adapter(native).requestDevice({
+    requiredFeatures: [],
+    optionalFeatures: []
+  });
   return { device, native };
 }
 
@@ -77,7 +102,11 @@ describe('WebGL2 submission epochs', () => {
     expect(submission.status).toBe('pending');
     expect(native.calls).toEqual(['copyBufferToBuffer', 'copyBufferToBuffer', 'fence']);
     expect(device.queue.metrics()).toMatchObject({
-      submitted: 1, pending: 1, completed: 0, leasedResources: 6, submissionEpochs: 1
+      submitted: 1,
+      pending: 1,
+      completed: 0,
+      leasedResources: 6,
+      submissionEpochs: 1
     });
     native.fences[0]?.resolve(undefined);
     await expect(submission.done).resolves.toEqual({ status: 'completed' });
@@ -89,7 +118,9 @@ describe('WebGL2 submission epochs', () => {
     const duplicate = recordCopy(device);
     native.calls.length = 0;
 
-    expect(() => device.queue.submit([duplicate.commands, duplicate.commands])).toThrow('already been submitted');
+    expect(() => device.queue.submit([duplicate.commands, duplicate.commands])).toThrow(
+      'already been submitted'
+    );
     expect(native.calls).toEqual([]);
     expect(() => device.queue.submit([duplicate.commands])).not.toThrow();
 
@@ -127,7 +158,11 @@ describe('WebGL2 submission epochs', () => {
     await expect(lost.done).resolves.toEqual({ status: 'device-lost' });
     fenced.native.fences[0]?.resolve(undefined);
     await Promise.resolve();
-    expect(fenced.device.queue.metrics()).toMatchObject({ deviceLost: 1, completed: 0, pending: 0 });
+    expect(fenced.device.queue.metrics()).toMatchObject({
+      deviceLost: 1,
+      completed: 0,
+      pending: 0
+    });
   });
 
   test('counts upload bytes and native upload calls', async () => {

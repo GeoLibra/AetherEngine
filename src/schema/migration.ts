@@ -1,6 +1,4 @@
-export function cloneRecord(
-  input: Readonly<Record<string, unknown>>
-): Record<string, unknown> {
+export function cloneRecord(input: Readonly<Record<string, unknown>>): Record<string, unknown> {
   return cloneUnknown(input) as Record<string, unknown>;
 }
 

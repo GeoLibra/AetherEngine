@@ -28,14 +28,20 @@ interface Deferred<T> {
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
   return { promise, resolve };
 }
 
 class NativeTexture implements WebGPUNativeTexturePort {
   destroyed = 0;
-  createView(): WebGPUNativeResourcePort { return {}; }
-  destroy(): void { this.destroyed += 1; }
+  createView(): WebGPUNativeResourcePort {
+    return {};
+  }
+  destroy(): void {
+    this.destroyed += 1;
+  }
 }
 
 type NativeAcquireResult =
@@ -56,15 +62,21 @@ class NativeCanvasContext {
     this.acquireCalls += 1;
     return this.acquisitions.shift() ?? { status: 'success', texture: new NativeTexture() };
   }
-  present(): void { this.presents += 1; }
-  unconfigure(): void { this.unconfigures += 1; }
+  present(): void {
+    this.presents += 1;
+  }
+  unconfigure(): void {
+    this.unconfigures += 1;
+  }
 }
 
 class NativeDevice implements WebGPUNativeDevicePort {
   readonly queue = { submit(): void {}, onSubmittedWorkDone: async () => undefined };
   private readonly loss = deferred<WebGPUNativeDeviceLostInfo>();
   readonly lost = this.loss.promise;
-  lose(info: WebGPUNativeDeviceLostInfo): void { this.loss.resolve(info); }
+  lose(info: WebGPUNativeDeviceLostInfo): void {
+    this.loss.resolve(info);
+  }
 }
 
 class NativeAdapter implements WebGPUNativeAdapterPort {
@@ -73,7 +85,9 @@ class NativeAdapter implements WebGPUNativeAdapterPort {
   readonly limits = {};
   readonly formats = new Map();
   readonly device = new NativeDevice();
-  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> { return this.device; }
+  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> {
+    return this.device;
+  }
 }
 
 function createTarget(name: string): SurfaceTarget {
@@ -81,9 +95,11 @@ function createTarget(name: string): SurfaceTarget {
 }
 
 function createSurface(target: SurfaceTarget, context: NativeCanvasContext): RHISurface {
-  const constructor = (AetherEngine as unknown as {
-    WebGPUSurface: new (target: SurfaceTarget, context: NativeCanvasContext) => RHISurface;
-  }).WebGPUSurface;
+  const constructor = (
+    AetherEngine as unknown as {
+      WebGPUSurface: new (target: SurfaceTarget, context: NativeCanvasContext) => RHISurface;
+    }
+  ).WebGPUSurface;
   return new constructor(target, context);
 }
 
@@ -203,6 +219,8 @@ describe('WebGPUSurface', () => {
     expect(surface.state).toBe('disposed');
     expect(context.unconfigures).toBe(1);
     expect(() => surface.acquire()).toThrow('WebGPUSurface has been disposed.');
-    expect(() => surface.configure(device, CONFIGURATION, 2)).toThrow('WebGPUSurface has been disposed.');
+    expect(() => surface.configure(device, CONFIGURATION, 2)).toThrow(
+      'WebGPUSurface has been disposed.'
+    );
   });
 });

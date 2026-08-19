@@ -28,7 +28,9 @@ export function validateManifest(manifest: BenchmarkManifest): ManifestValidatio
     }
     const placeholders = suite.command.args.filter((argument) => argument === '{profile}').length;
     if (placeholders !== 1) {
-      errors.push(`Benchmark suite "${suite.id}" command must contain exactly one {profile} argument.`);
+      errors.push(
+        `Benchmark suite "${suite.id}" command must contain exactly one {profile} argument.`
+      );
     }
     if (!suite.command.executable.trim()) {
       errors.push(`Benchmark suite "${suite.id}" command executable must not be empty.`);
@@ -39,7 +41,10 @@ export function validateManifest(manifest: BenchmarkManifest): ManifestValidatio
   return Object.freeze({
     errors: Object.freeze(errors),
     uncoveredDomainIds: Object.freeze(
-      manifest.domains.map((domain) => domain.id).filter((id) => !covered.has(id)).sort()
+      manifest.domains
+        .map((domain) => domain.id)
+        .filter((id) => !covered.has(id))
+        .sort()
     )
   });
 }

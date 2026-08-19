@@ -71,8 +71,7 @@ export type { QueryCandidateSource, QueryDebugPlan } from './ecs/types';
 export type { MonotonicClock, WorldMetricsSnapshot, WorldOptions } from './ecs/types';
 export { defineResource } from './ecs/resource';
 export { ChangeReader } from './ecs/reactive';
-export { CommandBuffer, CommandBufferResource } from './ecs/command';
-export { SpawnTicket } from './ecs/entity';
+export { CommandBuffer, CommandBufferResource, SpawnTicket } from './ecs/command';
 export { ObserverRegistry } from './ecs/reactive';
 export type {
   ChangeReaderOptions,

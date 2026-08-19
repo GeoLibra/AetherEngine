@@ -3,12 +3,18 @@ import { CommandBuffer, World, defineComponent, type MonotonicClock } from '../.
 
 class ManualClock implements MonotonicClock {
   private value = 0;
-  now(): number { return this.value; }
-  advance(milliseconds: number): void { this.value += milliseconds; }
+  now(): number {
+    return this.value;
+  }
+  advance(milliseconds: number): void {
+    this.value += milliseconds;
+  }
 }
 
 const Counter = defineComponent<{ value: number }>({
-  id: 'test.metrics-counter', version: 1, name: 'MetricsCounter',
+  id: 'test.metrics-counter',
+  version: 1,
+  name: 'MetricsCounter',
   fields: [{ id: 'value', name: 'value', type: 'u32' }]
 });
 
@@ -18,7 +24,8 @@ describe('World metrics', () => {
     const world = new World(undefined, { clock });
     world.registerComponent(Counter);
     world.addObserver({
-      id: 'test.metrics-observer', event: 'entity-despawned',
+      id: 'test.metrics-observer',
+      event: 'entity-despawned',
       run: () => clock.advance(3)
     });
     const entity = world.spawn().insert(Counter, { value: 1 }).build();
@@ -30,8 +37,13 @@ describe('World metrics', () => {
 
     const metrics = world.metrics();
     expect(metrics).toMatchObject({
-      aliveEntities: 1, tables: 1, liveRows: 0, relationEdges: 0,
-      lastCommandBatchSize: 1, observerTimeMs: 3, rowFilters: 1
+      aliveEntities: 1,
+      tables: 1,
+      liveRows: 0,
+      relationEdges: 0,
+      lastCommandBatchSize: 1,
+      observerTimeMs: 3,
+      rowFilters: 1
     });
     expect(metrics.chunks).toBeGreaterThanOrEqual(1);
     expect(metrics.allocatedRows).toBeGreaterThanOrEqual(1);

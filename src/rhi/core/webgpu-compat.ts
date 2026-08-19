@@ -1,13 +1,32 @@
 import type { GPUExtent3D } from '../contracts';
-import type { RHIBufferDescriptor, RHISamplerDescriptor, RHITextureDescriptor } from '../contracts/descriptor';
+import type {
+  RHIBufferDescriptor,
+  RHISamplerDescriptor,
+  RHITextureDescriptor
+} from '../contracts/descriptor';
 
 const BUFFER_FIELDS = new Set(['label', 'size', 'usage', 'mappedAtCreation']);
 const TEXTURE_FIELDS = new Set([
-  'label', 'size', 'format', 'usage', 'dimension', 'mipLevelCount', 'sampleCount'
+  'label',
+  'size',
+  'format',
+  'usage',
+  'dimension',
+  'mipLevelCount',
+  'sampleCount'
 ]);
 const SAMPLER_FIELDS = new Set([
-  'label', 'addressModeU', 'addressModeV', 'addressModeW', 'magFilter', 'minFilter',
-  'mipmapFilter', 'lodMinClamp', 'lodMaxClamp', 'compare', 'maxAnisotropy'
+  'label',
+  'addressModeU',
+  'addressModeV',
+  'addressModeW',
+  'magFilter',
+  'minFilter',
+  'mipmapFilter',
+  'lodMinClamp',
+  'lodMaxClamp',
+  'compare',
+  'maxAnisotropy'
 ]);
 
 export const webgpuCompat = Object.freeze({
@@ -105,6 +124,6 @@ function normalizeExtent(size: GPUExtent3D): RHITextureDescriptor['size'] {
 function rejectResourceDescriptor(kind: string, _input: unknown): never {
   throw new Error(
     `WebGPU ${kind} descriptors contain resource identities and cannot be converted automatically. ` +
-    'Rebind the descriptor with RHI handles.'
+      'Rebind the descriptor with RHI handles.'
   );
 }
