@@ -1,6 +1,12 @@
 import { defineComponent } from '../ecs/component';
 import type { LocalTransformView, WorldTransformView } from './types';
 
+/**
+ * ECS component representing an entity's local-space translation, rotation, and scale (TRS).
+ *
+ * Local transform values are authored by gameplay and physics systems. Mutations
+ * to these fields trigger reactive dirty-marking to schedule hierarchy matrix propagation.
+ */
 export const LocalTransform = defineComponent<LocalTransformView>({
   id: 'aether.transform.local',
   version: 1,
@@ -18,6 +24,13 @@ export const LocalTransform = defineComponent<LocalTransformView>({
   ]
 });
 
+/**
+ * ECS component representing an entity's computed world-space transformation matrices.
+ *
+ * This component is derived entirely at runtime by `TransformRuntime.propagate()`.
+ * All fields are marked `runtime-only` as they can be reconstructed deterministically
+ * from the scene hierarchy and local transforms.
+ */
 export const WorldTransform = defineComponent<WorldTransformView>({
   id: 'aether.transform.world',
   version: 1,

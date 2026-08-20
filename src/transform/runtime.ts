@@ -6,6 +6,7 @@ import { Mat4, Quat } from '../math';
 import type { Quaternion, Vec3 } from '../math/types';
 import { LocalTransform, WorldTransform } from './components';
 import { markTransformHistory, TransformHistory, TransformHistoryResource } from './history';
+import { TRANSFORM_EPSILON, TRANSFORM_OBSERVERS } from './constants';
 import {
   updateWorldOrigin,
   worldPositionRelativeToOrigin,
@@ -26,8 +27,11 @@ import type {
 } from './types';
 
 const installed = new WeakMap<World, TransformRuntime>();
-const EPSILON = 1e-6;
 
+/**
+ * Manages local-to-world transform hierarchy synchronization, floating origin rebasing,
+ * and render matrix interpolation.
+ */
 export class TransformRuntime {
   private readonly dirty = new Set<Entity>();
   private readonly resetPrevious = new Set<Entity>();
@@ -38,25 +42,32 @@ export class TransformRuntime {
     readonly history: TransformHistory
   ) {
     world.addObserver({
-      id: 'aether.transform.local-added',
+      id: TRANSFORM_OBSERVERS.LocalAdded,
       event: 'component-added',
       component: LocalTransform,
       run: (event) => this.dirty.add(event.entity)
     });
     world.addObserver({
-      id: 'aether.transform.parent-added',
+      id: TRANSFORM_OBSERVERS.ParentAdded,
       event: 'relation-added',
       relation: ChildOf,
       run: (event) => this.dirty.add(event.entity)
     });
     world.addObserver({
-      id: 'aether.transform.parent-removed',
+      id: TRANSFORM_OBSERVERS.ParentRemoved,
       event: 'relation-removed',
       relation: ChildOf,
       run: (event) => this.dirty.add(event.entity)
     });
   }
 
+  /**
+   * Installs and initializes the Transform subsystem resources and observers into the given ECS World.
+   *
+   * @param world The target ECS World.
+   * @param options Configuration options including floating origin grid cell size.
+   * @returns The active TransformRuntime instance.
+   */
   static install(world: World, options: TransformRuntimeOptions = {}): TransformRuntime {
     const existing = installed.get(world);
     if (existing) {
@@ -90,6 +101,12 @@ export class TransformRuntime {
     return runtime;
   }
 
+  /**
+   * Attaches LocalTransform (and WorldTransform if missing) components to an entity.
+   *
+   * @param entity Target entity ID.
+   * @param input Initial TRS parameters.
+   */
   attach(entity: Entity, input: LocalTransformInput = {}): void {
     const translation = input.translation ?? [0, 0, 0];
     const rotation = Quat.normalize(input.rotation ?? Quat.identity());
@@ -116,6 +133,13 @@ export class TransformRuntime {
     this.dirty.add(entity);
   }
 
+  /**
+   * Applies a partial update to an entity's local transform with change detection.
+   *
+   * @param entity Target entity ID.
+   * @param patch TRS patch values.
+   * @returns `true` if any component value changed beyond epsilon or `forceDirty` was set.
+   */
   setLocal(entity: Entity, patch: LocalTransformPatch): boolean {
     const local = this.requireLocal(entity);
     const translation = patch.translation ?? tuple3(local.translation);
@@ -139,12 +163,23 @@ export class TransformRuntime {
     return true;
   }
 
+  /**
+   * Teleports an entity locally and marks its previous matrix to be reset, preventing temporal interpolation trails.
+   *
+   * @param entity Target entity ID.
+   * @param patch New TRS values.
+   */
   teleport(entity: Entity, patch: LocalTransformPatch): void {
     this.setLocal(entity, { ...patch, forceDirty: true });
     this.resetPrevious.add(entity);
     markTransformHistory(this.history, 'teleport');
   }
 
+  /**
+   * Resets all entities' previous matrices to their current matrices to prevent frame interpolation artifacts.
+   *
+   * @param reason The discontinuity reason ('camera-cut' or 'scene-load').
+   */
   resetHistory(reason: Exclude<HistoryResetReason, 'teleport' | 'origin-rebase'>): void {
     for (const [, derived] of this.world.query([WorldTransform])) {
       derived.previousMatrix.set(derived.matrix);
@@ -152,6 +187,12 @@ export class TransformRuntime {
     markTransformHistory(this.history, reason);
   }
 
+  /**
+   * Shifts the active world origin grid cell and offsets all root entities' translations accordingly.
+   *
+   * @param newCell Target integer cell coordinates [cx, cy, cz].
+   * @returns `true` if the origin shifted, or `false` if the target cell matched the current origin.
+   */
   rebase(newCell: Vec3): boolean {
     // Validate the new cell and full translation delta before changing any world state.
     const validated = new WorldOrigin(this.origin.cellSize, newCell).cell;
@@ -188,6 +229,12 @@ export class TransformRuntime {
     return true;
   }
 
+  /**
+   * Extracts interpolated, camera-relative render transform snapshots for all active WorldTransform entities.
+   *
+   * @param options Snapshot extraction parameters including interpolation alpha and camera position.
+   * @returns Readonly map from Entity ID to RenderTransformSnapshot.
+   */
   extract(options: TransformExtractOptions): ReadonlyMap<Entity, RenderTransformSnapshot> {
     const alpha = options.interpolationAlpha;
     if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
@@ -221,6 +268,13 @@ export class TransformRuntime {
     return snapshots;
   }
 
+  /**
+   * Reparents an entity under a new parent or detaches it to the root level.
+   *
+   * @param entity Target entity ID.
+   * @param parent New parent entity ID, or `null` to detach as root.
+   * @param mode Reparenting mode: `'keep-local'` or `'keep-world'`.
+   */
   reparent(entity: Entity, parent: Entity | null, mode: ReparentMode): void {
     this.requireLocal(entity);
     this.propagate();
@@ -250,6 +304,13 @@ export class TransformRuntime {
     }
   }
 
+  /**
+   * Despawns an entity according to the specified policy regarding its hierarchy children.
+   *
+   * @param entity Target entity ID.
+   * @param policy Policy strategy: `'cascade'`, `'detach-keep-world'`, or `'reject-if-children'`.
+   * @returns `true` if despawned successfully, `false` if entity was not alive.
+   */
   despawn(entity: Entity, policy: ParentDespawnPolicy): boolean {
     if (!this.world.isAlive(entity)) {
       return false;
@@ -280,6 +341,11 @@ export class TransformRuntime {
     return this.world.despawn(entity);
   }
 
+  /**
+   * Evaluates all dirty local transforms and propagates updated world matrices down the hierarchy.
+   *
+   * @returns Propagation statistics including dirty roots count, total entities updated, and max depth.
+   */
   propagate(): TransformPropagationStats {
     for (const [entity] of this.world.query([LocalTransform], {
       changed: [LocalTransform]
@@ -305,7 +371,7 @@ export class TransformRuntime {
       maxDepth = Math.max(maxDepth, result.maxDepth);
     }
     this.dirty.clear();
-    return Object.freeze({ dirtyRoots: roots.length, propagated, maxDepth });
+    return { dirtyRoots: roots.length, propagated, maxDepth };
   }
 
   private propagateSubtree(
@@ -448,7 +514,7 @@ function approximatelyEqual(left: ArrayLike<number>, right: ArrayLike<number>): 
     return false;
   }
   for (let index = 0; index < left.length; index++) {
-    if (Math.abs(left[index]! - right[index]!) > EPSILON) {
+    if (Math.abs(left[index]! - right[index]!) > TRANSFORM_EPSILON) {
       return false;
     }
   }
@@ -469,6 +535,9 @@ function tuple4(value: ArrayLike<number>): Quaternion {
   return [value[0]!, value[1]!, value[2]!, value[3]!];
 }
 
+/**
+ * ECS Resource token for accessing the active `TransformRuntime`.
+ */
 export const TransformRuntimeResource = defineResource<TransformRuntime>(
   'aether.transform.runtime'
 );
