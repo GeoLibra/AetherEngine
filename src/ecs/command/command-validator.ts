@@ -1,5 +1,5 @@
 import { validateComponentInput } from '../component/component-schema';
-import { SpawnTicket } from '../entity/spawn-ticket';
+import { SpawnTicket } from './spawn-ticket';
 import type {
   CommandEntity,
   ComponentInput,

@@ -1,5 +1,5 @@
 import { defineResource } from '../resource';
-import { SpawnTicket } from '../entity/spawn-ticket';
+import { SpawnTicket } from './spawn-ticket';
 import type {
   CommandApplyResult,
   CommandEntity,
