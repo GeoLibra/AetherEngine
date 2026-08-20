@@ -113,16 +113,33 @@ export class EntityAllocator {
 }
 
 export function encodeEntity(worldId: WorldId, index: number, generation: number): Entity {
-  const local = index * ENTITY_INDEX_MULTIPLIER + generation;
-  return (worldId * ENTITY_LOCAL_MULTIPLIER + local) as Entity;
+  if (!Number.isInteger(worldId) || worldId < 0 || worldId > MAX_WORLD_ID) {
+    throw new Error(`World id must be between 0 and ${MAX_WORLD_ID}, received "${worldId}".`);
+  }
+  if (!Number.isInteger(index) || index < 0 || index > ENTITY_INDEX_MASK) {
+    throw new Error(
+      `Entity index must be between 0 and ${ENTITY_INDEX_MASK}, received "${index}".`
+    );
+  }
+  if (!Number.isInteger(generation) || generation < 0 || generation > ENTITY_GENERATION_MASK) {
+    throw new Error(
+      `Entity generation must fit in ${ENTITY_GENERATION_BITS} bits, received "${generation}".`
+    );
+  }
+  return (worldId * ENTITY_LOCAL_MULTIPLIER +
+    index * ENTITY_INDEX_MULTIPLIER +
+    generation) as Entity;
 }
 
 export function decodeEntity(entity: Entity): DecodedEntity {
-  const numeric = Number(entity);
-  const worldId = Math.floor(numeric / ENTITY_LOCAL_MULTIPLIER) as WorldId;
-  const local = numeric % ENTITY_LOCAL_MULTIPLIER;
-  const index = Math.floor(local / ENTITY_INDEX_MULTIPLIER);
-  const generation = local % ENTITY_INDEX_MULTIPLIER;
-
-  return { worldId, index, generation };
+  if (!Number.isSafeInteger(entity) || entity < 0) {
+    throw new Error(`Entity handle must be a non-negative safe integer, received "${entity}".`);
+  }
+  const worldId = Math.floor(entity / ENTITY_LOCAL_MULTIPLIER) as WorldId;
+  const localHandle = entity - worldId * ENTITY_LOCAL_MULTIPLIER;
+  return {
+    worldId,
+    index: Math.floor(localHandle / ENTITY_INDEX_MULTIPLIER),
+    generation: localHandle % ENTITY_INDEX_MULTIPLIER
+  };
 }

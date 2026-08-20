@@ -6,7 +6,8 @@ import {
   defineRelation,
   defineResource,
   type Entity,
-  type RelationType
+  type RelationType,
+  type WorldId
 } from '../../src';
 
 interface TransformView {
@@ -67,7 +68,10 @@ describe('World entities and components', () => {
       event: 'entity-despawned',
       run: () => events.push('entity-despawned')
     });
-    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .build();
 
     expect(world.state).toBe('created');
     world.start();
@@ -242,7 +246,10 @@ describe('World relationships and queries', () => {
     const world = new World();
     world.registerComponent(Transform);
 
-    const root = world.spawn().insert(Transform, { position: [0, 0, 0] }).build();
+    const root = world
+      .spawn()
+      .insert(Transform, { position: [0, 0, 0] })
+      .build();
     const child = world
       .spawn()
       .insert(Transform, { position: [1, 0, 0] })
@@ -252,9 +259,9 @@ describe('World relationships and queries', () => {
 
     expect(world.getParent(child)).toBe(root);
     expect(world.getChildren(root)).toEqual([child]);
-    expect([...world.query([Transform], { relation: [ChildOf, root] })].map(([entity]) => entity)).toEqual([
-      child
-    ]);
+    expect(
+      [...world.query([Transform], { relation: [ChildOf, root] })].map(([entity]) => entity)
+    ).toEqual([child]);
     expect([...world.query([], { relation: [ChildOf, child] })].map(([entity]) => entity)).toEqual([
       grandchild
     ]);
@@ -278,9 +285,9 @@ describe('World relationships and queries', () => {
     world.addRelation(source, Targets, target);
 
     expect(world.getRelation(source, Targets)).toEqual({ relation: Targets, target });
-    expect([...world.query([], { relation: [Targets, target] })].map(([entity]) => entity)).toEqual([
-      source
-    ]);
+    expect([...world.query([], { relation: [Targets, target] })].map(([entity]) => entity)).toEqual(
+      [source]
+    );
   });
 
   test('keeps ChildOf index synchronized when relations are replaced and entities despawn', () => {
@@ -307,12 +314,15 @@ describe('World relationships and queries', () => {
     world.registerComponent(Transform);
 
     const parent = world.spawn().build();
-    const child = world.spawn().insert(Transform, { position: [1, 0, 0] }).build();
+    const child = world
+      .spawn()
+      .insert(Transform, { position: [1, 0, 0] })
+      .build();
 
     world.addRelation(child, ChildOf, parent);
-    expect([...world.query([Transform], { relation: [ChildOf, parent] })].map(([entity]) => entity)).toEqual([
-      child
-    ]);
+    expect(
+      [...world.query([Transform], { relation: [ChildOf, parent] })].map(([entity]) => entity)
+    ).toEqual([child]);
 
     expect(world.removeRelation(child, ChildOf)).toBe(true);
 
@@ -338,9 +348,14 @@ describe('World change detection', () => {
     const world = new World();
     world.registerComponent(Transform);
 
-    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .build();
 
-    expect([...world.query([Transform], { added: [Transform] })].map(([row]) => row)).toEqual([entity]);
+    expect([...world.query([Transform], { added: [Transform] })].map(([row]) => row)).toEqual([
+      entity
+    ]);
     expect([...world.query([Transform], { changed: [Transform] })].map(([row]) => row)).toEqual([
       entity
     ]);
@@ -362,7 +377,10 @@ describe('World change detection', () => {
   test('tracks vector mutating methods as component changes', () => {
     const world = new World();
     world.registerComponent(Transform);
-    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .build();
 
     world.clearTrackers();
     world.getComponent<TransformView>(entity, Transform)!.position.set([9, 9, 9]);
@@ -382,11 +400,17 @@ describe('World change detection', () => {
   test('keeps existing component views valid after table reallocation', () => {
     const world = new World();
     world.registerComponent(Transform);
-    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .build();
     const beforeGrowth = world.getComponent<TransformView>(entity, Transform);
 
     for (let index = 0; index < 100; index++) {
-      world.spawn().insert(Transform, { position: [0, 0, 0] }).build();
+      world
+        .spawn()
+        .insert(Transform, { position: [0, 0, 0] })
+        .build();
     }
 
     beforeGrowth!.position[0] = 42;
@@ -400,7 +424,12 @@ describe('World change detection', () => {
     const entities: Entity[] = [];
 
     for (let index = 0; index < 80; index++) {
-      entities.push(world.spawn().insert(Transform, { position: [index, 0, 0] }).build());
+      entities.push(
+        world
+          .spawn()
+          .insert(Transform, { position: [index, 0, 0] })
+          .build()
+      );
     }
 
     const [table] = world.findMatchingTables([Transform]);
@@ -418,7 +447,10 @@ describe('World change detection', () => {
     const world = new World();
     world.registerComponent(Transform).registerComponent(Velocity);
     const parent = world.spawn().build();
-    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .build();
     const transform = world.getComponent<TransformView>(entity, Transform);
 
     world.insertComponent(entity, Velocity, { linear: [1, 0, 0] });
@@ -427,8 +459,67 @@ describe('World change detection', () => {
     transform!.position[0] = 77;
 
     expect(world.getComponent<TransformView>(entity, Transform)!.position[0]).toBe(77);
-    expect([...world.query([Transform, Velocity], { relation: [ChildOf, parent] })].map(([row]) => row)).toEqual([
-      entity
-    ]);
+    expect(
+      [...world.query([Transform, Velocity], { relation: [ChildOf, parent] })].map(([row]) => row)
+    ).toEqual([entity]);
+  });
+
+  test('validates entity encoding bounds and decoding invariants fail-fast', async () => {
+    const { encodeEntity, decodeEntity, ENTITY_INDEX_MASK, ENTITY_GENERATION_MASK, MAX_WORLD_ID } =
+      await import('../../src/ecs');
+
+    // Valid encode and decode
+    const entity = encodeEntity(1 as unknown as WorldId, 42, 7);
+    expect(decodeEntity(entity)).toEqual({ worldId: 1, index: 42, generation: 7 });
+
+    // Invalid worldId
+    expect(() => encodeEntity(-1 as unknown as WorldId, 0, 0)).toThrow(
+      'World id must be between 0'
+    );
+    expect(() => encodeEntity((MAX_WORLD_ID + 1) as unknown as WorldId, 0, 0)).toThrow(
+      'World id must be between 0'
+    );
+    expect(() => encodeEntity(1.5 as unknown as WorldId, 0, 0)).toThrow(
+      'World id must be between 0'
+    );
+    expect(() => encodeEntity(Number.NaN as unknown as WorldId, 0, 0)).toThrow(
+      'World id must be between 0'
+    );
+
+    // Invalid index
+    expect(() => encodeEntity(1 as unknown as WorldId, -1, 0)).toThrow(
+      'Entity index must be between 0'
+    );
+    expect(() => encodeEntity(1 as unknown as WorldId, ENTITY_INDEX_MASK + 1, 0)).toThrow(
+      'Entity index must be between 0'
+    );
+    expect(() => encodeEntity(1 as unknown as WorldId, 2.5, 0)).toThrow(
+      'Entity index must be between 0'
+    );
+
+    // Invalid generation
+    expect(() => encodeEntity(1 as unknown as WorldId, 0, -1)).toThrow(
+      'Entity generation must fit in'
+    );
+    expect(() => encodeEntity(1 as unknown as WorldId, 0, ENTITY_GENERATION_MASK + 1)).toThrow(
+      'Entity generation must fit in'
+    );
+    expect(() => encodeEntity(1 as unknown as WorldId, 0, 3.14)).toThrow(
+      'Entity generation must fit in'
+    );
+
+    // Invalid decode entity handle
+    expect(() => decodeEntity(-1 as Entity)).toThrow(
+      'Entity handle must be a non-negative safe integer'
+    );
+    expect(() => decodeEntity(Number.NaN as Entity)).toThrow(
+      'Entity handle must be a non-negative safe integer'
+    );
+    expect(() => decodeEntity(1.5 as Entity)).toThrow(
+      'Entity handle must be a non-negative safe integer'
+    );
+    expect(() => decodeEntity(Number.POSITIVE_INFINITY as Entity)).toThrow(
+      'Entity handle must be a non-negative safe integer'
+    );
   });
 });
