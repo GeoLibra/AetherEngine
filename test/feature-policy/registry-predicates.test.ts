@@ -115,6 +115,7 @@ function implementation(id: string, version: number): FeatureImplementation<unde
     requirements: [],
     dependencies: [],
     conflicts: [],
+    cacheDomains: [],
     priority: 0,
     quality: { tier: 'test', rank: 0, notes: [] },
     estimate: () => ZERO_RESOURCE_BUDGET,

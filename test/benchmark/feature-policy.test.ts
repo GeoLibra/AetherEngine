@@ -21,6 +21,7 @@ describe('FeaturePolicy benchmark correctness and evidence', () => {
     const subject = scenario.runSubject();
     assertFeaturePolicyComparison(reference, subject);
     expect(subject.counters.hotReadResolveCount).toBe(0);
+    expect(subject.counters.cacheDomainHashes).toBe(1);
     expect(subject.counters.predicateEvaluations).toBe(32);
   });
 

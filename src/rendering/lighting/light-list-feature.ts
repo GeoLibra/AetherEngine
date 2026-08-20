@@ -63,6 +63,7 @@ export function createCpuBoundedLightListImplementation(
     ],
     dependencies: [],
     conflicts: [],
+    cacheDomains: ['shader-pipeline'],
     priority: 0,
     quality: {
       tier: 'cpu-bounded',

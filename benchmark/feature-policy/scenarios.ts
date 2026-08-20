@@ -97,6 +97,7 @@ function runSubject(featureCount: number, candidateCount: number): FeaturePolicy
     counters: {
       ...result.metrics,
       selectedFeatures: result.metrics.selectedFeatures,
+      cacheDomainHashes: result.snapshot.cacheDomainHashes.size,
       hotReadResolveCount
     }
   };
@@ -121,6 +122,7 @@ function candidate(
       : [],
     dependencies: [],
     conflicts: [],
+    cacheDomains: ['shader-pipeline'],
     priority: 0,
     quality: { tier: id, rank: 0, notes: [] },
     estimate: () => ZERO_RESOURCE_BUDGET,

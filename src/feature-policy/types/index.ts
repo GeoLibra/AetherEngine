@@ -11,8 +11,12 @@ export type {
   FeatureId,
   FeatureImplementation,
   FeaturePolicyInput,
+  FeaturePolicyCacheInvalidation,
   FeaturePolicyMetrics,
+  FeaturePolicyPrepareResult,
+  FeaturePolicyPublication,
   FeaturePolicyResolution,
+  FeaturePolicyRetirement,
   FeaturePolicySnapshot,
   FeaturePrepareInput,
   FeatureRequest,
@@ -20,8 +24,10 @@ export type {
   HostServiceId,
   ImplementationId,
   PredicateResult,
+  PreparedFeaturePolicy,
   QualityImpact,
   RenderFeatureImplementation,
   ResourceBudget,
   RuntimeFeatureImplementation
 } from './feature-policy-types';
+export type { FeaturePolicyCacheDomain } from '../constants';
