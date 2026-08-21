@@ -86,11 +86,16 @@ function comparator(phase: RenderPhaseKind): (left: PhaseItem, right: PhaseItem)
     if (phase === 'overlay')
       return left.insertionOrder - right.insertionOrder || left.entity - right.entity;
     return (
-      left.pipelineKey.localeCompare(right.pipelineKey) ||
-      left.materialKey.localeCompare(right.materialKey) ||
-      left.meshKey.localeCompare(right.meshKey) ||
+      compareCodeUnits(left.pipelineKey, right.pipelineKey) ||
+      compareCodeUnits(left.materialKey, right.materialKey) ||
+      compareCodeUnits(left.meshKey, right.meshKey) ||
+      compareCodeUnits(left.drawKey, right.drawKey) ||
       left.entity - right.entity ||
       left.insertionOrder - right.insertionOrder
     );
   };
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
