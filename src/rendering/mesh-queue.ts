@@ -9,6 +9,7 @@ import type {
   MeshQueueResolution,
   MeshQueueSkip,
   PreparedMeshQueueCandidate,
+  PreparedMaterialCompatibility,
   ResolveMeshQueueInput,
   RenderMaterialBinding,
   RenderMeshFact
@@ -61,7 +62,7 @@ export function resolvePreparedMeshQueue(
         skipped.push(skip(visible.renderEntity, 'missing-resource', 'missing-material-slot'));
         continue;
       }
-      const material = registry.acquire(
+      const material = registry.acquire<PreparedMaterialCompatibility>(
         variantKey(
           materialFact.handle.assetId,
           materialFact.payloadVersion,
