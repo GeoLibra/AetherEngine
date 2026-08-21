@@ -140,6 +140,17 @@ function key(assetId: string, deviceGeneration: number, abiVersion: string): Pre
 }
 
 describe('material pipeline compatibility', () => {
+  test('rejects malformed string context fields with stable boundary diagnostics', () => {
+    const malformed = {
+      ...context(),
+      semanticTag: undefined
+    } as unknown as MaterialPipelineContext;
+
+    expect(() => resolveMaterialPipelineCompatibility([], malformed)).toThrow(
+      'Material pipeline semantic tag must be non-empty.'
+    );
+  });
+
   test('selects an exact technique and builds a complete immutable canonical key', () => {
     const fixture = candidate();
     const result = resolveMaterialPipelineCompatibility([fixture.value], context());

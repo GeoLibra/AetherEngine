@@ -79,47 +79,13 @@ export function resolveMaterialPipelineCompatibility(
       );
       continue;
     }
-    const meshLayout = candidate.mesh.prepared.value.layout;
-    const pipelineKey = createPipelineKey({
-      shaderModuleKey: selection.technique.shader.moduleKey,
-      entryPoints: [
-        { stage: 'vertex', name: selection.technique.shader.vertexEntry },
-        ...(selection.technique.shader.fragmentEntry === undefined
-          ? []
-          : [{ stage: 'fragment' as const, name: selection.technique.shader.fragmentEntry }])
-      ],
-      bindingLayoutHash: material.bindingLayoutHash,
-      vertexLayoutHash: hashParts('vertex-layout', {
-        streams: [...meshLayout.streams].sort(
-          (left, right) =>
-            left.bufferSlot - right.bufferSlot ||
-            left.offset - right.offset ||
-            compareCodeUnits(left.semantic, right.semantic)
-        ),
-        indexFormat: meshLayout.indexFormat ?? null
-      }),
-      primitiveStateHash: hashParts('primitive-state', {
-        topology: meshLayout.topology,
-        frontFace: meshLayout.frontFace,
-        cullMode: renderState.cullMode
-      }),
-      depthStencilStateHash: hashParts('depth-stencil-state', {
-        depthTest: renderState.depthTest,
-        depthWrite: renderState.depthWrite,
-        format: context.depthStencilFormat ?? null
-      }),
-      blendStateHash: hashParts('blend-state', {
-        colorWrite: renderState.colorWrite,
-        blend: renderState.blend ?? null
-      }),
-      attachmentFormats: context.attachmentFormats,
-      ...(context.depthStencilFormat === undefined
-        ? {}
-        : { depthStencilFormat: context.depthStencilFormat }),
-      sampleCount: context.sampleCount,
-      featurePolicyHash: context.featurePolicyHash,
-      deviceGeneration: context.deviceGeneration
-    });
+    const pipelineKey = buildPipelineKeyForCandidate(
+      candidate,
+      material,
+      selection,
+      renderState,
+      context
+    );
     resolved.push(Object.freeze({ candidate, selection, renderState, pipelineKey }));
   }
   return Object.freeze({ resolved: Object.freeze(resolved), skipped: Object.freeze(skipped) });
@@ -149,8 +115,59 @@ function validateContext(context: MaterialPipelineContext): void {
     ['semantic tag', context.semanticTag],
     ['FeaturePolicy hash', context.featurePolicyHash]
   ] as const) {
-    if (!value.trim()) throw new Error(`Material pipeline ${name} must be non-empty.`);
+    if (typeof value !== 'string' || !value.trim())
+      throw new Error(`Material pipeline ${name} must be non-empty.`);
   }
+}
+
+function buildPipelineKeyForCandidate(
+  candidate: PreparedMeshQueueCandidate,
+  material: PreparedMaterialCompatibility,
+  selection: ResolvedMaterialPipelineCandidate['selection'],
+  renderState: ResolvedMaterialPipelineCandidate['renderState'],
+  context: MaterialPipelineContext
+): ResolvedMaterialPipelineCandidate['pipelineKey'] {
+  const meshLayout = candidate.mesh.prepared.value.layout;
+  return createPipelineKey({
+    shaderModuleKey: selection.technique.shader.moduleKey,
+    entryPoints: [
+      { stage: 'vertex', name: selection.technique.shader.vertexEntry },
+      ...(selection.technique.shader.fragmentEntry === undefined
+        ? []
+        : [{ stage: 'fragment' as const, name: selection.technique.shader.fragmentEntry }])
+    ],
+    bindingLayoutHash: material.bindingLayoutHash,
+    vertexLayoutHash: hashParts('vertex-layout', {
+      streams: [...meshLayout.streams].sort(
+        (left, right) =>
+          left.bufferSlot - right.bufferSlot ||
+          left.offset - right.offset ||
+          compareCodeUnits(left.semantic, right.semantic)
+      ),
+      indexFormat: meshLayout.indexFormat ?? null
+    }),
+    primitiveStateHash: hashParts('primitive-state', {
+      topology: meshLayout.topology,
+      frontFace: meshLayout.frontFace,
+      cullMode: renderState.cullMode
+    }),
+    depthStencilStateHash: hashParts('depth-stencil-state', {
+      depthTest: renderState.depthTest,
+      depthWrite: renderState.depthWrite,
+      format: context.depthStencilFormat ?? null
+    }),
+    blendStateHash: hashParts('blend-state', {
+      colorWrite: renderState.colorWrite,
+      blend: renderState.blend ?? null
+    }),
+    attachmentFormats: context.attachmentFormats,
+    ...(context.depthStencilFormat === undefined
+      ? {}
+      : { depthStencilFormat: context.depthStencilFormat }),
+    sampleCount: context.sampleCount,
+    featurePolicyHash: context.featurePolicyHash,
+    deviceGeneration: context.deviceGeneration
+  });
 }
 
 function skip(
