@@ -17,6 +17,7 @@ import {
   RenderSystemRegistry,
   compileRenderGraph,
   compileRenderSystems,
+  createPreparedBindGroupLayoutToken,
   createPreparedComputePipelineToken,
   createPreparedRenderPipelineToken,
   renderSystemToken
@@ -37,6 +38,10 @@ describe('RenderGraph public API', () => {
     expect(createPreparedComputePipelineToken('light-list')).toMatchObject({
       kind: 'prepared-compute-pipeline-token',
       name: 'light-list'
+    });
+    expect(createPreparedBindGroupLayoutToken('light-list-layout')).toMatchObject({
+      kind: 'prepared-bind-group-layout-token',
+      name: 'light-list-layout'
     });
     expect(renderSystemToken('example').id).toBe('example');
     expect(RenderingRenderSystemRegistry).toBe(RenderSystemRegistry);

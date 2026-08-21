@@ -18,6 +18,7 @@ import type {
 import type { TextureGraphRange } from '../ranges';
 import type {
   PreparedComputePipelineToken,
+  PreparedBindGroupLayoutToken,
   PreparedRenderPipelineToken
 } from '../prepared-resources';
 import type {
@@ -182,6 +183,7 @@ export interface RestrictedPassContext {
   buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice;
   renderPipeline(token: PreparedRenderPipelineToken): RestrictedRenderPipeline;
   computePipeline(token: PreparedComputePipelineToken): RestrictedComputePipeline;
+  bindGroupLayout(token: PreparedBindGroupLayoutToken): RestrictedBindGroupLayout;
   beginRaster(descriptor: DeclaredRasterPass): RestrictedRenderPassEncoder;
   beginCompute(descriptor?: GPUComputePassDescriptor): RestrictedComputePassEncoder;
   copyBufferToBuffer(

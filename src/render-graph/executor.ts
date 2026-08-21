@@ -20,6 +20,7 @@ import { TransientResourcePool, type TransientResource } from './transient-pool'
 import { RestrictedContext } from './restricted-context';
 import type {
   PreparedComputePipelineBindings,
+  PreparedBindGroupLayoutBindings,
   PreparedRenderPipelineBindings
 } from './prepared-resources';
 export type {
@@ -88,6 +89,8 @@ export interface RenderGraphExecutionInputs {
   readonly preparedRenderPipelines?: PreparedRenderPipelineBindings;
   /** Externally owned compute pipelines prepared before surface acquisition. */
   readonly preparedComputePipelines?: PreparedComputePipelineBindings;
+  /** Externally owned layouts used to bind graph resources to prepared pipelines. */
+  readonly preparedBindGroupLayouts?: PreparedBindGroupLayoutBindings;
 }
 
 export interface RenderGraphExecutionDebug extends RenderGraphDebugIR {
@@ -125,6 +128,7 @@ export class RenderGraphExecutor {
     validateRenderGraphExecutionPlan(plan);
     validatePreparedRenderPipelines(inputs);
     validatePreparedComputePipelines(inputs);
+    validatePreparedBindGroupLayouts(inputs);
     const frames: SurfaceBinding[] = [];
     const transientResources: TransientResource[] = [];
     const restrictedContexts: RestrictedContext[] = [];
@@ -162,6 +166,7 @@ export class RenderGraphExecutor {
             inputs.device,
             inputs.preparedRenderPipelines ?? new Map(),
             inputs.preparedComputePipelines ?? new Map(),
+            inputs.preparedBindGroupLayouts ?? new Map(),
             encoder,
             (next) => {
               activePass = next;
@@ -305,6 +310,22 @@ function validatePreparedComputePipelines(inputs: RenderGraphExecutionInputs): v
     if (pipeline.generation !== inputs.device.generation) {
       throw new Error(
         `Prepared compute pipeline "${token.name}" belongs to another device generation.`
+      );
+    }
+  }
+}
+
+function validatePreparedBindGroupLayouts(inputs: RenderGraphExecutionInputs): void {
+  for (const [token, layout] of inputs.preparedBindGroupLayouts ?? []) {
+    if (token.kind !== 'prepared-bind-group-layout-token') {
+      throw new TypeError('Prepared bind-group layout binding has an invalid token.');
+    }
+    if (layout.state !== 'live') {
+      throw new Error(`Prepared bind-group layout "${token.name}" is not a live resource.`);
+    }
+    if (layout.generation !== inputs.device.generation) {
+      throw new Error(
+        `Prepared bind-group layout "${token.name}" belongs to another device generation.`
       );
     }
   }

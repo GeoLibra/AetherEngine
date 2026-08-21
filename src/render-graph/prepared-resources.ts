@@ -1,4 +1,22 @@
-import type { RHIComputePipeline, RHIRenderPipeline } from '../rhi/contracts';
+import type { RHIBindGroupLayout, RHIComputePipeline, RHIRenderPipeline } from '../rhi/contracts';
+
+/** Typed key for a bind-group layout created before graph surface acquisition. */
+export interface PreparedBindGroupLayoutToken {
+  readonly kind: 'prepared-bind-group-layout-token';
+  readonly name: string;
+  readonly id: symbol;
+}
+
+export function createPreparedBindGroupLayoutToken(name: string): PreparedBindGroupLayoutToken {
+  if (name.length === 0)
+    throw new TypeError('Prepared bind-group layout token name must not be empty.');
+  return Object.freeze({ kind: 'prepared-bind-group-layout-token', name, id: Symbol(name) });
+}
+
+export type PreparedBindGroupLayoutBindings = ReadonlyMap<
+  PreparedBindGroupLayoutToken,
+  RHIBindGroupLayout
+>;
 
 /** Typed key for a compute pipeline created before graph surface acquisition. */
 export interface PreparedComputePipelineToken {

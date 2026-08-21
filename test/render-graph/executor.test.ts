@@ -8,6 +8,7 @@ import {
   type RestrictedPassContext
 } from '../../src/render-graph/executor';
 import {
+  createPreparedBindGroupLayoutToken,
   createPreparedComputePipelineToken,
   createPreparedRenderPipelineToken
 } from '../../src/render-graph/prepared-resources';
@@ -110,6 +111,30 @@ describe('RenderGraphExecutor', () => {
     expect(resolved).toMatchObject({ kind: 'restricted-compute-pipeline' });
   });
 
+  test('exposes externally prepared bind group layouts for pass-local graph bindings', () => {
+    const device = new NullDevice();
+    const layout = device.createBindGroupLayout({ entries: [] });
+    const token = createPreparedBindGroupLayoutToken('light-list-layout');
+    const graph = new RenderGraphBuilder();
+    let resolved: unknown;
+    graph.addPass({
+      id: 'prepared-bind-group-layout',
+      setup(pass) {
+        pass.sideEffect('record');
+      },
+      run(context: RestrictedPassContext) {
+        resolved = context.bindGroupLayout(token);
+      }
+    });
+
+    new RenderGraphExecutor().execute(compile(graph), {
+      device,
+      preparedBindGroupLayouts: new Map([[token, layout]])
+    });
+
+    expect(resolved).toMatchObject({ kind: 'restricted-bind-group-layout' });
+  });
+
   test('rejects incompatible or foreign imported physical bindings before recording', () => {
     const device = new NullDevice();
     const graph = new RenderGraphBuilder();
@@ -198,6 +223,7 @@ describe('RenderGraphExecutor', () => {
     expect(Object.keys(context as object).sort()).toEqual([
       'beginCompute',
       'beginRaster',
+      'bindGroupLayout',
       'buffer',
       'computePipeline',
       'copyBufferToBuffer',
