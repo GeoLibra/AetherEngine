@@ -18,6 +18,16 @@ const VERTEX_FORMAT_SIZE: Readonly<Record<VertexFormat, number>> = Object.freeze
   unorm8x4: 4
 });
 
+const VERTEX_FORMAT_ALIGNMENT: Readonly<Record<VertexFormat, number>> = Object.freeze({
+  float32: 4,
+  float32x2: 4,
+  float32x3: 4,
+  float32x4: 4,
+  uint16x2: 2,
+  uint16x4: 2,
+  unorm8x4: 1
+});
+
 /** Validates and takes an isolated copy of canonical CPU mesh data. */
 export function validateMeshData(
   input: MeshDataInput,
@@ -26,6 +36,9 @@ export function validateMeshData(
   requireCount(input.vertexCount, 'Mesh vertex count');
   if (input.vertexCount === 0) throw new Error('Mesh must contain at least one vertex.');
   if (input.streams.length === 0) throw new Error('Mesh must contain vertex streams.');
+  if (input.frontFace !== 'ccw' && input.frontFace !== 'cw') {
+    throw new Error('Mesh front face must be either "ccw" or "cw".');
+  }
 
   const semantics = new Set<string>();
   const streams = input.streams.map((stream) => {
@@ -47,17 +60,21 @@ export function validateMeshData(
   const submeshes = validateSubmeshes(
     input.submeshes,
     drawCount,
+    input.topology,
     options.allowSubmeshOverlap === true
   );
   validateTopology(input.topology, drawCount);
+  const bounds =
+    input.bounds === undefined ? deriveBounds(position) : validateBounds(input.bounds, position);
 
   return Object.freeze({
     topology: input.topology,
+    frontFace: input.frontFace,
     vertexCount: input.vertexCount,
     streams: Object.freeze(streams),
     ...(indices === undefined ? {} : { indices }),
     submeshes,
-    bounds: deriveBounds(position)
+    bounds
   });
 }
 
@@ -69,7 +86,8 @@ function validateStream(stream: VertexStreamInput, vertexCount: number): void {
   requireCount(stream.offset, `Mesh ${stream.semantic} offset`);
   requireCount(stream.stride, `Mesh ${stream.semantic} stride`);
   const size = VERTEX_FORMAT_SIZE[stream.format];
-  if (stream.stride < size || stream.stride % Math.min(size, 4) !== 0) {
+  const alignment = VERTEX_FORMAT_ALIGNMENT[stream.format];
+  if (stream.offset % alignment !== 0 || stream.stride < size || stream.stride % alignment !== 0) {
     throw new Error(`Mesh ${stream.semantic} stride is incompatible with ${stream.format}.`);
   }
   const requiredBytes = stream.offset + (stream.count - 1) * stream.stride + size;
@@ -97,6 +115,7 @@ function copyIndices(indices: NonNullable<MeshDataInput['indices']>, vertexCount
 function validateSubmeshes(
   ranges: readonly SubmeshRange[],
   drawCount: number,
+  topology: MeshDataInput['topology'],
   allowOverlap: boolean
 ): readonly SubmeshRange[] {
   if (ranges.length === 0) throw new Error('Mesh must declare at least one submesh.');
@@ -107,6 +126,7 @@ function validateSubmeshes(
     if (range.count === 0 || range.start + range.count > drawCount) {
       throw new Error('Submesh range is outside the mesh draw range.');
     }
+    validateTopology(topology, range.count, 'Submesh');
     return Object.freeze({ ...range });
   });
   if (!allowOverlap) {
@@ -120,13 +140,70 @@ function validateSubmeshes(
   return Object.freeze(result);
 }
 
-function validateTopology(topology: MeshDataInput['topology'], drawCount: number): void {
+function validateTopology(
+  topology: MeshDataInput['topology'],
+  drawCount: number,
+  label = topology === 'triangles'
+    ? 'Triangle mesh'
+    : topology === 'lines'
+      ? 'Line mesh'
+      : 'Point mesh'
+): void {
   if (topology === 'triangles' && drawCount % 3 !== 0) {
-    throw new Error('Triangle mesh draw count must be divisible by three.');
+    throw new Error(`${label} draw count must be divisible by three.`);
   }
   if (topology === 'lines' && drawCount % 2 !== 0) {
-    throw new Error('Line mesh draw count must be divisible by two.');
+    throw new Error(`${label} draw count must be divisible by two.`);
   }
+}
+
+function validateBounds(bounds: MeshBounds, position: VertexStreamInput): MeshBounds {
+  const min = copyVector(bounds.aabb.min, 'Mesh AABB minimum');
+  const max = copyVector(bounds.aabb.max, 'Mesh AABB maximum');
+  const center = copyVector(bounds.sphere.center, 'Mesh bounding-sphere center');
+  if (min.some((value, axis) => value > max[axis]!)) {
+    throw new Error('Mesh AABB minimum must not exceed its maximum.');
+  }
+  if (!Number.isFinite(bounds.sphere.radius) || bounds.sphere.radius < 0) {
+    throw new Error('Mesh bounding-sphere radius must be finite and non-negative.');
+  }
+  const bytes = new DataView(
+    position.data.buffer,
+    position.data.byteOffset,
+    position.data.byteLength
+  );
+  const radiusSquared = bounds.sphere.radius * bounds.sphere.radius;
+  for (let vertex = 0; vertex < position.count; vertex += 1) {
+    const base = position.offset + vertex * position.stride;
+    const values = [0, 1, 2].map((axis) => bytes.getFloat32(base + axis * 4, true));
+    if (values.some((value) => !Number.isFinite(value))) {
+      throw new Error('Mesh POSITION values must be finite.');
+    }
+    if (values.some((value, axis) => value < min[axis]! || value > max[axis]!)) {
+      throw new Error('Mesh authored AABB must contain every POSITION value.');
+    }
+    const distanceSquared = values.reduce((sum, value, axis) => {
+      const delta = value - center[axis]!;
+      return sum + delta * delta;
+    }, 0);
+    if (distanceSquared > radiusSquared) {
+      throw new Error('Mesh authored bounding sphere must contain every POSITION value.');
+    }
+  }
+  return Object.freeze({
+    aabb: Object.freeze({ min: Object.freeze(min), max: Object.freeze(max) }),
+    sphere: Object.freeze({ center: Object.freeze(center), radius: bounds.sphere.radius })
+  });
+}
+
+function copyVector(
+  vector: readonly [number, number, number],
+  label: string
+): [number, number, number] {
+  if (vector.length !== 3 || vector.some((value) => !Number.isFinite(value))) {
+    throw new Error(`${label} must contain three finite values.`);
+  }
+  return [vector[0], vector[1], vector[2]];
 }
 
 function deriveBounds(stream: VertexStreamInput): MeshBounds {

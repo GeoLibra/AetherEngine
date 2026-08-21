@@ -13,6 +13,7 @@ export function createMeshValidationFixture(vertexCount: number): MeshDataInput 
   }
   return {
     topology: 'triangles',
+    frontFace: 'ccw',
     vertexCount,
     streams: [
       {

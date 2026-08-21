@@ -4,6 +4,7 @@ import { validateMeshData, type MeshDataInput } from '../../src';
 function triangle(): MeshDataInput {
   return {
     topology: 'triangles',
+    frontFace: 'ccw',
     vertexCount: 3,
     streams: [
       {
@@ -60,5 +61,64 @@ describe('MeshData validation', () => {
     };
     expect(() => validateMeshData(overlapping)).toThrow(/overlap/i);
     expect(validateMeshData(overlapping, { allowSubmeshOverlap: true }).submeshes).toHaveLength(2);
+  });
+
+  test('accepts conservative authored bounds and rejects bounds that omit positions', () => {
+    const input = triangle();
+    const bounds = {
+      aabb: { min: [-1, -1, -1] as const, max: [3, 5, 1] as const },
+      sphere: { center: [1, 2, 0] as const, radius: 3 }
+    };
+    expect(validateMeshData({ ...input, bounds }).bounds).toEqual(bounds);
+    expect(() =>
+      validateMeshData({
+        ...input,
+        bounds: { ...bounds, aabb: { min: [0, 0, 0], max: [1, 4, 0] } }
+      })
+    ).toThrow(/contain every POSITION/i);
+    expect(() =>
+      validateMeshData({
+        ...input,
+        bounds: { ...bounds, sphere: { center: [0, 0, 0], radius: 1 } }
+      })
+    ).toThrow(/sphere must contain/i);
+  });
+
+  test('validates format-specific stream alignment', () => {
+    const input = triangle();
+    expect(() =>
+      validateMeshData({ ...input, streams: [{ ...input.streams[0]!, offset: 2 }] })
+    ).toThrow(/stride is incompatible/i);
+
+    const color = {
+      semantic: 'COLOR_0',
+      format: 'unorm8x4' as const,
+      stride: 5,
+      offset: 1,
+      count: 3,
+      data: new Uint8Array(15)
+    };
+    expect(validateMeshData({ ...input, streams: [...input.streams, color] }).streams).toHaveLength(
+      2
+    );
+  });
+
+  test('requires every submesh range to contain complete primitives', () => {
+    const input = triangle();
+    expect(() =>
+      validateMeshData({
+        ...input,
+        submeshes: [
+          { start: 0, count: 1, materialSlot: 0 },
+          { start: 1, count: 2, materialSlot: 1 }
+        ]
+      })
+    ).toThrow(/Submesh draw count/i);
+  });
+
+  test('rejects an invalid winding value at the public trust boundary', () => {
+    expect(() => validateMeshData({ ...triangle(), frontFace: 'invalid' as 'ccw' })).toThrow(
+      /front face/i
+    );
   });
 });

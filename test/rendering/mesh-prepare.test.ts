@@ -9,9 +9,11 @@ import {
 } from '../../src';
 import type { RHIBuffer } from '../../src/rhi/contracts';
 import type { RHIBufferDescriptor } from '../../src/rhi/contracts/descriptor';
+import type { RHISubmission, SubmissionResult } from '../../src/rhi';
 
 const meshInput: MeshDataInput = {
   topology: 'triangles',
+  frontFace: 'ccw',
   vertexCount: 3,
   streams: [
     {
@@ -50,6 +52,7 @@ describe('mesh GPU preparation', () => {
       stride: 12,
       offset: 0
     });
+    expect(prepared.value.layout.frontFace).toBe('ccw');
     await prepared.value.vertexBuffers[0]!.mapAsync(0);
     expect(Array.from(new Float32Array(prepared.value.vertexBuffers[0]!.getMappedRange()))).toEqual(
       Array.from(meshInput.streams[0]!.data as Float32Array)
@@ -99,5 +102,60 @@ describe('mesh GPU preparation', () => {
       })
     ).toThrow('index allocation failed');
     expect(device.created[0]?.state).toBe('disposed');
+  });
+
+  test('invalidates an old device generation and prepares a distinct replacement', () => {
+    const mesh = validateMeshData(meshInput);
+    const registry = new PreparedAssetRegistry();
+    const firstDevice = new NullDevice();
+    const first = prepareMesh(firstDevice, mesh, {
+      assetId: 'mesh:triangle',
+      payloadVersion: 1,
+      featurePolicyKey: 'policy-a',
+      abiVersion: 'mesh-v1'
+    });
+    registry.publish(first, disposePreparedMesh);
+    registry.invalidateDevice(firstDevice.generation);
+    expect(first.value.vertexBuffers[0]!.state).toBe('disposed');
+
+    const secondDevice = new NullDevice();
+    const second = prepareMesh(secondDevice, mesh, {
+      assetId: 'mesh:triangle',
+      payloadVersion: 1,
+      featurePolicyKey: 'policy-a',
+      abiVersion: 'mesh-v1'
+    });
+    expect(second.key.deviceGeneration).not.toBe(first.key.deviceGeneration);
+    expect(second.value.vertexBuffers[0]!.state).toBe('live');
+    disposePreparedMesh(second.value);
+  });
+
+  test('keeps mesh buffers alive until a retained submission completes', async () => {
+    let complete!: (result: SubmissionResult) => void;
+    const submission: RHISubmission = {
+      id: 1,
+      status: 'pending',
+      done: new Promise((resolve) => {
+        complete = resolve;
+      })
+    };
+    const registry = new PreparedAssetRegistry();
+    const prepared = prepareMesh(new NullDevice(), validateMeshData(meshInput), {
+      assetId: 'mesh:triangle',
+      payloadVersion: 1,
+      featurePolicyKey: 'policy-a',
+      abiVersion: 'mesh-v1'
+    });
+    registry.publish(prepared, disposePreparedMesh);
+    const lease = registry.acquire(prepared.key)!;
+    lease.retainUntil(submission);
+    registry.retire(prepared.key);
+    lease.dispose();
+    expect(prepared.value.vertexBuffers[0]!.state).toBe('live');
+
+    complete({ status: 'completed' });
+    await submission.done;
+    await Promise.resolve();
+    expect(prepared.value.vertexBuffers[0]!.state).toBe('disposed');
   });
 });

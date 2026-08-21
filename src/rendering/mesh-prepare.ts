@@ -1,4 +1,10 @@
-import type { MeshData, MeshTopology, SubmeshRange, VertexFormat } from '../geometry';
+import type {
+  MeshData,
+  MeshFrontFace,
+  MeshTopology,
+  SubmeshRange,
+  VertexFormat
+} from '../geometry';
 import type { RHIDevice } from '../rhi';
 import type { RHIBuffer } from '../rhi/contracts';
 import type { PreparedAsset, PreparedVariantKey } from './prepared-assets';
@@ -24,6 +30,7 @@ export interface PreparedMeshStreamLayout {
 /** Pipeline-compatible topology, vertex streams, and optional index format. */
 export interface PreparedMeshLayout {
   readonly topology: MeshTopology;
+  readonly frontFace: MeshFrontFace;
   readonly streams: readonly PreparedMeshStreamLayout[];
   readonly indexFormat?: 'uint16' | 'uint32';
 }
@@ -76,6 +83,7 @@ export function prepareMesh(
       deviceGeneration: device.generation,
       layout: Object.freeze({
         topology: mesh.topology,
+        frontFace: mesh.frontFace,
         streams: Object.freeze(
           mesh.streams.map((stream, bufferSlot) =>
             Object.freeze({

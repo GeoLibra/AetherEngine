@@ -1,4 +1,5 @@
 export type MeshTopology = 'triangles' | 'lines' | 'points';
+export type MeshFrontFace = 'ccw' | 'cw';
 /** Canonical vertex formats currently accepted by the mesh validator. */
 export type VertexFormat =
   'float32' | 'float32x2' | 'float32x3' | 'float32x4' | 'uint16x2' | 'uint16x4' | 'unorm8x4';
@@ -32,10 +33,14 @@ export interface SubmeshRange {
 export interface MeshDataInput {
   /** Primitive assembly topology used by every submesh in this payload. */
   readonly topology: MeshTopology;
+  /** Object-space vertex winding considered front-facing by rasterization. */
+  readonly frontFace: MeshFrontFace;
   readonly vertexCount: number;
   readonly streams: readonly VertexStreamInput[];
   readonly indices?: MeshIndexInput;
   readonly submeshes: readonly SubmeshRange[];
+  /** Optional conservative object-local bounds supplied by an importer or recipe. */
+  readonly bounds?: MeshBounds;
 }
 
 /** Deterministic object-local bounds derived from finite POSITION values. */
@@ -49,8 +54,8 @@ export interface MeshBounds {
 }
 
 /** Validated, caller-isolated canonical CPU mesh payload. */
-export interface MeshData extends MeshDataInput {
-  /** Bounds derived from the validated POSITION stream. */
+export interface MeshData extends Omit<MeshDataInput, 'bounds'> {
+  /** Validated authored bounds, or bounds derived from the POSITION stream. */
   readonly bounds: MeshBounds;
 }
 

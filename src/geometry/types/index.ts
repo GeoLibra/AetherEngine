@@ -2,6 +2,7 @@ export type {
   MeshBounds,
   MeshData,
   MeshDataInput,
+  MeshFrontFace,
   MeshIndexInput,
   MeshTopology,
   MeshValidationOptions,
