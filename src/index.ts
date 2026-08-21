@@ -43,6 +43,7 @@ export { BrowserRunner, HeadlessRunner } from './app/runner';
 export { createBrowserGraphics, BrowserGraphicsBootstrapError } from './platform';
 export type {
   BrowserGraphicsAttempt,
+  BrowserGraphicsLifecycleEvent,
   BrowserGraphicsLoss,
   BrowserGraphicsOptions,
   BrowserGraphicsSession,

@@ -14,6 +14,7 @@ import type { BrowserWebGL2Canvas } from '../rhi/webgl2/browser';
 import { BrowserGraphicsBootstrapError } from './browser-graphics-error';
 import type {
   BrowserGraphicsAttempt,
+  BrowserGraphicsLifecycleEvent,
   BrowserGraphicsLoss,
   BrowserGraphicsOptions,
   BrowserGraphicsSession,
@@ -75,6 +76,11 @@ export async function createBrowserGraphics(
   const lost = new Promise<BrowserGraphicsLoss>((resolve) => {
     resolveLost = resolve;
   });
+  const listeners = new Set<(event: BrowserGraphicsLifecycleEvent) => void>();
+  const emit = (event: BrowserGraphicsLifecycleEvent): void => {
+    const snapshot = Object.freeze(event);
+    for (const listener of [...listeners]) listener(snapshot);
+  };
   let surfaceGeneration = 1;
   const settleLoss = (
     stage: BrowserGraphicsLoss['stage'],
@@ -83,15 +89,15 @@ export async function createBrowserGraphics(
   ): void => {
     if (lossSettled) return;
     lossSettled = true;
-    resolveLost(
-      Object.freeze({
-        backend: 'webgpu',
-        stage,
-        reason,
-        generation,
-        recreationAllowed: reason !== 'destroyed'
-      })
-    );
+    const loss = Object.freeze({
+      backend: 'webgpu',
+      stage,
+      reason,
+      generation,
+      recreationAllowed: reason !== 'destroyed'
+    });
+    resolveLost(loss);
+    emit({ kind: 'lost', loss });
   };
   const surface = new WebGPUSurface(
     target,
@@ -119,6 +125,11 @@ export async function createBrowserGraphics(
     device,
     surface,
     lost,
+    subscribe(listener: (event: BrowserGraphicsLifecycleEvent) => void): () => boolean {
+      if (destroyed) throw new Error('Browser graphics session has been destroyed.');
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     resize(size: PhysicalSize): void {
       if (destroyed) throw new Error('Browser graphics session has been destroyed.');
       validateSize(size);
@@ -128,10 +139,12 @@ export async function createBrowserGraphics(
       surfaceGeneration = windowGeneration;
       setCanvasExtent(options.canvas, size);
       surface.configure(device, configuration, windowGeneration);
+      emit({ kind: 'reconfigured', generation: surface.generation });
     },
     async destroy(): Promise<void> {
       if (destroyed) return;
       destroyed = true;
+      listeners.clear();
       surface.dispose();
       device.destroy();
     }
@@ -181,21 +194,33 @@ async function createWebGL2Session(
   setCanvasExtent(options.canvas, configuration);
   surface.configure(device, configuration, generation);
   let destroyed = false;
-  const lost = device.lost.then((info) =>
-    Object.freeze({
+  const listeners = new Set<(event: BrowserGraphicsLifecycleEvent) => void>();
+  const emit = (event: BrowserGraphicsLifecycleEvent): void => {
+    const snapshot = Object.freeze(event);
+    for (const listener of [...listeners]) listener(snapshot);
+  };
+  const lost = device.lost.then((info) => {
+    const loss = Object.freeze({
       backend: 'webgl2' as const,
       stage: 'context' as const,
       reason: info.reason,
       generation: info.generation,
       recreationAllowed: info.reason !== 'destroyed'
-    })
-  );
+    });
+    emit({ kind: 'lost', loss });
+    return loss;
+  });
   return Object.freeze({
     backend: 'webgl2' as const,
     adapter,
     device,
     surface,
     lost,
+    subscribe(listener: (event: BrowserGraphicsLifecycleEvent) => void): () => boolean {
+      if (destroyed) throw new Error('Browser graphics session has been destroyed.');
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     resize(size: PhysicalSize): void {
       if (destroyed) throw new Error('Browser graphics session has been destroyed.');
       validateSize(size);
@@ -204,10 +229,12 @@ async function createWebGL2Session(
       generation += 1;
       setCanvasExtent(options.canvas, size);
       surface.configure(device, configuration, generation);
+      emit({ kind: 'reconfigured', generation: surface.generation });
     },
     async destroy(): Promise<void> {
       if (destroyed) return;
       destroyed = true;
+      listeners.clear();
       surface.dispose();
       device.destroy();
     }

@@ -4,6 +4,7 @@ export { createBrowserGraphics } from './browser-graphics';
 export { BrowserGraphicsBootstrapError } from './browser-graphics-error';
 export type {
   BrowserGraphicsAttempt,
+  BrowserGraphicsLifecycleEvent,
   BrowserGraphicsLoss,
   BrowserGraphicsOptions,
   BrowserGraphicsSession,

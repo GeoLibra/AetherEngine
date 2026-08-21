@@ -91,13 +91,19 @@ export class NativeLifecycleCoordinator {
         failedEvictors.push(evictor.name);
       }
     }
-    return Object.freeze({
+    const result = Object.freeze({
       requestedBytes: event.targetBytes,
       evictedBytes,
       sufficient: evictedBytes >= event.targetBytes,
       callbacks,
       failedEvictors: Object.freeze(failedEvictors)
     });
+    this.emit({
+      kind: 'memory-pressure',
+      pressure: Object.freeze({ ...event }),
+      pressureResult: result
+    });
+    return result;
   }
 
   terminate(): boolean {

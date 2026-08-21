@@ -9,6 +9,8 @@ import {
   implementationId,
   type FeatureImplementation,
   type FeaturePolicyPublication,
+  type FeaturePolicySourceEvent,
+  type FeaturePolicySourceEventPort,
   type FeaturePolicyRuntimeInput
 } from '../../src';
 import { createCapabilitySnapshot } from '../../src/rhi/core/capabilities';
@@ -58,6 +60,42 @@ describe('FeaturePolicyPlugin', () => {
 
     await expect(app.startup()).rejects.toThrow('initial prepare failed');
     expect(app.state).toBe('failed');
+  });
+
+  test('stages subscribed source changes and publishes them at the next frame boundary', async () => {
+    let listener: ((event: FeaturePolicySourceEvent) => void) | undefined;
+    let unsubscribed = false;
+    let prepared = 'initial';
+    const source: FeaturePolicySourceEventPort = {
+      subscribe(next) {
+        listener = next;
+        return () => {
+          if (listener === undefined) return false;
+          listener = undefined;
+          unsubscribed = true;
+          return true;
+        };
+      }
+    };
+    const app = new App().addPlugin(
+      createFeaturePolicyPlugin({
+        input: () => input(candidate(prepared)),
+        sources: [source]
+      })
+    );
+
+    await app.startup();
+    await app.run(new HeadlessRunner({ frames: 1 }));
+    prepared = 'updated';
+    listener?.({ kind: 'profile-changed' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    app.getResource(FeaturePolicyRuntimeResource)?.publishFrameBoundary();
+
+    expect(app.getResource(FeaturePolicyRuntimeResource)?.current?.prepared.get(feature)).toBe(
+      'updated'
+    );
+    await app.destroy();
+    expect(unsubscribed).toBe(true);
   });
 });
 
