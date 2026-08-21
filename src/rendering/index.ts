@@ -12,6 +12,8 @@ export * from './render-phase';
 export * from './visibility';
 export * from './visibility/index';
 export * from './camera';
+export * from './camera-render-source';
+export * from './camera-extraction';
 export * from './overlay-reconciler';
 export * from './frame-pipeline';
 export * from './material-bindings';

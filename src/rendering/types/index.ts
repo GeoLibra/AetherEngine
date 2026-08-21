@@ -1,4 +1,10 @@
 export type {
+  CameraExtractionInput,
+  CameraExtractionResult,
+  CameraRenderSourceView,
+  CameraSurfaceViewBinding
+} from './camera-extraction-types';
+export type {
   MeshExtractionInput,
   MeshRenderSourceView,
   RenderMaterialBinding,

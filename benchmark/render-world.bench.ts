@@ -16,6 +16,10 @@ import {
   runPreparedMeshQueueSubject,
   runMeshExtractionSubject
 } from './render-world/mesh-extraction-scenario';
+import {
+  cameraExtractionReference,
+  runCameraExtractionSubject
+} from './render-world/camera-extraction-scenario';
 
 const Position = defineRenderField<[number, number, number]>('position');
 const Visible = defineRenderField<boolean>('visible');
@@ -26,6 +30,15 @@ const SnapshotOwner = defineExtractorToken('snapshot-owner', [SnapshotBytes]);
 const snapshotExtractorPlan = new RenderExtractorRegistryBuilder()
   .registerExtractor(SnapshotOwner)
   .build();
+
+for (const size of [1, 8, 32]) {
+  const reference = cameraExtractionReference(size);
+  bench(
+    `extracts and binds ${size} camera surface views`,
+    () => expect(runCameraExtractionSubject(size)).toEqual(reference),
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
 
 for (const phase of ['opaque', 'transparent'] as const) {
   for (const size of [100, 1_000, 10_000]) {
