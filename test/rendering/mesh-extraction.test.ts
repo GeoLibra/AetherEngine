@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import {
+  MaterialAssetType,
   MeshAssetField,
+  MeshAssetType,
   MeshLocalBoundsField,
   MeshMaterialsField,
   MeshRenderExtraction,
@@ -11,6 +13,7 @@ import {
   RenderWorld,
   World,
   WorldTransform,
+  createAssetHandle,
   createMeshRenderExtractorPlan,
   type Entity,
   type MeshRenderSourceView,
@@ -21,9 +24,15 @@ const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as const;
 
 function source(visible = true): MeshRenderSourceView {
   return {
-    mesh: { assetId: 'mesh:cube', payloadVersion: 2 },
+    mesh: { handle: createAssetHandle(MeshAssetType, 'mesh:cube'), payloadVersion: 2 },
     submesh: 0,
-    materials: [{ slot: 0, assetId: 'material:default', payloadVersion: 3 }],
+    materials: [
+      {
+        slot: 0,
+        handle: createAssetHandle(MaterialAssetType, 'material:default'),
+        payloadVersion: 3
+      }
+    ],
     localBounds: {
       aabb: { min: [-1, -1, -1], max: [1, 1, 1] },
       sphere: { center: [0, 0, 0], radius: Math.sqrt(3) }
@@ -89,7 +98,7 @@ describe('mesh RenderWorld extraction', () => {
 
     expect(revision.diff.changes.map((change) => change.kind)).toEqual(['entity-added']);
     expect(render.read(renderEntity, MeshAssetField)).toEqual({
-      assetId: 'mesh:cube',
+      handle: { assetId: 'mesh:cube', type: 'asset.geometry-mesh' },
       payloadVersion: 2,
       submesh: 0
     });
@@ -99,9 +108,13 @@ describe('mesh RenderWorld extraction', () => {
     });
     const materials = render.read(renderEntity, MeshMaterialsField)!;
     expect(
-      () => ((materials as unknown as { assetId: string }[])[0]!.assetId = 'caller-mutation')
+      () =>
+        ((materials as unknown as { handle: { assetId: string } }[])[0]!.handle.assetId =
+          'caller-mutation')
     ).toThrow();
-    expect(render.read(renderEntity, MeshMaterialsField)![0]!.assetId).toBe('material:default');
+    expect(render.read(renderEntity, MeshMaterialsField)![0]!.handle.assetId).toBe(
+      'material:default'
+    );
     revision.release();
   });
 

@@ -13,6 +13,7 @@ import {
 } from './render-world/render-phase-scenario';
 import {
   meshExtractionReference,
+  runPreparedMeshQueueSubject,
   runMeshExtractionSubject
 } from './render-world/mesh-extraction-scenario';
 
@@ -36,6 +37,14 @@ for (const phase of ['opaque', 'transparent'] as const) {
       { iterations: 1, warmupIterations: 0 }
     );
   }
+}
+
+for (const size of [100, 1_000]) {
+  bench(
+    `resolves ${size} visible mesh prepared variants`,
+    () => expect(runPreparedMeshQueueSubject(size)).toBe(size),
+    { iterations: 1, warmupIterations: 0 }
+  );
 }
 
 for (const size of [100, 1_000, 10_000]) {

@@ -1,20 +1,19 @@
 import type { MeshBounds } from '../../geometry';
 import type { Entity } from '../../ecs/types';
-
-/** Versioned CPU asset identity retained by the render extraction boundary. */
-export interface RenderAssetReference {
-  readonly assetId: string;
-  readonly payloadVersion: number;
-}
+import type {
+  GeometryMeshAsset,
+  MaterialAssetPayload,
+  ResolvedAssetReference
+} from '../../assets/types';
 
 /** One material slot binding resolved by Scene/Asset Runtime before extraction. */
-export interface RenderMaterialBinding extends RenderAssetReference {
+export interface RenderMaterialBinding extends ResolvedAssetReference<MaterialAssetPayload> {
   readonly slot: number;
 }
 
 /** MainWorld input required to make an entity eligible for standard mesh rendering. */
 export interface MeshRenderSourceView {
-  readonly mesh: RenderAssetReference;
+  readonly mesh: ResolvedAssetReference<GeometryMeshAsset>;
   readonly submesh: number;
   readonly materials: readonly RenderMaterialBinding[];
   readonly localBounds: MeshBounds;
@@ -32,7 +31,7 @@ export interface RenderTransformFact {
 }
 
 /** Immutable mesh selection used by Prepare to resolve a device-specific variant. */
-export interface RenderMeshFact extends RenderAssetReference {
+export interface RenderMeshFact extends ResolvedAssetReference<GeometryMeshAsset> {
   readonly submesh: number;
 }
 

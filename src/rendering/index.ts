@@ -6,6 +6,7 @@ export * from './mesh-constants';
 export * from './mesh-prepare';
 export * from './mesh-render-source';
 export * from './mesh-extraction';
+export * from './mesh-queue';
 export type * from './types';
 export * from './render-phase';
 export * from './visibility';

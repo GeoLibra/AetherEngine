@@ -1,17 +1,27 @@
 import { defineObjectComponent } from '../ecs/component';
 import type { MeshBounds } from '../geometry';
-import type { MeshRenderSourceView, RenderAssetReference, RenderMaterialBinding } from './types';
+import { MaterialAssetType, MeshAssetType, validateAssetHandle } from '../assets';
+import type {
+  AssetTypeId,
+  GeometryMeshAsset,
+  MaterialAssetPayload,
+  ResolvedAssetReference
+} from '../assets/types';
+import type { MeshRenderSourceView, RenderMaterialBinding } from './types';
 
 /** Sparse MainWorld component containing render-ready mesh and material identities. */
 export const MeshRenderSource = defineObjectComponent<MeshRenderSourceView>({
   id: 'aether.rendering.mesh-source',
-  version: 1,
+  version: 2,
   name: 'MeshRenderSource',
   fields: [
     field('mesh', {
       kind: 'struct',
       fields: [
-        field('assetId', { kind: 'string' }),
+        field('handle', {
+          kind: 'struct',
+          fields: [field('assetId', { kind: 'string' }), field('type', { kind: 'string' })]
+        }),
         field('payloadVersion', { kind: 'number', format: 'u32' })
       ]
     }),
@@ -22,7 +32,10 @@ export const MeshRenderSource = defineObjectComponent<MeshRenderSourceView>({
         kind: 'struct',
         fields: [
           field('slot', { kind: 'number', format: 'u32' }),
-          field('assetId', { kind: 'string' }),
+          field('handle', {
+            kind: 'struct',
+            fields: [field('assetId', { kind: 'string' }), field('type', { kind: 'string' })]
+          }),
           field('payloadVersion', { kind: 'number', format: 'u32' })
         ]
       }
@@ -52,7 +65,7 @@ export const MeshRenderSource = defineObjectComponent<MeshRenderSourceView>({
   validate(input) {
     if (!isRecord(input)) return invalid('MeshRenderSource must be an object.');
     try {
-      const mesh = validateAssetReference(input.mesh, 'mesh');
+      const mesh = validateAssetReference<GeometryMeshAsset>(input.mesh, MeshAssetType, 'mesh');
       const submesh = requireUint(input.submesh, 'submesh');
       if (!Array.isArray(input.materials)) throw new Error('materials must be an array.');
       const materials = input.materials.map((value, index) =>
@@ -87,18 +100,24 @@ function field(
   };
 }
 
-function validateAssetReference(value: unknown, label: string): RenderAssetReference {
-  if (!isRecord(value) || typeof value.assetId !== 'string' || !value.assetId.trim()) {
-    throw new Error(`${label} assetId must be non-empty.`);
-  }
+function validateAssetReference<T>(
+  value: unknown,
+  type: AssetTypeId<T>,
+  label: string
+): ResolvedAssetReference<T> {
+  if (!isRecord(value)) throw new Error(`${label} reference must be an object.`);
   return {
-    assetId: value.assetId,
+    handle: validateAssetHandle(value.handle, type, label),
     payloadVersion: requireUint(value.payloadVersion, `${label} payloadVersion`)
   };
 }
 
 function validateMaterialBinding(value: unknown, index: number): RenderMaterialBinding {
-  const asset = validateAssetReference(value, `materials[${index}]`);
+  const asset = validateAssetReference<MaterialAssetPayload>(
+    value,
+    MaterialAssetType,
+    `materials[${index}]`
+  );
   return {
     ...asset,
     slot: requireUint((value as Record<string, unknown>).slot, `materials[${index}].slot`)

@@ -142,6 +142,7 @@ export { createFeaturePolicyPlugin } from './plugins/feature-policy-plugin';
 export type { FeaturePolicyPluginOptions } from './plugins/feature-policy-plugin';
 export * from './schema';
 export * from './rendering';
+export * from './assets';
 export * from './render-graph';
 export * from './shader';
 export * from './material';
