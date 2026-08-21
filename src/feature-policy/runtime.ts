@@ -1,8 +1,10 @@
 import { FeaturePolicyCoordinator } from './coordinator';
+import { copyFeaturePolicyInspection, createFeaturePolicyInspection } from './inspection';
 import { FeaturePolicyRevisionTracker } from './revision';
 import { FeaturePolicySourceAdapter } from './source-adapter';
 import type {
   FeaturePolicyInput,
+  FeaturePolicyInspection,
   FeaturePolicyPrepareResult,
   FeaturePolicyPublication,
   PreparedFeaturePolicy
@@ -35,6 +37,7 @@ export class FeaturePolicyRuntimeController {
   private readonly coordinator = new FeaturePolicyCoordinator();
   private currentState: FeaturePolicyRuntimeState = 'idle';
   private destroyed = false;
+  private latestInspection: FeaturePolicyInspection | undefined;
 
   get state(): FeaturePolicyRuntimeState {
     return this.currentState;
@@ -42,6 +45,13 @@ export class FeaturePolicyRuntimeController {
 
   get current(): PreparedFeaturePolicy | undefined {
     return this.coordinator.current;
+  }
+
+  /** Latest successful or failed resolution evidence available to read-only tools. */
+  get inspection(): FeaturePolicyInspection | undefined {
+    return this.latestInspection === undefined
+      ? undefined
+      : copyFeaturePolicyInspection(this.latestInspection);
   }
 
   /**
@@ -60,6 +70,7 @@ export class FeaturePolicyRuntimeController {
 
     this.currentState = 'preparing';
     const result = await this.coordinator.prepare(revisioned);
+    this.latestInspection = createFeaturePolicyInspection(revisioned, result.resolution);
     if (this.destroyed) return { status: 'failed', result: failedResult(result) };
     if (result.ok) {
       this.currentState = 'awaiting-publish';

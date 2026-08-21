@@ -31,3 +31,20 @@ export type {
   RuntimeFeatureImplementation
 } from './feature-policy-types';
 export type { FeaturePolicyCacheDomain } from '../constants';
+export type {
+  FeaturePolicyCaptureManifest,
+  FeaturePolicyInspection,
+  FeaturePolicyInspectionCandidate,
+  FeaturePolicyInspectionCapabilities,
+  FeaturePolicyInspectionDecision,
+  FeaturePolicyInspectionEvaluation,
+  FeaturePolicyInspectionFeatureCapability,
+  FeaturePolicyInspectionFormatCapability,
+  FeaturePolicyInspectionImplementation,
+  FeaturePolicyInspectionInput,
+  FeaturePolicyInspectionLimit,
+  FeaturePolicyInspectionPredicateResult,
+  FeaturePolicyInspectionQueueCapability,
+  FeaturePolicyJsonValue,
+  FeaturePolicySummary
+} from './inspection-types';

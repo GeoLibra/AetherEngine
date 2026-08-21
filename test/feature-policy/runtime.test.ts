@@ -92,6 +92,35 @@ describe('FeaturePolicyRuntimeController', () => {
     runtime.sources.registryChanged();
     expect((await runtime.stage(input(candidate('recovered')))).status).toBe('prepared');
   });
+
+  test('publishes the latest attempted decision tree without replacing last-good on failure', async () => {
+    const runtime = new FeaturePolicyRuntimeController();
+    await runtime.stage(input(candidate('last-good')));
+    runtime.publishFrameBoundary();
+    runtime.sources.profileChanged();
+
+    await runtime.stage(
+      input(
+        candidate('failed', {
+          prepare: async () => {
+            throw new Error('prepare failed');
+          }
+        })
+      )
+    );
+
+    expect(runtime.current?.snapshot.revision).toBe(1);
+    expect(runtime.inspection?.policy.revision).toBe(2);
+    expect(runtime.inspection?.decisions[0]?.implementation).toBe(
+      implementationId('test.runtime-controller.cpu')
+    );
+    expect(JSON.parse(JSON.stringify(runtime.inspection))).toEqual(runtime.inspection);
+
+    const published = runtime.inspection;
+    if (published === undefined) throw new Error('Expected inspection evidence.');
+    (published.policy as { revision: number }).revision = 99;
+    expect(runtime.inspection?.policy.revision).toBe(2);
+  });
 });
 
 function candidate(

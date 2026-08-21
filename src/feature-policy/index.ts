@@ -11,3 +11,4 @@ export * from './revision';
 export * from './source-adapter';
 export * from './runtime';
 export * from './resources';
+export * from './inspection';
