@@ -18,7 +18,10 @@ import {
 import { allocationFor, freezeCommandStats } from './executor-resource-utils';
 import { TransientResourcePool, type TransientResource } from './transient-pool';
 import { RestrictedContext } from './restricted-context';
-import type { PreparedRenderPipelineBindings } from './prepared-resources';
+import type {
+  PreparedComputePipelineBindings,
+  PreparedRenderPipelineBindings
+} from './prepared-resources';
 export type {
   DeclaredRasterColorAttachment,
   DeclaredRasterDepthStencilAttachment,
@@ -83,6 +86,8 @@ export interface RenderGraphExecutionInputs {
   readonly transientPool?: TransientResourcePool;
   /** Externally owned pipelines prepared before surface acquisition. */
   readonly preparedRenderPipelines?: PreparedRenderPipelineBindings;
+  /** Externally owned compute pipelines prepared before surface acquisition. */
+  readonly preparedComputePipelines?: PreparedComputePipelineBindings;
 }
 
 export interface RenderGraphExecutionDebug extends RenderGraphDebugIR {
@@ -119,6 +124,7 @@ export class RenderGraphExecutor {
     // Canonical provenance is pure to validate and must precede acquire, allocation, or recording.
     validateRenderGraphExecutionPlan(plan);
     validatePreparedRenderPipelines(inputs);
+    validatePreparedComputePipelines(inputs);
     const frames: SurfaceBinding[] = [];
     const transientResources: TransientResource[] = [];
     const restrictedContexts: RestrictedContext[] = [];
@@ -155,6 +161,7 @@ export class RenderGraphExecutor {
             new Map(plan.snapshot.resources.map((resource) => [resource.resourceId, resource])),
             inputs.device,
             inputs.preparedRenderPipelines ?? new Map(),
+            inputs.preparedComputePipelines ?? new Map(),
             encoder,
             (next) => {
               activePass = next;
@@ -282,6 +289,22 @@ function validatePreparedRenderPipelines(inputs: RenderGraphExecutionInputs): vo
     if (pipeline.generation !== inputs.device.generation) {
       throw new Error(
         `Prepared render pipeline "${token.name}" belongs to another device generation.`
+      );
+    }
+  }
+}
+
+function validatePreparedComputePipelines(inputs: RenderGraphExecutionInputs): void {
+  for (const [token, pipeline] of inputs.preparedComputePipelines ?? []) {
+    if (token.kind !== 'prepared-compute-pipeline-token') {
+      throw new TypeError('Prepared compute pipeline binding has an invalid token.');
+    }
+    if (pipeline.state !== 'live') {
+      throw new Error(`Prepared compute pipeline "${token.name}" is not a live resource.`);
+    }
+    if (pipeline.generation !== inputs.device.generation) {
+      throw new Error(
+        `Prepared compute pipeline "${token.name}" belongs to another device generation.`
       );
     }
   }

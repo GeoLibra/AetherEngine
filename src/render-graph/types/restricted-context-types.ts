@@ -16,7 +16,10 @@ import type {
   RHIRenderPipelineDescriptor
 } from '../../rhi/contracts';
 import type { TextureGraphRange } from '../ranges';
-import type { PreparedRenderPipelineToken } from '../prepared-resources';
+import type {
+  PreparedComputePipelineToken,
+  PreparedRenderPipelineToken
+} from '../prepared-resources';
 import type {
   BufferHandle,
   BufferRange,
@@ -178,6 +181,7 @@ export interface RestrictedPassContext {
   texture(handle: TextureHandle, usage: TextureUsage, range?: TextureRange): RestrictedTextureView;
   buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice;
   renderPipeline(token: PreparedRenderPipelineToken): RestrictedRenderPipeline;
+  computePipeline(token: PreparedComputePipelineToken): RestrictedComputePipeline;
   beginRaster(descriptor: DeclaredRasterPass): RestrictedRenderPassEncoder;
   beginCompute(descriptor?: GPUComputePassDescriptor): RestrictedComputePassEncoder;
   copyBufferToBuffer(
