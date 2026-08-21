@@ -10,6 +10,7 @@ import {
 } from '../../benchmark/material-system/run';
 import {
   PIPELINE_SUBJECT_OPERATIONS,
+  createMaterialPipelineCompatibilityCase,
   createParameterEditUploadCase,
   createPipelineBindingResolutionCase
 } from '../../benchmark/material-system/scenarios';
@@ -293,6 +294,28 @@ describe('versioned material benchmark scenarios', () => {
     });
     expect(subject.counters.canonicalBytesEncoded).toBeGreaterThan(0);
     expect(subject.semantic).not.toHaveProperty('resolutionRecord');
+  });
+
+  test('candidate compatibility reports exact, fallback, skip, and canonical key cardinality', () => {
+    const scenario = createMaterialPipelineCompatibilityCase({
+      instanceCount: 1_000,
+      uniqueMeshLayouts: 16,
+      seed: 0x5eed
+    });
+
+    const reference = scenario.runReference();
+    const subject = scenario.runSubject();
+
+    expect(() => assertMaterialScenarioComparison(scenario, reference, subject)).not.toThrow();
+    expect(subject.counters).toMatchObject({
+      candidates: 1_000,
+      selected: 900,
+      fallback: 50,
+      skipped: 50,
+      uniquePipelineKeys: 32,
+      synchronousCompiles: 0,
+      staleReuse: 0
+    });
   });
 
   test('keeps the pipeline reference independent from production subject operations', () => {

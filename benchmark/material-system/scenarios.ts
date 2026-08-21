@@ -39,6 +39,7 @@ import type {
   MaterialScenarioCase,
   MaterialScenarioObservation
 } from './types';
+import { createMaterialPipelineCompatibilityCase } from './compatibility-scenario';
 
 export interface ParameterEditUploadOptions {
   readonly fieldCount: 8 | 32 | 64;
@@ -88,8 +89,17 @@ export function createMaterialScenarioCases(
       seed
     })
   );
-  return Object.freeze([...parameterCases, ...pipelineCases]);
+  const compatibilityCases = instanceCounts.map((instanceCount) =>
+    createMaterialPipelineCompatibilityCase({
+      instanceCount,
+      uniqueMeshLayouts: Math.min(256, Math.max(16, Math.floor(instanceCount / 10))),
+      seed
+    })
+  );
+  return Object.freeze([...parameterCases, ...pipelineCases, ...compatibilityCases]);
 }
+
+export { createMaterialPipelineCompatibilityCase } from './compatibility-scenario';
 
 export function createParameterEditUploadCase(
   options: ParameterEditUploadOptions

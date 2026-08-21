@@ -19,3 +19,12 @@ export type {
   PreparedMeshQueueCandidate,
   ResolveMeshQueueInput
 } from './mesh-queue-types';
+export type {
+  MaterialPipelineCompatibilityDiagnostic,
+  MaterialPipelineCompatibilityResult,
+  MaterialPipelineCompatibilitySkip,
+  MaterialPipelineCompatibilitySkipCode,
+  MaterialPipelineContext,
+  PreparedMaterialCompatibility,
+  ResolvedMaterialPipelineCandidate
+} from './material-pipeline-compatibility-types';
