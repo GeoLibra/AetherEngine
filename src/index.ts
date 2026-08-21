@@ -137,6 +137,8 @@ export * from './platform';
 export * from './native-runtime';
 export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
 export { HostService, createHostPlugin } from './plugins/host-plugin';
+export { createFeaturePolicyPlugin } from './plugins/feature-policy-plugin';
+export type { FeaturePolicyPluginOptions } from './plugins/feature-policy-plugin';
 export * from './schema';
 export * from './rendering';
 export * from './render-graph';

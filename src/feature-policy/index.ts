@@ -9,3 +9,5 @@ export * from './coordinator';
 export * from './invalidation';
 export * from './revision';
 export * from './source-adapter';
+export * from './runtime';
+export * from './resources';
