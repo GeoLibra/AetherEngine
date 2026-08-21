@@ -6,6 +6,7 @@ import type {
   SubmissionResult
 } from '../rhi/contracts';
 import type { TransientAllocationDescriptor, TransientResource } from './transient-pool';
+import type { FeaturePolicyCacheInvalidation } from '../feature-policy/types';
 
 export type HistoryInvalidationReason =
   | 'new'
@@ -236,6 +237,17 @@ export class HistoryRegistry {
         this.records.delete(key);
         this.nextInvalidation.set(key, 'view-destroyed');
       }
+    }
+  }
+
+  /** Retires only history identities produced by the previous policy-domain hash. */
+  invalidateFeaturePolicy(invalidation: FeaturePolicyCacheInvalidation): void {
+    if (invalidation.domain !== 'history' || invalidation.previousHash === null) return;
+    for (const [key, record] of this.records) {
+      if (record.identity.policy !== invalidation.previousHash) continue;
+      this.retireRecord(record);
+      this.records.delete(key);
+      this.nextInvalidation.set(key, 'policy-changed');
     }
   }
 

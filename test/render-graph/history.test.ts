@@ -269,6 +269,30 @@ describe('HistoryRegistry', () => {
     });
   });
 
+  test('retires only histories using the invalidated policy domain hash', () => {
+    const device = new NullDevice();
+    const registry = new HistoryRegistry(device);
+    const affected = identity(device, { viewId: 'affected', policy: 'old-policy' });
+    const unaffected = identity(device, { viewId: 'unaffected', policy: 'other-policy' });
+    const oldAffected = registry.acquire(affected);
+    const oldUnaffected = registry.acquire(unaffected);
+
+    registry.invalidateFeaturePolicy({
+      domain: 'history',
+      previousHash: 'old-policy',
+      nextHash: 'next-policy'
+    });
+
+    const nextAffected = registry.acquire(affected);
+    const nextUnaffected = registry.acquire(unaffected);
+    expect(nextAffected.writable).toMatchObject({
+      valid: false,
+      invalidationReason: 'policy-changed'
+    });
+    expect(nextAffected.writable.handle).not.toBe(oldAffected.writable.handle);
+    expect(nextUnaffected.writable.handle).toBe(oldUnaffected.writable.handle);
+  });
+
   test('requires an explicit shared scope and descriptor compatibility for cross-view history', () => {
     const device = new NullDevice();
     const registry = new HistoryRegistry(device);

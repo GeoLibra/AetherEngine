@@ -1,8 +1,10 @@
 import type { RHISubmission } from '../rhi/contracts/submission';
 import { isFactoryCanonicalKey, type CanonicalKey } from './pipeline-resolver';
+import type { FeaturePolicyCacheInvalidation } from '../feature-policy/types';
 
 interface CacheKeyParts {
   readonly deviceGeneration: number;
+  readonly featurePolicyHash?: string;
   readonly resources?: readonly Readonly<{
     readonly group: number;
     readonly binding: number;
@@ -119,6 +121,19 @@ export class SubmissionRetainedCache<T> {
     const entries = [...this.#buckets.values()].flatMap((bucket) => [...bucket.values()]);
     for (const entry of entries) {
       if (entry.key.parts.deviceGeneration !== deviceGeneration || entry.state !== 'live') continue;
+      entry.state = 'retired';
+      this.#retired += 1;
+      this.#tryDestroy(entry);
+    }
+  }
+
+  /** Retires only pipeline entries produced by the previous policy-domain hash. */
+  invalidateFeaturePolicy(invalidation: FeaturePolicyCacheInvalidation): void {
+    if (invalidation.domain !== 'shader-pipeline' || invalidation.previousHash === null) return;
+    const entries = [...this.#buckets.values()].flatMap((bucket) => [...bucket.values()]);
+    for (const entry of entries) {
+      if (entry.key.parts.featurePolicyHash !== invalidation.previousHash || entry.state !== 'live')
+        continue;
       entry.state = 'retired';
       this.#retired += 1;
       this.#tryDestroy(entry);

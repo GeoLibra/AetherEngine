@@ -26,9 +26,22 @@ export function runHistoryDebugSubject(scale: number): RenderGraphIntegrityObser
   const registry = new HistoryRegistry(device);
   const graph = new RenderGraphBuilder();
   const bindings = new Map<BufferHandle, RenderGraphHistoryBinding>();
+  const identities = Array.from({ length: scale }, (_, index) => historyIdentity(device, index));
+  const initial = identities.map((identity) => registry.acquire(identity));
+  registry.invalidateFeaturePolicy({
+    domain: 'history',
+    previousHash: 'old-policy',
+    nextHash: 'next-policy'
+  });
+  const acquiredHistories = identities.map((identity) => registry.acquire(identity));
+  const policyHistoriesInvalidated = acquiredHistories.filter(
+    (acquired, index) => acquired.writable.handle !== initial[index]?.writable.handle
+  ).length;
   for (let index = 0; index < scale; index++) {
-    const identity = historyIdentity(device, index);
-    const acquired = registry.acquire(identity);
+    const identity = identities[index];
+    const acquired = acquiredHistories[index];
+    if (identity === undefined || acquired === undefined)
+      throw new Error('History integrity fixture is incomplete.');
     const history = graph.createBuffer(
       { label: `history-${index}`, size: 64, usage: ['copy-dst'] },
       {
@@ -82,6 +95,8 @@ export function runHistoryDebugSubject(scale: number): RenderGraphIntegrityObser
         ) ?? 0),
       0
     ),
+    policyHistoriesInvalidated,
+    policyHistoriesPreserved: scale - policyHistoriesInvalidated,
     scheduledSteps: execution.executionCounters.scheduledSteps
   });
   device.queue.completeNextForTesting();
@@ -108,6 +123,8 @@ export function runHistoryDebugReference(scale: number): RenderGraphIntegrityObs
       versionSlots: scale * 2,
       boundVersionSlots: scale,
       pendingSubmissionReferences: scale,
+      policyHistoriesInvalidated: Math.ceil(scale / 2),
+      policyHistoriesPreserved: Math.floor(scale / 2),
       scheduledSteps: scale + 2
     })
   );
@@ -169,7 +186,7 @@ function historyIdentity(device: NullDevice, index: number): HistoryIdentity {
     }),
     slots: 2,
     abi: 'benchmark-history-v1',
-    policy: 'enabled'
+    policy: index % 2 === 0 ? 'old-policy' : 'other-policy'
   };
 }
 

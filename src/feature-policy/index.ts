@@ -7,3 +7,5 @@ export * from './registry';
 export * from './resolver';
 export * from './coordinator';
 export * from './invalidation';
+export * from './revision';
+export * from './source-adapter';

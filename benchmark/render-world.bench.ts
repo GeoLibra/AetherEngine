@@ -2,6 +2,7 @@ import { bench, expect } from 'vitest';
 import {
   RenderExtractorRegistryBuilder,
   RenderWorld,
+  PreparedAssetRegistry,
   defineExtractorToken,
   defineRenderField
 } from '../src/rendering';
@@ -31,6 +32,49 @@ for (const phase of ['opaque', 'transparent'] as const) {
       { iterations: 1, warmupIterations: 0 }
     );
   }
+}
+
+for (const size of [100, 1_000, 10_000]) {
+  bench(
+    `retires ${size} prepared assets by exact policy hash`,
+    () => {
+      const registry = new PreparedAssetRegistry();
+      let destroyed = 0;
+      for (let index = 0; index < size; index++) {
+        registry.publish(
+          {
+            key: {
+              assetId: `asset-${index}`,
+              payloadVersion: 1,
+              deviceGeneration: 1,
+              featurePolicyKey: index % 2 === 0 ? 'old-policy' : 'other-policy',
+              abiVersion: 'benchmark-v1'
+            },
+            value: index
+          },
+          () => {
+            destroyed++;
+          }
+        );
+      }
+      registry.invalidateFeaturePolicy({
+        domain: 'prepared-asset',
+        previousHash: 'old-policy',
+        nextHash: 'next-policy'
+      });
+      expect(destroyed).toBe(Math.ceil(size / 2));
+      expect(
+        registry.acquire({
+          assetId: 'asset-1',
+          payloadVersion: 1,
+          deviceGeneration: 1,
+          featurePolicyKey: 'other-policy',
+          abiVersion: 'benchmark-v1'
+        })?.prepared.value
+      ).toBe(1);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
 }
 
 for (const size of [100, 1_000, 10_000]) {

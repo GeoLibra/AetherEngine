@@ -156,6 +156,8 @@ export function createPipelineBindingResolutionCase(
     canonicalBytesEncoded: reference.counters.canonicalBytesEncoded ?? 0,
     cacheEntriesCreated: uniqueEntries,
     staleGenerationMisses: options.contextChurn + options.resourceChurn,
+    policyEntriesRetired: 1 + options.contextChurn,
+    policyEntriesDestroyed: 1 + options.contextChurn,
     staleHitRejected: 0,
     staleReuse: 0
   });
@@ -211,7 +213,8 @@ function runPipelineSubject(
   input: PipelineReferenceInput,
   operations: PipelineSubjectOperations
 ): MaterialScenarioObservation {
-  const cache = new SubmissionRetainedCache<number>();
+  const bindingCache = new SubmissionRetainedCache<number>();
+  const pipelineCache = new SubmissionRetainedCache<number>();
   let checksum = FNV_OFFSET;
   let canonicalBytesEncoded = 0;
   let candidateScans = 0;
@@ -228,9 +231,15 @@ function runPipelineSubject(
     );
     const pipelineKey = operations.createPipelineKey(facts.pipelineParts);
     const bindingKey = operations.createBindingKey(facts.bindingParts);
+    let pipelineLease = pipelineCache.acquire(pipelineKey);
+    if (pipelineLease === undefined) {
+      pipelineCache.publish(pipelineKey, index);
+      pipelineLease = pipelineCache.acquire(pipelineKey);
+    }
+    pipelineLease?.release();
     if (previousKey !== undefined && previousKey.canonicalValue !== bindingKey.canonicalValue) {
-      cache.retire(previousKey);
-      const staleLease = cache.acquire(previousKey);
+      bindingCache.retire(previousKey);
+      const staleLease = bindingCache.acquire(previousKey);
       if (staleLease === undefined) {
         staleGenerationMisses += 1;
       } else {
@@ -238,10 +247,10 @@ function runPipelineSubject(
         staleLease.release();
       }
     }
-    let lease = cache.acquire(bindingKey);
+    let lease = bindingCache.acquire(bindingKey);
     if (lease === undefined) {
-      cache.publish(bindingKey, index);
-      lease = cache.acquire(bindingKey);
+      bindingCache.publish(bindingKey, index);
+      lease = bindingCache.acquire(bindingKey);
     }
     lease?.release();
     previousKey = bindingKey;
@@ -270,7 +279,13 @@ function runPipelineSubject(
       checksum
     );
   }
-  const metrics = cache.metrics();
+  pipelineCache.invalidateFeaturePolicy({
+    domain: 'shader-pipeline',
+    previousHash: input.pipelineParts.featurePolicyHash,
+    nextHash: `${input.pipelineParts.featurePolicyHash}-next`
+  });
+  const metrics = bindingCache.metrics();
+  const pipelineMetrics = pipelineCache.metrics();
   return observation(pipelineSemantic(checksum, candidateScans, input.instanceCount), {
     candidateScans,
     renderStateResolutions: input.instanceCount,
@@ -279,6 +294,8 @@ function runPipelineSubject(
     canonicalBytesEncoded,
     cacheEntriesCreated: metrics.published,
     staleGenerationMisses,
+    policyEntriesRetired: pipelineMetrics.retired,
+    policyEntriesDestroyed: pipelineMetrics.destroyed,
     staleHitRejected: metrics.staleHitRejected,
     staleReuse: staleReuse + metrics.staleReuse
   });

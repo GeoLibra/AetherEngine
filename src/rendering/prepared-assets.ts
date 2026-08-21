@@ -1,4 +1,5 @@
 import type { RHISubmission } from '../rhi';
+import type { FeaturePolicyCacheInvalidation } from '../feature-policy/types';
 
 /**
  * Key that uniquely identifies a prepared asset variant on the GPU.
@@ -117,6 +118,20 @@ export class PreparedAssetRegistry {
         entry.retired = true;
         this.collect(entry, id);
       }
+  }
+
+  /**
+   * Retires variants produced by the previous prepared-asset policy identity.
+   * In-flight leases and submissions continue to own the physical resources.
+   */
+  invalidateFeaturePolicy(invalidation: FeaturePolicyCacheInvalidation): void {
+    if (invalidation.domain !== 'prepared-asset' || invalidation.previousHash === null) return;
+    for (const [id, entry] of this.entries) {
+      if (entry.prepared.key.featurePolicyKey !== invalidation.previousHash || entry.retired)
+        continue;
+      entry.retired = true;
+      this.collect(entry, id);
+    }
   }
 
   /**
