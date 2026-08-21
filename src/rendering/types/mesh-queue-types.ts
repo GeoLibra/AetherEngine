@@ -2,6 +2,7 @@ import type { PreparedAssetLease } from '../prepared-assets';
 import type { PreparedMesh } from '../mesh-prepare';
 import type { RenderEntityId, RenderRevision } from '../render-world';
 import type { ViewVisibilitySnapshot } from '../visibility/types';
+import type { PreparedMaterialCompatibility } from './material-pipeline-compatibility-types';
 
 export type MeshQueueSkipCode =
   | 'missing-render-fact'
@@ -21,7 +22,7 @@ export interface PreparedMeshQueueCandidate {
   readonly depthRange: readonly [number, number];
   readonly submesh: number;
   readonly mesh: PreparedAssetLease<PreparedMesh>;
-  readonly material: PreparedAssetLease<unknown>;
+  readonly material: PreparedAssetLease<PreparedMaterialCompatibility>;
 }
 
 export interface MeshQueueResolution {

@@ -1,7 +1,10 @@
 import type { BenchmarkSummary } from '../harness/types';
 
 export type MaterialBenchmarkProfileName = 'smoke' | 'standard' | 'nightly';
-export type MaterialScenarioId = 'parameter-edit-upload-v1' | 'pipeline-binding-resolution-v1';
+export type MaterialScenarioId =
+  | 'parameter-edit-upload-v1'
+  | 'pipeline-binding-resolution-v1'
+  | 'pipeline-compatibility-resolution-v1';
 
 export interface MaterialBenchmarkProfile {
   readonly warmupCount: number;
