@@ -11,6 +11,10 @@ import {
   runRenderPhaseReference,
   runRenderPhaseSubject
 } from './render-world/render-phase-scenario';
+import {
+  meshExtractionReference,
+  runMeshExtractionSubject
+} from './render-world/mesh-extraction-scenario';
 
 const Position = defineRenderField<[number, number, number]>('position');
 const Visible = defineRenderField<boolean>('visible');
@@ -73,6 +77,15 @@ for (const size of [100, 1_000, 10_000]) {
         })?.prepared.value
       ).toBe(1);
     },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
+for (const size of [100, 1_000]) {
+  const reference = meshExtractionReference(size);
+  bench(
+    `extracts ${size} canonical mesh entities from MainWorld`,
+    () => expect(runMeshExtractionSubject(size)).toEqual(reference),
     { iterations: 1, warmupIterations: 0 }
   );
 }
