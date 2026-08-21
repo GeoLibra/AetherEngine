@@ -81,6 +81,8 @@ describe('render graph benchmark oracle', () => {
         versionSlots: scale * 2,
         boundVersionSlots: scale,
         pendingSubmissionReferences: scale,
+        policyHistoriesInvalidated: Math.ceil(scale / 2),
+        policyHistoriesPreserved: Math.floor(scale / 2),
         scheduledSteps: scale + 2
       });
       expect(renderSystems).toEqual(runRenderSystemReference(scale));

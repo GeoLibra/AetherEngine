@@ -6,6 +6,7 @@ import type {
   SupportStatus
 } from '../../rhi/contracts/capability';
 import type { GPUTextureFormat } from '../../rhi/contracts/webgpu';
+import type { FeaturePolicyCacheDomain } from '../constants';
 
 declare const featureIdBrand: unique symbol;
 declare const implementationIdBrand: unique symbol;
@@ -85,6 +86,8 @@ interface FeatureImplementationBase<Prepared> {
   readonly requirements: readonly CapabilityPredicate[];
   readonly dependencies: readonly FeatureDependency[];
   readonly conflicts: readonly FeatureConflict[];
+  /** Cache identities whose compatibility can change when this implementation is selected. */
+  readonly cacheDomains: readonly FeaturePolicyCacheDomain[];
   readonly priority: number;
   readonly quality: QualityImpact;
   estimate(input: FeaturePrepareInput): ResourceBudget;
@@ -171,6 +174,7 @@ export interface FeatureDecision {
   readonly reasons: readonly DecisionReason[];
   readonly requirements: readonly CapabilityPredicate[];
   readonly estimatedBudget: ResourceBudget;
+  readonly cacheDomains: readonly FeaturePolicyCacheDomain[];
 }
 
 export interface FeaturePolicySnapshot {
@@ -180,7 +184,15 @@ export interface FeaturePolicySnapshot {
   readonly deviceGeneration: number;
   readonly decisions: ReadonlyMap<FeatureId, FeatureDecision>;
   readonly evaluations: ReadonlyMap<FeatureId, readonly FeatureCandidateEvaluation[]>;
+  readonly cacheDomainHashes: ReadonlyMap<FeaturePolicyCacheDomain, string>;
   readonly hash: string;
+}
+
+/** One cache compatibility identity changed between two published policies. */
+export interface FeaturePolicyCacheInvalidation {
+  readonly domain: FeaturePolicyCacheDomain;
+  readonly previousHash: string | null;
+  readonly nextHash: string | null;
 }
 
 export interface FeaturePolicyMetrics {
@@ -197,6 +209,46 @@ export interface FeaturePolicyResolution {
   readonly snapshot: FeaturePolicySnapshot;
   readonly unsupportedRequired: readonly FeatureId[];
   readonly metrics: FeaturePolicyMetrics;
+}
+
+/**
+ * A fully prepared policy that is safe to publish at a frame boundary.
+ *
+ * Prepared values are indexed by feature identity and remain owned by the
+ * coordinator until the corresponding retirement is released.
+ */
+export interface PreparedFeaturePolicy {
+  readonly snapshot: FeaturePolicySnapshot;
+  readonly prepared: ReadonlyMap<FeatureId, unknown>;
+}
+
+/** Result of resolving and preparing a policy revision. */
+export type FeaturePolicyPrepareResult =
+  | {
+      readonly ok: true;
+      readonly policy: PreparedFeaturePolicy;
+      readonly resolution: FeaturePolicyResolution;
+    }
+  | {
+      readonly ok: false;
+      readonly resolution: FeaturePolicyResolution;
+      readonly error: unknown;
+    };
+
+/**
+ * Defers disposal of a replaced policy until its submitted GPU work is no
+ * longer in flight.
+ */
+export interface FeaturePolicyRetirement {
+  readonly policy: PreparedFeaturePolicy;
+  release(): void;
+}
+
+/** Result of atomically publishing a prepared policy at a frame boundary. */
+export interface FeaturePolicyPublication {
+  readonly current: PreparedFeaturePolicy;
+  readonly invalidations: readonly FeaturePolicyCacheInvalidation[];
+  readonly retirement?: FeaturePolicyRetirement;
 }
 
 export interface CapabilityPredicateInput {

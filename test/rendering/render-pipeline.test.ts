@@ -56,6 +56,25 @@ describe('prepared asset lifecycle', () => {
     expect(destroy).toHaveBeenCalledOnce();
     expect(registry.acquire(key)).toBeUndefined();
   });
+
+  test('retires only prepared assets using the invalidated policy domain hash', () => {
+    const destroyed: string[] = [];
+    const registry = new PreparedAssetRegistry();
+    const oldKey = { ...key, featurePolicyKey: 'old-policy' };
+    const nextKey = { ...key, featurePolicyKey: 'next-policy' };
+    registry.publish({ key: oldKey, value: 'old' }, (value) => destroyed.push(value));
+    registry.publish({ key: nextKey, value: 'next' }, (value) => destroyed.push(value));
+
+    registry.invalidateFeaturePolicy({
+      domain: 'prepared-asset',
+      previousHash: 'old-policy',
+      nextHash: 'next-policy'
+    });
+
+    expect(registry.acquire(oldKey)).toBeUndefined();
+    expect(registry.acquire(nextKey)?.prepared.value).toBe('next');
+    expect(destroyed).toEqual(['old']);
+  });
 });
 
 describe('visibility and render phases', () => {

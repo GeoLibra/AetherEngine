@@ -257,6 +257,30 @@ describe('RenderWorld', () => {
     expect(recreated.diff.changes.map((change) => change.kind)).toEqual(['entity-added']);
   });
 
+  test('atomically replaces one source lifecycle with a new render generation', () => {
+    const world = createWorld([Transform]);
+    const source = 'replace-source';
+    publish(world, 1, (tx) =>
+      tx.draft(extractor).upsert(tx.mapEntity(source), Transform, [0, 0, 0])
+    ).release();
+    const previous = world.mapEntity(source);
+    const transaction = world.beginExtract(2, 1);
+    const replacement = transaction.replaceEntity(source);
+    transaction.draft(extractor).upsert(replacement, Transform, [1, 0, 0]);
+    const revision = transaction.commit();
+
+    expect(replacement).not.toBe(previous);
+    expect(world.mapEntity(source)).toBe(replacement);
+    expect(revision.diff.changes.map((change) => change.kind).sort()).toEqual([
+      'entity-added',
+      'entity-removed'
+    ]);
+    expect(
+      revision.diff.changes.find((change) => change.kind === 'entity-removed')?.tombstone.reason
+    ).toBe('generation-replaced');
+    revision.release();
+  });
+
   test('projects immutable query snapshots from a revision', () => {
     const world = createWorld([Transform]);
     const source = 1005 as never;

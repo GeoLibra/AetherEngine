@@ -1,4 +1,5 @@
 import { snapshotPredicate } from './predicates';
+import { FeaturePolicyCacheDomain } from './constants';
 import type { FeatureImplementation } from './types';
 
 export class FeatureImplementationRegistry {
@@ -36,6 +37,12 @@ function validateImplementation(implementation: FeatureImplementation): void {
     throw new Error('Feature implementation quality rank must be finite.');
   if (implementation.semanticContract.trim() === '')
     throw new Error('Feature semantic contract must not be empty.');
+  const validDomains = new Set(Object.values(FeaturePolicyCacheDomain));
+  if (
+    new Set(implementation.cacheDomains).size !== implementation.cacheDomains.length ||
+    implementation.cacheDomains.some((domain) => !validDomains.has(domain))
+  )
+    throw new Error('Feature implementation cache domains must be unique known values.');
 }
 
 function snapshotImplementation<Prepared>(
@@ -55,6 +62,7 @@ function snapshotImplementation<Prepared>(
         ? {}
         : { implementations: [...entry.implementations] })
     })),
+    cacheDomains: [...value.cacheDomains].sort(),
     priority: value.priority,
     quality: { ...value.quality, notes: [...value.quality.notes] },
     estimate: value.estimate.bind(value),

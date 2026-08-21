@@ -36,6 +36,11 @@ export interface BrowserGraphicsLoss {
   readonly recreationAllowed: boolean;
 }
 
+/** Stable graphics facts changed and policy/cache owners should re-observe the session. */
+export type BrowserGraphicsLifecycleEvent =
+  | Readonly<{ kind: 'reconfigured'; generation: number }>
+  | Readonly<{ kind: 'lost'; loss: BrowserGraphicsLoss }>;
+
 export interface BrowserGraphicsAttempt {
   readonly backend: 'webgpu' | 'webgl2';
   readonly stage: 'environment' | 'adapter' | 'device' | 'context' | 'surface';
@@ -49,6 +54,7 @@ export interface BrowserGraphicsSession {
   readonly device: RHIDevice;
   readonly surface: RHISurface;
   readonly lost: Promise<BrowserGraphicsLoss>;
+  subscribe(listener: (event: BrowserGraphicsLifecycleEvent) => void): () => boolean;
   resize(size: PhysicalSize): void;
   destroy(): Promise<void>;
 }

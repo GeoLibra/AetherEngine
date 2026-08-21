@@ -252,7 +252,7 @@ export class RenderWorld {
    */
   reserveSource(tx: ExtractTransaction, source: unknown): RenderEntityId {
     const committed = this.sources.get(source)?.entity;
-    if (committed !== undefined) return committed;
+    if (committed !== undefined && !tx.replacedSources.has(source)) return committed;
     const provisional = tx.provisionalSources.get(source);
     if (provisional !== undefined) return provisional;
     const index = this.findReusableIndex(tx) ?? this.nextRenderIndex + tx.newIndexCount++;
@@ -477,6 +477,8 @@ export class ExtractTransaction {
   readonly provisionalSources = new Map<unknown, RenderEntityId>();
   // Provisional index numbers reserved for recycled slots in this transaction.
   readonly provisionalIndices = new Set<number>();
+  // Sources whose previous lifecycle ends and whose replacement is published atomically.
+  readonly replacedSources = new Set<unknown>();
   newIndexCount = 0;
   private committed = false;
 
@@ -491,6 +493,18 @@ export class ExtractTransaction {
    */
   mapEntity(source: unknown): RenderEntityId {
     this.assertOpen();
+    return this.world.reserveSource(this, source);
+  }
+
+  /** Ends an existing source lifecycle and allocates its replacement in this transaction. */
+  replaceEntity(
+    source: unknown,
+    reason: RenderTombstone['reason'] = 'generation-replaced'
+  ): RenderEntityId {
+    this.assertOpen();
+    const previous = this.world.mapEntity(source);
+    this.removeEntity(previous, reason);
+    this.replacedSources.add(source);
     return this.world.reserveSource(this, source);
   }
 

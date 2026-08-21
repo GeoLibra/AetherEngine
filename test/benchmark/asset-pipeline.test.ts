@@ -4,6 +4,11 @@ import {
   scheduleAssetRequestsBucketed,
   scheduleAssetRequestsReference
 } from '../../benchmark/asset-pipeline/model';
+import {
+  createMeshValidationFixture,
+  meshFixtureReferenceOracle,
+  validateMeshFixture
+} from '../../benchmark/asset-pipeline/mesh-validation';
 
 describe('asset pipeline benchmark semantic oracle', () => {
   test('bucketed scheduler matches the full-sort reference with merged consumers and budgets', () => {
@@ -42,5 +47,9 @@ describe('asset pipeline benchmark semantic oracle', () => {
     });
 
     expect(result.admitted.map((item) => item.key)).toEqual(['asset/a', 'asset/m', 'asset/z']);
+  });
+
+  test('validates canonical mesh fixtures with a stable bounds oracle', () => {
+    expect(validateMeshFixture(createMeshValidationFixture(6))).toBe(meshFixtureReferenceOracle(6));
   });
 });

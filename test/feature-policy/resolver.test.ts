@@ -5,6 +5,7 @@ import {
   featureId,
   hostServiceId,
   implementationId,
+  diffFeaturePolicyCacheDomains,
   resolveFeaturePolicy,
   type FeatureImplementation,
   type FeaturePolicyInput,
@@ -177,6 +178,45 @@ describe('resolveFeaturePolicy', () => {
       )
     ).toThrow('Duplicate FeaturePolicy request');
   });
+
+  test('publishes stable hashes only for cache domains affected by selected implementations', () => {
+    const registry = new FeatureImplementationRegistry();
+    registry.register(candidate({ id: 'target', cacheDomains: ['shader-pipeline', 'history'] }));
+
+    const result = resolveFeaturePolicy(input(registry));
+
+    expect(result.snapshot.decisions.get(target)?.cacheDomains).toEqual([
+      'history',
+      'shader-pipeline'
+    ]);
+    expect([...result.snapshot.cacheDomainHashes.keys()]).toEqual(['history', 'shader-pipeline']);
+    expect(result.snapshot.cacheDomainHashes.get('history')).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  test('diffs only cache domains whose compatibility hash changed', () => {
+    const firstRegistry = new FeatureImplementationRegistry();
+    firstRegistry.register(candidate({ id: 'first', cacheDomains: ['shader-pipeline'] }));
+    const first = resolveFeaturePolicy(input(firstRegistry));
+    const same = resolveFeaturePolicy(input(firstRegistry, { revision: 2 }));
+    expect(diffFeaturePolicyCacheDomains(first.snapshot, same.snapshot)).toEqual([]);
+
+    const secondRegistry = new FeatureImplementationRegistry();
+    secondRegistry.register(candidate({ id: 'second', cacheDomains: ['history'] }));
+    const second = resolveFeaturePolicy(input(secondRegistry, { revision: 3 }));
+
+    expect(diffFeaturePolicyCacheDomains(first.snapshot, second.snapshot)).toEqual([
+      {
+        domain: 'history',
+        previousHash: null,
+        nextHash: second.snapshot.cacheDomainHashes.get('history')
+      },
+      {
+        domain: 'shader-pipeline',
+        previousHash: first.snapshot.cacheDomainHashes.get('shader-pipeline'),
+        nextHash: null
+      }
+    ]);
+  });
 });
 
 function input(
@@ -219,6 +259,7 @@ function candidate(options: {
   requirements?: FeatureImplementation<undefined>['requirements'];
   dependencies?: FeatureImplementation<undefined>['dependencies'];
   conflicts?: FeatureImplementation<undefined>['conflicts'];
+  cacheDomains?: readonly ('shader-pipeline' | 'prepared-asset' | 'composition-plan' | 'history')[];
   budget?: ResourceBudget;
 }): FeatureImplementation<undefined> {
   return {
@@ -232,6 +273,7 @@ function candidate(options: {
     requirements: options.requirements ?? [],
     dependencies: options.dependencies ?? [],
     conflicts: options.conflicts ?? [],
+    cacheDomains: options.cacheDomains ?? [],
     priority: 0,
     quality: { tier: 'test', rank: options.qualityRank ?? 1, notes: [] },
     estimate: () => options.budget ?? ZERO_RESOURCE_BUDGET,

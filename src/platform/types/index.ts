@@ -1,5 +1,6 @@
 export type {
   BrowserGraphicsAttempt,
+  BrowserGraphicsLifecycleEvent,
   BrowserGraphicsLoss,
   BrowserGraphicsOptions,
   BrowserGraphicsSession,

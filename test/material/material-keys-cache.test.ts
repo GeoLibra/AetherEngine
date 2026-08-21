@@ -296,6 +296,30 @@ describe('Submission-retained material caches', () => {
     expect(destroyed).toEqual(['old-device']);
   });
 
+  test('retires only pipelines using the invalidated policy domain hash', () => {
+    const destroyed: string[] = [];
+    const cache = new SubmissionRetainedCache<string>({
+      destroy: (value) => destroyed.push(value)
+    });
+    const oldKey = createPipelineKey({ ...pipelineParts, featurePolicyHash: 'old-policy' });
+    const nextKey = createPipelineKey({ ...pipelineParts, featurePolicyHash: 'next-policy' });
+    cache.publish(oldKey, 'old');
+    cache.publish(nextKey, 'next');
+    const oldLease = cache.acquire(oldKey)!;
+
+    cache.invalidateFeaturePolicy({
+      domain: 'shader-pipeline',
+      previousHash: 'old-policy',
+      nextHash: 'next-policy'
+    });
+
+    expect(cache.acquire(oldKey)).toBeUndefined();
+    expect(cache.acquire(nextKey)?.value).toBe('next');
+    expect(destroyed).toEqual([]);
+    oldLease.release();
+    expect(destroyed).toEqual(['old']);
+  });
+
   test('contains destroy callback errors and reentrant publication', () => {
     let cache: SubmissionRetainedCache<string>;
     const replacement = createBindingKey({ ...bindingParts, ringGeneration: 41 });

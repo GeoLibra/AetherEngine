@@ -286,6 +286,8 @@ describe('versioned material benchmark scenarios', () => {
       cacheEntriesCreated: 6,
       cacheMisses: 11,
       staleGenerationMisses: 5,
+      policyEntriesRetired: 3,
+      policyEntriesDestroyed: 3,
       staleHitRejected: 0,
       staleReuse: 0
     });

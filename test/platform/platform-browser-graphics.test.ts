@@ -65,6 +65,8 @@ describe('browser graphics bootstrap', () => {
     expect(session.surface.configuration).toMatchObject({ width: 640, height: 360 });
     expect(fixture.context.configurations).toHaveLength(1);
 
+    const lifecycle: string[] = [];
+    const unsubscribe = session.subscribe((event) => lifecycle.push(event.kind));
     session.resize({ width: 800, height: 450 });
     expect(session.surface.generation).toBe(2);
     expect(fixture.context.configurations).toHaveLength(2);
@@ -76,6 +78,9 @@ describe('browser graphics bootstrap', () => {
       reason: 'unknown',
       recreationAllowed: true
     });
+    expect(lifecycle).toEqual(['reconfigured', 'lost']);
+    expect(unsubscribe()).toBe(true);
+    expect(unsubscribe()).toBe(false);
 
     await session.destroy();
     await session.destroy();

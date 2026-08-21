@@ -43,6 +43,7 @@ export { BrowserRunner, HeadlessRunner } from './app/runner';
 export { createBrowserGraphics, BrowserGraphicsBootstrapError } from './platform';
 export type {
   BrowserGraphicsAttempt,
+  BrowserGraphicsLifecycleEvent,
   BrowserGraphicsLoss,
   BrowserGraphicsOptions,
   BrowserGraphicsSession,
@@ -137,11 +138,15 @@ export * from './platform';
 export * from './native-runtime';
 export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
 export { HostService, createHostPlugin } from './plugins/host-plugin';
+export { createFeaturePolicyPlugin } from './plugins/feature-policy-plugin';
+export type { FeaturePolicyPluginOptions } from './plugins/feature-policy-plugin';
 export * from './schema';
 export * from './rendering';
+export * from './assets';
 export * from './render-graph';
 export * from './shader';
 export * from './material';
+export * from './geometry';
 export * from './feature-policy';
 export {
   NullAdapter,

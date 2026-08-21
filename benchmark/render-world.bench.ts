@@ -2,6 +2,7 @@ import { bench, expect } from 'vitest';
 import {
   RenderExtractorRegistryBuilder,
   RenderWorld,
+  PreparedAssetRegistry,
   defineExtractorToken,
   defineRenderField
 } from '../src/rendering';
@@ -10,6 +11,15 @@ import {
   runRenderPhaseReference,
   runRenderPhaseSubject
 } from './render-world/render-phase-scenario';
+import {
+  meshExtractionReference,
+  runPreparedMeshQueueSubject,
+  runMeshExtractionSubject
+} from './render-world/mesh-extraction-scenario';
+import {
+  cameraExtractionReference,
+  runCameraExtractionSubject
+} from './render-world/camera-extraction-scenario';
 
 const Position = defineRenderField<[number, number, number]>('position');
 const Visible = defineRenderField<boolean>('visible');
@@ -21,6 +31,15 @@ const snapshotExtractorPlan = new RenderExtractorRegistryBuilder()
   .registerExtractor(SnapshotOwner)
   .build();
 
+for (const size of [1, 8, 32]) {
+  const reference = cameraExtractionReference(size);
+  bench(
+    `extracts and binds ${size} camera surface views`,
+    () => expect(runCameraExtractionSubject(size)).toEqual(reference),
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
 for (const phase of ['opaque', 'transparent'] as const) {
   for (const size of [100, 1_000, 10_000]) {
     const workload = createRenderPhaseWorkload(size, phase);
@@ -31,6 +50,66 @@ for (const phase of ['opaque', 'transparent'] as const) {
       { iterations: 1, warmupIterations: 0 }
     );
   }
+}
+
+for (const size of [100, 1_000]) {
+  bench(
+    `resolves ${size} visible mesh prepared variants`,
+    () => expect(runPreparedMeshQueueSubject(size)).toBe(size),
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
+for (const size of [100, 1_000, 10_000]) {
+  bench(
+    `retires ${size} prepared assets by exact policy hash`,
+    () => {
+      const registry = new PreparedAssetRegistry();
+      let destroyed = 0;
+      for (let index = 0; index < size; index++) {
+        registry.publish(
+          {
+            key: {
+              assetId: `asset-${index}`,
+              payloadVersion: 1,
+              deviceGeneration: 1,
+              featurePolicyKey: index % 2 === 0 ? 'old-policy' : 'other-policy',
+              abiVersion: 'benchmark-v1'
+            },
+            value: index
+          },
+          () => {
+            destroyed++;
+          }
+        );
+      }
+      registry.invalidateFeaturePolicy({
+        domain: 'prepared-asset',
+        previousHash: 'old-policy',
+        nextHash: 'next-policy'
+      });
+      expect(destroyed).toBe(Math.ceil(size / 2));
+      expect(
+        registry.acquire({
+          assetId: 'asset-1',
+          payloadVersion: 1,
+          deviceGeneration: 1,
+          featurePolicyKey: 'other-policy',
+          abiVersion: 'benchmark-v1'
+        })?.prepared.value
+      ).toBe(1);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
+for (const size of [100, 1_000]) {
+  const reference = meshExtractionReference(size);
+  bench(
+    `extracts ${size} canonical mesh entities from MainWorld`,
+    () => expect(runMeshExtractionSubject(size)).toEqual(reference),
+    { iterations: 1, warmupIterations: 0 }
+  );
 }
 
 for (const size of [100, 1_000, 10_000]) {

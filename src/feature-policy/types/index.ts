@@ -11,8 +11,12 @@ export type {
   FeatureId,
   FeatureImplementation,
   FeaturePolicyInput,
+  FeaturePolicyCacheInvalidation,
   FeaturePolicyMetrics,
+  FeaturePolicyPrepareResult,
+  FeaturePolicyPublication,
   FeaturePolicyResolution,
+  FeaturePolicyRetirement,
   FeaturePolicySnapshot,
   FeaturePrepareInput,
   FeatureRequest,
@@ -20,8 +24,27 @@ export type {
   HostServiceId,
   ImplementationId,
   PredicateResult,
+  PreparedFeaturePolicy,
   QualityImpact,
   RenderFeatureImplementation,
   ResourceBudget,
   RuntimeFeatureImplementation
 } from './feature-policy-types';
+export type { FeaturePolicyCacheDomain } from '../constants';
+export type {
+  FeaturePolicyCaptureManifest,
+  FeaturePolicyInspection,
+  FeaturePolicyInspectionCandidate,
+  FeaturePolicyInspectionCapabilities,
+  FeaturePolicyInspectionDecision,
+  FeaturePolicyInspectionEvaluation,
+  FeaturePolicyInspectionFeatureCapability,
+  FeaturePolicyInspectionFormatCapability,
+  FeaturePolicyInspectionImplementation,
+  FeaturePolicyInspectionInput,
+  FeaturePolicyInspectionLimit,
+  FeaturePolicyInspectionPredicateResult,
+  FeaturePolicyInspectionQueueCapability,
+  FeaturePolicyJsonValue,
+  FeaturePolicySummary
+} from './inspection-types';

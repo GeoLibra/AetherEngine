@@ -15,12 +15,15 @@ export type NativeLifecycleSnapshot = Readonly<{
     | 'orientation'
     | 'resize'
     | 'surface-lost'
-    | 'surface-recreated';
+    | 'surface-recreated'
+    | 'memory-pressure';
   policy?: NativeBackgroundPolicy;
   interrupted?: boolean;
   orientation?: string;
   size?: readonly [number, number];
   generation?: number;
+  pressure?: NativeMemoryPressureEvent;
+  pressureResult?: NativeMemoryPressureResult;
 }>;
 
 export interface NativeMemoryPressureEvent {

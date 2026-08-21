@@ -20,6 +20,7 @@ import type {
   ImplementationId,
   ResourceBudget
 } from './types';
+import type { FeaturePolicyCacheDomain } from './constants';
 
 interface Selection {
   readonly implementation: FeatureImplementation;
@@ -241,12 +242,19 @@ export function resolveFeaturePolicy(input: FeaturePolicyInput): FeaturePolicyRe
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, values]) => [key, values.map(snapshotEvaluation)] as const)
   );
+  const cacheDomainHashes = createCacheDomainHashes(
+    input.schemaVersion,
+    input.profileId,
+    input.deviceGeneration,
+    publishedDecisions
+  );
   const hash = stablePolicyHash({
     schemaVersion: input.schemaVersion,
     profileId: input.profileId,
     deviceGeneration: input.deviceGeneration,
     decisions: [...publishedDecisions],
-    evaluations: [...publishedEvaluations]
+    evaluations: [...publishedEvaluations],
+    cacheDomainHashes: [...cacheDomainHashes]
   });
   const metrics = {
     ...counters,
@@ -261,6 +269,7 @@ export function resolveFeaturePolicy(input: FeaturePolicyInput): FeaturePolicyRe
     deviceGeneration: input.deviceGeneration,
     decisions: publishedDecisions,
     evaluations: publishedEvaluations,
+    cacheDomainHashes,
     hash
   };
   return {
@@ -391,7 +400,8 @@ function selectedDecision(feature: FeatureId, selection: Selection): FeatureDeci
     qualityTier: value.quality.tier,
     reasons: [reason('selected', `Selected ${value.id}@${value.version}.`)],
     requirements: value.requirements,
-    estimatedBudget: selection.budget
+    estimatedBudget: selection.budget,
+    cacheDomains: [...value.cacheDomains].sort()
   };
 }
 function unsupportedDecision(feature: FeatureId, failure?: DecisionReason): FeatureDecision {
@@ -406,7 +416,8 @@ function unsupportedDecision(feature: FeatureId, failure?: DecisionReason): Feat
         reason('no-eligible-implementation', `No implementation is registered for ${feature}.`)
     ],
     requirements: [],
-    estimatedBudget: ZERO_RESOURCE_BUDGET
+    estimatedBudget: ZERO_RESOURCE_BUDGET,
+    cacheDomains: []
   };
 }
 function reason(code: DecisionReason['code'], message: string): DecisionReason {
@@ -418,8 +429,42 @@ function snapshotDecision(value: FeatureDecision): FeatureDecision {
     ...value,
     reasons: value.reasons.map((item) => ({ ...item })),
     requirements: value.requirements.map(snapshotPredicate),
-    estimatedBudget: snapshotResourceBudget(value.estimatedBudget)
+    estimatedBudget: snapshotResourceBudget(value.estimatedBudget),
+    cacheDomains: [...value.cacheDomains]
   };
+}
+
+function createCacheDomainHashes(
+  schemaVersion: number,
+  profileId: string,
+  deviceGeneration: number,
+  decisions: ReadonlyMap<FeatureId, FeatureDecision>
+): ReadonlyMap<FeaturePolicyCacheDomain, string> {
+  const domains = new Set<FeaturePolicyCacheDomain>();
+  for (const decision of decisions.values())
+    for (const domain of decision.cacheDomains) domains.add(domain);
+  return new ReadonlyMapSnapshot(
+    [...domains].sort().map(
+      (domain) =>
+        [
+          domain,
+          stablePolicyHash({
+            schemaVersion,
+            profileId,
+            deviceGeneration,
+            decisions: [...decisions]
+              .filter(([, decision]) => decision.cacheDomains.includes(domain))
+              .map(([feature, decision]) => ({
+                feature,
+                support: decision.support,
+                implementation: decision.implementation,
+                implementationVersion: decision.implementationVersion,
+                qualityTier: decision.qualityTier
+              }))
+          })
+        ] as const
+    )
+  );
 }
 function snapshotEvaluation(value: FeatureCandidateEvaluation): FeatureCandidateEvaluation {
   return {
