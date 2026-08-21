@@ -2,6 +2,8 @@ export * from './render-world';
 export * from './extractor-registry';
 export * from './persistent-entity-map';
 export * from './prepared-assets';
+export * from './mesh-constants';
+export * from './mesh-prepare';
 export * from './render-phase';
 export * from './visibility';
 export * from './visibility/index';

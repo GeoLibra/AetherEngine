@@ -386,6 +386,11 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'benchmark/asset-pipeline-runner.mjs',
         'benchmark/asset-pipeline/',
         'engine/design/v2/05-assets-scene/',
+        'src/geometry/',
+        'src/rendering/mesh-constants.ts',
+        'src/rendering/mesh-prepare.ts',
+        'test/geometry/',
+        'test/rendering/mesh-prepare.test.ts',
         'test/benchmark/asset-pipeline.test.ts'
       ]),
       command: Object.freeze({

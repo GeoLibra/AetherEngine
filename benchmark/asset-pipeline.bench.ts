@@ -4,6 +4,11 @@ import {
   scheduleAssetRequestsBucketed,
   scheduleAssetRequestsReference
 } from './asset-pipeline/model';
+import {
+  createMeshValidationFixture,
+  meshFixtureReferenceOracle,
+  validateMeshFixture
+} from './asset-pipeline/mesh-validation';
 
 const profile = process.env.AETHER_BENCH_PROFILE ?? 'smoke';
 const sizes =
@@ -33,5 +38,15 @@ for (const size of sizes) {
     const result = scheduleAssetRequestsBucketed(fixture, budget);
     expect(result.oracleHash).toBe(expected.oracleHash);
     expect(result.counters.duplicateConsumers).toBe(Math.floor(size / 10));
+  });
+}
+
+const meshSizes =
+  profile === 'nightly' ? [3_000, 30_000] : profile === 'standard' ? [30_000] : [3_000];
+for (const vertexCount of meshSizes) {
+  const fixture = createMeshValidationFixture(vertexCount);
+  const expected = meshFixtureReferenceOracle(vertexCount);
+  bench(`validates and isolates ${vertexCount} canonical mesh vertices`, () => {
+    expect(validateMeshFixture(fixture)).toBe(expected);
   });
 }

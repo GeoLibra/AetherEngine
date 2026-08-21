@@ -145,6 +145,7 @@ export * from './rendering';
 export * from './render-graph';
 export * from './shader';
 export * from './material';
+export * from './geometry';
 export * from './feature-policy';
 export {
   NullAdapter,
