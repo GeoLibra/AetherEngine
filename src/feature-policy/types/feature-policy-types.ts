@@ -104,9 +104,12 @@ export interface RuntimeFeatureImplementation<
   execute(prepared: Prepared, frame: FrameInput): FrameOutput;
 }
 
-export interface RenderFeatureImplementation<Prepared> extends FeatureImplementationBase<Prepared> {
+export interface RenderFeatureImplementation<
+  Prepared,
+  BuildContext = unknown
+> extends FeatureImplementationBase<Prepared> {
   readonly kind: 'render';
-  contribute(prepared: Prepared, context: unknown): void;
+  contribute(prepared: Prepared, context: BuildContext): void;
 }
 
 export type FeatureImplementation<Prepared = unknown> =

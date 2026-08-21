@@ -7,7 +7,10 @@ import {
   type RenderGraphExecutionPlan,
   type RestrictedPassContext
 } from '../../src/render-graph/executor';
-import { createPreparedRenderPipelineToken } from '../../src/render-graph/prepared-resources';
+import {
+  createPreparedComputePipelineToken,
+  createPreparedRenderPipelineToken
+} from '../../src/render-graph/prepared-resources';
 import { NullDevice } from '../../src/rhi/null/device';
 import { TransientResourcePool } from '../../src/render-graph/transient-pool';
 import type { TransientAllocationDescriptor } from '../../src/render-graph/transient-pool';
@@ -81,6 +84,30 @@ describe('RenderGraphExecutor', () => {
     });
 
     expect(resolved).toMatchObject({ kind: 'restricted-render-pipeline' });
+  });
+
+  test('exposes externally prepared compute pipelines through typed pass capabilities', () => {
+    const device = new NullDevice();
+    const pipeline = device.createComputePipeline({ label: 'prepared-compute' });
+    const token = createPreparedComputePipelineToken('light-list');
+    const graph = new RenderGraphBuilder();
+    let resolved: unknown;
+    graph.addPass({
+      id: 'prepared-compute-pipeline',
+      setup(pass) {
+        pass.sideEffect('record');
+      },
+      run(context: RestrictedPassContext) {
+        resolved = context.computePipeline(token);
+      }
+    });
+
+    new RenderGraphExecutor().execute(compile(graph), {
+      device,
+      preparedComputePipelines: new Map([[token, pipeline]])
+    });
+
+    expect(resolved).toMatchObject({ kind: 'restricted-compute-pipeline' });
   });
 
   test('rejects incompatible or foreign imported physical bindings before recording', () => {
@@ -172,6 +199,7 @@ describe('RenderGraphExecutor', () => {
       'beginCompute',
       'beginRaster',
       'buffer',
+      'computePipeline',
       'copyBufferToBuffer',
       'device',
       'renderPipeline',

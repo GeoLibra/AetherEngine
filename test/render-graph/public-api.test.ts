@@ -17,6 +17,7 @@ import {
   RenderSystemRegistry,
   compileRenderGraph,
   compileRenderSystems,
+  createPreparedComputePipelineToken,
   createPreparedRenderPipelineToken,
   renderSystemToken
 } from '../../src';
@@ -32,6 +33,10 @@ describe('RenderGraph public API', () => {
     expect(createPreparedRenderPipelineToken('main')).toMatchObject({
       kind: 'prepared-render-pipeline-token',
       name: 'main'
+    });
+    expect(createPreparedComputePipelineToken('light-list')).toMatchObject({
+      kind: 'prepared-compute-pipeline-token',
+      name: 'light-list'
     });
     expect(renderSystemToken('example').id).toBe('example');
     expect(RenderingRenderSystemRegistry).toBe(RenderSystemRegistry);
