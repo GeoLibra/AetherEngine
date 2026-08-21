@@ -1,8 +1,11 @@
 import {
   buildRenderPhase,
+  constructRenderPhase,
   type PhaseItem,
+  type MaterialPipelineCompatibilityResult,
   type RenderEntityId,
-  type RenderPhaseKind
+  type RenderPhaseKind,
+  type ResolvedMaterialPipelineCandidate
 } from '../../src/rendering';
 
 export interface RenderPhaseWorkload {
@@ -13,6 +16,51 @@ export interface RenderPhaseWorkload {
 export interface CanonicalRenderPhase {
   readonly entities: readonly RenderEntityId[];
   readonly batchSizes: readonly number[];
+}
+
+export interface PhaseConstructionWorkload {
+  readonly compatibility: MaterialPipelineCompatibilityResult;
+  readonly expectedItems: number;
+  readonly expectedSkips: number;
+  readonly ownership: { disposals: number; retentions: number };
+}
+
+export interface PhaseConstructionSummary {
+  readonly items: number;
+  readonly skips: number;
+  readonly checksum: number;
+  readonly ownershipTransfers: number;
+}
+
+export function createPhaseConstructionWorkload(count: number): PhaseConstructionWorkload {
+  const ownership = { disposals: 0, retentions: 0 };
+  const resolved = Array.from({ length: count }, (_, index) =>
+    constructionCandidate(index, index % 10 === 0 ? 'transparent' : 'opaque', ownership)
+  );
+  return Object.freeze({
+    compatibility: Object.freeze({ resolved: Object.freeze(resolved), skipped: Object.freeze([]) }),
+    expectedItems: count - Math.ceil(count / 10),
+    expectedSkips: Math.ceil(count / 10),
+    ownership
+  });
+}
+
+export function runPhaseConstructionSubject(
+  workload: PhaseConstructionWorkload
+): PhaseConstructionSummary {
+  const result = constructRenderPhase(
+    { viewId: 'benchmark', phase: 'opaque' },
+    workload.compatibility
+  );
+  return Object.freeze({
+    items: result.snapshot.items.length,
+    skips: result.skipped.length,
+    checksum: result.snapshot.items.reduce(
+      (sum, item, index) => sum + item.entity * (index + 1),
+      0
+    ),
+    ownershipTransfers: workload.ownership.disposals + workload.ownership.retentions
+  });
 }
 
 export function createRenderPhaseWorkload(
@@ -98,4 +146,60 @@ function comparator(phase: RenderPhaseKind): (left: PhaseItem, right: PhaseItem)
 
 function compareCodeUnits(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function constructionCandidate(
+  index: number,
+  surface: 'opaque' | 'transparent',
+  ownership: PhaseConstructionWorkload['ownership']
+): ResolvedMaterialPipelineCandidate {
+  const key = (assetId: string) =>
+    Object.freeze({
+      assetId,
+      payloadVersion: 1,
+      deviceGeneration: 1,
+      featurePolicyKey: 'benchmark',
+      abiVersion: 'v1'
+    });
+  const lease = (assetId: string, value: unknown) =>
+    Object.freeze({
+      prepared: Object.freeze({ key: key(assetId), value }),
+      disposed: false,
+      dispose: () => ownership.disposals++,
+      retainUntil: () => ownership.retentions++
+    });
+  return {
+    candidate: {
+      entity: (index + 1) as RenderEntityId,
+      depthRange: Object.freeze([-index - 2, -index - 1] as const),
+      submesh: index % 4,
+      mesh: lease(
+        `mesh:${index % 32}`,
+        {}
+      ) as ResolvedMaterialPipelineCandidate['candidate']['mesh'],
+      material: lease(`material:${index % 16}`, {
+        selectedVariant: `variant:${index % 8}`
+      }) as ResolvedMaterialPipelineCandidate['candidate']['material']
+    },
+    selection: Object.freeze({
+      status: 'selected',
+      technique: Object.freeze({ name: 'benchmark' }),
+      requestedRole: 'benchmark',
+      selectedRole: 'benchmark',
+      candidatesExamined: 1
+    }) as ResolvedMaterialPipelineCandidate['selection'],
+    renderState: Object.freeze({
+      status: 'resolved',
+      phase: surface === 'opaque' ? 'opaque' : 'transparent',
+      surface,
+      depthTest: true,
+      depthWrite: surface === 'opaque',
+      colorWrite: true,
+      cullMode: 'back',
+      blend: undefined
+    }),
+    pipelineKey: Object.freeze({
+      hash: `pipeline:${index % 64}`
+    }) as ResolvedMaterialPipelineCandidate['pipelineKey']
+  };
 }
