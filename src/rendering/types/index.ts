@@ -24,6 +24,10 @@ export type {
   LayoutCacheResolution
 } from './binding-layout-types';
 export type {
+  DeviceLayoutCacheResolution,
+  DeviceLayoutRealization
+} from './device-layout-cache-types';
+export type {
   CameraExtractionInput,
   CameraExtractionResult,
   CameraRenderSourceView,

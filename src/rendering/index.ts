@@ -24,6 +24,7 @@ export * from './pipeline-availability';
 export * from './binding-layout-compiler';
 export * from './binding-layout-lowering';
 export * from './layout-cache';
+export * from './device-layout-cache';
 export * from './pipeline-resolver';
 export * from './material-cache';
 export * from './material-resolution';
