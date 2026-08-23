@@ -42,6 +42,7 @@ export type {
   ShaderSymbolExpressionIR,
   ShaderSymbolId,
   ShaderTarget,
+  ShaderStage,
   ShaderTextureBindingEntryManifest,
   ShaderTypeId,
   ShaderTypeIR,

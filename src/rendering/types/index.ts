@@ -1,4 +1,16 @@
 export type {
+  BindingLayoutCompileOptions,
+  BindingLayoutCompileResult,
+  BindingLayoutCompiler,
+  BindingLayoutDiagnostic,
+  BindingLayoutDiagnosticCode,
+  BindingLayoutId,
+  BindingLayoutPlan,
+  BindingLocation,
+  CanonicalBindingLayoutEntry,
+  CanonicalBindGroupLayout
+} from './binding-layout-types';
+export type {
   CameraExtractionInput,
   CameraExtractionResult,
   CameraRenderSourceView,
