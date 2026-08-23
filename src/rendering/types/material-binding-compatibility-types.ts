@@ -3,6 +3,7 @@ import type { CompiledMaterialBindingLayout, MaterialResourceResolver } from '..
 import type { CanonicalKey, BindingKeyParts } from '../pipeline-resolver';
 import type { PhaseItem, RenderPhaseSnapshot } from '../render-phase';
 import type { ResolvedMaterialPipelineCandidate } from './material-pipeline-compatibility-types';
+import type { BindingLayoutPlan } from './binding-layout-types';
 
 /** Upload-allocation identity supplied without allocating or uploading resources. */
 export interface BindingAllocationFacts {
@@ -17,6 +18,7 @@ export interface MaterialBindingCompatibilityRequest {
   readonly item: PhaseItem;
   readonly candidate: ResolvedMaterialPipelineCandidate;
   readonly layout: CompiledMaterialBindingLayout;
+  readonly bindingPlan: BindingLayoutPlan;
   readonly supplied: MaterialParameterBlock;
   readonly defaults?: MaterialParameterBlock;
   readonly resolver: MaterialResourceResolver;

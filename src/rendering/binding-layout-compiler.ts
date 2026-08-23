@@ -50,6 +50,7 @@ export function compileBindingLayoutPlan(
   const key = createCanonicalKey(facts);
   const plan: BindingLayoutPlan = Object.freeze({
     id: `binding-layout:${key.hash}:${key.canonicalValue}` as BindingLayoutId,
+    sourceLayoutHash: manifest.layoutHash,
     ...facts,
     hash: key.hash
   });

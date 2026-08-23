@@ -37,6 +37,7 @@ describe('Binding layout lowering', () => {
 function fixture(): BindingLayoutPlan {
   return Object.freeze({
     id: 'fixture' as BindingLayoutPlan['id'],
+    sourceLayoutHash: 'shader-layout:fixture',
     shaderAbiVersion: 1,
     groups: Object.freeze([
       Object.freeze({

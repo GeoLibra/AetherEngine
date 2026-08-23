@@ -1,5 +1,6 @@
 import {
   compileMaterialBindingLayout,
+  compileBindingLayoutPlan,
   createMaterialParameterBlock,
   createShaderBindingManifest,
   defineMaterialSchema,
@@ -78,7 +79,10 @@ function createRequests(count: number): readonly MaterialBindingCompatibilityReq
     }
   });
   const supplied = createMaterialParameterBlock(schema);
-  const layout = compileMaterialBindingLayout(schema, manifest());
+  const shaderManifest = manifest();
+  const layout = compileMaterialBindingLayout(schema, shaderManifest);
+  const bindingPlanResult = compileBindingLayoutPlan(shaderManifest);
+  if (bindingPlanResult.kind !== 'success') throw new Error(bindingPlanResult.diagnostic.message);
   const resource = texture();
   const resolver: MaterialResourceResolver = Object.freeze({
     deviceGeneration: 1,
@@ -109,6 +113,7 @@ function createRequests(count: number): readonly MaterialBindingCompatibilityReq
           })
         }) as ResolvedMaterialPipelineCandidate,
         layout,
+        bindingPlan: bindingPlanResult.plan,
         supplied,
         resolver,
         allocation: Object.freeze({

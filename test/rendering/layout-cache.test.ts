@@ -83,6 +83,7 @@ function fixture(): BindingLayoutPlan {
 function mutableFixture() {
   return {
     id: 'layout:fixture' as BindingLayoutPlan['id'],
+    sourceLayoutHash: 'shader-layout:fixture',
     shaderAbiVersion: 1,
     groups: [
       {

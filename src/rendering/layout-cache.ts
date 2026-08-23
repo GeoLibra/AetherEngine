@@ -98,6 +98,7 @@ function snapshotPlan(input: BindingLayoutPlan): BindingLayoutPlan {
   );
   return Object.freeze({
     id: input.id,
+    sourceLayoutHash: input.sourceLayoutHash,
     shaderAbiVersion: input.shaderAbiVersion,
     groups: Object.freeze(groups),
     dynamicOffsetOrder: Object.freeze(

@@ -52,6 +52,8 @@ export interface CanonicalBindGroupLayout {
 /** Portable, immutable binding ABI consumed by target lowerers and caches. */
 export interface BindingLayoutPlan {
   readonly id: BindingLayoutId;
+  /** Reflection provenance used to associate Material binding paths with this canonical ABI. */
+  readonly sourceLayoutHash: string;
   readonly shaderAbiVersion: number;
   readonly groups: readonly CanonicalBindGroupLayout[];
   readonly dynamicOffsetOrder: readonly BindingLocation[];

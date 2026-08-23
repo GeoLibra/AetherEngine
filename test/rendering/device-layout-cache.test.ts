@@ -108,6 +108,7 @@ describe('DeviceLayoutCache', () => {
 function fixture(): BindingLayoutPlan {
   return {
     id: 'layout:sparse' as BindingLayoutPlan['id'],
+    sourceLayoutHash: 'shader-layout:sparse',
     shaderAbiVersion: 1,
     groups: [
       {

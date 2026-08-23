@@ -51,7 +51,7 @@ export function resolveMaterialBindingCompatibility(
       });
     });
     const bindingKey = createBindingKey({
-      bindingLayoutHash: request.layout.identity.hash,
+      bindingLayoutHash: request.bindingPlan.hash,
       resources,
       bufferAllocationGeneration: request.allocation.bufferAllocationGeneration,
       ringGeneration: request.allocation.ringGeneration,
@@ -93,6 +93,8 @@ function validateContext(
       throw new Error('Material binding candidate entity mismatch.');
     if (request.candidate.pipelineKey.parts.bindingLayoutHash !== request.layout.shaderLayoutHash)
       throw new Error('Material binding layout does not match the resolved pipeline.');
+    if (request.bindingPlan.sourceLayoutHash !== request.layout.shaderLayoutHash)
+      throw new Error('Material binding layout does not match the canonical binding plan.');
     const identity = `${request.item.entity}:${request.item.insertionOrder}`;
     if (identities.has(identity)) throw new Error('Duplicate Material binding item association.');
     identities.add(identity);
