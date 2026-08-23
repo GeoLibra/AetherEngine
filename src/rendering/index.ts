@@ -19,6 +19,7 @@ export * from './frame-pipeline';
 export * from './material-bindings';
 export * from './material-binding-identity';
 export * from './material-binding-compatibility';
+export * from './pipeline-cache';
 export * from './pipeline-resolver';
 export * from './material-cache';
 export * from './material-resolution';

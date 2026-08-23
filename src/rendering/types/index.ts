@@ -43,3 +43,14 @@ export type {
   MaterialBindingCompatibilitySkip,
   MaterialBindingCompatibilitySkipCode
 } from './material-binding-compatibility-types';
+export type {
+  PipelineCacheEntryState,
+  PipelineCacheSnapshot,
+  PipelineCompileDiagnostic,
+  PipelineCompileFailure,
+  PipelineCompileOutcome,
+  PipelineCompileRequest,
+  PipelineCompileSuccess,
+  PipelineCompiler,
+  PipelineInvalidationReason
+} from './pipeline-cache-types';
