@@ -52,5 +52,6 @@ export type {
   PipelineCompileRequest,
   PipelineCompileSuccess,
   PipelineCompiler,
+  PipelineInterestLease,
   PipelineInvalidationReason
 } from './pipeline-cache-types';

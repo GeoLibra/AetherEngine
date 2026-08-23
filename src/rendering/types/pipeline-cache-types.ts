@@ -61,6 +61,14 @@ export interface PipelineCompiler {
   compile(request: PipelineCompileRequest): Promise<PipelineCompileOutcome>;
 }
 
+/** Caller-owned interest in one cache request; release is idempotent. */
+export interface PipelineInterestLease {
+  readonly pipelineKey: string;
+  readonly requestId: string;
+  readonly released: boolean;
+  release(): void;
+}
+
 /** Immutable Queue-facing lookup result for one canonical pipeline key. */
 export interface PipelineCacheSnapshot {
   readonly pipelineKey: string;
