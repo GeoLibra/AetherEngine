@@ -17,7 +17,11 @@ export type {
   BindingLayoutPlan,
   BindingLocation,
   CanonicalBindingLayoutEntry,
-  CanonicalBindGroupLayout
+  CanonicalBindGroupLayout,
+  LayoutCacheEntry,
+  LayoutCacheMetrics,
+  LayoutCacheRequest,
+  LayoutCacheResolution
 } from './binding-layout-types';
 export type {
   CameraExtractionInput,

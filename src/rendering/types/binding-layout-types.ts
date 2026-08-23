@@ -1,5 +1,9 @@
 import type { CapabilityPredicate } from '../../feature-policy';
 import type { ShaderBindingManifest, ShaderStage } from '../../shader';
+import type {
+  BindingLayoutLoweringResult,
+  BindingLayoutLoweringTarget
+} from './binding-layout-lowering-types';
 
 declare const bindingLayoutIdBrand: unique symbol;
 
@@ -85,3 +89,33 @@ export type BindingLayoutCompiler = (
   manifest: ShaderBindingManifest,
   options?: BindingLayoutCompileOptions
 ) => BindingLayoutCompileResult;
+
+export interface LayoutCacheRequest {
+  readonly plan: BindingLayoutPlan;
+  readonly layoutRevision: number;
+  readonly featurePolicyHash: string;
+  readonly target: BindingLayoutLoweringTarget;
+  readonly deviceGeneration: number;
+}
+
+export interface LayoutCacheEntry {
+  readonly plan: BindingLayoutPlan;
+  readonly layoutRevision: number;
+  readonly featurePolicyHash: string;
+  readonly target: BindingLayoutLoweringTarget;
+  readonly deviceGeneration: number;
+  readonly lowering: BindingLayoutLoweringResult;
+}
+
+export interface LayoutCacheResolution {
+  readonly status: 'hit' | 'miss';
+  readonly entry: LayoutCacheEntry;
+}
+
+export interface LayoutCacheMetrics {
+  readonly hits: number;
+  readonly misses: number;
+  readonly invalidations: number;
+  readonly canonicalPlans: number;
+  readonly loweredEntries: number;
+}
