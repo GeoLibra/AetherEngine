@@ -30,19 +30,20 @@ import type { WebGL2NativeContextLostInfo, WebGL2NativeContextPort } from './typ
 import type { WebGL2DeviceOwner } from './types';
 import {
   WebGL2Buffer,
+  WebGL2ResourceBase,
   WebGL2Sampler,
   WebGL2Texture,
   assertWebGL2Resource,
   getWebGL2Handle,
   normalizeExtent
-} from './resource';
+} from './resources/resource';
 import { WebGL2Queue } from './queue';
-import { WebGL2ShaderModule } from './shader';
-import { WebGL2BindGroup, WebGL2BindGroupLayout, WebGL2PipelineLayout } from './bindings';
-import { createWebGL2RenderPipeline } from './pipeline';
+import { WebGL2ShaderModule } from './pipeline/shader';
+import { WebGL2BindGroup, WebGL2BindGroupLayout, WebGL2PipelineLayout } from './pipeline/bindings';
+import { createWebGL2RenderPipeline } from './pipeline/pipeline';
 import type { WebGL2ShaderTranslationPort } from './types';
 import { throwWebGL2Unsupported } from './unsupported';
-import { WebGL2CommandEncoder } from './command';
+import { WebGL2CommandEncoder } from './commands/command';
 import { createWebGL2ContextControl } from './context-control';
 import { createWebGL2LossDiagnostic } from './diagnostics';
 import type { WebGL2ContextControl } from './types';
@@ -51,7 +52,7 @@ import {
   initializeWebGL2ClipDepth,
   selectWebGL2ClipDepthMode,
   type WebGL2ClipDepthMode
-} from './clip-depth';
+} from './pipeline/clip-depth';
 
 let nextWebGL2Generation = 1;
 
@@ -64,9 +65,7 @@ export class WebGL2Device implements RHIDevice {
   private resolveLost!: (info: DeviceLostInfo) => void;
   private nativeDestroyed = false;
   private nextResourceId = 1;
-  private readonly releaseListeners = new Set<
-    (resource: import('./resource').WebGL2ResourceBase) => void
-  >();
+  private readonly releaseListeners = new Set<(resource: WebGL2ResourceBase) => void>();
   private readonly contextControl: WebGL2ContextControl;
   private readonly clipDepthMode: WebGL2ClipDepthMode;
 

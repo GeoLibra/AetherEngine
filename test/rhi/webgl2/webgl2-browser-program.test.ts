@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { createBrowserWebGL2OperationPort } from '../../../src/rhi/webgl2/browser/operation-port';
+import { createBrowserWebGL2OperationPort } from '../../../src/rhi/webgl2/browser/operations';
 
 describe('browser WebGL2 program diagnostics', () => {
   test('initializes active uniform blocks and combined samplers after linking', () => {

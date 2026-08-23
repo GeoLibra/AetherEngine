@@ -44,7 +44,7 @@ export {
   WebGPUNativeDeviceRequestError,
   WebGPUNativeOperationError
 } from './contracts/errors';
-export type { WebGL2ClipDepthMode } from './webgl2/clip-depth';
+export type { WebGL2ClipDepthMode } from './webgl2/pipeline/clip-depth';
 export type {
   WebGL2AdapterFacts,
   WebGL2NativeContextInfo,
@@ -62,7 +62,7 @@ export type {
   WebGL2ShaderTranslationPort,
   WebGL2TranslatedShader
 } from './webgl2/types';
-export { finalizeWebGL2Shader } from './webgl2/shader-finalization';
+export { finalizeWebGL2Shader } from './webgl2/pipeline/shader-finalization';
 export type { WebGL2MetricsSnapshot } from './webgl2/metrics';
 export type { WebGL2ContextControl } from './webgl2/types';
 export type {

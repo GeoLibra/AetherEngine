@@ -1,4 +1,4 @@
-import type { WebGL2ClipDepthMode } from '../clip-depth';
+import type { WebGL2ClipDepthMode } from '../pipeline/clip-depth';
 
 export type WebGL2ShaderStage = 'vertex' | 'fragment';
 export type WebGL2BindingKind = 'uniform-buffer' | 'texture' | 'sampler';

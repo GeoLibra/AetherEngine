@@ -1,6 +1,6 @@
 import type { FormatCapabilities, RHILimits } from '../../contracts/capability';
 import type { GPUTextureFormat } from '../../contracts/webgpu';
-import type { WebGL2ClipDepthMode } from '../clip-depth';
+import type { WebGL2ClipDepthMode } from '../pipeline/clip-depth';
 import type { WebGL2BindingManifestEntry } from './shader-types';
 
 export type WebGL2NativeLimits = RHILimits;

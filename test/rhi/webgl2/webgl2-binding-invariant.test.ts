@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { requireDynamicBufferResource } from '../../../src/rhi/webgl2/bindings';
+import { requireDynamicBufferResource } from '../../../src/rhi/webgl2/pipeline/bindings';
 
 describe('WebGL2 binding invariants', () => {
   test('rejects a missing validated dynamic buffer resource', () => {

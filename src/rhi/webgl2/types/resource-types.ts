@@ -1,6 +1,6 @@
 import type { DeviceCapabilities } from '../../contracts/capability';
 import type { RHIDeviceState } from '../../contracts/lifecycle';
-import type { WebGL2ResourceBase } from '../resource';
+import type { WebGL2ResourceBase } from '../resources/resource';
 import type { WebGL2NativeContextPort, WebGL2NativeObject } from './native-types';
 
 export interface WebGL2DeviceOwner {

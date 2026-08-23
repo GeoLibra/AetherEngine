@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { decrementLeaseCount } from '../../../src/rhi/webgl2/lease-count';
+import { decrementLeaseCount } from '../../../src/rhi/webgl2/resources/lease-count';
 
 describe('WebGL2 lease count invariants', () => {
   test('rejects release without a matching retain', () => {

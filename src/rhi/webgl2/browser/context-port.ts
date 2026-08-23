@@ -7,7 +7,7 @@ import {
   constant
 } from './capability-query';
 import { initializeWebGL2StateDefaults } from './state-defaults';
-import { createBrowserWebGL2OperationPort } from './operation-port';
+import { createBrowserWebGL2OperationPort } from './operations';
 import type {
   BrowserWebGL2Canvas,
   BrowserWebGL2Context,

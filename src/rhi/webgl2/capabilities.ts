@@ -1,6 +1,6 @@
 import type { AdapterCapabilities, FeatureSupport, RHIFeature } from '../contracts/capability';
-import { createCapabilitySnapshot, RHI_FEATURES } from '../core/capabilities';
-import { selectWebGL2ClipDepthMode } from './clip-depth';
+import { createCapabilitySnapshot, GRAPHICS_ONLY_QUEUES, RHI_FEATURES } from '../core/capabilities';
+import { selectWebGL2ClipDepthMode } from './pipeline/clip-depth';
 import type { WebGL2AdapterFacts, WebGL2NativeContextPort } from './types';
 
 const TIMER_QUERY_EXTENSION = 'EXT_disjoint_timer_query_webgl2';
@@ -22,7 +22,7 @@ export function createWebGL2Capabilities(native: WebGL2NativeContextPort): Adapt
     features,
     limits: native.limits,
     formats: native.formats,
-    queues: Object.freeze([Object.freeze({ role: 'graphics' as const, status: 'native' as const })])
+    queues: GRAPHICS_ONLY_QUEUES
   });
 }
 

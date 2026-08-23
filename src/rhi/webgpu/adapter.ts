@@ -1,18 +1,12 @@
 import type { AdapterInfo, DeviceRequest, RHIAdapter } from '../contracts/adapter';
 import { DiagnosticStore } from '../../diagnostics';
 import { collectDeviceRequestDifferences } from '../core/adapter-validation';
-import { createCapabilitySnapshot, RHI_FEATURES } from '../core/capabilities';
+import { createCapabilitySnapshot, FULL_FEATURE_QUEUES, RHI_FEATURES } from '../core/capabilities';
 import type { AdapterCapabilities, FeatureSupport, RHIFeature } from '../contracts/capability';
 import { RHIDeviceRequestError, WebGPUNativeDeviceRequestError } from '../contracts/errors';
 import { WebGPUDevice } from './device';
 import type { WebGPUNativeAdapterPort, WebGPUNativeDeviceRequest } from './types';
 import { WEBGPU_CORE_FEATURES } from './core-features';
-
-const WEBGPU_QUEUES = Object.freeze([
-  Object.freeze({ role: 'graphics' as const, status: 'native' as const }),
-  Object.freeze({ role: 'compute' as const, status: 'native' as const }),
-  Object.freeze({ role: 'transfer' as const, status: 'native' as const })
-]);
 
 export class WebGPUAdapter implements RHIAdapter {
   readonly info: AdapterInfo;
@@ -91,7 +85,7 @@ function createWebGPUCapabilities(
     features,
     limits: native.limits,
     formats: native.formats,
-    queues: WEBGPU_QUEUES
+    queues: FULL_FEATURE_QUEUES
   });
 }
 

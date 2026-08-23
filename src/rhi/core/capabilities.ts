@@ -16,6 +16,22 @@ export const RHI_FEATURES: readonly RHIFeature[] = Object.freeze([
   'timestamp-query'
 ]);
 
+/**
+ * Standard queue capabilities for full-featured modern graphics backends (WebGPU, Dawn/Native).
+ */
+export const FULL_FEATURE_QUEUES: readonly QueueCapability[] = Object.freeze([
+  Object.freeze({ role: 'graphics' as const, status: 'native' as const }),
+  Object.freeze({ role: 'compute' as const, status: 'native' as const }),
+  Object.freeze({ role: 'transfer' as const, status: 'native' as const })
+]);
+
+/**
+ * Standard queue capabilities for graphics-only backends (WebGL2, default NullAdapter).
+ */
+export const GRAPHICS_ONLY_QUEUES: readonly QueueCapability[] = Object.freeze([
+  Object.freeze({ role: 'graphics' as const, status: 'native' as const })
+]);
+
 export interface NullCapabilityProfile {
   readonly features?: Readonly<Partial<Record<RHIFeature, FeatureSupport>>>;
   readonly limits?: RHILimits;
@@ -39,7 +55,7 @@ export function createNullCapabilities(profile: NullCapabilityProfile = {}): Dev
     };
     return [feature, support] as const;
   });
-  const queues = profile.queues ?? [{ role: 'graphics', status: 'native' } as const];
+  const queues = profile.queues ?? GRAPHICS_ONLY_QUEUES;
   return createCapabilitySnapshot({
     backend: 'null',
     features: new Map(features),

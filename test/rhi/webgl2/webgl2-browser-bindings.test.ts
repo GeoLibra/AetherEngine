@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { createBrowserWebGL2OperationPort } from '../../../src/rhi/webgl2/browser/operation-port';
+import { createBrowserWebGL2OperationPort } from '../../../src/rhi/webgl2/browser/operations';
 
 describe('browser WebGL2 bindings', () => {
   test('uses queried physical slots without offset rounding or texture-unit aliasing', () => {

@@ -2,20 +2,20 @@ import type { RHICommandBuffer } from '../contracts/command';
 import type { RHIQueue } from '../contracts/device';
 import type { RHIResource } from '../contracts/resource';
 import type { RHISubmission, RHISubmissionStatus } from '../contracts/submission';
-import { WebGL2CommandBuffer } from './command';
+import { WebGL2CommandBuffer } from './commands/command';
 import { WebGL2Metrics, type WebGL2MetricsSnapshot } from './metrics';
 import type { WebGL2NativeContextPort, WebGL2NativeObject } from './types';
-import { WebGL2ReplayExecutor } from './replay';
-import { decrementLeaseCount } from './lease-count';
+import { WebGL2ReplayExecutor } from './commands/replay';
+import { decrementLeaseCount } from './resources/lease-count';
 import {
   WebGL2ResourceBase,
   WebGL2TextureView,
   assertWebGL2Resource,
   releaseWebGL2Native
-} from './resource';
+} from './resources/resource';
 import type { WebGL2DeviceOwner } from './types';
-import { WebGL2Submission } from './submission';
-import { WebGL2UploadQueue } from './upload';
+import { WebGL2Submission } from './commands/submission';
+import { WebGL2UploadQueue } from './resources/upload';
 
 interface PendingEpoch {
   readonly submission: WebGL2Submission;
