@@ -45,6 +45,7 @@ export type {
 } from './material-binding-compatibility-types';
 export type {
   PipelineCacheEntryState,
+  PipelineCacheMetrics,
   PipelineCacheSnapshot,
   PipelineCompileDiagnostic,
   PipelineCompileFailure,

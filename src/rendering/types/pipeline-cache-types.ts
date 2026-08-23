@@ -69,6 +69,15 @@ export interface PipelineInterestLease {
   release(): void;
 }
 
+/** Deterministic structural counters for cache inspection and benchmark oracles. */
+export interface PipelineCacheMetrics {
+  readonly duplicateRequests: number;
+  readonly compileStarts: number;
+  readonly compileErrors: number;
+  readonly staleResultsDiscarded: number;
+  readonly readyPublications: number;
+}
+
 /** Immutable Queue-facing lookup result for one canonical pipeline key. */
 export interface PipelineCacheSnapshot {
   readonly pipelineKey: string;

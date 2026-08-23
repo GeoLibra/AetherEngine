@@ -26,6 +26,12 @@ function requestFor(pipelineKey = 'pipeline:a') {
   });
 }
 
+function requestWith(
+  override: Partial<ReturnType<typeof requestFor>>
+): ReturnType<typeof requestFor> {
+  return createPipelineCompileRequest({ ...requestFor(), ...override });
+}
+
 function deferredOutcome() {
   let resolve!: (outcome: PipelineCompileOutcome) => void;
   const promise = new Promise<PipelineCompileOutcome>((accept) => {
@@ -216,5 +222,99 @@ describe('PipelineCache request lifecycle', () => {
       diagnostic: { code: 'pipeline-compile-failed', message: 'native compiler exploded' },
       retry: 'input-change'
     });
+  });
+});
+
+describe('PipelineCache invalidation', () => {
+  it('discards and cleans up an old completion after a newer request replaces it', async () => {
+    const first = deferredOutcome();
+    const second = deferredOutcome();
+    const outcomes = [first.promise, second.promise];
+    let compileIndex = 0;
+    let staleDisposals = 0;
+    const newerPipeline = Object.freeze({ id: 102 }) as unknown as RHIRenderPipeline;
+    const cache = new PipelineCache({
+      compile: async () => outcomes[compileIndex++] as Promise<PipelineCompileOutcome>
+    });
+
+    cache.request(requestFor());
+    await Promise.resolve();
+    cache.invalidate('pipeline:a', 'device-generation-changed');
+    expect(cache.snapshot('pipeline:a')).toEqual({
+      kind: 'stale',
+      reason: 'device-generation-changed'
+    });
+
+    cache.request(requestWith({ requestRevision: 2, deviceGeneration: 5 }));
+    await Promise.resolve();
+    first.resolve({
+      status: 'success',
+      pipeline: PIPELINE,
+      disposeUnpublished: () => {
+        staleDisposals += 1;
+      }
+    });
+    await flushCompilation();
+
+    expect(staleDisposals).toBe(1);
+    expect(cache.snapshot('pipeline:a')).toMatchObject({ kind: 'compiling' });
+
+    second.resolve({ status: 'success', pipeline: newerPipeline });
+    await flushCompilation();
+    expect(cache.snapshot('pipeline:a')).toEqual({
+      kind: 'ready',
+      pipeline: newerPipeline,
+      deviceGeneration: 5
+    });
+    expect(cache.metrics()).toEqual({
+      duplicateRequests: 0,
+      compileStarts: 2,
+      compileErrors: 0,
+      staleResultsDiscarded: 1,
+      readyPublications: 1
+    });
+    expect(Object.isFrozen(cache.metrics())).toBe(true);
+  });
+
+  it.each([
+    'request-revision-changed',
+    'shader-revision-changed',
+    'layout-revision-changed',
+    'feature-policy-changed',
+    'device-generation-changed'
+  ] as const)('publishes the explicit %s stale reason', async (reason) => {
+    const deferred = deferredOutcome();
+    const cache = new PipelineCache({ compile: async () => deferred.promise });
+    cache.request(requestFor());
+    await Promise.resolve();
+
+    cache.invalidate('pipeline:a', reason);
+
+    expect(cache.snapshot('pipeline:a')).toEqual({ kind: 'stale', reason });
+    deferred.resolve({ status: 'error', diagnostic: { code: 'late', message: 'late' } });
+    await flushCompilation();
+    expect(cache.snapshot('pipeline:a')).toEqual({ kind: 'stale', reason });
+    expect(cache.metrics().staleResultsDiscarded).toBe(1);
+  });
+
+  it('allows an explicitly invalidated compile error to be requested again', async () => {
+    let compileCount = 0;
+    const cache = new PipelineCache({
+      compile: async () => {
+        compileCount += 1;
+        return compileCount === 1
+          ? { status: 'error', diagnostic: { code: 'invalid', message: 'invalid' } }
+          : { status: 'success', pipeline: PIPELINE };
+      }
+    });
+    cache.request(requestFor());
+    await flushCompilation();
+
+    cache.invalidate('pipeline:a', 'shader-revision-changed');
+    cache.request(requestWith({ requestRevision: 2, shaderRevision: 3 }));
+    await flushCompilation();
+
+    expect(compileCount).toBe(2);
+    expect(cache.snapshot('pipeline:a').kind).toBe('ready');
   });
 });

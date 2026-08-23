@@ -1,9 +1,11 @@
 import type {
   PipelineCacheEntryState,
+  PipelineCacheMetrics,
   PipelineCompileOutcome,
   PipelineCompileRequest,
   PipelineCompiler,
-  PipelineInterestLease
+  PipelineInterestLease,
+  PipelineInvalidationReason
 } from './types';
 
 const ABSENT_PIPELINE_STATE: PipelineCacheEntryState = Object.freeze({ kind: 'absent' });
@@ -37,6 +39,11 @@ export function createPipelineCompileRequest(
 export class PipelineCache {
   private readonly records = new Map<string, PipelineCacheRecord>();
   private nextRequestId = 1;
+  private duplicateRequests = 0;
+  private compileStarts = 0;
+  private compileErrors = 0;
+  private staleResultsDiscarded = 0;
+  private readyPublications = 0;
 
   /**
    * Creates a cache around an asynchronous compiler port.
@@ -72,11 +79,34 @@ export class PipelineCache {
   request(input: PipelineCompileRequest): PipelineInterestLease {
     const request = createPipelineCompileRequest(input);
     let record = this.records.get(request.pipelineKey);
-    if (record === undefined) record = this.queue(request);
+    if (record === undefined || record.state.kind === 'stale') record = this.queue(request);
     else if (!sameRequestIdentity(record.request, request))
       throw new Error('Pipeline cache key was requested with different identity facts.');
+    else if (record.state.kind === 'queued' || record.state.kind === 'compiling')
+      this.duplicateRequests += 1;
     record.interests += 1;
     return this.createInterestLease(record);
+  }
+
+  /** Marks an existing entry stale so a later request can establish a new identity. */
+  invalidate(pipelineKey: string, reason: PipelineInvalidationReason): void {
+    if (typeof pipelineKey !== 'string' || !pipelineKey.trim())
+      throw new Error('Pipeline cache invalidation key must be non-empty.');
+    if (!isInvalidationReason(reason))
+      throw new Error('Pipeline cache invalidation reason is invalid.');
+    const record = this.records.get(pipelineKey);
+    if (record !== undefined) record.state = Object.freeze({ kind: 'stale', reason });
+  }
+
+  /** Returns an immutable copy of cache lifecycle counters. */
+  metrics(): PipelineCacheMetrics {
+    return Object.freeze({
+      duplicateRequests: this.duplicateRequests,
+      compileStarts: this.compileStarts,
+      compileErrors: this.compileErrors,
+      staleResultsDiscarded: this.staleResultsDiscarded,
+      readyPublications: this.readyPublications
+    });
   }
 
   private queue(request: PipelineCompileRequest): PipelineCacheRecord {
@@ -123,18 +153,27 @@ export class PipelineCache {
       requestId: record.requestId,
       startedAt: this.now()
     });
+    this.compileStarts += 1;
     void this.compile(record);
   }
 
   private async compile(record: PipelineCacheRecord): Promise<void> {
     const outcome = await compileSafely(this.compiler, record.request);
-    if (this.records.get(record.request.pipelineKey) !== record) return;
+    if (
+      this.records.get(record.request.pipelineKey) !== record ||
+      record.state.kind !== 'compiling'
+    ) {
+      this.staleResultsDiscarded += 1;
+      disposeUnpublished(outcome);
+      return;
+    }
     if (outcome.status === 'success') {
       record.state = Object.freeze({
         kind: 'ready',
         pipeline: outcome.pipeline,
         deviceGeneration: record.request.deviceGeneration
       });
+      this.readyPublications += 1;
       return;
     }
     record.state = Object.freeze({
@@ -142,7 +181,27 @@ export class PipelineCache {
       diagnostic: Object.freeze({ ...outcome.diagnostic }),
       retry: 'input-change'
     });
+    this.compileErrors += 1;
   }
+}
+
+function disposeUnpublished(outcome: PipelineCompileOutcome): void {
+  if (outcome.status !== 'success' || outcome.disposeUnpublished === undefined) return;
+  try {
+    outcome.disposeUnpublished();
+  } catch {
+    // Cleanup failure cannot make an invalidated pipeline publishable again.
+  }
+}
+
+function isInvalidationReason(value: string): value is PipelineInvalidationReason {
+  return (
+    value === 'request-revision-changed' ||
+    value === 'shader-revision-changed' ||
+    value === 'layout-revision-changed' ||
+    value === 'feature-policy-changed' ||
+    value === 'device-generation-changed'
+  );
 }
 
 async function compileSafely(
