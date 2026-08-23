@@ -40,6 +40,7 @@ import type {
   MaterialScenarioObservation
 } from './types';
 import { createMaterialPipelineCompatibilityCase } from './compatibility-scenario';
+import { createMaterialBindingCompatibilityCase } from './binding-compatibility-scenario';
 
 export interface ParameterEditUploadOptions {
   readonly fieldCount: 8 | 32 | 64;
@@ -96,10 +97,19 @@ export function createMaterialScenarioCases(
       seed
     })
   );
-  return Object.freeze([...parameterCases, ...pipelineCases, ...compatibilityCases]);
+  const bindingCompatibilityCases = instanceCounts.map((instanceCount) =>
+    createMaterialBindingCompatibilityCase({ instanceCount })
+  );
+  return Object.freeze([
+    ...parameterCases,
+    ...pipelineCases,
+    ...compatibilityCases,
+    ...bindingCompatibilityCases
+  ]);
 }
 
 export { createMaterialPipelineCompatibilityCase } from './compatibility-scenario';
+export { createMaterialBindingCompatibilityCase } from './binding-compatibility-scenario';
 
 export function createParameterEditUploadCase(
   options: ParameterEditUploadOptions
