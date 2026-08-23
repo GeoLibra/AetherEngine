@@ -7,6 +7,7 @@ export type {
   ShaderBinaryExpressionIR,
   ShaderBindingEntryManifest,
   ShaderBindingManifest,
+  ShaderStage,
   ShaderBindingManifestOptions,
   ShaderBindingReflectionDiagnostic,
   ShaderBindingReflectionDiagnosticCode,

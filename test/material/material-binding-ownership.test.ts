@@ -98,7 +98,8 @@ function manifest(): ShaderBindingManifest {
     }
   ];
   return {
-    groups: [{ group: 0, entries }],
+    shaderAbiVersion: 1,
+    groups: [{ group: 0, visibility: ['vertex', 'fragment'], entries }],
     buffers: [],
     vertexInputs: [],
     fragmentOutputs: [],

@@ -150,6 +150,9 @@ export interface BufferLayoutManifest {
   readonly layoutHash: string;
 }
 
+/** Canonical programmable stages used by portable binding visibility. */
+export type ShaderStage = 'vertex' | 'fragment' | 'compute';
+
 export type ShaderBufferBindingEntryManifest = Readonly<{
   kind: 'uniform-buffer' | 'storage-buffer';
   group: number;
@@ -183,6 +186,7 @@ export type ShaderBindingEntryManifest =
 
 export interface BindingGroupManifest {
   readonly group: number;
+  readonly visibility: readonly ShaderStage[];
   readonly entries: readonly ShaderBindingEntryManifest[];
 }
 
@@ -217,6 +221,7 @@ export interface ShaderBindingReflectionDiagnostic {
 }
 
 export interface ShaderBindingManifest {
+  readonly shaderAbiVersion: number;
   readonly groups: readonly BindingGroupManifest[];
   readonly buffers: readonly BufferLayoutManifest[];
   readonly vertexInputs: readonly Readonly<{ location: number; name: string; type: string }>[];

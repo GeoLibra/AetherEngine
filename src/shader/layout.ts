@@ -20,6 +20,7 @@ import type {
   ShaderBindingEntryManifest,
   ShaderBindingManifest,
   ShaderBindingManifestOptions,
+  ShaderStage,
   ShaderGlobalIR,
   ShaderModuleIR,
   ShaderScalarKind,
@@ -148,6 +149,7 @@ export function createShaderBindingManifest(
   target: ShaderTarget = 'wgsl',
   options: ShaderBindingManifestOptions = {}
 ): ShaderBindingManifest {
+  const visibility = bindingVisibility(ir);
   const structs = new Map(ir.types.map((type) => [type.name, type]));
   const requirements = indexBindingRequirements(options.bindingRequirements ?? []);
   const grouped = new Map<number, ShaderBindingEntryManifest[]>();
@@ -217,6 +219,7 @@ export function createShaderBindingManifest(
     .map(([group, entries]) =>
       Object.freeze({
         group,
+        visibility,
         entries: Object.freeze(entries.sort((left, right) => left.binding - right.binding))
       })
     );
@@ -232,14 +235,23 @@ export function createShaderBindingManifest(
       Object.freeze({ location: value.location!, name: value.name, type: value.type })
     )
     .sort(compareStageIo);
-  const data = { target, groups, buffers, vertexInputs, fragmentOutputs };
+  const data = { shaderAbiVersion, target, groups, buffers, vertexInputs, fragmentOutputs };
   return Object.freeze({
+    shaderAbiVersion,
     groups: Object.freeze(groups),
     buffers: Object.freeze(buffers),
     vertexInputs: Object.freeze(vertexInputs),
     fragmentOutputs: Object.freeze(fragmentOutputs),
-    layoutHash: stableHash({ shaderAbiVersion, ...data })
+    layoutHash: stableHash(data)
   });
+}
+
+function bindingVisibility(ir: ShaderModuleIR): readonly ShaderStage[] {
+  const stages = new Set(ir.entryPoints.map(({ stage }) => stage));
+  if (stages.size === 0) return Object.freeze(['vertex', 'fragment']);
+  return Object.freeze(
+    (['vertex', 'fragment', 'compute'] as const).filter((stage) => stages.has(stage))
+  );
 }
 
 function createBoundBufferLayoutManifest(

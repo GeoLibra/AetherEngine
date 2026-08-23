@@ -13,6 +13,32 @@ import {
 const SOURCE_URI = 'asset://shader/material-bindings.flux';
 
 describe('Shader binding manifest', () => {
+  test('publishes shader ABI and conservative canonical visibility for bootstrap modules', async () => {
+    const ir = await parseBindings(['@group(0) @binding(0) var albedo: texture_2d<f32>;']);
+
+    const manifest = createShaderBindingManifest(ir, 7);
+
+    expect(manifest.shaderAbiVersion).toBe(7);
+    expect(manifest.groups[0]?.visibility).toEqual(['vertex', 'fragment']);
+    expect(Object.isFrozen(manifest.groups[0]?.visibility)).toBe(true);
+  });
+
+  test('deduplicates entry-point stages in canonical order and hashes ABI identity', async () => {
+    const ir = await parseBindings([
+      '@group(0) @binding(0) var albedo: texture_2d<f32>;',
+      '@compute fn computeMain() {}',
+      '@vertex fn vertexMain() {}',
+      '@fragment fn fragmentMain() {}',
+      '@vertex fn shadowMain() {}'
+    ]);
+
+    const abiOne = createShaderBindingManifest(ir, 1);
+    const abiTwo = createShaderBindingManifest(ir, 2);
+
+    expect(abiOne.groups[0]?.visibility).toEqual(['vertex', 'fragment', 'compute']);
+    expect(abiOne.layoutHash).not.toBe(abiTwo.layoutHash);
+  });
+
   test('reflects buffers, typed textures and typed samplers through one manifest', async () => {
     const ir = await parseBindings([
       'struct MaterialData { roughness: f32 };',
