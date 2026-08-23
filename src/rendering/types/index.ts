@@ -29,6 +29,17 @@ export type {
 } from './device-layout-cache-types';
 export type { PreparedRenderPipelineArtifact } from './prepared-render-pipeline-types';
 export type {
+  MaterialBindGroupDiagnostic,
+  MaterialBindGroupDiagnosticCode,
+  MaterialBindGroupPreparationInput,
+  MaterialBindGroupPreparationResult,
+  MaterialBindGroupResourceResolver,
+  MaterialBufferBindingRequest,
+  PreparedMaterialBindGroupDescriptor,
+  PreparedMaterialBindGroups,
+  ValidatedMaterialBufferBinding
+} from './material-bind-group-types';
+export type {
   CameraExtractionInput,
   CameraExtractionResult,
   CameraRenderSourceView,
