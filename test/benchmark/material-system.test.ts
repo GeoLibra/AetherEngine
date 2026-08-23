@@ -12,6 +12,7 @@ import {
   PIPELINE_SUBJECT_OPERATIONS,
   createMaterialPipelineCompatibilityCase,
   createMaterialBindingCompatibilityCase,
+  createMaterialBindGroupCacheCase,
   createPipelineCacheResolutionCase,
   createParameterEditUploadCase,
   createPipelineBindingResolutionCase
@@ -38,6 +39,21 @@ const repository: MaterialBenchmarkRepositoryState = Object.freeze({
 });
 
 describe('material benchmark profiles and sampling', () => {
+  test('keeps bind-group cache hits and RHI creation counts exact', () => {
+    const scenario = createMaterialBindGroupCacheCase({ lookupCount: 1_000, uniqueKeys: 16 });
+    const reference = scenario.runReference();
+    const subject = scenario.runSubject();
+
+    expect(subject.semantic).toEqual(reference.semantic);
+    expect(subject.counters).toMatchObject({
+      lookups: 1_000,
+      cacheHits: 984,
+      cacheMisses: 16,
+      rhiBindGroupCreates: 16,
+      staleReuse: 0
+    });
+  });
+
   test('keeps binding compatibility counts and zero side effects exact', () => {
     for (const instanceCount of [1_000, 10_000]) {
       const scenario = createMaterialBindingCompatibilityCase({ instanceCount });

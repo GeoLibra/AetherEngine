@@ -69,6 +69,16 @@ describe('prepareMaterialBindGroups', () => {
     });
   });
 
+  test('returns typed stale when a device layout has already been disposed', () => {
+    const fixture = createFixture();
+    fixture.input.deviceLayout.bindGroupLayouts[0]?.dispose();
+
+    expect(prepareMaterialBindGroups(fixture.input)).toMatchObject({
+      status: 'unsupported',
+      diagnostic: { code: 'binding-device-generation-stale' }
+    });
+  });
+
   test('rejects a malformed resolver that returns the wrong RHI resource kind', () => {
     const fixture = createFixture();
     const malformed = {

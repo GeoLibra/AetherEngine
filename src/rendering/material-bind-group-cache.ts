@@ -20,7 +20,10 @@ export class MaterialBindGroupCache {
     device: RHIDevice
   ): MaterialBindGroupCacheResolution {
     validatePrepared(prepared, device);
-    const key = `${prepared.bindingKey.canonicalValue}|${device.generation}`;
+    const layoutIdentity = prepared.groups
+      .map(({ descriptor }) => `${descriptor.layout.generation}:${descriptor.layout.id}`)
+      .join(',');
+    const key = `${prepared.bindingKey.canonicalValue}|${device.generation}|${layoutIdentity}`;
     const existing = this.records.get(key);
     if (existing !== undefined) return Object.freeze({ status: 'hit', bindingSet: existing });
 

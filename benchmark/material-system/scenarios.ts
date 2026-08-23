@@ -42,6 +42,7 @@ import type {
 import { createMaterialPipelineCompatibilityCase } from './compatibility-scenario';
 import { createMaterialBindingCompatibilityCase } from './binding-compatibility-scenario';
 import { createPipelineCacheResolutionCase } from './pipeline-cache-scenario';
+import { createMaterialBindGroupCacheCase } from './bind-group-cache-scenario';
 
 export interface ParameterEditUploadOptions {
   readonly fieldCount: 8 | 32 | 64;
@@ -109,18 +110,26 @@ export function createMaterialScenarioCases(
       concurrentRequests: profile === 'nightly' ? 16 : profile === 'standard' ? 4 : 1
     });
   });
+  const bindGroupCacheCases = instanceCounts.map((instanceCount) =>
+    createMaterialBindGroupCacheCase({
+      lookupCount: instanceCount,
+      uniqueKeys: Math.min(256, Math.max(16, Math.floor(instanceCount / 10)))
+    })
+  );
   return Object.freeze([
     ...parameterCases,
     ...pipelineCases,
     ...compatibilityCases,
     ...bindingCompatibilityCases,
-    ...pipelineCacheCases
+    ...pipelineCacheCases,
+    ...bindGroupCacheCases
   ]);
 }
 
 export { createMaterialPipelineCompatibilityCase } from './compatibility-scenario';
 export { createMaterialBindingCompatibilityCase } from './binding-compatibility-scenario';
 export { createPipelineCacheResolutionCase } from './pipeline-cache-scenario';
+export { createMaterialBindGroupCacheCase } from './bind-group-cache-scenario';
 
 export function createParameterEditUploadCase(
   options: ParameterEditUploadOptions

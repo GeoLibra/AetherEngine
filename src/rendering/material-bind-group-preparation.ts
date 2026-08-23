@@ -83,7 +83,11 @@ function validateContext(
     );
   if (
     input.bindingKey.parts.deviceGeneration !== input.resolver.deviceGeneration ||
-    input.deviceLayout.pipelineLayout.generation !== input.resolver.deviceGeneration
+    input.deviceLayout.pipelineLayout.generation !== input.resolver.deviceGeneration ||
+    input.deviceLayout.pipelineLayout.state !== 'live' ||
+    input.deviceLayout.bindGroupLayouts.some(
+      (layout) => layout.generation !== input.resolver.deviceGeneration || layout.state !== 'live'
+    )
   )
     return diagnostic(
       'binding-device-generation-stale',
