@@ -55,3 +55,12 @@ export type {
   PipelineInterestLease,
   PipelineInvalidationReason
 } from './pipeline-cache-types';
+export type {
+  AvailablePipelinePhaseItem,
+  PipelineAvailabilityFallback,
+  PipelineAvailabilityIdentity,
+  PipelineAvailabilityRequest,
+  PipelineAvailabilityResult,
+  PipelineAvailabilitySkip,
+  PipelineAvailabilitySkipCode
+} from './pipeline-availability-types';
