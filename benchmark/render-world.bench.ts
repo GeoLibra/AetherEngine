@@ -8,6 +8,8 @@ import {
 } from '../src/rendering';
 import {
   createRenderPhaseWorkload,
+  createPhaseConstructionWorkload,
+  runPhaseConstructionSubject,
   runRenderPhaseReference,
   runRenderPhaseSubject
 } from './render-world/render-phase-scenario';
@@ -50,6 +52,20 @@ for (const phase of ['opaque', 'transparent'] as const) {
       { iterations: 1, warmupIterations: 0 }
     );
   }
+}
+
+for (const size of [1_000, 10_000]) {
+  const workload = createPhaseConstructionWorkload(size);
+  bench(
+    `constructs ${size} resolved material phase candidates`,
+    () =>
+      expect(runPhaseConstructionSubject(workload)).toMatchObject({
+        items: workload.expectedItems,
+        skips: workload.expectedSkips,
+        ownershipTransfers: 0
+      }),
+    { iterations: 1, warmupIterations: 0 }
+  );
 }
 
 for (const size of [100, 1_000]) {

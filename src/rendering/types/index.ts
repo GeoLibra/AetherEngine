@@ -28,3 +28,10 @@ export type {
   PreparedMaterialCompatibility,
   ResolvedMaterialPipelineCandidate
 } from './material-pipeline-compatibility-types';
+export type {
+  RenderPhaseConstructionContext,
+  RenderPhaseConstructionResult,
+  RenderPhaseConstructionSkip,
+  RenderPhaseConstructionSkipCode,
+  RenderPhaseUpstreamSkip
+} from './render-phase-types';

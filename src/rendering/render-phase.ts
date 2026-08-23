@@ -1,4 +1,13 @@
 import type { RenderEntityId } from './render-world';
+import { preparedKey } from './prepared-assets';
+import type {
+  MaterialPipelineCompatibilityResult,
+  RenderPhaseConstructionContext,
+  RenderPhaseConstructionResult,
+  RenderPhaseConstructionSkip,
+  RenderPhaseUpstreamSkip,
+  ResolvedMaterialPipelineCandidate
+} from './types';
 
 export type RenderPhaseKind = 'shadow' | 'opaque' | 'alpha-test' | 'transparent' | 'overlay';
 
@@ -11,7 +20,7 @@ export interface PhaseItem {
   readonly pipelineKey: string;
   readonly materialKey: string;
   readonly meshKey: string;
-  readonly bindingKey: string;
+  readonly bindingKey?: string;
   readonly drawKey: string;
   readonly distance: number; // View-space depth distance from the camera
   readonly insertionOrder: number;
@@ -58,9 +67,13 @@ export function buildRenderPhase(
     const key = compatibilityKey(item);
     const last = batches.at(-1);
     // Transparent order is semantic and must never be crossed by opportunistic grouping.
-    if (phase !== 'transparent' && last?.compatibilityKey === key)
+    if (phase !== 'transparent' && key !== undefined && last?.compatibilityKey === key)
       (last.items as PhaseItem[]).push(item);
-    else batches.push({ compatibilityKey: key, items: [item] });
+    else
+      batches.push({
+        compatibilityKey: key ?? `unbound:${item.entity}:${item.insertionOrder}`,
+        items: [item]
+      });
   }
   return Object.freeze({
     viewId,
@@ -72,6 +85,37 @@ export function buildRenderPhase(
   });
 }
 
+/**
+ * Constructs one immutable view phase from already resolved compatibility candidates.
+ * Prepared leases are borrowed; this function never disposes or retains them.
+ *
+ * @throws When the public queue context has an empty view ID or invalid order origin.
+ */
+export function constructRenderPhase(
+  context: RenderPhaseConstructionContext,
+  compatibility: MaterialPipelineCompatibilityResult,
+  upstreamSkips: readonly RenderPhaseUpstreamSkip[] = []
+): RenderPhaseConstructionResult {
+  validateConstructionContext(context);
+  const items: PhaseItem[] = [];
+  const skipped: (RenderPhaseUpstreamSkip | RenderPhaseConstructionSkip)[] = [
+    ...upstreamSkips,
+    ...compatibility.skipped
+  ];
+  compatibility.resolved.forEach((resolved, index) => {
+    const skip = validateResolvedCandidate(resolved, context.phase);
+    if (skip !== undefined) {
+      skipped.push(skip);
+      return;
+    }
+    items.push(createPhaseItem(resolved, context, index));
+  });
+  return Object.freeze({
+    snapshot: buildRenderPhase(context.viewId, context.phase, items),
+    skipped: Object.freeze(skipped)
+  });
+}
+
 function snapshotPhaseItem(item: PhaseItem): PhaseItem {
   return Object.freeze({
     entity: item.entity,
@@ -79,7 +123,7 @@ function snapshotPhaseItem(item: PhaseItem): PhaseItem {
     pipelineKey: item.pipelineKey,
     materialKey: item.materialKey,
     meshKey: item.meshKey,
-    bindingKey: item.bindingKey,
+    ...(item.bindingKey === undefined ? {} : { bindingKey: item.bindingKey }),
     drawKey: item.drawKey,
     distance: item.distance,
     insertionOrder: item.insertionOrder
@@ -108,7 +152,8 @@ export function resolvePipelineKey(input: {
   ].join('|');
 }
 
-function compatibilityKey(item: PhaseItem): string {
+function compatibilityKey(item: PhaseItem): string | undefined {
+  if (item.bindingKey === undefined) return undefined;
   return [item.pipelineKey, item.materialKey, item.meshKey, item.bindingKey, item.drawKey].join(
     '|'
   );
@@ -131,11 +176,93 @@ function phaseComparator(phase: RenderPhaseKind): (left: PhaseItem, right: Phase
     if (phase === 'overlay')
       return left.insertionOrder - right.insertionOrder || left.entity - right.entity;
     return (
-      left.pipelineKey.localeCompare(right.pipelineKey) ||
-      left.materialKey.localeCompare(right.materialKey) ||
-      left.meshKey.localeCompare(right.meshKey) ||
+      compareCodeUnits(left.pipelineKey, right.pipelineKey) ||
+      compareCodeUnits(left.materialKey, right.materialKey) ||
+      compareCodeUnits(left.meshKey, right.meshKey) ||
+      compareCodeUnits(left.drawKey, right.drawKey) ||
       left.entity - right.entity ||
       left.insertionOrder - right.insertionOrder
     );
   };
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function validateConstructionContext(context: RenderPhaseConstructionContext): void {
+  if (typeof context.viewId !== 'string' || !context.viewId.trim())
+    throw new Error('Render phase view ID must be non-empty.');
+  if (
+    context.insertionOrderOrigin !== undefined &&
+    (!Number.isSafeInteger(context.insertionOrderOrigin) || context.insertionOrderOrigin < 0)
+  )
+    throw new Error('Render phase insertion order origin must be a non-negative safe integer.');
+}
+
+function validateResolvedCandidate(
+  resolved: ResolvedMaterialPipelineCandidate,
+  phase: RenderPhaseKind
+): RenderPhaseConstructionSkip | undefined {
+  const { candidate, renderState } = resolved;
+  if (
+    candidate.mesh.disposed ||
+    candidate.material.disposed ||
+    !Number.isFinite(candidate.depthRange[0]) ||
+    !Number.isFinite(candidate.depthRange[1])
+  )
+    return phaseSkip(
+      candidate.entity,
+      'invalid-borrowed-candidate',
+      'Borrowed candidate facts are invalid or released.'
+    );
+  if (!surfaceSupportsPhase(renderState.surface, phase))
+    return phaseSkip(
+      candidate.entity,
+      'incompatible-phase-surface',
+      `Material surface "${renderState.surface}" cannot enter phase "${phase}".`
+    );
+  return undefined;
+}
+
+function surfaceSupportsPhase(
+  surface: ResolvedMaterialPipelineCandidate['renderState']['surface'],
+  phase: RenderPhaseKind
+): boolean {
+  if (phase === 'overlay') return true;
+  if (surface === 'transparent') return phase === 'transparent';
+  if (surface === 'alpha-mask') return phase === 'alpha-test' || phase === 'shadow';
+  return phase === 'opaque' || phase === 'shadow';
+}
+
+function createPhaseItem(
+  resolved: ResolvedMaterialPipelineCandidate,
+  context: RenderPhaseConstructionContext,
+  index: number
+): PhaseItem {
+  const { candidate } = resolved;
+  const meshKey = `${preparedKey(candidate.mesh.prepared.key)}|submesh:${candidate.submesh}`;
+  const materialKey = `${preparedKey(candidate.material.prepared.key)}|variant:${encodePart(candidate.material.prepared.value.selectedVariant)}`;
+  return Object.freeze({
+    entity: candidate.entity,
+    phase: context.phase,
+    pipelineKey: resolved.pipelineKey.hash,
+    materialKey,
+    meshKey,
+    drawKey: `${encodePart(meshKey)}${encodePart(materialKey)}`,
+    distance: Math.abs((candidate.depthRange[0] + candidate.depthRange[1]) / 2),
+    insertionOrder: (context.insertionOrderOrigin ?? 0) + index
+  });
+}
+
+function encodePart(value: string): string {
+  return `${value.length}:${value}`;
+}
+
+function phaseSkip(
+  entity: RenderEntityId,
+  code: RenderPhaseConstructionSkip['code'],
+  message: string
+): RenderPhaseConstructionSkip {
+  return Object.freeze({ entity, reason: 'incompatible-render-phase', code, message });
 }
