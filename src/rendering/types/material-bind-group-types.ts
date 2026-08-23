@@ -1,4 +1,5 @@
 import type {
+  RHIBindGroup,
   GPUBufferBinding,
   GPUBindGroupDescriptor,
   RHIBuffer,
@@ -61,6 +62,19 @@ export interface MaterialBindGroupDiagnostic extends BindingLocation {
 export type MaterialBindGroupPreparationResult =
   | { readonly status: 'ready'; readonly prepared: PreparedMaterialBindGroups }
   | { readonly status: 'unsupported'; readonly diagnostic: MaterialBindGroupDiagnostic };
+
+/** Device-owned bind groups associated with one immutable canonical binding key. */
+export interface RealizedMaterialBindGroups {
+  readonly bindingKey: CanonicalKey<BindingKeyParts>;
+  readonly bindGroups: readonly RHIBindGroup[];
+  readonly dynamicOffsets: readonly number[];
+  readonly deviceGeneration: number;
+}
+
+export interface MaterialBindGroupCacheResolution {
+  readonly status: 'hit' | 'miss';
+  readonly bindingSet: RealizedMaterialBindGroups;
+}
 
 /** Narrows a buffer binding after public-boundary validation. */
 export type ValidatedMaterialBufferBinding = Readonly<{

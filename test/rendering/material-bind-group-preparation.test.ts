@@ -1,7 +1,8 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   DeviceLayoutCache,
   LayoutCache,
+  MaterialBindGroupCache,
   createBindingKey,
   prepareMaterialBindGroups,
   type BindingLayoutPlan,
@@ -82,6 +83,54 @@ describe('prepareMaterialBindGroups', () => {
   });
 });
 
+describe('MaterialBindGroupCache', () => {
+  test('creates one complete set and reuses exact binding identity hits', () => {
+    const fixture = createFixture();
+    const preparation = prepareMaterialBindGroups(fixture.input);
+    if (preparation.status !== 'ready') throw new Error(preparation.diagnostic.message);
+    const createBindGroup = vi.spyOn(fixture.device, 'createBindGroup');
+    const cache = new MaterialBindGroupCache();
+
+    const first = cache.resolve(preparation.prepared, fixture.device);
+    const second = cache.resolve(preparation.prepared, fixture.device);
+
+    expect(first.status).toBe('miss');
+    expect(second.status).toBe('hit');
+    expect(second.bindingSet).toBe(first.bindingSet);
+    expect(first.bindingSet.bindGroups).toHaveLength(3);
+    expect(createBindGroup).toHaveBeenCalledTimes(3);
+  });
+
+  test('disposes owned bind groups on invalidation and partial creation failure', () => {
+    const fixture = createFixture();
+    const preparation = prepareMaterialBindGroups(fixture.input);
+    if (preparation.status !== 'ready') throw new Error(preparation.diagnostic.message);
+    const cache = new MaterialBindGroupCache();
+    const realized = cache.resolve(preparation.prepared, fixture.device);
+
+    expect(cache.invalidateDeviceGeneration(fixture.device.generation)).toBe(1);
+    expect(realized.bindingSet.bindGroups.every((group) => group.state === 'disposed')).toBe(true);
+
+    const secondFixture = createFixture();
+    const secondPreparation = prepareMaterialBindGroups(secondFixture.input);
+    if (secondPreparation.status !== 'ready') throw new Error(secondPreparation.diagnostic.message);
+    const created = [] as ReturnType<NullDevice['createBindGroup']>[];
+    const nativeCreate = secondFixture.device.createBindGroup.bind(secondFixture.device);
+    vi.spyOn(secondFixture.device, 'createBindGroup').mockImplementation((descriptor) => {
+      if (created.length === 1) throw new Error('native bind group failure');
+      const group = nativeCreate(descriptor);
+      created.push(group);
+      return group;
+    });
+
+    expect(() =>
+      new MaterialBindGroupCache().resolve(secondPreparation.prepared, secondFixture.device)
+    ).toThrow('native bind group failure');
+    expect(created).toHaveLength(1);
+    expect(created[0]?.state).toBe('disposed');
+  });
+});
+
 function createFixture() {
   const device = new NullDevice();
   const plan = bindingPlan();
@@ -132,6 +181,7 @@ function createFixture() {
     resolveBuffer: () => ({ buffer, offset: 0, size: 64 })
   };
   return {
+    device,
     buffer,
     textureView,
     input: {

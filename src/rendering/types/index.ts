@@ -31,12 +31,14 @@ export type { PreparedRenderPipelineArtifact } from './prepared-render-pipeline-
 export type {
   MaterialBindGroupDiagnostic,
   MaterialBindGroupDiagnosticCode,
+  MaterialBindGroupCacheResolution,
   MaterialBindGroupPreparationInput,
   MaterialBindGroupPreparationResult,
   MaterialBindGroupResourceResolver,
   MaterialBufferBindingRequest,
   PreparedMaterialBindGroupDescriptor,
   PreparedMaterialBindGroups,
+  RealizedMaterialBindGroups,
   ValidatedMaterialBufferBinding
 } from './material-bind-group-types';
 export type {
