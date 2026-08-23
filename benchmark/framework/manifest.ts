@@ -284,8 +284,16 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
       domainIds: Object.freeze(['rendering']),
       pathPrefixes: Object.freeze([
         'benchmark/shader-system.bench.ts',
+        'benchmark/shader-system/',
         'benchmark/shader-system-runner.mjs',
         'engine/design/v2/04-rendering/02-shader-system.md',
+        'engine/design/v2/04-rendering/09-pipeline-layout-specialization.md',
+        'src/rendering/binding-layout-',
+        'src/rendering/layout-cache.ts',
+        'src/rendering/types/binding-layout-',
+        'test/rendering/binding-layout-',
+        'test/rendering/layout-cache.test.ts',
+        'test/benchmark/shader-binding-layout.test.ts',
         'src/shader/',
         'test/shader/'
       ]),

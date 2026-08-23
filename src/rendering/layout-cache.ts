@@ -9,7 +9,6 @@ import type {
 
 interface CanonicalPlanRecord {
   readonly plan: BindingLayoutPlan;
-  readonly signature: string;
 }
 
 /** CPU-only cache for canonical binding plans and target-specific lowering descriptions. */
@@ -23,13 +22,10 @@ export class LayoutCache {
   /** Resolves or synchronously lowers descriptor data; this never creates an RHI object. */
   resolve(input: LayoutCacheRequest): LayoutCacheResolution {
     validateRequest(input);
-    const plan = snapshotPlan(input.plan);
-    const signature = JSON.stringify(plan);
-    const existingPlan = this.canonicalPlans.get(plan.id);
-    if (existingPlan !== undefined && existingPlan.signature !== signature)
-      throw new Error(`Binding layout ID collision for ${plan.id}.`);
-    if (existingPlan === undefined) this.canonicalPlans.set(plan.id, { plan, signature });
-    const retainedPlan = existingPlan?.plan ?? plan;
+    const existingPlan = this.canonicalPlans.get(input.plan.id);
+    if (existingPlan !== undefined && existingPlan.plan.hash !== input.plan.hash)
+      throw new Error(`Binding layout ID collision for ${input.plan.id}.`);
+    const retainedPlan = existingPlan?.plan ?? input.plan;
     const key = JSON.stringify([
       retainedPlan.id,
       input.layoutRevision,
@@ -42,13 +38,15 @@ export class LayoutCache {
       this.hitCount += 1;
       return Object.freeze({ status: 'hit', entry: existing });
     }
+    const plan = existingPlan?.plan ?? snapshotPlan(input.plan);
+    if (existingPlan === undefined) this.canonicalPlans.set(plan.id, { plan });
     const entry: LayoutCacheEntry = Object.freeze({
-      plan: retainedPlan,
+      plan,
       layoutRevision: input.layoutRevision,
       featurePolicyHash: input.featurePolicyHash,
       target: input.target,
       deviceGeneration: input.deviceGeneration,
-      lowering: lowerBindingLayoutPlan(retainedPlan, input.target)
+      lowering: lowerBindingLayoutPlan(plan, input.target)
     });
     this.loweredEntries.set(key, entry);
     this.missCount += 1;

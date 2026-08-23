@@ -6,6 +6,7 @@ import {
   parseFluxShader,
   resolveShaderSource
 } from '../src/shader';
+import { runBindingLayoutScenario } from './shader-system/binding-layout-scenario';
 
 const structFields = Array.from({ length: 64 }, (_, index) => `field${index}: vec4<f32>`).join(
   ', '
@@ -27,6 +28,21 @@ bench(
   },
   { iterations: 1, warmupIterations: 0 }
 );
+
+for (const [groups, bindingsPerGroup] of [1, 4, 8].flatMap((groups) =>
+  [4, 16, 64].map((bindingsPerGroup) => [groups, bindingsPerGroup] as const)
+)) {
+  bench(
+    `compile, lower and cache ${groups}x${bindingsPerGroup} binding layouts`,
+    () => {
+      const result = runBindingLayoutScenario({ groups, bindingsPerGroup, cacheHits: 16 });
+      expect(result.reorderEquivalent).toBe(true);
+      expect(result.synchronousRhiCreates).toBe(0);
+      expect(result.unsupportedCount).toBe(1);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
 
 bench(
   'compile and hit the content-addressed cache',
