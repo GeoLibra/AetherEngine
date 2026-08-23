@@ -11,6 +11,7 @@ import {
 import {
   PIPELINE_SUBJECT_OPERATIONS,
   createMaterialPipelineCompatibilityCase,
+  createMaterialBindingCompatibilityCase,
   createParameterEditUploadCase,
   createPipelineBindingResolutionCase
 } from '../../benchmark/material-system/scenarios';
@@ -36,6 +37,24 @@ const repository: MaterialBenchmarkRepositoryState = Object.freeze({
 });
 
 describe('material benchmark profiles and sampling', () => {
+  test('keeps binding compatibility counts and zero side effects exact', () => {
+    for (const instanceCount of [1_000, 10_000]) {
+      const scenario = createMaterialBindingCompatibilityCase({ instanceCount });
+      const reference = scenario.runReference();
+      const subject = scenario.runSubject();
+
+      expect(subject.semantic).toEqual(reference.semantic);
+      expect(subject.counters).toMatchObject({
+        requests: instanceCount,
+        boundItems: instanceCount * 0.9,
+        skippedItems: instanceCount * 0.1,
+        uniqueBindingKeys: 1,
+        synchronousRhiCreates: 0,
+        ownershipTransfers: 0
+      });
+    }
+  });
+
   test('owns one immutable profile map for runner, tests, and artifacts', () => {
     expect(MATERIAL_BENCHMARK_PROFILES).toEqual({
       smoke: { warmupCount: 3, sampleCount: 5, instanceCounts: [100] },

@@ -15,6 +15,11 @@ import type {
   ShaderSamplerBindingEntryManifest,
   ShaderTextureBindingEntryManifest
 } from '../shader/types';
+import type { CanonicalKey } from './pipeline-resolver';
+import {
+  createMaterialBindingLayoutIdentity,
+  type MaterialBindingLayoutIdentityParts
+} from './material-binding-identity';
 
 export type MaterialResourceReference = MaterialTextureReference | MaterialSamplerReference;
 
@@ -51,6 +56,7 @@ export interface CompiledMaterialBindingLayout {
   readonly schemaFingerprint: string;
   readonly shaderLayoutHash: string;
   readonly entries: readonly CompiledMaterialBinding[];
+  readonly identity: CanonicalKey<MaterialBindingLayoutIdentityParts>;
 }
 
 interface ResolvedMaterialResourceBase {
@@ -141,12 +147,16 @@ export function compileMaterialBindingLayout(
     if (field === undefined) throw new Error('Material schema field token is missing.');
     return [compileBinding(field, definition.bindingPath, shaderEntry)];
   });
-  return Object.freeze({
+  const layout = {
     schemaId: schema.id,
     schemaVersion: schema.version,
     schemaFingerprint: schema.fingerprint,
     shaderLayoutHash: shaderManifest.layoutHash,
     entries: Object.freeze(entries)
+  };
+  return Object.freeze({
+    ...layout,
+    identity: createMaterialBindingLayoutIdentity(layout)
   });
 }
 

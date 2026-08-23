@@ -107,9 +107,10 @@ export function createBindingKey(
   return createCanonicalKey(normalized, hasher);
 }
 
-function createCanonicalKey<P>(
+/** Creates a guarded immutable canonical key from already normalized value facts. */
+export function createCanonicalKey<P>(
   normalized: Readonly<P>,
-  hasher: CanonicalKeyHasher
+  hasher: CanonicalKeyHasher = hashCanonicalValue
 ): CanonicalKey<P> {
   const canonicalValue = JSON.stringify(normalized);
   const hash = hasher(canonicalValue);

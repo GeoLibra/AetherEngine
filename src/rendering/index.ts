@@ -17,6 +17,8 @@ export * from './camera-extraction';
 export * from './overlay-reconciler';
 export * from './frame-pipeline';
 export * from './material-bindings';
+export * from './material-binding-identity';
+export * from './material-binding-compatibility';
 export * from './pipeline-resolver';
 export * from './material-cache';
 export * from './material-resolution';

@@ -35,3 +35,11 @@ export type {
   RenderPhaseConstructionSkipCode,
   RenderPhaseUpstreamSkip
 } from './render-phase-types';
+export type {
+  BindingAllocationFacts,
+  BoundMaterialPhaseItem,
+  MaterialBindingCompatibilityRequest,
+  MaterialBindingCompatibilityResult,
+  MaterialBindingCompatibilitySkip,
+  MaterialBindingCompatibilitySkipCode
+} from './material-binding-compatibility-types';
