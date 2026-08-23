@@ -117,6 +117,13 @@ function validateManifest(
             entry.group,
             entry.binding
           );
+        if (entry.kind === 'uniform-buffer' && buffer.access !== 'read')
+          return diagnostic(
+            'invalid-manifest',
+            `Uniform binding ${location} must be read-only.`,
+            entry.group,
+            entry.binding
+          );
       }
     }
   }
@@ -181,6 +188,15 @@ function canonicalEntry(
   if (entry.kind === 'sampler')
     return Object.freeze({ ...location, kind: entry.kind, samplerType: entry.samplerType });
   const buffer = buffers.get(entry.bufferLayoutName)!;
+  if (entry.kind === 'uniform-buffer')
+    return Object.freeze({
+      ...location,
+      kind: entry.kind,
+      access: 'read',
+      minimumByteSize: buffer.byteSize,
+      bufferLayoutHash: buffer.layoutHash,
+      dynamicOffset: dynamicLocations.has(`${entry.group}:${entry.binding}`)
+    });
   return Object.freeze({
     ...location,
     kind: entry.kind,

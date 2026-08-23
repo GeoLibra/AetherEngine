@@ -1,4 +1,13 @@
 export type {
+  BindingLayoutLoweringOptions,
+  BindingLayoutLoweringResult,
+  BindingLayoutLoweringTarget,
+  BindingLayoutUnsupported,
+  BindingLayoutUnsupportedCode,
+  WebGl2BindingLayoutPlan,
+  WebGpuBindingLayoutPlan
+} from './binding-layout-lowering-types';
+export type {
   BindingLayoutCompileOptions,
   BindingLayoutCompileResult,
   BindingLayoutCompiler,

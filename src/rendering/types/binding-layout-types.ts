@@ -14,7 +14,14 @@ export interface BindingLocation {
 
 export type CanonicalBindingLayoutEntry = Readonly<
   | (BindingLocation & {
-      readonly kind: 'uniform-buffer' | 'storage-buffer';
+      readonly kind: 'uniform-buffer';
+      readonly access: 'read';
+      readonly minimumByteSize: number;
+      readonly bufferLayoutHash: string;
+      readonly dynamicOffset: boolean;
+    })
+  | (BindingLocation & {
+      readonly kind: 'storage-buffer';
       readonly access: 'read' | 'read_write';
       readonly minimumByteSize: number;
       readonly bufferLayoutHash: string;

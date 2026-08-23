@@ -22,6 +22,7 @@ export * from './material-binding-compatibility';
 export * from './pipeline-cache';
 export * from './pipeline-availability';
 export * from './binding-layout-compiler';
+export * from './binding-layout-lowering';
 export * from './pipeline-resolver';
 export * from './material-cache';
 export * from './material-resolution';
