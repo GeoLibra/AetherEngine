@@ -27,6 +27,7 @@ export type {
   DeviceLayoutCacheResolution,
   DeviceLayoutRealization
 } from './device-layout-cache-types';
+export type { PreparedRenderPipelineArtifact } from './prepared-render-pipeline-types';
 export type {
   CameraExtractionInput,
   CameraExtractionResult,

@@ -25,6 +25,8 @@ export * from './binding-layout-compiler';
 export * from './binding-layout-lowering';
 export * from './layout-cache';
 export * from './device-layout-cache';
+export * from './prepared-render-pipeline-registry';
+export * from './rhi-pipeline-compiler';
 export * from './pipeline-resolver';
 export * from './material-cache';
 export * from './material-resolution';
