@@ -12,6 +12,7 @@ import {
   PIPELINE_SUBJECT_OPERATIONS,
   createMaterialPipelineCompatibilityCase,
   createMaterialBindingCompatibilityCase,
+  createPipelineCacheResolutionCase,
   createParameterEditUploadCase,
   createPipelineBindingResolutionCase
 } from '../../benchmark/material-system/scenarios';
@@ -334,6 +335,36 @@ describe('versioned material benchmark scenarios', () => {
       uniquePipelineKeys: 32,
       synchronousCompiles: 0,
       staleReuse: 0
+    });
+  });
+
+  test('pipeline cache resolution preserves Queue outcomes and suppresses duplicate work', () => {
+    const scenario = createPipelineCacheResolutionCase({
+      itemCount: 1_000,
+      uniqueKeys: 16,
+      concurrentRequests: 4
+    });
+
+    const reference = scenario.runReference();
+    const subject = scenario.runSubject();
+
+    expect(() => assertMaterialScenarioComparison(scenario, reference, subject)).not.toThrow();
+    expect(subject.counters).toMatchObject({
+      queueItems: 1_000,
+      uniqueKeys: 16,
+      compileRequests: 64,
+      duplicateRequests: 48,
+      compileStarts: 0,
+      synchronousCompiles: 0,
+      stalePublish: 0,
+      staleReuse: 0
+    });
+    expect(subject.semantic).toMatchObject({
+      readyItems: 250,
+      fallbackItems: 250,
+      compilingSkips: 0,
+      errorSkips: 250,
+      staleSkips: 250
     });
   });
 

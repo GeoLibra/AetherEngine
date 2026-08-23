@@ -41,6 +41,7 @@ import type {
 } from './types';
 import { createMaterialPipelineCompatibilityCase } from './compatibility-scenario';
 import { createMaterialBindingCompatibilityCase } from './binding-compatibility-scenario';
+import { createPipelineCacheResolutionCase } from './pipeline-cache-scenario';
 
 export interface ParameterEditUploadOptions {
   readonly fieldCount: 8 | 32 | 64;
@@ -100,16 +101,26 @@ export function createMaterialScenarioCases(
   const bindingCompatibilityCases = instanceCounts.map((instanceCount) =>
     createMaterialBindingCompatibilityCase({ instanceCount })
   );
+  const pipelineCacheCases = instanceCounts.map((instanceCount) => {
+    const itemCount = Math.max(1_000, instanceCount);
+    return createPipelineCacheResolutionCase({
+      itemCount,
+      uniqueKeys: itemCount >= 100_000 ? 4_096 : itemCount >= 10_000 ? 256 : 16,
+      concurrentRequests: profile === 'nightly' ? 16 : profile === 'standard' ? 4 : 1
+    });
+  });
   return Object.freeze([
     ...parameterCases,
     ...pipelineCases,
     ...compatibilityCases,
-    ...bindingCompatibilityCases
+    ...bindingCompatibilityCases,
+    ...pipelineCacheCases
   ]);
 }
 
 export { createMaterialPipelineCompatibilityCase } from './compatibility-scenario';
 export { createMaterialBindingCompatibilityCase } from './binding-compatibility-scenario';
+export { createPipelineCacheResolutionCase } from './pipeline-cache-scenario';
 
 export function createParameterEditUploadCase(
   options: ParameterEditUploadOptions
