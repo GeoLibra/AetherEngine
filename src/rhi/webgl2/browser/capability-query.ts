@@ -26,6 +26,8 @@ export function queryWebGL2Precision(gl: BrowserWebGL2Context): Readonly<Record<
   });
 }
 
+export const COLOR_BUFFER_FLOAT_EXTENSION = 'EXT_color_buffer_float';
+
 export function queryWebGL2Formats(
   gl: BrowserWebGL2Context,
   extensions: ReadonlySet<string>
@@ -35,7 +37,7 @@ export function queryWebGL2Formats(
   const formats = new Map<GPUTextureFormat, FormatCapabilities>();
   formats.set('rgba8unorm', format(true, true, true, true, sampleCounts));
   formats.set('depth24plus', format(false, false, true, false, sampleCounts));
-  if (extensions.has('EXT_color_buffer_float')) {
+  if (extensions.has(COLOR_BUFFER_FLOAT_EXTENSION)) {
     formats.set('rgba16float', format(true, true, true, false, sampleCounts));
   }
   return formats;

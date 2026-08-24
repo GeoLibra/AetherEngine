@@ -1,4 +1,5 @@
 import type { WebGL2NativeContextPort } from '../types';
+import { WEBGL2_CLIP_CONTROL_EXTENSION } from '../pipeline/clip-depth';
 import {
   queryWebGL2Extensions,
   queryWebGL2Formats,
@@ -32,9 +33,9 @@ export function createBrowserWebGL2ContextPort(
   if (!isContext(native)) return null;
   const gl = native;
   const extensions = queryWebGL2Extensions(gl);
-  if (options.clipControl === false) extensions.delete('EXT_clip_control');
-  const clipControl = extensions.has('EXT_clip_control')
-    ? gl.getExtension?.('EXT_clip_control')
+  if (options.clipControl === false) extensions.delete(WEBGL2_CLIP_CONTROL_EXTENSION);
+  const clipControl = extensions.has(WEBGL2_CLIP_CONTROL_EXTENSION)
+    ? gl.getExtension?.(WEBGL2_CLIP_CONTROL_EXTENSION)
     : undefined;
   initializeWebGL2StateDefaults(gl);
   let resolveLost!: (info: { reason?: string; message?: string }) => void;
@@ -78,7 +79,7 @@ export function createBrowserWebGL2ContextPort(
           setClipControl(): void {
             const method = Reflect.get(clipControl, 'clipControlEXT');
             if (typeof method !== 'function')
-              throw new Error('EXT_clip_control does not expose clipControlEXT.');
+              throw new Error(`${WEBGL2_CLIP_CONTROL_EXTENSION} does not expose clipControlEXT.`);
             Reflect.apply(method, clipControl, [
               extensionConstant(clipControl, gl, 'LOWER_LEFT_EXT', 'LOWER_LEFT'),
               extensionConstant(clipControl, gl, 'ZERO_TO_ONE_EXT', 'ZERO_TO_ONE')
