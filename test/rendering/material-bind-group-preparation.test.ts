@@ -79,6 +79,50 @@ describe('prepareMaterialBindGroups', () => {
     });
   });
 
+  test('requires the device layout realization to identify the same canonical plan', () => {
+    const fixture = createFixture();
+    const identity = fixture.input.deviceLayout as unknown as Readonly<{
+      bindingLayoutId: string;
+      bindingLayoutHash: string;
+    }>;
+
+    expect(identity.bindingLayoutId).toBe(fixture.input.plan.id);
+    expect(identity.bindingLayoutHash).toBe(fixture.input.plan.hash);
+    expect(
+      prepareMaterialBindGroups({
+        ...fixture.input,
+        deviceLayout: {
+          ...fixture.input.deviceLayout,
+          bindingLayoutHash: 'another-canonical-layout'
+        } as typeof fixture.input.deviceLayout
+      })
+    ).toMatchObject({
+      status: 'unsupported',
+      diagnostic: { code: 'binding-layout-incompatible' }
+    });
+  });
+
+  test('returns typed diagnostics for malformed buffer handles and non-finite ranges', () => {
+    const fixture = createFixture();
+    const missingBuffer = {
+      ...fixture.input.resolver,
+      resolveBuffer: () => ({ buffer: null, offset: 0, size: 64 })
+    } as unknown as MaterialBindGroupResourceResolver;
+    const invalidRange = {
+      ...fixture.input.resolver,
+      resolveBuffer: () => ({ buffer: fixture.buffer, offset: Number.NaN, size: Number.NaN })
+    } as unknown as MaterialBindGroupResourceResolver;
+
+    expect(prepareMaterialBindGroups({ ...fixture.input, resolver: missingBuffer })).toMatchObject({
+      status: 'unsupported',
+      diagnostic: { code: 'binding-resource-missing', group: 0, binding: 0 }
+    });
+    expect(prepareMaterialBindGroups({ ...fixture.input, resolver: invalidRange })).toMatchObject({
+      status: 'unsupported',
+      diagnostic: { code: 'binding-buffer-range-invalid', group: 0, binding: 0 }
+    });
+  });
+
   test('rejects a malformed resolver that returns the wrong RHI resource kind', () => {
     const fixture = createFixture();
     const malformed = {

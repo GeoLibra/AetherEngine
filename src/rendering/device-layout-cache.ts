@@ -8,6 +8,7 @@ import { lowerBindingLayoutPlan } from './binding-layout-lowering';
 import type {
   DeviceLayoutCacheResolution,
   DeviceLayoutRealization,
+  BindingLayoutPlan,
   LayoutCacheEntry,
   WebGpuBindingLayoutPlan
 } from './types';
@@ -59,7 +60,12 @@ export class DeviceLayoutCache {
           device.createBindGroupLayout(descriptors.get(group) ?? EMPTY_BIND_GROUP_LAYOUT_DESCRIPTOR)
         );
       const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts });
-      const realization = publishRealization(bindGroupLayouts, pipelineLayout);
+      const realization = publishRealization(
+        entry.plan.id,
+        entry.plan.hash,
+        bindGroupLayouts,
+        pipelineLayout
+      );
       this.records.set(key, { deviceGeneration: device.generation, realization });
       return Object.freeze({ status: 'miss', layout: realization });
     } catch (error) {
@@ -102,10 +108,14 @@ function portableDescriptors(entry: LayoutCacheEntry): Map<number, GPUBindGroupL
 }
 
 function publishRealization(
+  bindingLayoutId: BindingLayoutPlan['id'],
+  bindingLayoutHash: string,
   bindGroupLayouts: RHIBindGroupLayout[],
   pipelineLayout: RHIPipelineLayout
 ): DeviceLayoutRealization {
   return Object.freeze({
+    bindingLayoutId,
+    bindingLayoutHash,
     bindGroupLayouts: Object.freeze([...bindGroupLayouts]),
     pipelineLayout
   });

@@ -82,6 +82,16 @@ function validateContext(
       0
     );
   if (
+    input.deviceLayout.bindingLayoutId !== input.plan.id ||
+    input.deviceLayout.bindingLayoutHash !== input.plan.hash
+  )
+    return diagnostic(
+      'binding-layout-incompatible',
+      'Device layout does not identify the canonical binding plan.',
+      0,
+      0
+    );
+  if (
     input.bindingKey.parts.deviceGeneration !== input.resolver.deviceGeneration ||
     input.deviceLayout.pipelineLayout.generation !== input.resolver.deviceGeneration ||
     input.deviceLayout.pipelineLayout.state !== 'live' ||
@@ -119,25 +129,42 @@ function resolveEntry(
       ringGeneration: input.bindingKey.parts.ringGeneration,
       deviceGeneration: input.bindingKey.parts.deviceGeneration
     });
-    if (resource === undefined)
+    if (!isRecord(resource) || !('buffer' in resource) || resource.buffer == null)
       return diagnostic(
         'binding-resource-missing',
         'Material buffer allocation is unavailable.',
         entry.group,
         entry.binding
       );
-    const resourceIssue = validateResource(resource.buffer, input.resolver.deviceGeneration, entry);
+    const buffer = resource.buffer;
+    const resourceIssue = validateResource(buffer, input.resolver.deviceGeneration, entry);
     if (resourceIssue !== undefined) return resourceIssue;
+    if (!isRhiBuffer(buffer))
+      return diagnostic(
+        'binding-resource-kind-mismatch',
+        'Material binding expects a buffer RHI resource.',
+        entry.group,
+        entry.binding
+      );
     const offset = resource.offset ?? 0;
-    const size = resource.size ?? resource.buffer.size - offset;
-    if (offset < 0 || size < entry.minimumByteSize || offset + size > resource.buffer.size)
+    const size = resource.size ?? buffer.size - offset;
+    if (
+      !Number.isSafeInteger(offset) ||
+      !Number.isSafeInteger(size) ||
+      offset < 0 ||
+      size < entry.minimumByteSize ||
+      offset + size > buffer.size
+    )
       return diagnostic(
         'binding-buffer-range-invalid',
         'Material buffer allocation does not cover the canonical minimum binding size.',
         entry.group,
         entry.binding
       );
-    return Object.freeze({ binding: entry.binding, resource: Object.freeze({ ...resource }) });
+    return Object.freeze({
+      binding: entry.binding,
+      resource: Object.freeze({ buffer, offset, size })
+    });
   }
   const facts = resources.get(locationKey(entry));
   if (facts === undefined)
@@ -151,7 +178,7 @@ function resolveEntry(
     entry.kind === 'texture'
       ? input.resolver.resolveTextureView(facts)
       : input.resolver.resolveSampler(facts);
-  if (resource === undefined)
+  if (resource == null)
     return diagnostic(
       'binding-resource-missing',
       'Material RHI resource is unavailable.',
@@ -164,10 +191,17 @@ function resolveEntry(
 }
 
 function validateResource(
-  resource: RHIResource,
+  resource: unknown,
   deviceGeneration: number,
   entry: CanonicalBindingLayoutEntry
 ): MaterialBindGroupDiagnostic | undefined {
+  if (!isRecord(resource))
+    return diagnostic(
+      'binding-resource-missing',
+      'Material RHI resource handle is missing or malformed.',
+      entry.group,
+      entry.binding
+    );
   const expectedKind =
     entry.kind === 'texture' ? 'texture-view' : entry.kind === 'sampler' ? 'sampler' : 'buffer';
   if (resource.kind !== expectedKind)
@@ -185,6 +219,17 @@ function validateResource(
       entry.binding
     );
   return undefined;
+}
+
+function isRhiBuffer(value: unknown): value is RHIResource & {
+  readonly kind: 'buffer';
+  readonly size: number;
+} {
+  return isRecord(value) && value.kind === 'buffer' && Number.isSafeInteger(value.size);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function locationKey(location: { readonly group: number; readonly binding: number }): string {
