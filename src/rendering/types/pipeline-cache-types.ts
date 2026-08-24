@@ -76,7 +76,9 @@ export interface PipelineReadyLease {
   readonly pipeline: RHIRenderPipeline;
   readonly deviceGeneration: number;
   readonly released: boolean;
+  /** Keeps the pipeline alive until the pending submission becomes terminal. */
   retain(submission: RHISubmission): void;
+  /** Releases local ownership. This operation is idempotent. */
   release(): void;
 }
 

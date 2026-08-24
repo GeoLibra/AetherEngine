@@ -368,6 +368,9 @@ describe('PipelineCache ready ownership', () => {
     expect(cache.acquireReady('pipeline:next')?.pipeline).toBe(nextPipeline);
     expect(oldPipeline.dispose).toHaveBeenCalledOnce();
     expect(nextPipeline.dispose).not.toHaveBeenCalled();
+    expect(() => cache.request(requestWith({ requestRevision: 2 }))).toThrow(
+      /device generation has been invalidated/i
+    );
   });
 
   it('does not compile or wait when a ready lease is unavailable', () => {

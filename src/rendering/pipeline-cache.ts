@@ -46,6 +46,7 @@ export function createPipelineCompileRequest(
 /** CPU-side pipeline availability cache queried synchronously by Queue. */
 export class PipelineCache {
   private readonly records = new Map<string, PipelineCacheRecord>();
+  private readonly invalidatedDeviceGenerations = new Set<number>();
   private nextRequestId = 1;
   private duplicateRequests = 0;
   private compileStarts = 0;
@@ -111,6 +112,8 @@ export class PipelineCache {
    */
   request(input: PipelineCompileRequest): PipelineInterestLease {
     const request = createPipelineCompileRequest(input);
+    if (this.invalidatedDeviceGenerations.has(request.deviceGeneration))
+      throw new Error('Pipeline cache device generation has been invalidated.');
     let record = this.records.get(request.pipelineKey);
     if (record === undefined || record.state.kind === 'stale') record = this.queue(request);
     else if (!sameRequestIdentity(record.request, request))
@@ -136,6 +139,7 @@ export class PipelineCache {
   /** Invalidates all cache records owned by one lost device generation. */
   invalidateDeviceGeneration(deviceGeneration: number): number {
     validateInteger(deviceGeneration, 'device generation');
+    this.invalidatedDeviceGenerations.add(deviceGeneration);
     let invalidated = 0;
     for (const [pipelineKey, record] of [...this.records]) {
       if (record.request.deviceGeneration !== deviceGeneration || record.state.kind === 'stale')

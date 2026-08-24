@@ -72,6 +72,7 @@ export interface RealizedMaterialBindGroups {
   readonly deviceGeneration: number;
 }
 
+/** Cache hit classification plus the ownership required to consume the realized binding set. */
 export interface MaterialBindGroupCacheResolution {
   readonly status: 'hit' | 'miss';
   readonly bindingSet: RealizedMaterialBindGroups;
@@ -82,7 +83,9 @@ export interface MaterialBindGroupCacheResolution {
 export interface MaterialBindGroupLease {
   readonly bindingSet: RealizedMaterialBindGroups;
   readonly released: boolean;
+  /** Keeps every bind group in the set alive until the pending submission becomes terminal. */
   retain(submission: RHISubmission): void;
+  /** Releases local ownership. This operation is idempotent. */
   release(): void;
 }
 
