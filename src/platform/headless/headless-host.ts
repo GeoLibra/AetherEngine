@@ -1,15 +1,9 @@
-import { HeadlessRunner } from '../app/runner';
-import type { MonotonicClock } from '../core/clock';
-import { HostBoundaryRunner } from './host-runner';
-import { MutablePlatformServiceRegistry } from './services';
-import type {
-  Host,
-  HostState,
-  RunnerOptions,
-  WindowId,
-  WindowOptions
-} from './types';
-import { PlatformWindow } from './window';
+import { HeadlessRunner } from '../../app/runner';
+import type { MonotonicClock } from '../../core/clock';
+import { HostBoundaryRunner } from '../core/host-runner';
+import { MutablePlatformServiceRegistry } from '../core/services';
+import type { Host, HostState, RunnerOptions, WindowId, WindowOptions } from '../types';
+import { PlatformWindow } from '../core/window';
 
 export interface HeadlessHostOptions {
   readonly startTime?: number;

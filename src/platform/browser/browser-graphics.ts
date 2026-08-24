@@ -1,16 +1,16 @@
-import { WebGPUAdapter } from '../rhi/webgpu/adapter';
-import { WebGPUSurface } from '../rhi/webgpu/surface';
-import { createBrowserWebGPUCanvasContextPort } from '../rhi/webgpu/browser/canvas-context-port';
+import { WebGPUAdapter } from '../../rhi/webgpu/adapter';
+import { WebGPUSurface } from '../../rhi/webgpu/surface';
+import { createBrowserWebGPUCanvasContextPort } from '../../rhi/webgpu/browser/canvas-context-port';
 import {
   getBrowserWebGPUEnvironment,
   requestBrowserWebGPUAdapter,
   type BrowserWebGPUGlobalObject
-} from '../rhi/webgpu/browser';
-import type { RHISurfaceConfiguration } from '../rhi/contracts/surface';
-import type { SurfaceTarget } from './types';
-import { WebGL2Adapter } from '../rhi/webgl2/adapter';
-import { createBrowserWebGL2ContextPort, WebGL2BrowserSurface } from '../rhi/webgl2/browser';
-import type { BrowserWebGL2Canvas } from '../rhi/webgl2/browser';
+} from '../../rhi/webgpu/browser';
+import type { RHISurfaceConfiguration } from '../../rhi/contracts/surface';
+import type { SurfaceTarget } from '../types';
+import { WebGL2Adapter } from '../../rhi/webgl2/adapter';
+import { createBrowserWebGL2ContextPort, WebGL2BrowserSurface } from '../../rhi/webgl2/browser';
+import type { BrowserWebGL2Canvas } from '../../rhi/webgl2/browser';
 import { BrowserGraphicsBootstrapError } from './browser-graphics-error';
 import type {
   BrowserGraphicsAttempt,
@@ -19,7 +19,7 @@ import type {
   BrowserGraphicsOptions,
   BrowserGraphicsSession,
   PhysicalSize
-} from './types';
+} from '../types';
 
 export async function createBrowserGraphics(
   options: BrowserGraphicsOptions

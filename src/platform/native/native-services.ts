@@ -1,9 +1,9 @@
-import type { NativeNegotiatedHandshake } from '../native-runtime/types';
+import type { NativeNegotiatedHandshake } from '../../native-runtime/types';
 import type {
   NativeServiceModule,
   NativeServiceUnavailableDiagnostic
-} from '../native-runtime/types';
-import { createPlatformServiceToken, MutablePlatformServiceRegistry } from './services';
+} from '../../native-runtime/types';
+import { createPlatformServiceToken, MutablePlatformServiceRegistry } from '../core/services';
 import type {
   NativeAudioService,
   NativeClipboardService,
@@ -16,7 +16,7 @@ import type {
   NativeSensorPort,
   NativeSensorsService,
   NativeXrService
-} from './types';
+} from '../types';
 
 export const NativeFilesystemServiceToken =
   createPlatformServiceToken<NativeFilesystemService>('native.filesystem');

@@ -41,6 +41,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'engine/design/v2/03-platform/02-rhi-contract.md',
         'engine/design/v2/03-platform/03-webgpu-backend.md',
         'engine/design/v2/03-platform/04-webgl2-backend.md',
+        'src/platform/browser/',
         'src/platform/browser-graphics',
         'src/rhi/'
       ])
@@ -231,6 +232,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'engine/design/v2/03-platform/02-rhi-contract.md',
         'engine/design/v2/03-platform/03-webgpu-backend.md',
         'engine/design/v2/03-platform/04-webgl2-backend.md',
+        'src/platform/browser/',
         'src/platform/browser-graphics',
         'src/rhi/',
         'test/rhi/'

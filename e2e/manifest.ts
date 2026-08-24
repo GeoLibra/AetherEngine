@@ -24,6 +24,7 @@ export const E2E_ROUTING_RULES = Object.freeze([
     prefixes: Object.freeze([
       'src/rhi/webgpu/browser/',
       'test/rhi/webgpu/webgpu-browser',
+      'src/platform/browser/',
       'src/platform/browser-graphics',
       'test/platform/platform-browser-graphics'
     ]),

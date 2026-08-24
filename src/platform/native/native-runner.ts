@@ -1,5 +1,5 @@
-import type { AppExit, Runner, RunnerContext } from '../app/runner';
-import type { NativeFramePort } from './types';
+import type { AppExit, Runner, RunnerContext } from '../../app/runner';
+import type { NativeFramePort } from '../types';
 
 export interface NativeRunnerBoundary {
   dispatchFrame(run: () => void): Promise<void>;

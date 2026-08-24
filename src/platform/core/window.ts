@@ -1,4 +1,4 @@
-import { DEFAULT_WINDOW_TITLE } from './constants';
+import { DEFAULT_WINDOW_TITLE } from '../constants';
 import type {
   HostWindow,
   SurfaceTarget,
@@ -7,12 +7,8 @@ import type {
   WindowMetricsUpdate,
   WindowOptions,
   WindowState
-} from './types';
-import {
-  createWindowMetrics,
-  equalWindowMetrics,
-  updateWindowMetrics
-} from './window-metrics';
+} from '../types';
+import { createWindowMetrics, equalWindowMetrics, updateWindowMetrics } from './window-metrics';
 
 export class PlatformWindow implements HostWindow {
   readonly title: string;
@@ -43,7 +39,9 @@ export class PlatformWindow implements HostWindow {
     return this.currentGeneration;
   }
 
-  get surfaceTarget(): SurfaceTarget | undefined { return this.currentSurfaceTarget; }
+  get surfaceTarget(): SurfaceTarget | undefined {
+    return this.currentSurfaceTarget;
+  }
 
   get state(): WindowState {
     return this.currentState;
@@ -71,17 +69,16 @@ export class PlatformWindow implements HostWindow {
     if (this.currentState === 'closed') {
       throw new Error(`Cannot update closed window ${this.id}.`);
     }
-    this.pendingMetrics = updateWindowMetrics(
-      this.pendingMetrics ?? this.currentMetrics,
-      update
-    );
+    this.pendingMetrics = updateWindowMetrics(this.pendingMetrics ?? this.currentMetrics, update);
   }
 
   commitFrameBoundary(): boolean {
     const pending = this.pendingMetrics;
     this.pendingMetrics = undefined;
-    const metricsChanged = pending !== undefined && !equalWindowMetrics(this.currentMetrics, pending);
-    const surfaceChanged = this.hasPendingSurface && this.pendingSurfaceTarget !== this.currentSurfaceTarget;
+    const metricsChanged =
+      pending !== undefined && !equalWindowMetrics(this.currentMetrics, pending);
+    const surfaceChanged =
+      this.hasPendingSurface && this.pendingSurfaceTarget !== this.currentSurfaceTarget;
     if (metricsChanged) this.currentMetrics = pending;
     if (surfaceChanged) this.currentSurfaceTarget = this.pendingSurfaceTarget;
     this.pendingSurfaceTarget = undefined;

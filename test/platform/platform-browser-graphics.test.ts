@@ -3,7 +3,7 @@ import {
   BrowserGraphicsBootstrapError as PublicBrowserGraphicsBootstrapError,
   createBrowserGraphics
 } from '../../src';
-import { BrowserGraphicsBootstrapError } from '../../src/platform/browser-graphics-error';
+import { BrowserGraphicsBootstrapError } from '../../src/platform/browser/browser-graphics-error';
 
 describe('browser graphics bootstrap', () => {
   test('preserves the bootstrap error public runtime identity', () => {

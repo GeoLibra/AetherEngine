@@ -1,4 +1,4 @@
-import type { AppExit, Runner, RunnerContext } from '../app/runner';
+import type { AppExit, Runner, RunnerContext } from '../../app/runner';
 
 /** Inserts Host-owned state publication immediately before each App frame. */
 export class HostBoundaryRunner implements Runner {

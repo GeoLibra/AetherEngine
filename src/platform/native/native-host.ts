@@ -1,8 +1,8 @@
-import type { NativeRuntimeController } from '../native-runtime/runtime';
-import { NativeLifecycleCoordinator } from '../native-runtime/lifecycle';
-import type { NativeBackgroundPolicy } from '../native-runtime/types';
-import { MutablePlatformServiceRegistry } from './services';
-import { PlatformWindow } from './window';
+import type { NativeRuntimeController } from '../../native-runtime/runtime';
+import { NativeLifecycleCoordinator } from '../../native-runtime/lifecycle';
+import type { NativeBackgroundPolicy } from '../../native-runtime/types';
+import { MutablePlatformServiceRegistry } from '../core/services';
+import { PlatformWindow } from '../core/window';
 import { NativeRunner } from './native-runner';
 import type {
   Host,
@@ -12,7 +12,7 @@ import type {
   RunnerOptions,
   WindowId,
   WindowOptions
-} from './types';
+} from '../types';
 
 interface NativeWindowLifecycle {
   closingFromPort: boolean;

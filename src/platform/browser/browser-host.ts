@@ -1,7 +1,7 @@
-import { BrowserRunner, type AnimationFrameHost } from '../app/runner';
-import type { MonotonicClock } from '../core/clock';
-import { HostBoundaryRunner } from './host-runner';
-import { MutablePlatformServiceRegistry } from './services';
+import { BrowserRunner, type AnimationFrameHost } from '../../app/runner';
+import type { MonotonicClock } from '../../core/clock';
+import { HostBoundaryRunner } from '../core/host-runner';
+import { MutablePlatformServiceRegistry } from '../core/services';
 import type {
   Host,
   HostState,
@@ -10,8 +10,8 @@ import type {
   WindowId,
   WindowMetricsUpdate,
   WindowOptions
-} from './types';
-import { PlatformWindow } from './window';
+} from '../types';
+import { PlatformWindow } from '../core/window';
 
 export interface BrowserWindowPort {
   readonly surfaceTarget?: SurfaceTarget;
@@ -148,7 +148,10 @@ function rollbackWindowSetup(window: PlatformWindow, setupError: unknown, hostNa
   try {
     window.close();
   } catch (cleanupError) {
-    throw new AggregateError([setupError, cleanupError], `${hostName} window setup and cleanup failed.`);
+    throw new AggregateError(
+      [setupError, cleanupError],
+      `${hostName} window setup and cleanup failed.`
+    );
   }
   throw setupError;
 }
