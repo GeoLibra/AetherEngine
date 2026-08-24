@@ -31,6 +31,7 @@ export * from './material-bind-group-preparation';
 export * from './material-bind-group-cache';
 export * from './pipeline-resolver';
 export * from './material-cache';
+export * from './submission-retained-value';
 export * from './material-resolution';
 export * from './material-pipeline-compatibility';
 export * from './lighting';
