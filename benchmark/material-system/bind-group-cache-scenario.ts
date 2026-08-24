@@ -59,6 +59,7 @@ function runSubject(
     const resolution = cache.resolve(prepared, fixture.device);
     if (resolution.status === 'hit') cacheHits += 1;
     else cacheMisses += 1;
+    resolution.lease.release();
   }
   cache.invalidateDeviceGeneration(fixture.device.generation);
   return observation(

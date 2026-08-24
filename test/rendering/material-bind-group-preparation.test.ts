@@ -9,6 +9,7 @@ import {
   type MaterialBindGroupResourceResolver
 } from '../../src/rendering';
 import { NullDevice } from '../../src/rhi';
+import type { RHISubmission, SubmissionResult } from '../../src/rhi/contracts';
 
 const BUFFER_USAGE_UNIFORM = 8;
 const TEXTURE_USAGE_BINDING = 4;
@@ -153,6 +154,8 @@ describe('MaterialBindGroupCache', () => {
     expect(second.bindingSet).toBe(first.bindingSet);
     expect(first.bindingSet.bindGroups).toHaveLength(3);
     expect(createBindGroup).toHaveBeenCalledTimes(3);
+    first.lease.release();
+    second.lease.release();
   });
 
   test('disposes owned bind groups on invalidation and partial creation failure', () => {
@@ -163,6 +166,8 @@ describe('MaterialBindGroupCache', () => {
     const realized = cache.resolve(preparation.prepared, fixture.device);
 
     expect(cache.invalidateDeviceGeneration(fixture.device.generation)).toBe(1);
+    expect(realized.bindingSet.bindGroups.every((group) => group.state === 'live')).toBe(true);
+    realized.lease.release();
     expect(realized.bindingSet.bindGroups.every((group) => group.state === 'disposed')).toBe(true);
 
     const secondFixture = createFixture();
@@ -183,7 +188,53 @@ describe('MaterialBindGroupCache', () => {
     expect(created).toHaveLength(1);
     expect(created[0]?.state).toBe('disposed');
   });
+
+  test('defers device-loss disposal until a retained submission becomes terminal', async () => {
+    const fixture = createFixture();
+    const preparation = prepareMaterialBindGroups(fixture.input);
+    if (preparation.status !== 'ready') throw new Error(preparation.diagnostic.message);
+    const cache = new MaterialBindGroupCache();
+    const resolution = cache.resolve(preparation.prepared, fixture.device);
+    const submission = deferredSubmission(20);
+    resolution.lease.retain(submission.value);
+
+    cache.invalidateDeviceGeneration(fixture.device.generation);
+    resolution.lease.release();
+
+    expect(() => cache.resolve(preparation.prepared, fixture.device)).toThrow(
+      /device generation has been invalidated/i
+    );
+    expect(resolution.bindingSet.bindGroups.every((group) => group.state === 'live')).toBe(true);
+    submission.resolve({ status: 'device-lost' });
+    await submission.value.done;
+    await Promise.resolve();
+    expect(resolution.bindingSet.bindGroups.every((group) => group.state === 'disposed')).toBe(
+      true
+    );
+  });
 });
+
+function deferredSubmission(id: number) {
+  let status: RHISubmission['status'] = 'pending';
+  let resolvePromise!: (result: SubmissionResult) => void;
+  const done = new Promise<SubmissionResult>((resolve) => {
+    resolvePromise = resolve;
+  });
+  const value: RHISubmission = {
+    id,
+    get status() {
+      return status;
+    },
+    done
+  };
+  return {
+    value,
+    resolve(result: SubmissionResult) {
+      status = result.status;
+      resolvePromise(result);
+    }
+  };
+}
 
 function createFixture() {
   const device = new NullDevice();

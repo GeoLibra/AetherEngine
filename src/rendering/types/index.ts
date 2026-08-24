@@ -32,6 +32,7 @@ export type {
   MaterialBindGroupDiagnostic,
   MaterialBindGroupDiagnosticCode,
   MaterialBindGroupCacheResolution,
+  MaterialBindGroupLease,
   MaterialBindGroupPreparationInput,
   MaterialBindGroupPreparationResult,
   MaterialBindGroupResourceResolver,

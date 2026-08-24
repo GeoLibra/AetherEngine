@@ -6,6 +6,7 @@ import type {
   RHISampler,
   RHITextureView
 } from '../../rhi/contracts';
+import type { RHISubmission } from '../../rhi/contracts';
 import type { DeviceLayoutRealization } from './device-layout-cache-types';
 import type { BindingLayoutPlan, BindingLocation } from './binding-layout-types';
 import type { BindingKeyParts, BindingResourceKeyParts, CanonicalKey } from '../pipeline-resolver';
@@ -74,6 +75,15 @@ export interface RealizedMaterialBindGroups {
 export interface MaterialBindGroupCacheResolution {
   readonly status: 'hit' | 'miss';
   readonly bindingSet: RealizedMaterialBindGroups;
+  readonly lease: MaterialBindGroupLease;
+}
+
+/** Submission-safe ownership of one complete realized material binding set. */
+export interface MaterialBindGroupLease {
+  readonly bindingSet: RealizedMaterialBindGroups;
+  readonly released: boolean;
+  retain(submission: RHISubmission): void;
+  release(): void;
 }
 
 /** Narrows a buffer binding after public-boundary validation. */
