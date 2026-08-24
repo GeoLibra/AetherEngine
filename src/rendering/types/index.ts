@@ -97,7 +97,8 @@ export type {
   PipelineCompileSuccess,
   PipelineCompiler,
   PipelineInterestLease,
-  PipelineInvalidationReason
+  PipelineInvalidationReason,
+  PipelineReadyLease
 } from './pipeline-cache-types';
 export type {
   AvailablePipelinePhaseItem,

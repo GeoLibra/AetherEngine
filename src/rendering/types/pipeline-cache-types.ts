@@ -1,4 +1,5 @@
 import type { RHIRenderPipeline } from '../../rhi/contracts';
+import type { RHISubmission } from '../../rhi/contracts';
 
 /** Stable facts that identify one asynchronous pipeline compile request. */
 export interface PipelineCompileRequest {
@@ -66,6 +67,16 @@ export interface PipelineInterestLease {
   readonly pipelineKey: string;
   readonly requestId: string;
   readonly released: boolean;
+  release(): void;
+}
+
+/** Submission-safe ownership of one currently ready render pipeline. */
+export interface PipelineReadyLease {
+  readonly pipelineKey: string;
+  readonly pipeline: RHIRenderPipeline;
+  readonly deviceGeneration: number;
+  readonly released: boolean;
+  retain(submission: RHISubmission): void;
   release(): void;
 }
 

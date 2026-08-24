@@ -5,8 +5,10 @@ import type {
   PipelineCompileRequest,
   PipelineCompiler,
   PipelineInterestLease,
-  PipelineInvalidationReason
+  PipelineInvalidationReason,
+  PipelineReadyLease
 } from './types';
+import { SubmissionRetainedValue } from './submission-retained-value';
 
 const ABSENT_PIPELINE_STATE: PipelineCacheEntryState = Object.freeze({ kind: 'absent' });
 
@@ -15,6 +17,12 @@ interface PipelineCacheRecord {
   readonly requestId: string;
   state: PipelineCacheEntryState;
   interests: number;
+  readyRetention?: SubmissionRetainedValue<PipelineCacheReadyValue>;
+}
+
+interface PipelineCacheReadyValue {
+  readonly pipeline: Extract<PipelineCacheEntryState, { readonly kind: 'ready' }>['pipeline'];
+  readonly deviceGeneration: number;
 }
 
 /**
@@ -71,6 +79,31 @@ export class PipelineCache {
   }
 
   /**
+   * Acquires submission-safe ownership of a ready pipeline without compiling or waiting.
+   *
+   * @returns A lease only while the exact cache record remains ready.
+   * @throws When the canonical pipeline key is empty.
+   */
+  acquireReady(pipelineKey: string): PipelineReadyLease | undefined {
+    validateLookupKey(pipelineKey);
+    const record = this.records.get(pipelineKey);
+    if (record?.state.kind !== 'ready') return undefined;
+    const retainedLease = record.readyRetention?.acquire();
+    if (retainedLease === undefined) return undefined;
+    const { pipeline, deviceGeneration } = retainedLease.value;
+    return Object.freeze({
+      pipelineKey,
+      pipeline,
+      deviceGeneration,
+      get released() {
+        return retainedLease.released;
+      },
+      retain: retainedLease.retain,
+      release: retainedLease.release
+    });
+  }
+
+  /**
    * Coalesces an asynchronous compile request and returns an idempotent interest lease.
    * The compiler is invoked in a later microtask, never in this Queue-facing call.
    *
@@ -90,12 +123,27 @@ export class PipelineCache {
 
   /** Marks an existing entry stale so a later request can establish a new identity. */
   invalidate(pipelineKey: string, reason: PipelineInvalidationReason): void {
-    if (typeof pipelineKey !== 'string' || !pipelineKey.trim())
-      throw new Error('Pipeline cache invalidation key must be non-empty.');
+    validateLookupKey(pipelineKey, 'invalidation key');
     if (!isInvalidationReason(reason))
       throw new Error('Pipeline cache invalidation reason is invalid.');
     const record = this.records.get(pipelineKey);
-    if (record !== undefined) record.state = Object.freeze({ kind: 'stale', reason });
+    if (record !== undefined) {
+      record.state = Object.freeze({ kind: 'stale', reason });
+      record.readyRetention?.retire();
+    }
+  }
+
+  /** Invalidates all cache records owned by one lost device generation. */
+  invalidateDeviceGeneration(deviceGeneration: number): number {
+    validateInteger(deviceGeneration, 'device generation');
+    let invalidated = 0;
+    for (const [pipelineKey, record] of [...this.records]) {
+      if (record.request.deviceGeneration !== deviceGeneration || record.state.kind === 'stale')
+        continue;
+      this.invalidate(pipelineKey, 'device-generation-changed');
+      invalidated += 1;
+    }
+    return invalidated;
   }
 
   /** Returns an immutable copy of cache lifecycle counters. */
@@ -168,10 +216,16 @@ export class PipelineCache {
       return;
     }
     if (outcome.status === 'success') {
-      record.state = Object.freeze({
-        kind: 'ready',
+      const readyValue = Object.freeze({
         pipeline: outcome.pipeline,
         deviceGeneration: record.request.deviceGeneration
+      });
+      record.readyRetention = new SubmissionRetainedValue(readyValue, ({ pipeline }) =>
+        pipeline.dispose()
+      );
+      record.state = Object.freeze({
+        kind: 'ready',
+        ...readyValue
       });
       this.readyPublications += 1;
       return;
@@ -245,4 +299,9 @@ function validateText(value: string, name: string): void {
 function validateInteger(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value < 0)
     throw new Error(`Pipeline compile ${name} must be a non-negative safe integer.`);
+}
+
+function validateLookupKey(value: string, name = 'key'): void {
+  if (typeof value !== 'string' || !value.trim())
+    throw new Error(`Pipeline cache ${name} must be non-empty.`);
 }

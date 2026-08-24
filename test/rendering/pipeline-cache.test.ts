@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   PipelineCache,
   createPipelineCompileRequest,
@@ -6,6 +6,7 @@ import {
   type PipelineCompiler
 } from '../../src';
 import type { RHIRenderPipeline } from '../../src/rhi/contracts';
+import type { RHISubmission, SubmissionResult } from '../../src/rhi/contracts';
 
 const UNUSED_COMPILER: PipelineCompiler = Object.freeze({
   compile: async () => {
@@ -318,3 +319,95 @@ describe('PipelineCache invalidation', () => {
     expect(cache.snapshot('pipeline:a').kind).toBe('ready');
   });
 });
+
+describe('PipelineCache ready ownership', () => {
+  it('retains an invalidated ready pipeline until its pending submission completes', async () => {
+    const submission = deferredSubmission(10);
+    const pipeline = disposablePipeline(201);
+    const cache = new PipelineCache({
+      compile: async () => ({ status: 'success', pipeline })
+    });
+    cache.request(requestFor());
+    await flushCompilation();
+
+    const lease = cache.acquireReady('pipeline:a')!;
+    expect(lease.pipeline).toBe(pipeline);
+    expect(lease.deviceGeneration).toBe(4);
+    lease.retain(submission.value);
+    cache.invalidate('pipeline:a', 'shader-revision-changed');
+    lease.release();
+
+    expect(cache.acquireReady('pipeline:a')).toBeUndefined();
+    expect(pipeline.dispose).not.toHaveBeenCalled();
+    submission.resolve({ status: 'completed' });
+    await submission.value.done;
+    await Promise.resolve();
+    expect(pipeline.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('invalidates only the requested device generation and immediately disposes unleased entries', async () => {
+    const oldPipeline = disposablePipeline(202);
+    const nextPipeline = disposablePipeline(203);
+    const cache = new PipelineCache({
+      compile: async (request) => ({
+        status: 'success',
+        pipeline: request.deviceGeneration === 4 ? oldPipeline : nextPipeline
+      })
+    });
+    cache.request(requestFor('pipeline:old'));
+    cache.request(
+      createPipelineCompileRequest({
+        ...requestFor('pipeline:next'),
+        deviceGeneration: 5
+      })
+    );
+    await flushCompilation();
+
+    expect(cache.invalidateDeviceGeneration(4)).toBe(1);
+    expect(cache.acquireReady('pipeline:old')).toBeUndefined();
+    expect(cache.acquireReady('pipeline:next')?.pipeline).toBe(nextPipeline);
+    expect(oldPipeline.dispose).toHaveBeenCalledOnce();
+    expect(nextPipeline.dispose).not.toHaveBeenCalled();
+  });
+
+  it('does not compile or wait when a ready lease is unavailable', () => {
+    const compile = vi.fn(UNUSED_COMPILER.compile);
+    const cache = new PipelineCache({ compile });
+
+    expect(cache.acquireReady('pipeline:absent')).toBeUndefined();
+    expect(compile).not.toHaveBeenCalled();
+  });
+});
+
+function disposablePipeline(id: number): RHIRenderPipeline & { dispose: ReturnType<typeof vi.fn> } {
+  return {
+    id,
+    generation: 4,
+    kind: 'render-pipeline',
+    state: 'valid',
+    label: `pipeline:${id}`,
+    dispose: vi.fn()
+  } as unknown as RHIRenderPipeline & { dispose: ReturnType<typeof vi.fn> };
+}
+
+function deferredSubmission(id: number) {
+  let status: RHISubmission['status'] = 'pending';
+  let resolvePromise!: (result: SubmissionResult) => void;
+  const done = new Promise<SubmissionResult>((resolve) => {
+    resolvePromise = resolve;
+  });
+  const value: RHISubmission = {
+    id,
+    get status() {
+      return status;
+    },
+    done
+  };
+  return {
+    value,
+    resolve(result: SubmissionResult) {
+      status = result.status;
+      resolvePromise(result);
+    }
+  };
+}
