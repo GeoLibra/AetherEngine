@@ -1,6 +1,10 @@
 import type { RHIRenderPipeline } from '../../rhi/contracts';
 import type { BoundMaterialPhaseItem } from './material-binding-compatibility-types';
-import type { PipelineCacheEntryState, PipelineCompileDiagnostic } from './pipeline-cache-types';
+import type {
+  PipelineCacheEntryState,
+  PipelineCompileDiagnostic,
+  PipelineReadyLease
+} from './pipeline-cache-types';
 import type { RenderPhaseKind } from '../render-phase';
 
 /** Complete compatibility facts required before a fallback pipeline can replace a primary. */
@@ -21,6 +25,7 @@ export interface PipelineAvailabilityIdentity {
 export interface PipelineAvailabilityFallback {
   readonly identity: PipelineAvailabilityIdentity;
   readonly state: PipelineCacheEntryState;
+  readonly lease?: PipelineReadyLease;
 }
 
 /** Queue facts resolved synchronously without access to the compiler. */
@@ -28,6 +33,7 @@ export interface PipelineAvailabilityRequest {
   readonly bound: BoundMaterialPhaseItem;
   readonly identity: PipelineAvailabilityIdentity;
   readonly primary: PipelineCacheEntryState;
+  readonly primaryLease?: PipelineReadyLease;
   readonly fallback?: PipelineAvailabilityFallback;
 }
 
@@ -39,6 +45,7 @@ export interface AvailablePipelinePhaseItem {
   readonly status: 'ready';
   readonly bound: BoundMaterialPhaseItem;
   readonly pipeline: RHIRenderPipeline;
+  readonly pipelineLease: PipelineReadyLease;
   readonly selection: 'primary' | 'fallback';
 }
 

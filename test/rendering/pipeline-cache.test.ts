@@ -6,7 +6,7 @@ import {
   type PipelineCompiler
 } from '../../src';
 import type { RHIRenderPipeline } from '../../src/rhi/contracts';
-import type { RHISubmission, SubmissionResult } from '../../src/rhi/contracts';
+import { deferredSubmission, disposablePipeline } from './pipeline-cache-fixtures';
 
 const UNUSED_COMPILER: PipelineCompiler = Object.freeze({
   compile: async () => {
@@ -232,7 +232,7 @@ describe('PipelineCache invalidation', () => {
     const second = deferredOutcome();
     const outcomes = [first.promise, second.promise];
     let compileIndex = 0;
-    let staleDisposals = 0;
+    const stalePipeline = disposablePipeline(101);
     const newerPipeline = Object.freeze({ id: 102 }) as unknown as RHIRenderPipeline;
     const cache = new PipelineCache({
       compile: async () => outcomes[compileIndex++] as Promise<PipelineCompileOutcome>
@@ -250,14 +250,11 @@ describe('PipelineCache invalidation', () => {
     await Promise.resolve();
     first.resolve({
       status: 'success',
-      pipeline: PIPELINE,
-      disposeUnpublished: () => {
-        staleDisposals += 1;
-      }
+      pipeline: stalePipeline
     });
     await flushCompilation();
 
-    expect(staleDisposals).toBe(1);
+    expect(stalePipeline.dispose).toHaveBeenCalledOnce();
     expect(cache.snapshot('pipeline:a')).toMatchObject({ kind: 'compiling' });
 
     second.resolve({ status: 'success', pipeline: newerPipeline });
@@ -380,37 +377,20 @@ describe('PipelineCache ready ownership', () => {
     expect(cache.acquireReady('pipeline:absent')).toBeUndefined();
     expect(compile).not.toHaveBeenCalled();
   });
-});
 
-function disposablePipeline(id: number): RHIRenderPipeline & { dispose: ReturnType<typeof vi.fn> } {
-  return {
-    id,
-    generation: 4,
-    kind: 'render-pipeline',
-    state: 'valid',
-    label: `pipeline:${id}`,
-    dispose: vi.fn()
-  } as unknown as RHIRenderPipeline & { dispose: ReturnType<typeof vi.fn> };
-}
+  it('reports contained pipeline disposal failures', async () => {
+    const pipeline = disposablePipeline(204);
+    pipeline.dispose.mockImplementation(() => {
+      throw new Error('pipeline dispose failed');
+    });
+    const cache = new PipelineCache({
+      compile: async () => ({ status: 'success', pipeline })
+    });
+    cache.request(requestFor());
+    await flushCompilation();
 
-function deferredSubmission(id: number) {
-  let status: RHISubmission['status'] = 'pending';
-  let resolvePromise!: (result: SubmissionResult) => void;
-  const done = new Promise<SubmissionResult>((resolve) => {
-    resolvePromise = resolve;
+    cache.invalidate('pipeline:a', 'shader-revision-changed');
+
+    expect(cache.cleanupErrors()).toHaveLength(1);
   });
-  const value: RHISubmission = {
-    id,
-    get status() {
-      return status;
-    },
-    done
-  };
-  return {
-    value,
-    resolve(result: SubmissionResult) {
-      status = result.status;
-      resolvePromise(result);
-    }
-  };
-}
+});

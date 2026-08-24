@@ -42,11 +42,10 @@ export type PipelineCacheEntryState =
     }
   | { readonly kind: 'stale'; readonly reason: PipelineInvalidationReason };
 
-/** Successful compiler output. Cleanup is used when completion becomes stale before publication. */
+/** Successful compiler output whose pipeline ownership transfers to the cache. */
 export interface PipelineCompileSuccess {
   readonly status: 'success';
   readonly pipeline: RHIRenderPipeline;
-  readonly disposeUnpublished?: () => void;
 }
 
 /** Expected compiler failure suitable for content-addressed error caching. */

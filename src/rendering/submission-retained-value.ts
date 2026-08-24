@@ -28,16 +28,21 @@ export class SubmissionRetainedValue<T> {
   readonly #submissions = new Set<RHISubmission>();
   readonly #destroyErrors: unknown[] = [];
   readonly #destroy: (value: T) => void;
+  readonly #onDestroyError: ((error: unknown) => void) | undefined;
   #state: SubmissionRetainedValueState = 'live';
   #localLeases = 0;
 
   constructor(
     readonly value: T,
-    destroy: (value: T) => void
+    destroy: (value: T) => void,
+    onDestroyError?: (error: unknown) => void
   ) {
     if (typeof destroy !== 'function')
       throw new Error('Submission-retained value destroy callback must be a function.');
+    if (onDestroyError !== undefined && typeof onDestroyError !== 'function')
+      throw new Error('Submission-retained value error callback must be a function.');
     this.#destroy = destroy;
+    this.#onDestroyError = onDestroyError;
   }
 
   /** Acquires local ownership, or returns undefined after retirement. */
@@ -52,6 +57,7 @@ export class SubmissionRetainedValue<T> {
       },
       retain: (submission: RHISubmission) => {
         if (released) throw new Error('Submission-retained value lease has already been released.');
+        validateSubmission(submission);
         if (submission.status !== 'pending' || this.#submissions.has(submission)) return;
         this.#submissions.add(submission);
         void submission.done.then(
@@ -103,6 +109,18 @@ export class SubmissionRetainedValue<T> {
       this.#destroy(this.value);
     } catch (error) {
       this.#destroyErrors.push(error);
+      this.#onDestroyError?.(error);
     }
   }
+}
+
+function validateSubmission(submission: RHISubmission): void {
+  if (
+    typeof submission !== 'object' ||
+    submission === null ||
+    !Number.isSafeInteger(submission.id) ||
+    !['pending', 'completed', 'failed', 'device-lost'].includes(submission.status) ||
+    typeof submission.done?.then !== 'function'
+  )
+    throw new Error('Submission-retained value lease requires a valid RHISubmission.');
 }

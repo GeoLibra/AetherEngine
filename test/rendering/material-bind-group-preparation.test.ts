@@ -212,6 +212,22 @@ describe('MaterialBindGroupCache', () => {
       true
     );
   });
+
+  test('reports contained bind-group disposal failures', () => {
+    const fixture = createFixture();
+    const preparation = prepareMaterialBindGroups(fixture.input);
+    if (preparation.status !== 'ready') throw new Error(preparation.diagnostic.message);
+    const cache = new MaterialBindGroupCache();
+    const resolution = cache.resolve(preparation.prepared, fixture.device);
+    vi.spyOn(resolution.bindingSet.bindGroups[0]!, 'dispose').mockImplementation(() => {
+      throw new Error('bind-group dispose failed');
+    });
+    resolution.lease.release();
+
+    cache.invalidateDeviceGeneration(fixture.device.generation);
+
+    expect(cache.cleanupErrors()).toHaveLength(1);
+  });
 });
 
 function deferredSubmission(id: number) {

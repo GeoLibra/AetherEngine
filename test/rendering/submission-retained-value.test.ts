@@ -68,6 +68,26 @@ describe('SubmissionRetainedValue', () => {
     expect(retained.snapshot().state).toBe('destroyed');
     expect(retained.destroyErrors()).toHaveLength(1);
   });
+
+  test('rejects malformed submissions with a contextual boundary error', () => {
+    const retained = new SubmissionRetainedValue('binding', () => undefined);
+    const lease = retained.acquire()!;
+
+    expect(() => lease.retain(undefined as unknown as RHISubmission)).toThrow(
+      'Submission-retained value lease requires a valid RHISubmission.'
+    );
+  });
+
+  test('rejects retaining after the local lease has been released', () => {
+    const retained = new SubmissionRetainedValue('binding', () => undefined);
+    const lease = retained.acquire()!;
+    const submission = deferredSubmission(5);
+    lease.release();
+
+    expect(() => lease.retain(submission.value)).toThrow(
+      'Submission-retained value lease has already been released.'
+    );
+  });
 });
 
 function deferredSubmission(id: number) {

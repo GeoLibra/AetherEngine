@@ -5,6 +5,7 @@ import {
   type PipelineAvailabilityIdentity,
   type PipelineCacheEntryState,
   type PipelineInterestLease,
+  type PipelineReadyLease,
   type RenderEntityId
 } from '../../src';
 import type { RHIRenderPipeline } from '../../src/rhi/contracts';
@@ -99,15 +100,20 @@ function runSubject(options: PipelineCacheResolutionOptions): MaterialScenarioOb
   };
   for (let itemIndex = 0; itemIndex < options.itemCount; itemIndex += 1) {
     const keyIndex = itemIndex % options.uniqueKeys;
+    const primary = stateFor(keyIndex);
     const result = resolvePipelineAvailability({
       bound: boundItem(itemIndex, keyIndex),
       identity: IDENTITY,
-      primary: stateFor(keyIndex),
+      primary,
+      ...(primary.kind === 'ready'
+        ? { primaryLease: readyLease(`pipeline:${keyIndex}`, primary.pipeline) }
+        : {}),
       ...(keyIndex % 4 === 1
         ? {
             fallback: {
               identity: IDENTITY,
-              state: { kind: 'ready', pipeline: FALLBACK_PIPELINE, deviceGeneration: 1 }
+              state: { kind: 'ready', pipeline: FALLBACK_PIPELINE, deviceGeneration: 1 },
+              lease: readyLease('pipeline:fallback', FALLBACK_PIPELINE)
             } as const
           }
         : {})
@@ -130,6 +136,17 @@ function runSubject(options: PipelineCacheResolutionOptions): MaterialScenarioOb
     synchronousCompiles: 0,
     stalePublish: metrics.readyPublications,
     staleReuse: 0
+  });
+}
+
+function readyLease(pipelineKey: string, pipeline: RHIRenderPipeline): PipelineReadyLease {
+  return Object.freeze({
+    pipelineKey,
+    pipeline,
+    deviceGeneration: 1,
+    released: false,
+    retain() {},
+    release() {}
   });
 }
 

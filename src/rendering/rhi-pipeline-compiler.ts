@@ -35,8 +35,7 @@ export class RHIPipelineCompiler implements PipelineCompiler {
       const pipeline = this.device.createRenderPipeline(artifact.descriptor);
       return {
         status: 'success',
-        pipeline,
-        disposeUnpublished: () => pipeline.dispose()
+        pipeline
       };
     } catch (error) {
       return failure('rhi-pipeline-creation-failed', boundedErrorMessage(error));

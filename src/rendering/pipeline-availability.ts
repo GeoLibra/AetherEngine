@@ -6,7 +6,8 @@ import type {
   PipelineAvailabilitySkip,
   PipelineAvailabilitySkipCode,
   PipelineCacheEntryState,
-  PipelineCompileDiagnostic
+  PipelineCompileDiagnostic,
+  PipelineReadyLease
 } from './types';
 
 /**
@@ -19,18 +20,29 @@ export function resolvePipelineAvailability(
   request: PipelineAvailabilityRequest
 ): PipelineAvailabilityResult {
   validateRequest(request);
-  if (request.primary.kind === 'ready')
-    return request.primary.deviceGeneration === request.identity.deviceGeneration
-      ? ready(request, request.primary, 'primary')
-      : skipped(request, 'device-generation-stale');
+  if (request.primary.kind === 'ready') {
+    if (
+      request.primary.deviceGeneration !== request.identity.deviceGeneration ||
+      request.primaryLease === undefined ||
+      request.primaryLease.released
+    )
+      return skipped(request, 'device-generation-stale');
+    validateReadyLease(request.primary, request.primaryLease, request.bound.item.pipelineKey);
+    return ready(request, request.primaryLease, 'primary');
+  }
 
   if (request.fallback !== undefined) {
     if (!sameIdentity(request.identity, request.fallback.identity))
       return skipped(request, 'fallback-incompatible');
     if (request.fallback.state.kind === 'ready') {
-      if (request.fallback.state.deviceGeneration !== request.identity.deviceGeneration)
+      if (
+        request.fallback.state.deviceGeneration !== request.identity.deviceGeneration ||
+        request.fallback.lease === undefined ||
+        request.fallback.lease.released
+      )
         return skipped(request, 'fallback-incompatible');
-      return ready(request, request.fallback.state, 'fallback');
+      validateReadyLease(request.fallback.state, request.fallback.lease);
+      return ready(request, request.fallback.lease, 'fallback');
     }
   }
 
@@ -43,15 +55,29 @@ export function resolvePipelineAvailability(
 
 function ready(
   request: PipelineAvailabilityRequest,
-  state: Extract<PipelineCacheEntryState, { readonly kind: 'ready' }>,
+  lease: PipelineReadyLease,
   selection: AvailablePipelinePhaseItem['selection']
 ): AvailablePipelinePhaseItem {
   return Object.freeze({
     status: 'ready',
     bound: request.bound,
-    pipeline: state.pipeline,
+    pipeline: lease.pipeline,
+    pipelineLease: lease,
     selection
   });
+}
+
+function validateReadyLease(
+  state: Extract<PipelineCacheEntryState, { readonly kind: 'ready' }>,
+  lease: PipelineReadyLease,
+  expectedPipelineKey?: string
+): void {
+  if (
+    lease.pipeline !== state.pipeline ||
+    lease.deviceGeneration !== state.deviceGeneration ||
+    (expectedPipelineKey !== undefined && lease.pipelineKey !== expectedPipelineKey)
+  )
+    throw new Error('Pipeline availability lease does not match the ready cache state.');
 }
 
 function skipped(

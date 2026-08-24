@@ -47,6 +47,7 @@ export function createPipelineCompileRequest(
 export class PipelineCache {
   private readonly records = new Map<string, PipelineCacheRecord>();
   private readonly invalidatedDeviceGenerations = new Set<number>();
+  private readonly containedCleanupErrors: unknown[] = [];
   private nextRequestId = 1;
   private duplicateRequests = 0;
   private compileStarts = 0;
@@ -161,6 +162,11 @@ export class PipelineCache {
     });
   }
 
+  /** Returns cleanup failures contained during stale-result or retired-pipeline disposal. */
+  cleanupErrors(): readonly unknown[] {
+    return Object.freeze([...this.containedCleanupErrors]);
+  }
+
   private queue(request: PipelineCompileRequest): PipelineCacheRecord {
     const requestId = `pipeline-request:${this.nextRequestId}`;
     this.nextRequestId += 1;
@@ -216,7 +222,7 @@ export class PipelineCache {
       record.state.kind !== 'compiling'
     ) {
       this.staleResultsDiscarded += 1;
-      disposeUnpublished(outcome);
+      disposeUnpublished(outcome, (error) => this.containedCleanupErrors.push(error));
       return;
     }
     if (outcome.status === 'success') {
@@ -224,8 +230,10 @@ export class PipelineCache {
         pipeline: outcome.pipeline,
         deviceGeneration: record.request.deviceGeneration
       });
-      record.readyRetention = new SubmissionRetainedValue(readyValue, ({ pipeline }) =>
-        pipeline.dispose()
+      record.readyRetention = new SubmissionRetainedValue(
+        readyValue,
+        ({ pipeline }) => pipeline.dispose(),
+        (error) => this.containedCleanupErrors.push(error)
       );
       record.state = Object.freeze({
         kind: 'ready',
@@ -243,11 +251,15 @@ export class PipelineCache {
   }
 }
 
-function disposeUnpublished(outcome: PipelineCompileOutcome): void {
-  if (outcome.status !== 'success' || outcome.disposeUnpublished === undefined) return;
+function disposeUnpublished(
+  outcome: PipelineCompileOutcome,
+  onCleanupError: (error: unknown) => void
+): void {
+  if (outcome.status !== 'success') return;
   try {
-    outcome.disposeUnpublished();
-  } catch {
+    outcome.pipeline.dispose();
+  } catch (error) {
+    onCleanupError(error);
     // Cleanup failure cannot make an invalidated pipeline publishable again.
   }
 }

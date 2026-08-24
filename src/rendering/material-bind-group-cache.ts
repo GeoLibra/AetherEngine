@@ -17,6 +17,7 @@ interface MaterialBindGroupCacheRecord {
 export class MaterialBindGroupCache {
   private readonly records = new Map<string, MaterialBindGroupCacheRecord>();
   private readonly invalidatedDeviceGenerations = new Set<number>();
+  private readonly containedCleanupErrors: unknown[] = [];
 
   /**
    * Creates or reuses the bind groups for one exact canonical identity.
@@ -48,7 +49,9 @@ export class MaterialBindGroupCache {
         dynamicOffsets: Object.freeze([...prepared.dynamicOffsets]),
         deviceGeneration: device.generation
       });
-      const retention = new SubmissionRetainedValue(bindingSet, disposeBindingSet);
+      const retention = new SubmissionRetainedValue(bindingSet, disposeBindingSet, (error) =>
+        this.containedCleanupErrors.push(error)
+      );
       this.records.set(key, { bindingSet, retention });
       return createResolution('miss', bindingSet, retention);
     } catch (error) {
@@ -70,6 +73,11 @@ export class MaterialBindGroupCache {
       invalidated += 1;
     }
     return invalidated;
+  }
+
+  /** Returns bind-group disposal failures contained during cache retirement. */
+  cleanupErrors(): readonly unknown[] {
+    return Object.freeze([...this.containedCleanupErrors]);
   }
 }
 
@@ -93,7 +101,15 @@ function createResolution(
 }
 
 function disposeBindingSet(bindingSet: RealizedMaterialBindGroups): void {
-  for (const bindGroup of bindingSet.bindGroups) bindGroup.dispose();
+  const errors: unknown[] = [];
+  for (const bindGroup of bindingSet.bindGroups) {
+    try {
+      bindGroup.dispose();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length > 0) throw errors[0];
 }
 
 function validatePrepared(prepared: PreparedMaterialBindGroups, device: RHIDevice): void {
