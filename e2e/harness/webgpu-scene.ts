@@ -1,22 +1,19 @@
 import {
-  RenderGraphBuilder,
-  RenderGraphExecutor,
-  compileRenderGraph,
   createBrowserGraphics,
-  createPreparedRenderPipelineToken,
-  createRenderGraphExecutionPlan,
   type BrowserGraphicsSession,
-  type RestrictedPassContext
+  type RenderEntityId,
+  type RenderView
 } from '../../src';
+import { createE2EDrawPacket, executeOpaqueScene } from './opaque-scene';
 
 const WIDTH = 640;
 const HEIGHT = 360;
-const TRIANGLE_PIPELINE = createPreparedRenderPipelineToken('webgpu-triangle');
-const CUBE_PIPELINE = createPreparedRenderPipelineToken('webgpu-cube');
-const INDEX_DATA = new Uint16Array([
+const TRIANGLE_INDEX_COUNT = 3;
+const CUBE_INDEX_DATA = new Uint16Array([
   0, 1, 2, 2, 1, 3, 4, 6, 5, 5, 6, 7, 0, 2, 4, 4, 2, 6, 1, 5, 3, 3, 5, 7, 2, 3, 6, 6, 3, 7, 0, 4, 1,
   1, 4, 5
 ]);
+const INDEX_DATA = new Uint16Array([0, 1, 2, ...CUBE_INDEX_DATA, 0]);
 
 export interface WebGPUSceneResult {
   readonly detail: Readonly<Record<string, unknown>>;
@@ -41,7 +38,7 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
 
   try {
     const execution = executeScene(session, indexBuffer, prepared);
-    await execution.submission.done;
+    await execution.execution.submission.done;
     const fastPath = fastPathMetrics(session.device);
     const diagnostics = diagnosticMessages(session);
     return Object.freeze({
@@ -54,9 +51,11 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
         format: session.surface.configuration?.format,
         colorSpace: session.surface.configuration?.colorSpace,
         alphaMode: session.surface.configuration?.alphaMode,
-        renderPasses: execution.commandStats.renderPasses,
-        drawCalls: execution.commandStats.draw.drawCalls,
-        indexedDrawCalls: execution.commandStats.draw.indexedDrawCalls,
+        renderPath: execution.renderPath,
+        renderSystemInstances: execution.renderSystemInstances,
+        renderPasses: execution.execution.commandStats.renderPasses,
+        drawCalls: execution.execution.commandStats.draw.drawCalls,
+        indexedDrawCalls: execution.execution.commandStats.draw.indexedDrawCalls,
         nativeQueueSubmits: fastPath.nativeQueueSubmits,
         validationErrors: diagnostics.length,
         diagnostics
@@ -82,102 +81,52 @@ function executeScene(
 ) {
   const configuration = session.surface.configuration;
   if (configuration === undefined) throw new Error('WebGPU surface is not configured.');
-  const graph = new RenderGraphBuilder();
   const surfaceToken = { kind: 'surface-frame' as const, id: 'webgpu-main' };
-  const surfaceColor = graph.createTexture(
-    {
-      width: configuration.width,
-      height: configuration.height,
-      depthOrArrayLayers: 1,
-      mipLevelCount: 1,
-      sampleCount: 1,
-      format: configuration.format,
-      usage: ['color-attachment']
-    },
-    {
-      origin: {
-        kind: 'imported',
-        initialState: 'undefined',
-        acquire: { kind: 'external-acquire', id: surfaceToken.id }
-      }
-    }
-  );
-  const depth = graph.createTexture({
-    width: configuration.width,
-    height: configuration.height,
-    depthOrArrayLayers: 1,
-    mipLevelCount: 1,
-    sampleCount: 1,
-    format: 'depth24plus',
-    usage: ['depth-stencil-attachment']
-  });
-  const indices = graph.createBuffer(
-    { size: INDEX_DATA.byteLength, usage: ['index', 'copy-dst'] },
-    {
-      origin: {
-        kind: 'imported',
-        initialState: 'index',
-        acquire: { kind: 'external-acquire', id: 'cube-indices' }
-      }
-    }
-  );
-  graph.addPass({
-    id: 'clear-triangle-indexed-cube',
-    setup(pass) {
-      const color = pass.writeTexture(surfaceColor, 'color-attachment');
-      const depthAttachment = pass.writeTexture(depth, 'depth-stencil-attachment');
-      const index = pass.readBuffer(indices, 'index');
-      pass.presentTexture(color, surfaceToken);
-      return { color, depthAttachment, index };
-    },
-    run(context: RestrictedPassContext, resources) {
-      recordScene(context, resources);
-    }
-  });
-  const snapshot = graph.build();
-  const plan = createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot));
-  return new RenderGraphExecutor().execute(plan, {
+  const packets = [
+    createE2EDrawPacket({
+      entity: 1 as RenderEntityId,
+      drawKey: 'triangle',
+      pipeline: prepared.trianglePipeline,
+      indexBuffer,
+      indexFormat: 'uint16',
+      indexCount: TRIANGLE_INDEX_COUNT,
+      retain: () => undefined,
+      release: () => undefined
+    }),
+    createE2EDrawPacket({
+      entity: 2 as RenderEntityId,
+      drawKey: 'cube',
+      pipeline: prepared.cubePipeline,
+      indexBuffer,
+      indexFormat: 'uint16',
+      firstIndex: TRIANGLE_INDEX_COUNT,
+      indexCount: CUBE_INDEX_DATA.length,
+      retain: () => undefined,
+      release: () => undefined
+    })
+  ];
+  return executeOpaqueScene({
     device: session.device,
     surface: session.surface,
-    resources: new Map([[indices, indexBuffer]]),
-    preparedRenderPipelines: prepared.pipelines
+    view: sceneView(configuration.width, configuration.height),
+    surfaceFrame: surfaceToken,
+    width: configuration.width,
+    height: configuration.height,
+    colorFormat: configuration.format,
+    packets
   });
 }
 
-function recordScene(
-  context: RestrictedPassContext,
-  resources: {
-    readonly color: Parameters<RestrictedPassContext['texture']>[0];
-    readonly depthAttachment: Parameters<RestrictedPassContext['texture']>[0];
-    readonly index: Parameters<RestrictedPassContext['buffer']>[0];
-  }
-): void {
-  const trianglePipeline = context.renderPipeline(TRIANGLE_PIPELINE);
-  const cubePipeline = context.renderPipeline(CUBE_PIPELINE);
-  const index = context.buffer(resources.index, 'index');
-  const pass = context.beginRaster({
-    label: 'webgpu-conformance-scene',
-    colorAttachments: [
-      {
-        texture: resources.color,
-        loadOp: 'clear',
-        storeOp: 'store',
-        clearValue: { r: 0.025, g: 0.04, b: 0.08, a: 1 }
-      }
-    ],
-    depthStencilAttachment: {
-      texture: resources.depthAttachment,
-      depthLoadOp: 'clear',
-      depthStoreOp: 'store',
-      depthClearValue: 1
-    }
+function sceneView(width: number, height: number): RenderView {
+  return Object.freeze({
+    id: 'webgpu-main',
+    camera: 1 as RenderEntityId,
+    surface: 'webgpu-main',
+    viewport: Object.freeze({ x: 0, y: 0, width, height }),
+    layerMask: 1,
+    featurePolicyKey: 'webgpu-baseline',
+    historyKey: 'webgpu-main'
   });
-  pass.setPipeline(trianglePipeline);
-  pass.draw(3);
-  pass.setPipeline(cubePipeline);
-  pass.setIndexBuffer(index, 'uint16');
-  pass.drawIndexed(INDEX_DATA.length);
-  pass.end();
 }
 
 function prepareScenePipelines(session: BrowserGraphicsSession) {
@@ -201,10 +150,8 @@ function prepareScenePipelines(session: BrowserGraphicsSession) {
     depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' }
   });
   return Object.freeze({
-    pipelines: new Map([
-      [TRIANGLE_PIPELINE, trianglePipeline],
-      [CUBE_PIPELINE, cubePipeline]
-    ]),
+    trianglePipeline,
+    cubePipeline,
     dispose(): void {
       cubePipeline.dispose();
       trianglePipeline.dispose();
