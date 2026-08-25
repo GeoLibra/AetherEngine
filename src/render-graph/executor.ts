@@ -485,7 +485,7 @@ function validatePhysicalBinding(
     physical.kind === 'buffer'
       ? { kind: 'buffer' as const, descriptor: physical.descriptor }
       : { kind: 'texture' as const, descriptor: physical.descriptor };
-  if (!descriptorsEqual(allocationFor(resource), actual)) {
+  if (!descriptorsEqual(allocationFor(resource), actual, true)) {
     throw new Error(
       'Render graph physical binding descriptor is incompatible with the graph resource.'
     );
@@ -494,13 +494,14 @@ function validatePhysicalBinding(
 
 function descriptorsEqual(
   expected: ReturnType<typeof allocationFor>,
-  actual: ReturnType<typeof allocationFor>
+  actual: ReturnType<typeof allocationFor>,
+  allowUsageSuperset = false
 ): boolean {
   if (expected.kind !== actual.kind) return false;
   if (expected.kind === 'buffer' && actual.kind === 'buffer') {
     return (
       expected.descriptor.size === actual.descriptor.size &&
-      expected.descriptor.usage === actual.descriptor.usage
+      usageMatches(expected.descriptor.usage, actual.descriptor.usage, allowUsageSuperset)
     );
   }
   if (expected.kind === 'texture' && actual.kind === 'texture') {
@@ -511,12 +512,16 @@ function descriptorsEqual(
       left.height === right.height &&
       left.depthOrArrayLayers === right.depthOrArrayLayers &&
       expected.descriptor.format === actual.descriptor.format &&
-      expected.descriptor.usage === actual.descriptor.usage &&
+      usageMatches(expected.descriptor.usage, actual.descriptor.usage, allowUsageSuperset) &&
       (expected.descriptor.mipLevelCount ?? 1) === (actual.descriptor.mipLevelCount ?? 1) &&
       (expected.descriptor.sampleCount ?? 1) === (actual.descriptor.sampleCount ?? 1)
     );
   }
   return false;
+}
+
+function usageMatches(expected: number, actual: number, allowSuperset: boolean): boolean {
+  return allowSuperset ? (actual & expected) === expected : actual === expected;
 }
 
 function normalizedExtent(size: RHITexture['descriptor']['size']): {

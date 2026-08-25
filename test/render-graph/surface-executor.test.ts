@@ -78,6 +78,53 @@ function presentPlan(token: SurfaceFrameToken, throwDuringRun = false): RenderGr
 }
 
 describe('surface-backed RenderGraph execution', () => {
+  test('accepts a surface texture whose usage is a superset of the logical import', () => {
+    const device = new NullDevice();
+    const texture = device.createTexture({
+      size: [4, 4],
+      format: 'rgba8unorm',
+      usage: 0x13
+    });
+    let frameState: RHISurfaceFrame['state'] = 'acquired';
+    const frame: RHISurfaceFrame = {
+      texture,
+      generation: 1,
+      get state() {
+        return frameState;
+      },
+      present() {
+        frameState = 'presented';
+      },
+      release() {
+        frameState = 'released';
+      }
+    };
+    const surface: RHISurface = {
+      target: target('usage-superset'),
+      state: 'configured',
+      generation: 1,
+      configuration: {
+        format: 'rgba8unorm',
+        colorSpace: 'srgb',
+        alphaMode: 'opaque',
+        width: 4,
+        height: 4,
+        presentMode: 'fifo'
+      },
+      configure() {},
+      acquire: () => ({ status: 'success', frame }),
+      dispose() {}
+    };
+
+    const execution = new RenderGraphExecutor().execute(
+      presentPlan({ kind: 'surface-frame', id: 'main' }),
+      { device, surface }
+    );
+
+    expect(execution.commandStats.renderPasses).toBe(1);
+    expect(frameState).toBe('presented');
+  });
+
   test('rejects a surface frame whose physical descriptor does not match the logical import', () => {
     const device = new NullDevice();
     const surface = configuredSurface(device);

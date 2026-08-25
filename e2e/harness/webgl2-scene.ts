@@ -1,27 +1,21 @@
 import {
   BrowserGraphicsBootstrapError,
   createBrowserGraphics,
+  type RenderEntityId,
+  type RenderView,
   type WebGL2ShaderTranslationPort
 } from '../../src';
+import { createE2EDrawPacket, executeOpaqueScene } from './opaque-scene';
 
-const INDICES = new Uint16Array([0, 1, 2, 2, 1, 3]);
+const TRIANGLE_INDEX_COUNT = 3;
+const CUBE_INDEX_COUNT = 6;
+const INDICES = new Uint16Array([0, 1, 2, 0, 1, 2, 2, 1, 3, 0]);
 
 export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
   const session = await createSession(canvas);
   const gl = canvas.getContext('webgl2');
-  if (gl !== null) instrumentGL(gl);
+  const presentProbe = gl === null ? undefined : instrumentGL(gl);
   const glErrors: number[] = [gl?.getError() ?? -1];
-  const acquired = session.surface.acquire();
-  glErrors.push(gl?.getError() ?? -1);
-  if (acquired.status !== 'success')
-    throw new Error(`WebGL2 surface acquire failed: ${acquired.status}.`);
-  const encoder = session.device.createCommandEncoder({ label: 'webgl2-browser-e2e' });
-  const view = acquired.frame.texture.createView();
-  const depth = session.device.createTexture({
-    size: [640, 360],
-    format: 'depth24plus',
-    usage: 0x10
-  });
   const index = session.device.createBuffer({ size: INDICES.byteLength, usage: 0x18 });
   session.device.queue.writeBuffer(index, 0, INDICES);
   const uniform = session.device.createBuffer({ size: 16, usage: 0x40 });
@@ -34,6 +28,7 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
     { bytesPerRow: 4, rowsPerImage: 1 },
     [1, 1]
   );
+  glErrors.push(gl?.getError() ?? -1);
   session.device.queue.writeTexture(
     { texture: green },
     new Uint8Array([0, 255, 0, 255]),
@@ -79,38 +74,46 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
     depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' }
   });
   glErrors.push(gl?.getError() ?? -1);
-  const pass = encoder.beginRenderPass({
-    label: 'webgl2-clear',
-    colorAttachments: [
-      { view, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0.04, g: 0.12, b: 0.24, a: 1 } }
-    ],
-    depthStencilAttachment: {
-      view: depth.createView(),
-      depthLoadOp: 'clear',
-      depthStoreOp: 'store',
-      depthClearValue: 1
-    }
+  const execution = executeOpaqueScene({
+    device: session.device,
+    surface: session.surface,
+    view: sceneView(),
+    surfaceFrame: { kind: 'surface-frame', id: 'webgl2-main' },
+    width: 640,
+    height: 360,
+    colorFormat: 'rgba8unorm',
+    packets: [
+      createE2EDrawPacket({
+        entity: 1 as RenderEntityId,
+        drawKey: 'triangle',
+        pipeline: triangle,
+        indexBuffer: index,
+        indexFormat: 'uint16',
+        indexCount: TRIANGLE_INDEX_COUNT,
+        retain: () => undefined,
+        release: () => undefined
+      }),
+      createE2EDrawPacket({
+        entity: 2 as RenderEntityId,
+        drawKey: 'cube',
+        pipeline: cube,
+        bindGroups: [group],
+        indexBuffer: index,
+        indexFormat: 'uint16',
+        firstIndex: TRIANGLE_INDEX_COUNT,
+        indexCount: CUBE_INDEX_COUNT,
+        retain: () => undefined,
+        release: () => undefined
+      })
+    ]
   });
-  pass.setViewport(24, 16, 592, 328, 0, 1);
-  pass.setScissorRect(24, 16, 592, 328);
-  pass.setPipeline(triangle);
-  pass.draw(3);
-  pass.setPipeline(cube);
-  pass.setBindGroup(0, group);
-  pass.setIndexBuffer(index, 'uint16');
-  pass.drawIndexed(INDICES.length);
-  pass.end();
-  const command = encoder.finish();
-  const submission = session.device.queue.submit([command]);
-  await submission.done;
   glErrors.push(gl?.getError() ?? -1);
-  const centerPixel = new Uint8Array(4);
-  gl?.readPixels(320, 180, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, centerPixel);
-  acquired.frame.present();
-  glErrors.push(gl?.getError() ?? -1);
+  await execution.execution.submission.done;
+  const centerPixel = presentProbe?.beforePresentPixel ?? new Uint8Array(4);
   const presentedPixel = new Uint8Array(4);
   gl?.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
   gl?.readPixels(320, 180, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, presentedPixel);
+  glErrors.push(gl?.getError() ?? -1);
   const metrics = Reflect.apply(
     Reflect.get(session.device.queue, 'metrics'),
     session.device.queue,
@@ -121,9 +124,11 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
       generation: session.device.generation,
       surfaceGeneration: session.surface.generation,
       format: session.surface.configuration?.format,
-      renderPasses: command.getStats().renderPasses,
-      drawCalls: command.getStats().draw.drawCalls,
-      indexedDrawCalls: command.getStats().draw.indexedDrawCalls,
+      renderPath: execution.renderPath,
+      renderSystemInstances: execution.renderSystemInstances,
+      renderPasses: execution.execution.commandStats.renderPasses,
+      drawCalls: execution.execution.commandStats.draw.drawCalls,
+      indexedDrawCalls: execution.execution.commandStats.draw.indexedDrawCalls,
       nativeQueueSubmits: metrics.submissionEpochs,
       glCalls: metrics.glCalls,
       glErrors,
@@ -131,8 +136,6 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
       presentedPixel: [...presentedPixel]
     }),
     async destroy(): Promise<void> {
-      view.dispose();
-      command.dispose();
       cube.dispose();
       triangle.dispose();
       cubeModule.dispose();
@@ -147,13 +150,17 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
       red.dispose();
       uniform.dispose();
       index.dispose();
-      depth.dispose();
       await session.destroy();
     }
   });
 }
 
-function instrumentGL(gl: WebGL2RenderingContext): void {
+interface WebGL2PresentProbe {
+  readonly beforePresentPixel: Uint8Array;
+}
+
+function instrumentGL(gl: WebGL2RenderingContext): WebGL2PresentProbe {
+  const beforePresentPixel = new Uint8Array(4);
   for (const name of [
     'bindFramebuffer',
     'framebufferTexture2D',
@@ -174,6 +181,9 @@ function instrumentGL(gl: WebGL2RenderingContext): void {
     Object.defineProperty(gl, name, {
       configurable: true,
       value: (...args: unknown[]) => {
+        if (name === 'blitFramebuffer') {
+          gl.readPixels(320, 180, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, beforePresentPixel);
+        }
         const result = Reflect.apply(original, gl, args);
         const error = gl.getError();
         if (error !== gl.NO_ERROR)
@@ -182,6 +192,19 @@ function instrumentGL(gl: WebGL2RenderingContext): void {
       }
     });
   }
+  return Object.freeze({ beforePresentPixel });
+}
+
+function sceneView(): RenderView {
+  return Object.freeze({
+    id: 'webgl2-main',
+    camera: 1 as RenderEntityId,
+    surface: 'webgl2-main',
+    viewport: Object.freeze({ x: 0, y: 0, width: 640, height: 360 }),
+    layerMask: 1,
+    featurePolicyKey: 'webgl2-baseline',
+    historyKey: 'webgl2-main'
+  });
 }
 
 async function createSession(canvas: HTMLCanvasElement) {
