@@ -1,4 +1,5 @@
 import type { RHIComputePipeline, RHIRenderPipeline } from '../rhi/contracts';
+import type { PreparedDrawPacket } from '../rendering/types';
 
 /** Typed key for a compute pipeline created before graph surface acquisition. */
 export interface PreparedComputePipelineToken {
@@ -34,4 +35,22 @@ export function createPreparedRenderPipelineToken(name: string): PreparedRenderP
 export type PreparedRenderPipelineBindings = ReadonlyMap<
   PreparedRenderPipelineToken,
   RHIRenderPipeline
+>;
+
+/** Typed key for one complete draw packet prepared before graph recording. */
+export interface PreparedDrawResourcesToken {
+  readonly kind: 'prepared-draw-resources-token';
+  readonly name: string;
+  readonly id: symbol;
+}
+
+export function createPreparedDrawResourcesToken(name: string): PreparedDrawResourcesToken {
+  if (name.length === 0)
+    throw new TypeError('Prepared draw resources token name must not be empty.');
+  return Object.freeze({ kind: 'prepared-draw-resources-token', name, id: Symbol(name) });
+}
+
+export type PreparedDrawResourceBindings = ReadonlyMap<
+  PreparedDrawResourcesToken,
+  PreparedDrawPacket
 >;

@@ -20,6 +20,7 @@ import { TransientResourcePool, type TransientResource } from './transient-pool'
 import { RestrictedContext } from './restricted-context';
 import type {
   PreparedComputePipelineBindings,
+  PreparedDrawResourceBindings,
   PreparedRenderPipelineBindings
 } from './prepared-resources';
 export type {
@@ -35,6 +36,7 @@ export type {
   RestrictedComputePipelineDescriptor,
   RestrictedComputePassEncoder,
   RestrictedPassContext,
+  RestrictedPreparedDrawResources,
   RestrictedPipelineLayout,
   RestrictedPipelineLayoutDescriptor,
   RestrictedPortableDevice,
@@ -88,6 +90,8 @@ export interface RenderGraphExecutionInputs {
   readonly preparedRenderPipelines?: PreparedRenderPipelineBindings;
   /** Externally owned compute pipelines prepared before surface acquisition. */
   readonly preparedComputePipelines?: PreparedComputePipelineBindings;
+  /** Submission-safe indexed draw packets prepared before surface acquisition. */
+  readonly preparedDrawResources?: PreparedDrawResourceBindings;
 }
 
 export interface RenderGraphExecutionDebug extends RenderGraphDebugIR {
@@ -125,6 +129,7 @@ export class RenderGraphExecutor {
     validateRenderGraphExecutionPlan(plan);
     validatePreparedRenderPipelines(inputs);
     validatePreparedComputePipelines(inputs);
+    validatePreparedDrawResources(inputs);
     const frames: SurfaceBinding[] = [];
     const transientResources: TransientResource[] = [];
     const restrictedContexts: RestrictedContext[] = [];
@@ -162,6 +167,7 @@ export class RenderGraphExecutor {
             inputs.device,
             inputs.preparedRenderPipelines ?? new Map(),
             inputs.preparedComputePipelines ?? new Map(),
+            inputs.preparedDrawResources ?? new Map(),
             encoder,
             (next) => {
               activePass = next;
@@ -188,7 +194,9 @@ export class RenderGraphExecutor {
         }
         commandBuffer = encoder.finish({ label: 'render-graph' });
         finished = true;
+        validatePreparedDrawResources(inputs);
         submission = inputs.device.queue.submit([commandBuffer]);
+        transferPreparedDrawResources(inputs, submission);
         for (const context of restrictedContexts) context.retireResources(submission);
         releaseTransients(pool, transientResources, submission);
         commitHistoryBindings(plan, inputs, submission);
@@ -307,6 +315,45 @@ function validatePreparedComputePipelines(inputs: RenderGraphExecutionInputs): v
         `Prepared compute pipeline "${token.name}" belongs to another device generation.`
       );
     }
+  }
+}
+
+function validatePreparedDrawResources(inputs: RenderGraphExecutionInputs): void {
+  const packets = new Set<object>();
+  for (const [token, packet] of inputs.preparedDrawResources ?? []) {
+    if (token.kind !== 'prepared-draw-resources-token')
+      throw new TypeError('Prepared draw resource binding has an invalid token.');
+    if (packet.released)
+      throw new Error(`Prepared draw resources "${token.name}" have already been released.`);
+    if (!packets.add(packet))
+      throw new Error('One prepared draw packet cannot be bound to multiple resource tokens.');
+    if (packet.bindingSet.deviceGeneration !== inputs.device.generation)
+      throw new Error(
+        `Prepared draw resources "${token.name}" belong to another device generation.`
+      );
+    for (const resource of [
+      packet.pipeline,
+      ...packet.bindingSet.bindGroups,
+      ...packet.vertexBuffers,
+      packet.indexBuffer
+    ]) {
+      if (resource.state !== 'live')
+        throw new Error(`Prepared draw resources "${token.name}" contain a non-live resource.`);
+      if (resource.generation !== inputs.device.generation)
+        throw new Error(
+          `Prepared draw resources "${token.name}" belong to another device generation.`
+        );
+    }
+  }
+}
+
+function transferPreparedDrawResources(
+  inputs: RenderGraphExecutionInputs,
+  submission: RHISubmission
+): void {
+  for (const packet of inputs.preparedDrawResources?.values() ?? []) {
+    packet.retain(submission);
+    packet.release();
   }
 }
 

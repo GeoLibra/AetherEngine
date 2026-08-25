@@ -37,6 +37,8 @@ import type { EndableRenderPass } from './executor-cleanup';
 import type {
   PreparedComputePipelineBindings,
   PreparedComputePipelineToken,
+  PreparedDrawResourceBindings,
+  PreparedDrawResourcesToken,
   PreparedRenderPipelineBindings,
   PreparedRenderPipelineToken
 } from './prepared-resources';
@@ -58,6 +60,7 @@ import type {
   RestrictedComputePipelineDescriptor,
   RestrictedFragmentState,
   RestrictedPassContext,
+  RestrictedPreparedDrawResources,
   RestrictedPipelineLayout,
   RestrictedPortableDevice,
   RestrictedProgrammableStage,
@@ -108,6 +111,7 @@ export class RestrictedContext implements RestrictedPassContext {
     private readonly rhiDevice: RHIDevice,
     private readonly preparedRenderPipelines: PreparedRenderPipelineBindings,
     private readonly preparedComputePipelines: PreparedComputePipelineBindings,
+    private readonly preparedDrawResources: PreparedDrawResourceBindings,
     private readonly encoder: ReturnType<RHIDevice['createCommandEncoder']>,
     private readonly onBegin: (pass: ActivePass) => void,
     private readonly onEnd: () => void
@@ -122,6 +126,7 @@ export class RestrictedContext implements RestrictedPassContext {
       buffer: this.buffer.bind(this),
       renderPipeline: this.renderPipeline.bind(this),
       computePipeline: this.computePipeline.bind(this),
+      drawResources: this.drawResources.bind(this),
       beginRaster: this.beginRaster.bind(this),
       beginCompute: this.beginCompute.bind(this),
       copyBufferToBuffer: this.copyBufferToBuffer.bind(this)
@@ -146,6 +151,31 @@ export class RestrictedContext implements RestrictedPassContext {
     const capability = Object.freeze({ kind: 'restricted-compute-pipeline' as const });
     this.computePipelines.set(capability, raw);
     return capability;
+  }
+
+  drawResources(token: PreparedDrawResourcesToken): RestrictedPreparedDrawResources {
+    this.requireInactive('resolve prepared draw resources');
+    const packet = this.preparedDrawResources.get(token);
+    if (packet === undefined)
+      throw new Error(`Prepared draw resources "${token.name}" are not bound.`);
+    const pipeline = Object.freeze({ kind: 'restricted-render-pipeline' as const });
+    this.renderPipelines.set(pipeline, packet.pipeline);
+    const bindGroups = packet.bindingSet.bindGroups.map((raw) => {
+      const capability = Object.freeze({ kind: 'restricted-bind-group' as const });
+      this.bindGroups.set(capability, raw);
+      return capability;
+    });
+    const vertexBuffers = packet.vertexBuffers.map((raw) => this.preparedBuffer(raw, 'vertex'));
+    return Object.freeze({
+      pipeline,
+      bindGroups: Object.freeze(bindGroups),
+      dynamicOffsets: packet.bindingSet.dynamicOffsets,
+      vertexBuffers: Object.freeze(vertexBuffers),
+      indexBuffer: this.preparedBuffer(packet.indexBuffer, 'index'),
+      indexFormat: packet.indexFormat,
+      firstIndex: packet.firstIndex,
+      indexCount: packet.indexCount
+    });
   }
 
   /** Ends the synchronous callback capability window without disposing submission-owned objects. */
@@ -531,6 +561,16 @@ export class RestrictedContext implements RestrictedPassContext {
       throw new Error('Render graph buffer binding size is outside the declared slice.');
     }
     return { buffer: binding.buffer, offset: binding.offset + relativeOffset, size };
+  }
+
+  private preparedBuffer(buffer: RHIBuffer, usage: 'vertex' | 'index'): RestrictedBufferSlice {
+    const capability = Object.freeze({
+      kind: 'restricted-buffer-slice' as const,
+      offset: 0,
+      size: buffer.size
+    });
+    this.bufferCapabilities.set(capability, { buffer, usage, offset: 0, size: buffer.size });
+    return capability;
   }
 
   private requiredTexture(

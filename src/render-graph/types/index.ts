@@ -32,6 +32,7 @@ export type {
   RestrictedComputePipelineDescriptor,
   RestrictedFragmentState,
   RestrictedPassContext,
+  RestrictedPreparedDrawResources,
   RestrictedPipelineLayout,
   RestrictedPipelineLayoutDescriptor,
   RestrictedPortableDevice,

@@ -202,6 +202,7 @@ describe('RenderGraphExecutor', () => {
       'computePipeline',
       'copyBufferToBuffer',
       'device',
+      'drawResources',
       'renderPipeline',
       'texture'
     ]);
