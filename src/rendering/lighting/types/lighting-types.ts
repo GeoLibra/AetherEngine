@@ -1,5 +1,5 @@
 import type { Vec3 } from '../../../math/types';
-import type { RenderEntityId } from '../../render-world';
+import type { RenderEntityId } from '../../world';
 import type { WorldBounds } from '../../visibility/types';
 
 export type LinearRgb = Vec3;

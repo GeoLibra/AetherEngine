@@ -1,5 +1,5 @@
 import type { FieldId, SchemaId, SchemaVersion, TypeSchema } from '../../schema/types';
-import type { RenderPhaseKind } from '../../rendering/render-phase';
+import type { RenderPhaseKind } from '../../rendering/phase';
 
 declare const materialFieldIndexBrand: unique symbol;
 declare const materialFieldValueBrand: unique symbol;

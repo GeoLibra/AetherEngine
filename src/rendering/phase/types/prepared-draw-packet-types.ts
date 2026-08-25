@@ -1,0 +1,67 @@
+import type { RHIBuffer, RHISubmission } from '../../../rhi/contracts';
+import type { AvailablePipelinePhaseItem } from '../../pipeline/types';
+import type {
+  MaterialBindGroupCacheResolution,
+  RealizedMaterialBindGroups
+} from '../../material/types';
+import type { PreparedMeshQueueCandidate } from '../../mesh/types';
+import type { RenderEntityId } from '../../world';
+import type { RenderPhaseKind } from './render-phase-types';
+
+/** Exact prepared resources required to produce one indexed draw packet. */
+export interface PrepareDrawPacketInput {
+  readonly availability: AvailablePipelinePhaseItem;
+  readonly binding: MaterialBindGroupCacheResolution;
+  readonly candidate: PreparedMeshQueueCandidate;
+}
+
+export type PreparedDrawPacketSkipCode =
+  | 'draw-entity-mismatch'
+  | 'binding-key-mismatch'
+  | 'device-generation-stale'
+  | 'indexed-draw-required'
+  | 'invalid-draw-range'
+  | 'draw-lease-released';
+
+/** Structured Queue rejection produced before any ownership is transferred. */
+export interface PreparedDrawPacketSkip {
+  readonly status: 'skipped';
+  readonly entity: RenderEntityId;
+  readonly reason: 'incompatible-draw-packet';
+  readonly code: PreparedDrawPacketSkipCode;
+  readonly message: string;
+}
+
+/**
+ * Immutable indexed draw facts with borrowed local ownership.
+ *
+ * Mesh and material leases remain owned by the originating queue resolution. `retain` transfers
+ * all four resource domains to the accepted submission; `release` ends only the packet's local
+ * pipeline and binding ownership.
+ */
+export interface PreparedDrawPacket {
+  readonly entity: RenderEntityId;
+  readonly phase: RenderPhaseKind;
+  readonly pipelineKey: string;
+  readonly materialKey: string;
+  readonly meshKey: string;
+  readonly bindingKey: string;
+  readonly drawKey: string;
+  readonly distance: number;
+  readonly insertionOrder: number;
+  readonly pipeline: AvailablePipelinePhaseItem['pipeline'];
+  readonly bindingSet: RealizedMaterialBindGroups;
+  readonly vertexBuffers: readonly RHIBuffer[];
+  readonly indexBuffer: RHIBuffer;
+  readonly indexFormat: 'uint16' | 'uint32';
+  readonly firstIndex: number;
+  readonly indexCount: number;
+  readonly released: boolean;
+  /** Whether every borrowed lease can still be transferred before queue submission. */
+  readonly retentionReady: boolean;
+  retain(submission: RHISubmission): void;
+  release(): void;
+}
+
+export type PreparedDrawPacketResult =
+  { readonly status: 'ready'; readonly packet: PreparedDrawPacket } | PreparedDrawPacketSkip;

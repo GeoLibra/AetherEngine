@@ -1,4 +1,4 @@
-import type { RenderPhaseKind } from '../rendering/render-phase';
+import type { RenderPhaseKind } from '../rendering/phase';
 import type {
   MaterialBlendIntent,
   MaterialCullMode,

@@ -1,4 +1,4 @@
-import type { RenderEntityId } from '../render-world';
+import type { RenderEntityId } from '../world';
 import type { RenderView } from '../visibility/types';
 import {
   compareSpatialEntries,

@@ -1,5 +1,5 @@
 import { ALL_FRUSTUM_PLANES, type Vec3 } from '../../math';
-import type { RenderEntityId } from '../render-world';
+import type { RenderEntityId } from '../world';
 import type { RenderView, WorldBounds } from '../visibility/types';
 import { compareSpatialEntries, isSpatialEntryVisible } from './linear-culler';
 import type { SpatialEntry, SpatialQueryCounters, StaticBvhProfile } from './types';

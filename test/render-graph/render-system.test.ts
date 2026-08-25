@@ -13,9 +13,9 @@ import type { BufferHandle, BufferDescriptor } from '../../src/render-graph/type
 import type {
   RenderEntityView,
   RenderQuerySnapshot,
-  RenderQuerySpec
-} from '../../src/rendering/render-world';
-import type { RenderEntityId } from '../../src/rendering/render-world';
+  RenderQuerySpec,
+  RenderEntityId
+} from '../../src/rendering/world';
 import type { RenderView } from '../../src/rendering/visibility';
 
 const BUFFER: BufferDescriptor = Object.freeze({

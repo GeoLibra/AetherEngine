@@ -7,13 +7,13 @@ import {
   type RenderGraphExecutionStep,
   type RestrictedPassContext
 } from './executor';
-import type { RenderPhaseSnapshot } from '../rendering/render-phase';
+import type { RenderPhaseSnapshot } from '../rendering/phase';
 import type {
   RenderFieldToken,
   RenderEntityView,
   RenderQuerySnapshot,
   RenderQuerySpec
-} from '../rendering/render-world';
+} from '../rendering/world';
 import type { RenderView } from '../rendering/visibility/types';
 
 export type RenderSystemScope = 'global' | 'per-view';

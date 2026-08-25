@@ -1,6 +1,6 @@
 import type { Vec3 } from '../../../math/types';
 import type { Frustum } from '../../../math/frustum';
-import type { RenderEntityId } from '../../render-world';
+import type { RenderEntityId } from '../../world';
 
 export type WorldBounds =
   | { readonly kind: 'sphere'; readonly center: Vec3; readonly radius: number }

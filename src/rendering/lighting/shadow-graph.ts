@@ -7,7 +7,7 @@ import {
 } from '../../render-graph';
 import { shadowRequestKey } from './shadow';
 import type { ShadowRequest } from './types';
-import { ReadonlyMapSnapshot } from '../readonly-collection-snapshot';
+import { ReadonlyMapSnapshot } from '../world/readonly-collection-snapshot';
 
 export interface ShadowGraphDeclaration {
   readonly texture: TextureHandle | undefined;

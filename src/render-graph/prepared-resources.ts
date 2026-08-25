@@ -1,5 +1,5 @@
 import type { RHIComputePipeline, RHIRenderPipeline } from '../rhi/contracts';
-import type { PreparedDrawPacket } from '../rendering/types';
+import type { PreparedDrawPacket } from '../rendering/phase';
 
 /** Typed key for a compute pipeline created before graph surface acquisition. */
 export interface PreparedComputePipelineToken {

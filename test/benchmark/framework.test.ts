@@ -226,6 +226,10 @@ describe('changed-file routing', () => {
 
   test('routes shared Material rendering helpers to both semantic owners', () => {
     for (const path of [
+      'src/rendering/material/material-bindings.ts',
+      'src/rendering/material/material-cache.ts',
+      'src/rendering/material/material-resolution.ts',
+      'src/rendering/pipeline/pipeline-resolver.ts',
       'src/rendering/material-bindings.ts',
       'src/rendering/material-cache.ts',
       'src/rendering/material-resolution.ts',
