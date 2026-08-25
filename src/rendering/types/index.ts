@@ -110,3 +110,10 @@ export type {
   PipelineAvailabilitySkip,
   PipelineAvailabilitySkipCode
 } from './pipeline-availability-types';
+export type {
+  PrepareDrawPacketInput,
+  PreparedDrawPacket,
+  PreparedDrawPacketResult,
+  PreparedDrawPacketSkip,
+  PreparedDrawPacketSkipCode
+} from './prepared-draw-packet-types';

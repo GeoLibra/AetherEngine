@@ -21,6 +21,7 @@ export * from './material-binding-identity';
 export * from './material-binding-compatibility';
 export * from './pipeline-cache';
 export * from './pipeline-availability';
+export * from './prepared-draw-packet';
 export * from './binding-layout-compiler';
 export * from './binding-layout-lowering';
 export * from './layout-cache';
