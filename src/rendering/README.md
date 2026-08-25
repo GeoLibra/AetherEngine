@@ -43,14 +43,14 @@ sequenceDiagram
 
     MW->>RW: Extract Phase (MeshRenderExtraction, CameraExtraction)
     Note over RW: Atomic commit to RenderRevision
-    RW->>Cam: Query Active Views & Bounds
-    Cam->>Cam: Cull Frustum (SpatialIndex / BVH) -> VisibilityList
+    RW->>Cam: Query Active Views and Bounds
+    Cam->>Cam: Cull Frustum (SpatialIndex / BVH) to VisibilityList
     Cam->>Prep: Resolve Queue (resolvePreparedMeshQueue)
     Note over Prep: Borrow PreparedAssetLease (Mesh & Material)
     Prep->>Pipe: Resolve Compatibility (resolveMaterialPipelineCompatibility)
     Pipe->>Pipe: Lookup / Queue PipelineCache & BindGroupCache
     Pipe->>Phase: Construct Phase (constructRenderPhase, buildPreparedDrawPhase)
-    Note over Phase: Sort Opaque by Pipeline/Material/Mesh; Sort Transparent Far-to-Near
+    Note over Phase: Sort Opaque by Pipeline/Material/Mesh<br/>Sort Transparent Far-to-Near
     Phase->>RG: Create RenderSystems (createOpaqueRenderSystem)
     RG->>RG: Compile Graph (Hazards, Barriers, Memory Aliasing)
     RG->>RG: Execute Command Buffers & Submit to RHI
