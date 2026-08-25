@@ -123,3 +123,7 @@ export type {
   PreparedDrawPhaseSkipCode,
   PreparedDrawPhaseSnapshot
 } from './prepared-draw-phase-types';
+export type {
+  OpaqueRenderSystemInput,
+  OpaqueRenderSystemPreparation
+} from './opaque-render-system-types';

@@ -23,6 +23,7 @@ export * from './pipeline-cache';
 export * from './pipeline-availability';
 export * from './prepared-draw-packet';
 export * from './prepared-draw-phase';
+export * from './opaque-render-system';
 export * from './binding-layout-compiler';
 export * from './binding-layout-lowering';
 export * from './layout-cache';
