@@ -44,7 +44,8 @@ export interface PreparedMaterialBindGroupDescriptor {
 export interface PreparedMaterialBindGroups {
   readonly bindingKey: CanonicalKey<BindingKeyParts>;
   readonly groups: readonly PreparedMaterialBindGroupDescriptor[];
-  readonly dynamicOffsets: readonly number[];
+  /** Dynamic offsets partitioned by exact bind-group coordinate. */
+  readonly dynamicOffsetsByGroup: readonly (readonly number[])[];
 }
 
 export type MaterialBindGroupDiagnosticCode =
@@ -68,7 +69,8 @@ export type MaterialBindGroupPreparationResult =
 export interface RealizedMaterialBindGroups {
   readonly bindingKey: CanonicalKey<BindingKeyParts>;
   readonly bindGroups: readonly RHIBindGroup[];
-  readonly dynamicOffsets: readonly number[];
+  /** Dynamic offsets partitioned by exact bind-group coordinate. */
+  readonly dynamicOffsetsByGroup: readonly (readonly number[])[];
   readonly deviceGeneration: number;
 }
 

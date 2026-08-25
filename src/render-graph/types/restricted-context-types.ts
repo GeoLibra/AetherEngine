@@ -99,7 +99,7 @@ export interface RestrictedComputePipeline {
 export interface RestrictedPreparedDrawResources {
   readonly pipeline: RestrictedRenderPipeline;
   readonly bindGroups: readonly RestrictedBindGroup[];
-  readonly dynamicOffsets: readonly number[];
+  readonly dynamicOffsetsByGroup: readonly (readonly number[])[];
   readonly vertexBuffers: readonly RestrictedBufferSlice[];
   readonly indexBuffer: RestrictedBufferSlice;
   readonly indexFormat: 'uint16' | 'uint32';

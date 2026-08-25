@@ -123,7 +123,24 @@ function drawPacket(
   retain: PreparedDrawPacket['retain'],
   release: PreparedDrawPacket['release']
 ): PreparedDrawPacket {
-  const layout = device.createBindGroupLayout({ entries: [] });
+  const layouts = [0, 1].map(() =>
+    device.createBindGroupLayout({
+      entries: [
+        {
+          binding: 0,
+          visibility: 1,
+          buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 64 }
+        }
+      ]
+    })
+  );
+  const uniformBuffers = layouts.map(() => device.createBuffer({ size: 512, usage: 1 << 3 }));
+  const bindGroups = layouts.map((layout, index) =>
+    device.createBindGroup({
+      layout,
+      entries: [{ binding: 0, resource: { buffer: uniformBuffers[index]!, size: 64 } }]
+    })
+  );
   return {
     entity: 1 as RenderEntityId,
     phase: 'opaque',
@@ -134,11 +151,14 @@ function drawPacket(
     drawKey: 'draw',
     distance: 1,
     insertionOrder: 0,
-    pipeline: device.createRenderPipeline({ primitive: { topology: 'triangle-list' } }),
+    pipeline: device.createRenderPipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: layouts }),
+      primitive: { topology: 'triangle-list' }
+    }),
     bindingSet: {
       bindingKey: {} as never,
-      bindGroups: [device.createBindGroup({ layout, entries: [] })],
-      dynamicOffsets: [],
+      bindGroups,
+      dynamicOffsetsByGroup: [[0], [256]],
       deviceGeneration: device.generation
     },
     vertexBuffers: [device.createBuffer({ size: 64, usage: 1 << 5 })],

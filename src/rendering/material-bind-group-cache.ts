@@ -46,7 +46,9 @@ export class MaterialBindGroupCache {
       const bindingSet = Object.freeze({
         bindingKey: prepared.bindingKey,
         bindGroups: Object.freeze(bindGroups),
-        dynamicOffsets: Object.freeze([...prepared.dynamicOffsets]),
+        dynamicOffsetsByGroup: Object.freeze(
+          prepared.dynamicOffsetsByGroup.map((offsets) => Object.freeze([...offsets]))
+        ),
         deviceGeneration: device.generation
       });
       const retention = new SubmissionRetainedValue(bindingSet, disposeBindingSet, (error) =>
@@ -117,11 +119,20 @@ function validatePrepared(prepared: PreparedMaterialBindGroups, device: RHIDevic
     throw new Error('Material bind-group cache requires a canonical binding key.');
   if (prepared.bindingKey.parts.deviceGeneration !== device.generation)
     throw new Error('Material bind-group device generation does not match the RHI device.');
+  if (prepared.dynamicOffsetsByGroup.length !== prepared.groups.length)
+    throw new Error('Prepared dynamic offset group coordinates do not match bind groups.');
   for (let index = 0; index < prepared.groups.length; index += 1) {
     const group = prepared.groups[index];
     if (group?.group !== index)
       throw new Error('Prepared material bind groups must preserve contiguous group coordinates.');
     if (group.descriptor.layout.generation !== device.generation)
       throw new Error('Prepared material bind-group layout belongs to another device generation.');
+    const offsets = prepared.dynamicOffsetsByGroup[index];
+    if (
+      offsets === undefined ||
+      offsets.length !== group.descriptor.layout.dynamicBindingCount ||
+      offsets.some((offset) => !Number.isSafeInteger(offset) || offset < 0)
+    )
+      throw new Error('Prepared dynamic offset group coordinates do not match bind-group layouts.');
   }
 }

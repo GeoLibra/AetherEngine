@@ -185,7 +185,7 @@ function drawFixture() {
   const bindingSet = {
     bindingKey,
     bindGroups: [],
-    dynamicOffsets: [],
+    dynamicOffsetsByGroup: [],
     deviceGeneration: 4
   };
   const binding = {

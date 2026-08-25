@@ -24,6 +24,28 @@ export function prepareMaterialBindGroups(
   );
   const groups: PreparedMaterialBindGroupDescriptor[] = [];
   const highestGroup = input.plan.groups.at(-1)?.group ?? -1;
+  const dynamicOffsetsByGroup = Array.from({ length: highestGroup + 1 }, () => [] as number[]);
+  for (let index = 0; index < input.plan.dynamicOffsetOrder.length; index += 1) {
+    const location = input.plan.dynamicOffsetOrder[index]!;
+    const binding = input.plan.groups
+      .find(({ group }) => group === location.group)
+      ?.bindings.find((entry) => entry.binding === location.binding);
+    if (
+      binding === undefined ||
+      (binding.kind !== 'uniform-buffer' && binding.kind !== 'storage-buffer') ||
+      !binding.dynamicOffset ||
+      dynamicOffsetsByGroup[location.group] === undefined
+    )
+      return unsupported(
+        diagnostic(
+          'binding-layout-incompatible',
+          'Dynamic offset order references a non-dynamic binding coordinate.',
+          location.group,
+          location.binding
+        )
+      );
+    dynamicOffsetsByGroup[location.group]!.push(input.bindingKey.parts.dynamicOffsets[index]!);
+  }
   for (let group = 0; group <= highestGroup; group += 1) {
     const canonical = input.plan.groups.find((candidate) => candidate.group === group);
     const entries: GPUBindGroupEntry[] = [];
@@ -66,7 +88,9 @@ export function prepareMaterialBindGroups(
     prepared: Object.freeze({
       bindingKey: input.bindingKey,
       groups: Object.freeze(groups),
-      dynamicOffsets: Object.freeze([...input.bindingKey.parts.dynamicOffsets])
+      dynamicOffsetsByGroup: Object.freeze(
+        dynamicOffsetsByGroup.map((offsets) => Object.freeze(offsets))
+      )
     })
   });
 }

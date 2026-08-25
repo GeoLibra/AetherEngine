@@ -30,9 +30,10 @@ describe('prepareMaterialBindGroups', () => {
       size: 64
     });
     expect(result.prepared.groups[2]?.descriptor.entries.map(({ binding }) => binding)).toEqual([
-      0, 1
+      0, 1, 2
     ]);
-    expect(result.prepared.dynamicOffsets).toEqual([256]);
+    expect(result.prepared.dynamicOffsetsByGroup).toEqual([[256], [], [512]]);
+    expect(result.prepared.dynamicOffsetsByGroup.every(Object.isFrozen)).toBe(true);
   });
 
   test('returns typed skips for missing resources and canonical layout mismatch', () => {
@@ -103,6 +104,23 @@ describe('prepareMaterialBindGroups', () => {
     });
   });
 
+  test('returns typed incompatible for a dynamic order outside canonical buffer coordinates', () => {
+    const fixture = createFixture();
+
+    expect(
+      prepareMaterialBindGroups({
+        ...fixture.input,
+        plan: {
+          ...fixture.input.plan,
+          dynamicOffsetOrder: [fixture.input.plan.dynamicOffsetOrder[0]!, { group: 1, binding: 0 }]
+        }
+      })
+    ).toMatchObject({
+      status: 'unsupported',
+      diagnostic: { code: 'binding-layout-incompatible', group: 1, binding: 0 }
+    });
+  });
+
   test('returns typed diagnostics for malformed buffer handles and non-finite ranges', () => {
     const fixture = createFixture();
     const missingBuffer = {
@@ -139,6 +157,19 @@ describe('prepareMaterialBindGroups', () => {
 });
 
 describe('MaterialBindGroupCache', () => {
+  test('rejects malformed per-group dynamic offset coordinates', () => {
+    const fixture = createFixture();
+    const preparation = prepareMaterialBindGroups(fixture.input);
+    if (preparation.status !== 'ready') throw new Error(preparation.diagnostic.message);
+
+    expect(() =>
+      new MaterialBindGroupCache().resolve(
+        { ...preparation.prepared, dynamicOffsetsByGroup: [] },
+        fixture.device
+      )
+    ).toThrow(/dynamic offset.*group coordinates/i);
+  });
+
   test('creates one complete set and reuses exact binding identity hits', () => {
     const fixture = createFixture();
     const preparation = prepareMaterialBindGroups(fixture.input);
@@ -153,6 +184,8 @@ describe('MaterialBindGroupCache', () => {
     expect(second.status).toBe('hit');
     expect(second.bindingSet).toBe(first.bindingSet);
     expect(first.bindingSet.bindGroups).toHaveLength(3);
+    expect(first.bindingSet.dynamicOffsetsByGroup).toEqual([[256], [], [512]]);
+    expect(first.bindingSet.dynamicOffsetsByGroup.every(Object.isFrozen)).toBe(true);
     expect(createBindGroup).toHaveBeenCalledTimes(3);
     first.lease.release();
     second.lease.release();
@@ -292,7 +325,7 @@ function createFixture() {
     ],
     bufferAllocationGeneration: 5,
     ringGeneration: 6,
-    dynamicOffsets: [256],
+    dynamicOffsets: [256, 512],
     deviceGeneration: device.generation
   });
   const resolver: MaterialBindGroupResourceResolver = {
@@ -352,11 +385,23 @@ function bindingPlan(): BindingLayoutPlan {
             group: 2,
             binding: 1,
             samplerType: 'filtering'
+          },
+          {
+            kind: 'uniform-buffer',
+            group: 2,
+            binding: 2,
+            access: 'read',
+            minimumByteSize: 64,
+            bufferLayoutHash: 'buffer:object',
+            dynamicOffset: true
           }
         ]
       }
     ],
-    dynamicOffsetOrder: [{ group: 0, binding: 0 }],
+    dynamicOffsetOrder: [
+      { group: 0, binding: 0 },
+      { group: 2, binding: 2 }
+    ],
     backendRequirements: [],
     hash: 'binding-layout:material:hash'
   };

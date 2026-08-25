@@ -18,7 +18,7 @@ export function createMaterialBindGroupCacheCase(options: {
   const hits = options.lookupCount - misses;
   const semantic = Object.freeze({ lookups: options.lookupCount, misses, hits });
   return Object.freeze({
-    scenarioId: 'bind-group-cache-resolution-v1',
+    scenarioId: 'bind-group-cache-resolution-v2',
     scenarioVersion: 1,
     caseId: `lookups-${options.lookupCount}-keys-${options.uniqueKeys}`,
     scale: Object.freeze({ lookupCount: options.lookupCount, uniqueKeys: options.uniqueKeys }),
@@ -77,9 +77,15 @@ function runSubject(
 function createFixture(uniqueKeys: number) {
   const device = new NullDevice();
   const layout = device.createBindGroupLayout({
-    entries: [{ binding: 0, visibility: 1, buffer: { type: 'uniform', minBindingSize: 64 } }]
+    entries: [
+      {
+        binding: 0,
+        visibility: 1,
+        buffer: { type: 'uniform', minBindingSize: 64, hasDynamicOffset: true }
+      }
+    ]
   });
-  const buffer = device.createBuffer({ size: 64, usage: BUFFER_USAGE_UNIFORM });
+  const buffer = device.createBuffer({ size: 512, usage: BUFFER_USAGE_UNIFORM });
   const prepared = Object.freeze(
     Array.from({ length: uniqueKeys }, (_, index): PreparedMaterialBindGroups => {
       const bindingKey = createBindingKey({
@@ -87,7 +93,7 @@ function createFixture(uniqueKeys: number) {
         resources: [],
         bufferAllocationGeneration: index,
         ringGeneration: 1,
-        dynamicOffsets: [],
+        dynamicOffsets: [index % 2 === 0 ? 0 : 256],
         deviceGeneration: device.generation
       });
       return Object.freeze({
@@ -106,7 +112,7 @@ function createFixture(uniqueKeys: number) {
             })
           })
         ]),
-        dynamicOffsets: Object.freeze([])
+        dynamicOffsetsByGroup: Object.freeze([Object.freeze([bindingKey.parts.dynamicOffsets[0]!])])
       });
     })
   );

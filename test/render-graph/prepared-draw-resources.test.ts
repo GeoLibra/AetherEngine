@@ -40,6 +40,7 @@ describe('prepared draw resources', () => {
     expect(resolved).toMatchObject({
       pipeline: { kind: 'restricted-render-pipeline' },
       bindGroups: [{ kind: 'restricted-bind-group' }],
+      dynamicOffsetsByGroup: [[]],
       vertexBuffers: [{ kind: 'restricted-buffer-slice', offset: 0, size: 64 }],
       indexBuffer: { kind: 'restricted-buffer-slice', offset: 0, size: 32 },
       indexFormat: 'uint16',
@@ -47,6 +48,8 @@ describe('prepared draw resources', () => {
       indexCount: 3
     });
     expect(resolved).not.toHaveProperty('packet');
+    expect(Object.isFrozen(resolved?.dynamicOffsetsByGroup)).toBe(true);
+    expect(resolved?.dynamicOffsetsByGroup.every(Object.isFrozen)).toBe(true);
     expect(retain).toHaveBeenCalledWith(execution.submission);
     expect(release).toHaveBeenCalledOnce();
   });
@@ -99,7 +102,7 @@ function drawPacket(
     bindingSet: {
       bindingKey: {} as never,
       bindGroups: [device.createBindGroup({ layout, entries: [] })],
-      dynamicOffsets: [],
+      dynamicOffsetsByGroup: [[]],
       deviceGeneration: device.generation
     },
     vertexBuffers: [device.createBuffer({ size: 64, usage: 1 << 5 })],

@@ -61,11 +61,9 @@ export function createOpaqueRenderSystem(
         }
       });
       for (const draw of draws) {
-        if (draw.dynamicOffsets.length > 0 && draw.bindGroups.length !== 1)
-          throw new Error('Prepared opaque draw dynamic offsets require one bind group.');
         raster.setPipeline(draw.pipeline);
         draw.bindGroups.forEach((group, index) =>
-          raster.setBindGroup(index, group, index === 0 ? draw.dynamicOffsets : undefined)
+          raster.setBindGroup(index, group, draw.dynamicOffsetsByGroup[index])
         );
         draw.vertexBuffers.forEach((buffer, index) => raster.setVertexBuffer(index, buffer));
         raster.setIndexBuffer(draw.indexBuffer, draw.indexFormat);

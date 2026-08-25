@@ -169,7 +169,9 @@ export class RestrictedContext implements RestrictedPassContext {
     return Object.freeze({
       pipeline,
       bindGroups: Object.freeze(bindGroups),
-      dynamicOffsets: packet.bindingSet.dynamicOffsets,
+      dynamicOffsetsByGroup: Object.freeze(
+        packet.bindingSet.dynamicOffsetsByGroup.map((offsets) => Object.freeze([...offsets]))
+      ),
       vertexBuffers: Object.freeze(vertexBuffers),
       indexBuffer: this.preparedBuffer(packet.indexBuffer, 'index'),
       indexFormat: packet.indexFormat,
