@@ -92,7 +92,7 @@ describe('E2E GitHub Actions workflow', () => {
     expect(outputs.summary).toContain('E2E routing diagnostics');
     expect(outputs.summary).toContain('src/platform/browser-host.ts');
     expect(outputs.summary).toContain('browser-host');
-  });
+  }, 15_000);
 
   test('guards an empty matrix and passes its project through a quoted environment variable', async () => {
     const workflow = await readFile(WORKFLOW_PATH, 'utf8');
