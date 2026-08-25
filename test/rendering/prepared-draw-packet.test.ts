@@ -19,6 +19,12 @@ describe('prepareDrawPacket', () => {
       packet: {
         entity: 7,
         phase: 'opaque',
+        pipelineKey: 'pipeline:a',
+        materialKey: 'material:a',
+        meshKey: 'mesh:a',
+        drawKey: 'draw:a',
+        distance: 1,
+        insertionOrder: 0,
         indexFormat: 'uint16',
         firstIndex: 3,
         indexCount: 6,

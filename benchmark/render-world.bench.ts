@@ -22,6 +22,11 @@ import {
   cameraExtractionReference,
   runCameraExtractionSubject
 } from './render-world/camera-extraction-scenario';
+import {
+  createPreparedDrawPhaseWorkload,
+  runPreparedDrawPhaseReference,
+  runPreparedDrawPhaseSubject
+} from './render-world/prepared-draw-phase-scenario';
 
 const Position = defineRenderField<[number, number, number]>('position');
 const Visible = defineRenderField<boolean>('visible');
@@ -64,6 +69,16 @@ for (const size of [1_000, 10_000]) {
         skips: workload.expectedSkips,
         ownershipTransfers: 0
       }),
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
+for (const size of [1_000, 10_000]) {
+  const workload = createPreparedDrawPhaseWorkload(size);
+  const reference = runPreparedDrawPhaseReference(workload);
+  bench(
+    `orders ${size} prepared opaque draw packets`,
+    () => expect(runPreparedDrawPhaseSubject(workload)).toEqual(reference),
     { iterations: 1, warmupIterations: 0 }
   );
 }

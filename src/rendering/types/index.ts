@@ -117,3 +117,9 @@ export type {
   PreparedDrawPacketSkip,
   PreparedDrawPacketSkipCode
 } from './prepared-draw-packet-types';
+export type {
+  PreparedDrawPhaseResult,
+  PreparedDrawPhaseSkip,
+  PreparedDrawPhaseSkipCode,
+  PreparedDrawPhaseSnapshot
+} from './prepared-draw-phase-types';

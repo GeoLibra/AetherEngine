@@ -43,7 +43,12 @@ export interface PreparedDrawPacket {
   readonly entity: RenderEntityId;
   readonly phase: RenderPhaseKind;
   readonly pipelineKey: string;
+  readonly materialKey: string;
+  readonly meshKey: string;
   readonly bindingKey: string;
+  readonly drawKey: string;
+  readonly distance: number;
+  readonly insertionOrder: number;
   readonly pipeline: AvailablePipelinePhaseItem['pipeline'];
   readonly bindingSet: RealizedMaterialBindGroups;
   readonly vertexBuffers: readonly RHIBuffer[];
