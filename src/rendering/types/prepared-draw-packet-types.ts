@@ -57,6 +57,8 @@ export interface PreparedDrawPacket {
   readonly firstIndex: number;
   readonly indexCount: number;
   readonly released: boolean;
+  /** Whether every borrowed lease can still be transferred before queue submission. */
+  readonly retentionReady: boolean;
   retain(submission: RHISubmission): void;
   release(): void;
 }

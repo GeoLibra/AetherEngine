@@ -147,6 +147,7 @@ function drawPacket(
     firstIndex: 0,
     indexCount: 3,
     released: false,
+    retentionReady: true,
     retain,
     release
   };

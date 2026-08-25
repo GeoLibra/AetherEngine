@@ -86,6 +86,15 @@ export function prepareDrawPacket(input: PrepareDrawPacketInput): PreparedDrawPa
     get released() {
       return released;
     },
+    get retentionReady() {
+      return (
+        !released &&
+        !availability.pipelineLease.released &&
+        !binding.lease.released &&
+        !candidate.mesh.disposed &&
+        !candidate.material.disposed
+      );
+    },
     retain(submission: RHISubmission) {
       if (released) throw new Error('Prepared draw packet has already been released.');
       if (candidate.mesh.disposed || candidate.material.disposed)

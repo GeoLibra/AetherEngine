@@ -323,8 +323,8 @@ function validatePreparedDrawResources(inputs: RenderGraphExecutionInputs): void
   for (const [token, packet] of inputs.preparedDrawResources ?? []) {
     if (token.kind !== 'prepared-draw-resources-token')
       throw new TypeError('Prepared draw resource binding has an invalid token.');
-    if (packet.released)
-      throw new Error(`Prepared draw resources "${token.name}" have already been released.`);
+    if (!packet.retentionReady)
+      throw new Error(`Prepared draw resources "${token.name}" cannot be retained.`);
     if (!packets.add(packet))
       throw new Error('One prepared draw packet cannot be bound to multiple resource tokens.');
     if (packet.bindingSet.deviceGeneration !== inputs.device.generation)

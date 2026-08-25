@@ -55,6 +55,17 @@ describe('prepareDrawPacket', () => {
     expect(result.packet.released).toBe(true);
   });
 
+  test('publishes borrowed lease readiness for the executor pre-submit boundary', () => {
+    const fixture = drawFixture();
+    const result = prepareDrawPacket(fixture.input);
+    if (result.status !== 'ready') throw new Error(result.code);
+
+    expect(result.packet.retentionReady).toBe(true);
+    fixture.meshDispose();
+    expect(result.packet.retentionReady).toBe(false);
+    expect(() => result.packet.retain(completedSubmission(12))).toThrow(/asset lease/i);
+  });
+
   test.each([
     [
       'draw-entity-mismatch',
@@ -203,12 +214,17 @@ function drawFixture() {
     bindingRetain,
     bindingRelease,
     meshRetain: mesh.retain,
+    meshDispose: mesh.dispose,
     materialRetain: material.retain
   };
 }
 
 function fakePreparedLease<T>(value: T) {
   const retain = vi.fn();
+  let disposed = false;
+  const dispose = vi.fn(() => {
+    disposed = true;
+  });
   const lease = {
     prepared: {
       key: {
@@ -220,11 +236,13 @@ function fakePreparedLease<T>(value: T) {
       },
       value
     },
-    disposed: false,
+    get disposed() {
+      return disposed;
+    },
     retainUntil: retain,
-    dispose: vi.fn()
+    dispose
   };
-  return { lease, retain };
+  return { lease, retain, dispose };
 }
 
 function completedSubmission(id: number): RHISubmission {

@@ -37,6 +37,7 @@ export function createPreparedDrawPhaseWorkload(count: number): PreparedDrawPhas
       firstIndex: 0,
       indexCount: 3,
       released: false,
+      retentionReady: true,
       retain: () => ownership.transfers++,
       release: () => ownership.transfers++
     })

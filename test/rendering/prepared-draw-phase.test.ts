@@ -92,6 +92,7 @@ function packet(
     released: false,
     retain() {},
     release() {},
-    ...overrides
+    ...overrides,
+    retentionReady: overrides.retentionReady ?? overrides.released !== true
   });
 }

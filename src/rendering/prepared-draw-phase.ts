@@ -36,7 +36,7 @@ export function buildPreparedDrawPhase(
       );
       continue;
     }
-    if (packet.released) {
+    if (!packet.retentionReady) {
       skipped.push(skip(packet, 'released-draw-packet', 'Prepared draw packet has been released.'));
       continue;
     }
