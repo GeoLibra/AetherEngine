@@ -64,3 +64,10 @@ export interface MeshValidationOptions {
   /** Enables explicitly authored overlapping draw ranges; disabled by default. */
   readonly allowSubmeshOverlap?: boolean;
 }
+
+/** Physical dimensions for a canonical box mesh, expressed in engine meters. */
+export interface BoxMeshOptions {
+  readonly width?: number;
+  readonly height?: number;
+  readonly depth?: number;
+}
