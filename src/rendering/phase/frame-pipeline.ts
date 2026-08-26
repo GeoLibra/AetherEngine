@@ -7,14 +7,16 @@ import type {
   RenderFrameMetrics,
   RenderFrameStageContext,
   RenderFrameStages,
-  RenderSkipReason
+  RenderSkipReason,
+  RenderViewFrameOutcome
 } from './types';
 
 export type {
   RenderFrameMetrics,
   RenderFrameStageContext,
   RenderFrameStages,
-  RenderSkipReason
+  RenderSkipReason,
+  RenderViewFrameOutcome
 } from './types';
 
 /**
@@ -47,6 +49,7 @@ export function runRenderFrame(input: {
     'incompatible-pipeline': 0,
     'missing-resource': 0
   };
+  const outcomes: RenderViewFrameOutcome[] = [];
   for (const view of input.views) {
     const context = Object.freeze({ frame: input.frame, view });
     const prepared = input.stages.prepare(context);
@@ -55,6 +58,9 @@ export function runRenderFrame(input: {
     uploadBytes += prepared.uploadBytes;
     if (view.viewport.width === 0 || view.viewport.height === 0) {
       skipped['surface-suspended']++;
+      outcomes.push(
+        Object.freeze({ viewId: view.id, status: 'skipped', reason: 'surface-suspended' })
+      );
       continue;
     }
     const queued = input.stages.queue(context);
@@ -65,6 +71,7 @@ export function runRenderFrame(input: {
     const plan = input.stages.build(context);
     assertRenderGraphExecutionPlan(plan);
     input.stages.execute(context, plan);
+    outcomes.push(Object.freeze({ viewId: view.id, status: 'rendered' }));
   }
   return Object.freeze({
     extractedEntities: input.extractedEntities,
@@ -74,6 +81,7 @@ export function runRenderFrame(input: {
     uploadBytes,
     phaseItems,
     batches,
-    skipped: Object.freeze(skipped)
+    skipped: Object.freeze(skipped),
+    outcomes: Object.freeze(outcomes)
   });
 }

@@ -4,6 +4,11 @@ import type { RenderGraphExecutionPlan } from '../../../render-graph/executor';
 export type RenderSkipReason =
   'surface-suspended' | 'prepare-pending' | 'incompatible-pipeline' | 'missing-resource';
 
+/** Records whether one view reached graph execution or stopped at a typed compatibility boundary. */
+export type RenderViewFrameOutcome =
+  | { readonly viewId: string; readonly status: 'rendered' }
+  | { readonly viewId: string; readonly status: 'skipped'; readonly reason: RenderSkipReason };
+
 /**
  * Diagnostic metrics accumulated over the course of rendering a single frame.
  */
@@ -16,6 +21,7 @@ export interface RenderFrameMetrics {
   readonly phaseItems: number;
   readonly batches: number;
   readonly skipped: Readonly<Record<RenderSkipReason, number>>;
+  readonly outcomes: readonly RenderViewFrameOutcome[];
 }
 
 export interface RenderFrameStageContext {

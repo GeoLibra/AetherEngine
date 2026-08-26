@@ -274,5 +274,9 @@ describe('overlay and frame orchestration', () => {
     ]);
     expect(metrics).toMatchObject({ prepareHits: 2, phaseItems: 2, batches: 1 });
     expect(metrics.skipped).toMatchObject({ 'surface-suspended': 1, 'prepare-pending': 1 });
+    expect(metrics.outcomes).toEqual([
+      { viewId: 'main', status: 'rendered' },
+      { viewId: 'preview', status: 'skipped', reason: 'surface-suspended' }
+    ]);
   });
 });

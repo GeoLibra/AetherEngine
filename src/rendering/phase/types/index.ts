@@ -41,5 +41,6 @@ export type {
   RenderFrameMetrics,
   RenderFrameStageContext,
   RenderFrameStages,
-  RenderSkipReason
+  RenderSkipReason,
+  RenderViewFrameOutcome
 } from './frame-pipeline-types';
