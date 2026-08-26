@@ -1,0 +1,1 @@
+export { STANDARD_LIT_SHADER_ABI_VERSION, STANDARD_LIT_SHADER_MODULE } from './standard-lit';

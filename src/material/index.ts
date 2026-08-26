@@ -1,4 +1,5 @@
 export { MaterialDiagnosticError } from './diagnostics';
+export * from './builtins';
 export { defineMaterialSchema } from './schema';
 export { createMaterialTechniqueRole, selectMaterialTechnique } from './technique';
 export { resolveMaterialRenderState } from './render-state';

@@ -223,18 +223,34 @@ export function createShaderBindingManifest(
         entries: Object.freeze(entries.sort((left, right) => left.binding - right.binding))
       })
     );
-  const vertexInputs = ir.globals
-    .filter((value) => value.addressSpace === 'in' && value.location !== undefined)
-    .map((value) =>
-      Object.freeze({ location: value.location!, name: value.name, type: value.type })
-    )
-    .sort(compareStageIo);
-  const fragmentOutputs = ir.globals
-    .filter((value) => value.addressSpace === 'out' && value.location !== undefined)
-    .map((value) =>
-      Object.freeze({ location: value.location!, name: value.name, type: value.type })
-    )
-    .sort(compareStageIo);
+  const vertexInputs = canonicalStageIo([
+    ...ir.globals
+      .filter((value) => value.addressSpace === 'in' && value.location !== undefined)
+      .map((value) => ({ location: value.location!, name: value.name, type: value.type })),
+    ...ir.entryPoints
+      .filter((entry) => entry.stage === 'vertex')
+      .flatMap((entry) =>
+        entry.parameters
+          .filter((parameter) => parameter.location !== undefined)
+          .map((parameter) => ({
+            location: parameter.location!,
+            name: parameter.name,
+            type: parameter.type
+          }))
+      )
+  ]);
+  const fragmentOutputs = canonicalStageIo([
+    ...ir.globals
+      .filter((value) => value.addressSpace === 'out' && value.location !== undefined)
+      .map((value) => ({ location: value.location!, name: value.name, type: value.type })),
+    ...ir.entryPoints
+      .filter((entry) => entry.stage === 'fragment' && entry.returnType !== undefined)
+      .map((entry) => ({
+        location: entry.returnLocation ?? 0,
+        name: entry.name,
+        type: entry.returnType!
+      }))
+  ]);
   const data = { shaderAbiVersion, target, groups, buffers, vertexInputs, fragmentOutputs };
   return Object.freeze({
     shaderAbiVersion,
@@ -244,6 +260,23 @@ export function createShaderBindingManifest(
     fragmentOutputs: Object.freeze(fragmentOutputs),
     layoutHash: stableHash(data)
   });
+}
+
+function canonicalStageIo(
+  entries: readonly Readonly<{ location: number; name: string; type: string }>[]
+) {
+  const locations = new Map<number, Readonly<{ location: number; name: string; type: string }>>();
+  for (const entry of entries) {
+    const previous = locations.get(entry.location);
+    if (previous !== undefined) {
+      if (previous.name !== entry.name || previous.type !== entry.type) {
+        throw new Error(`Shader stage IO location ${entry.location} has conflicting declarations.`);
+      }
+      continue;
+    }
+    locations.set(entry.location, Object.freeze({ ...entry }));
+  }
+  return [...locations.values()].sort(compareStageIo);
 }
 
 function bindingVisibility(ir: ShaderModuleIR): readonly ShaderStage[] {

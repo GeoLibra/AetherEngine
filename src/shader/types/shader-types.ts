@@ -60,6 +60,8 @@ export interface ShaderStructFieldIR {
   readonly name: string;
   readonly type: string;
   readonly typeId?: ShaderTypeId;
+  readonly builtin?: 'position';
+  readonly location?: number;
   readonly span?: SourceSpan;
 }
 

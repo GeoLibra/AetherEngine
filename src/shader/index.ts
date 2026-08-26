@@ -53,6 +53,7 @@ export type {
 export * from './hash';
 export * from './source';
 export * from './standard-library';
+export * from './builtins';
 export * from './cook';
 export * from './parser';
 export * from './wgsl-emitter';

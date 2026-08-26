@@ -59,10 +59,32 @@ function emitGlobals(context: EmitContext): string[] {
     }
   }
   for (const parameter of context.entry.parameters) {
-    if (parameter.location !== undefined)
+    if (parameter.location !== undefined) {
       result.push(
         `layout(location = ${parameter.location}) in ${glslType(parameter.type)} ${parameter.name};`
       );
+      continue;
+    }
+    const parameterStruct = findStruct(context.ir, parameter.type);
+    if (context.entry.stage === 'fragment' && parameterStruct !== undefined) {
+      for (const field of parameterStruct.fields) {
+        if (field.location !== undefined) {
+          result.push(
+            `layout(location = ${field.location}) in ${glslType(field.type)} aether_in_${field.name};`
+          );
+        }
+      }
+    }
+  }
+  if (context.entry.stage === 'vertex' && context.entry.returnType !== undefined) {
+    const outputStruct = findStruct(context.ir, context.entry.returnType);
+    for (const field of outputStruct?.fields ?? []) {
+      if (field.location !== undefined) {
+        result.push(
+          `layout(location = ${field.location}) out ${glslType(field.type)} aether_out_${field.name};`
+        );
+      }
+    }
   }
   if (context.entry.stage === 'fragment' && context.entry.returnType !== undefined) {
     result.push(
@@ -81,18 +103,36 @@ function emitFunction(function_: ShaderFunctionIR, context: EmitContext): string
 }
 
 function emitEntryPoint(entry: ShaderEntryPointIR, context: EmitContext): string {
-  return `void main() ${emitBlock(entry.body, context, entry)}`;
+  const prelude = entry.parameters.flatMap((parameter) => {
+    if (parameter.location !== undefined) return [];
+    const struct = findStruct(context.ir, parameter.type);
+    if (entry.stage !== 'fragment' || struct === undefined) return [];
+    const arguments_ = struct.fields.map((field) => {
+      if (field.location === undefined) {
+        throw new Error(
+          `GLSL ES fragment interface field "${struct.name}.${field.name}" requires a location.`
+        );
+      }
+      return `aether_in_${field.name}`;
+    });
+    return [`${struct.name} ${parameter.name} = ${struct.name}(${arguments_.join(', ')});`];
+  });
+  return `void main() ${emitBlock(entry.body, context, entry, '', prelude)}`;
 }
 
 function emitBlock(
   statements: readonly ShaderStatementIR[],
   context: EmitContext,
   entry?: ShaderEntryPointIR,
-  indentation = ''
+  indentation = '',
+  prelude: readonly string[] = []
 ): string {
-  if (statements.length === 0) return '{}';
+  if (statements.length === 0 && prelude.length === 0) return '{}';
   const child = `${indentation}  `;
-  return `{\n${statements.map((statement) => `${child}${emitStatement(statement, context, entry, child)}`).join('\n')}\n${indentation}}`;
+  return `{\n${[
+    ...prelude.map((statement) => `${child}${statement}`),
+    ...statements.map((statement) => `${child}${emitStatement(statement, context, entry, child)}`)
+  ].join('\n')}\n${indentation}}`;
 }
 
 function emitStatement(
@@ -117,6 +157,38 @@ function emitStatement(
     case 'return': {
       if (entry === undefined || statement.value === undefined)
         return `return${statement.value === undefined ? '' : ` ${emitExpression(statement.value, context)}`};`;
+      const outputStruct =
+        entry.stage === 'vertex' && entry.returnType !== undefined
+          ? findStruct(context.ir, entry.returnType)
+          : undefined;
+      if (outputStruct !== undefined) {
+        if (
+          statement.value.kind !== 'construct' ||
+          statement.value.arguments.length !== outputStruct.fields.length
+        ) {
+          throw new Error(
+            `GLSL ES vertex entry "${entry.name}" must construct its declared interface result.`
+          );
+        }
+        const constructed = statement.value;
+        const assignments = outputStruct.fields.map((field, index) => {
+          const value = constructed.arguments[index];
+          if (value === undefined) throw new Error('Shader interface result is incomplete.');
+          const target =
+            field.builtin === 'position'
+              ? 'gl_Position'
+              : field.location !== undefined
+                ? `aether_out_${field.name}`
+                : undefined;
+          if (target === undefined) {
+            throw new Error(
+              `GLSL ES vertex interface field "${outputStruct.name}.${field.name}" requires a builtin or location.`
+            );
+          }
+          return `${target} = ${emitExpression(value, context)};`;
+        });
+        return `${assignments.join(`\n${indentation}`)}\n${indentation}return;`;
+      }
       const output = entry.stage === 'vertex' ? 'gl_Position' : 'aether_fragment_output';
       return `${output} = ${emitExpression(statement.value, context)};\n${indentation}return;`;
     }
@@ -129,6 +201,10 @@ function emitStatement(
     case 'switch':
       throw new Error('GLSL ES emitter does not yet support switch statements.');
   }
+}
+
+function findStruct(ir: ShaderModuleIR, type: string) {
+  return ir.types.find((candidate) => candidate.name === type);
 }
 
 function emitExpression(expression: ShaderExpressionIR, context: EmitContext): string {

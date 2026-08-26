@@ -14,6 +14,7 @@ import {
   createMaterialBindingCompatibilityCase,
   createMaterialBindGroupCacheCase,
   createPipelineCacheResolutionCase,
+  createStandardLitBuiltinCase,
   createParameterEditUploadCase,
   createPipelineBindingResolutionCase
 } from '../../benchmark/material-system/scenarios';
@@ -39,6 +40,21 @@ const repository: MaterialBenchmarkRepositoryState = Object.freeze({
 });
 
 describe('material benchmark profiles and sampling', () => {
+  test('keeps the standard-lit schema and shader ABI structural counters exact', () => {
+    const scenario = createStandardLitBuiltinCase(100);
+    const reference = scenario.runReference();
+    const subject = scenario.runSubject();
+
+    expect(subject.semantic).toEqual(reference.semantic);
+    expect(subject.counters).toEqual({
+      constructions: 100,
+      schemaFields: 3,
+      bindingGroups: 4,
+      vertexInputs: 2,
+      staleReuse: 0
+    });
+  });
+
   test('keeps bind-group cache hits and RHI creation counts exact', () => {
     const scenario = createMaterialBindGroupCacheCase({ lookupCount: 1_000, uniqueKeys: 16 });
     const reference = scenario.runReference();

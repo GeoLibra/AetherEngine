@@ -23,7 +23,17 @@ export function emitWgslModule(
   return [
     ...ir.types.map(
       (type) =>
-        `struct ${type.name} {\n${type.fields.map((field) => `  ${field.name}: ${field.type},`).join('\n')}\n}`
+        `struct ${type.name} {\n${type.fields
+          .map((field) => {
+            const attribute =
+              field.builtin !== undefined
+                ? `@builtin(${field.builtin}) `
+                : field.location !== undefined
+                  ? `@location(${field.location}) `
+                  : '';
+            return `  ${attribute}${field.name}: ${field.type},`;
+          })
+          .join('\n')}\n}`
     ),
     ...ir.globals.map(emitGlobal),
     ...ir.functions.map(emitFunction),
