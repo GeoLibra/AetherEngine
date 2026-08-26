@@ -44,3 +44,9 @@ export type {
   RenderSkipReason,
   RenderViewFrameOutcome
 } from './frame-pipeline-types';
+
+export type {
+  SurfaceRenderPlanContext,
+  SurfaceRenderPlanResult,
+  SurfaceRenderPlanRunInput
+} from './surface-lifecycle-types';
