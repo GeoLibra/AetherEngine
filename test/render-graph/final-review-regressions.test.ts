@@ -1,17 +1,20 @@
 import { describe, expect, test } from 'vitest';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
-import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
   createRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan,
-  type RestrictedPassContext
+  type RenderGraphExecutionPlan
 } from '../../src/render-graph/executor';
-import { HistoryRegistry, type HistoryIdentity } from '../../src/render-graph/history';
+import {
+  compileRenderGraph,
+  HistoryRegistry,
+  type HistoryIdentity
+} from '../../src/render-graph/compiler';
 import type {
   BufferDescriptor,
   GraphHandle,
-  TextureDescriptor
+  TextureDescriptor,
+  RestrictedPassContext
 } from '../../src/render-graph/types';
 import type { RHIBuffer, RHITexture } from '../../src/rhi/contracts';
 import { NullDevice } from '../../src/rhi/null/device';

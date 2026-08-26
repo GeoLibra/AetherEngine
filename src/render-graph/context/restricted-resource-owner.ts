@@ -1,4 +1,4 @@
-import type { RHIResource, RHISubmission } from '../rhi/contracts';
+import type { RHIResource, RHISubmission } from '../../rhi/contracts';
 
 /** Owns pass-created RHI objects until failure or the accepted submission becomes terminal. */
 export class RestrictedResourceOwner {

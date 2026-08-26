@@ -1,9 +1,7 @@
-import type { RenderGraphSnapshot } from './builder';
-import type { CompiledRenderGraph, CompiledRenderGraphEdge } from './compiler';
-import {
-  createRenderGraphExecutionSchedule,
-  type RenderGraphExecutionStep
-} from './execution-plan';
+import type { RenderGraphSnapshot } from '../builder/builder';
+import type { CompiledRenderGraph, CompiledRenderGraphEdge } from '../types';
+import { createRenderGraphExecutionSchedule } from '../executor/execution-plan';
+import type { RenderGraphExecutionStep } from '../types';
 import {
   analyzeResourceLifetimes,
   derivePortableTransitions,

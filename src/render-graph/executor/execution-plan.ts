@@ -1,26 +1,19 @@
-import type { GraphPassDeclaration, RenderGraphSnapshot } from './builder';
+import type { GraphPassDeclaration, RenderGraphSnapshot } from '../builder/builder';
+import { isCompiledRenderGraph, isCompiledRenderGraphForSnapshot } from '../compiler/compiler';
 import {
-  isCompiledRenderGraph,
-  isCompiledRenderGraphForSnapshot,
-  type CompiledRenderGraph
-} from './compiler';
-import { analyzeResourceLifetimes, planResourceAliases, type ResourceAliasPlan } from './lifetimes';
+  analyzeResourceLifetimes,
+  planResourceAliases,
+  type ResourceAliasPlan
+} from '../compiler/lifetimes';
+import type {
+  CompiledRenderGraph,
+  RenderGraphExecutionPlan,
+  RenderGraphExecutionStep
+} from '../types';
+
+export type { RenderGraphExecutionPlan, RenderGraphExecutionStep } from '../types';
 
 const CANONICAL_EXECUTION_PLANS = new WeakSet<object>();
-
-/** Compiler-owned lifecycle boundaries and retained pass invocations for one graph submission. */
-export type RenderGraphExecutionStep =
-  | { readonly kind: 'prelude' }
-  | { readonly kind: 'pass'; readonly passId: number; readonly retainedPassIndex: number }
-  | { readonly kind: 'submission' };
-
-/** The only executable representation accepted by the frame and RHI execution seams. */
-export interface RenderGraphExecutionPlan {
-  readonly snapshot: RenderGraphSnapshot;
-  readonly compiled: CompiledRenderGraph;
-  readonly aliases: ResourceAliasPlan;
-  readonly schedule: readonly RenderGraphExecutionStep[];
-}
 
 export function createRenderGraphExecutionPlan(
   snapshot: RenderGraphSnapshot,

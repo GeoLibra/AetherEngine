@@ -1,16 +1,19 @@
-import { RenderGraphBuilder } from '../../src/render-graph/builder';
-import { compileRenderGraph } from '../../src/render-graph/compiler';
+import {
+  RenderGraphBuilder,
+  RenderSystemRegistry,
+  compileRenderSystems,
+  renderSystemToken
+} from '../../src/render-graph/builder';
+import {
+  compileRenderGraph,
+  HistoryRegistry,
+  type HistoryIdentity
+} from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
   createRenderGraphExecutionPlan,
   type RenderGraphHistoryBinding
 } from '../../src/render-graph/executor';
-import { HistoryRegistry, type HistoryIdentity } from '../../src/render-graph/history';
-import {
-  RenderSystemRegistry,
-  compileRenderSystems,
-  renderSystemToken
-} from '../../src/render-graph/render-system';
 import { NullDevice } from '../../src/rhi/null/device';
 import type { BufferHandle } from '../../src/render-graph/types';
 

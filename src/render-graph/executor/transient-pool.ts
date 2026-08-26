@@ -4,14 +4,11 @@ import type {
   RHIResource,
   RHISubmission,
   RHITexture,
-  GPUBufferDescriptor,
-  GPUTextureDescriptor,
   SubmissionResult
-} from '../rhi/contracts';
+} from '../../rhi/contracts';
+import type { TransientAllocationDescriptor } from '../types';
 
-export type TransientAllocationDescriptor =
-  | { readonly kind: 'buffer'; readonly descriptor: GPUBufferDescriptor }
-  | { readonly kind: 'texture'; readonly descriptor: GPUTextureDescriptor };
+export type { TransientAllocationDescriptor } from '../types';
 
 export type TransientResource = RHIBuffer | RHITexture;
 

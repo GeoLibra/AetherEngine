@@ -1,5 +1,5 @@
-import type { RHIComputePipeline, RHIRenderPipeline } from '../rhi/contracts';
-import type { PreparedDrawPacket } from '../rendering/phase';
+import type { RHIComputePipeline, RHIRenderPipeline } from '../../rhi/contracts';
+import type { PreparedDrawPacket } from '../../rendering/phase';
 
 /** Typed key for a compute pipeline created before graph surface acquisition. */
 export interface PreparedComputePipelineToken {
@@ -37,7 +37,7 @@ export type PreparedRenderPipelineBindings = ReadonlyMap<
   RHIRenderPipeline
 >;
 
-/** Typed key for one complete draw packet prepared before graph recording. */
+/** Typed key for prepared draw packet resources created before graph surface acquisition. */
 export interface PreparedDrawResourcesToken {
   readonly kind: 'prepared-draw-resources-token';
   readonly name: string;
@@ -50,7 +50,9 @@ export function createPreparedDrawResourcesToken(name: string): PreparedDrawReso
   return Object.freeze({ kind: 'prepared-draw-resources-token', name, id: Symbol(name) });
 }
 
-export type PreparedDrawResourceBindings = ReadonlyMap<
+export type PreparedDrawResourcesBindings = ReadonlyMap<
   PreparedDrawResourcesToken,
   PreparedDrawPacket
 >;
+
+export type PreparedDrawResourceBindings = PreparedDrawResourcesBindings;

@@ -7,7 +7,7 @@ import {
   type BufferGraphRange,
   type GraphRange,
   type TextureGraphRange
-} from './ranges';
+} from '../compiler/ranges';
 import { assertGraphHandle, createGraphHandle } from './handles';
 import type {
   BufferDescriptor,
@@ -17,7 +17,7 @@ import type {
   GraphResourceOrigin,
   TextureDescriptor,
   TextureHandle
-} from './types';
+} from '../types';
 
 export interface InitializationInterval {
   readonly range: GraphRange;

@@ -3,7 +3,7 @@ import { NullDevice } from '../../src/rhi';
 import {
   TransientResourcePool,
   type TransientAllocationDescriptor
-} from '../../src/render-graph/transient-pool';
+} from '../../src/render-graph/executor';
 
 const BUFFER: TransientAllocationDescriptor = Object.freeze({
   kind: 'buffer',

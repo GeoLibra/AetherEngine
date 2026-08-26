@@ -22,6 +22,7 @@ import {
   renderSystemToken
 } from '../../src';
 import { RenderSystemRegistry as RenderingRenderSystemRegistry } from '../../src/rendering';
+import * as renderGraphApi from '../../src/render-graph';
 
 describe('RenderGraph public API', () => {
   test('exports direct graph and RenderSystem facade entry points from the package', () => {
@@ -40,5 +41,18 @@ describe('RenderGraph public API', () => {
     });
     expect(renderSystemToken('example').id).toBe('example');
     expect(RenderingRenderSystemRegistry).toBe(RenderSystemRegistry);
+  });
+
+  test('does not publish executor and restricted-context implementation helpers', () => {
+    expect(Object.keys(renderGraphApi)).not.toEqual(
+      expect.arrayContaining([
+        'PassBuilderState',
+        'RestrictedContext',
+        'RestrictedResourceOwner',
+        'allocationFor',
+        'resolveResources',
+        'safelyReleaseFrame'
+      ])
+    );
   });
 });

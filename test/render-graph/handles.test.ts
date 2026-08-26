@@ -3,7 +3,7 @@ import {
   assertGraphHandle,
   createGraphHandle,
   isGraphHandle
-} from '../../src/render-graph/handles';
+} from '../../src/render-graph/builder';
 import type { BufferHandle, TextureHandle } from '../../src/render-graph/types';
 
 const textureHandle: TextureHandle = createGraphHandle('texture', 7, 2, 3);

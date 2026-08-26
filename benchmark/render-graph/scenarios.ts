@@ -7,16 +7,18 @@ import type {
   RenderGraphWorkloadOptions
 } from './types';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
-import { compileRenderGraph } from '../../src/render-graph/compiler';
-import { createRenderGraphDebugIR } from '../../src/render-graph/debug-ir';
+import { compileRenderGraph, createRenderGraphDebugIR } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
   createRenderGraphExecutionPlan,
-  type RestrictedPassContext
+  TransientResourcePool
 } from '../../src/render-graph/executor';
 import { NullDevice } from '../../src/rhi/null/device';
-import { TransientResourcePool } from '../../src/render-graph/transient-pool';
-import type { BufferHandle, GraphHandle } from '../../src/render-graph/types';
+import type {
+  BufferHandle,
+  GraphHandle,
+  RestrictedPassContext
+} from '../../src/render-graph/types';
 import type { RHIBuffer } from '../../src/rhi/contracts';
 
 export interface RenderGraphCompilerSemantic {

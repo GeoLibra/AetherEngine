@@ -6,7 +6,7 @@ import type {
   RHIPipelineLayout,
   RHIRenderPipelineDescriptor,
   RHIShaderModule
-} from '../rhi/contracts';
+} from '../../rhi/contracts';
 import type {
   RestrictedComputePipelineDescriptor,
   RestrictedFragmentState,
@@ -15,7 +15,7 @@ import type {
   RestrictedRenderPipelineDescriptor,
   RestrictedShaderModule,
   RestrictedVertexState
-} from './types';
+} from '../types';
 
 type ResolveLayout = (layout: RestrictedPipelineLayout) => RHIPipelineLayout;
 type ResolveShader = (module: RestrictedShaderModule) => RHIShaderModule;

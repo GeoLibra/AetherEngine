@@ -1,20 +1,17 @@
 import { RenderGraphBuilder, type PassBuilder } from './builder';
-import { compileRenderGraph } from './compiler';
-import { createRenderGraphDebugIR, type RenderGraphDebugIR } from './debug-ir';
-import {
-  createRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan,
-  type RenderGraphExecutionStep,
-  type RestrictedPassContext
-} from './executor';
-import type { RenderPhaseSnapshot } from '../rendering/phase';
+import { compileRenderGraph } from '../compiler/compiler';
+import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../compiler/debug-ir';
+import { createRenderGraphExecutionPlan } from '../executor/execution-plan';
+import type { RenderGraphExecutionPlan, RenderGraphExecutionStep } from '../types';
+import type { RestrictedPassContext } from '../types';
+import type { RenderPhaseSnapshot } from '../../rendering/phase';
 import type {
   RenderFieldToken,
   RenderEntityView,
   RenderQuerySnapshot,
   RenderQuerySpec
-} from '../rendering/world';
-import type { RenderView } from '../rendering/visibility/types';
+} from '../../rendering/world';
+import type { RenderView } from '../../rendering/visibility/types';
 
 export type RenderSystemScope = 'global' | 'per-view';
 
@@ -291,8 +288,6 @@ function semanticIncoming(
       }
     }
   }
-  // Scheduling consumes these normalized predecessors before this compilation returns;
-  // no caller can observe the private adjacency arrays.
   return new Map([...incoming].map(([id, predecessors]) => [id, unique(predecessors)]));
 }
 

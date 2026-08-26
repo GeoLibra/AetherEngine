@@ -1,4 +1,4 @@
-import type { GraphHandle, GraphResourceKind } from './types';
+import type { GraphHandle, GraphResourceKind } from '../types';
 
 type GraphHandleForKind<K extends GraphResourceKind> = Extract<GraphHandle, { readonly kind: K }>;
 

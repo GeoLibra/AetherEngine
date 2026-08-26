@@ -1,7 +1,7 @@
-import type { RHICommandStats } from '../rhi/contracts';
-import { normalizeBufferRange, normalizeTextureRange, type GraphRange } from './ranges';
-import type { TextureGraphRange } from './ranges';
-import type { GraphResourceRecord } from './resources';
+import type { RHICommandStats } from '../../rhi/contracts';
+import { normalizeBufferRange, normalizeTextureRange, type GraphRange } from '../compiler/ranges';
+import type { TextureGraphRange } from '../compiler/ranges';
+import type { GraphResourceRecord } from '../builder/resources';
 import type { TransientAllocationDescriptor } from './transient-pool';
 import type {
   BufferDescriptor,
@@ -11,7 +11,7 @@ import type {
   TextureDescriptor,
   TextureRange,
   TextureUsage
-} from './types';
+} from '../types';
 
 export function allocationFor(resource: GraphResourceRecord): TransientAllocationDescriptor {
   if (resource.kind === 'buffer') {

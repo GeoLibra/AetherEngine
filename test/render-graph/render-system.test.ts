@@ -1,14 +1,16 @@
 import { describe, expect, test } from 'vitest';
-import { RenderGraphBuilder } from '../../src/render-graph/builder';
-import { compileRenderGraph } from '../../src/render-graph/compiler';
-import { RenderGraphCycleError } from '../../src/render-graph/compiler';
-import { createRenderGraphDebugIR } from '../../src/render-graph/debug-ir';
 import {
+  RenderGraphBuilder,
   RenderSystemRegistry,
   compileRenderSystems,
   renderSystemToken,
   type RenderSystemDescriptor
-} from '../../src/render-graph/render-system';
+} from '../../src/render-graph/builder';
+import {
+  compileRenderGraph,
+  RenderGraphCycleError,
+  createRenderGraphDebugIR
+} from '../../src/render-graph/compiler';
 import type { BufferHandle, BufferDescriptor } from '../../src/render-graph/types';
 import type {
   RenderEntityView,

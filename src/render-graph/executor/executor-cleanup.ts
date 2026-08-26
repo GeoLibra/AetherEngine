@@ -1,5 +1,5 @@
-import type { RHIDevice, RHISubmission } from '../rhi/contracts';
-import type { RHISurfaceFrame } from '../rhi/contracts/surface';
+import type { RHIDevice, RHISubmission } from '../../rhi/contracts';
+import type { RHISurfaceFrame } from '../../rhi/contracts/surface';
 import { TransientResourcePool, type TransientResource } from './transient-pool';
 
 export interface EndableRenderPass {

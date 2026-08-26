@@ -1,4 +1,4 @@
-import type { GraphReadAccess, GraphWriteAccess, RenderGraphSnapshot } from './builder';
+import type { GraphReadAccess, GraphWriteAccess, RenderGraphSnapshot } from '../builder/builder';
 import {
   fullBufferRange,
   fullTextureRange,
@@ -8,27 +8,19 @@ import {
   type GraphRange,
   type TextureGraphRange
 } from './ranges';
-import type { GraphResourceRecord, InitializationInterval } from './resources';
-import type { BufferRange, GraphResourceKind, TextureRange } from './types';
+import type { GraphResourceRecord, InitializationInterval } from '../builder/resources';
+import type { BufferRange, GraphResourceKind, TextureRange } from '../types';
+import type {
+  RenderGraphHazardCounters,
+  RenderGraphHazardEdge,
+  RenderGraphHazardKind
+} from '../types';
 
-export type RenderGraphHazardKind = 'raw' | 'war' | 'waw';
-
-export interface RenderGraphHazardEdge {
-  readonly kind: RenderGraphHazardKind;
-  readonly fromPassId: number;
-  readonly toPassId: number;
-  readonly resourceId: number;
-  readonly resourceKind: GraphResourceKind;
-  readonly version: number;
-  readonly range: GraphRange;
-  readonly fallback: boolean;
-}
-
-export interface RenderGraphHazardCounters {
-  readonly accessesExamined: number;
-  readonly overlapComparisons: number;
-  readonly wholeResourceFallbacks: number;
-}
+export type {
+  RenderGraphHazardCounters,
+  RenderGraphHazardEdge,
+  RenderGraphHazardKind
+} from '../types';
 
 export interface RenderGraphHazardResult {
   readonly edges: readonly RenderGraphHazardEdge[];

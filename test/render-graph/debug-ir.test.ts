@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
-import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
+  compileRenderGraph,
   createRenderGraphDebugIR,
   toRenderGraphDebugJSON,
   type RenderGraphHistoryDebugBinding
-} from '../../src/render-graph/debug-ir';
+} from '../../src/render-graph/compiler';
 import type { BufferDescriptor } from '../../src/render-graph/types';
 
 const BUFFER: BufferDescriptor = Object.freeze({

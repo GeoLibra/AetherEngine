@@ -1,4 +1,4 @@
-import type { BufferDescriptor, BufferRange, TextureDescriptor, TextureRange } from './types';
+import type { BufferDescriptor, BufferRange, TextureDescriptor, TextureRange } from '../types';
 
 export interface TextureGraphRange extends TextureRange {
   readonly kind: 'texture';

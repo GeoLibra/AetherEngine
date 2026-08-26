@@ -15,12 +15,12 @@ import type {
   RHIRenderPassEncoder,
   RHIRenderPipelineDescriptor
 } from '../../rhi/contracts';
-import type { TextureGraphRange } from '../ranges';
+import type { TextureGraphRange } from '../compiler/ranges';
 import type {
   PreparedComputePipelineToken,
   PreparedDrawResourcesToken,
   PreparedRenderPipelineToken
-} from '../prepared-resources';
+} from '../builder/prepared-resources';
 import type {
   BufferHandle,
   BufferRange,

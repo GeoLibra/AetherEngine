@@ -1,4 +1,4 @@
-import type { RenderGraphSnapshot } from './builder';
+import type { RenderGraphSnapshot } from '../builder/builder';
 import type { CompiledRenderGraph } from './compiler';
 import {
   atomizeTextureAspects,
@@ -9,44 +9,23 @@ import {
   subtractGraphRange,
   type GraphRange
 } from './ranges';
-import type { GraphResourceRecord } from './resources';
-import type { BufferUsage, ExternalResourceState, GraphResourceKind, TextureUsage } from './types';
+import type { GraphResourceRecord } from '../builder/resources';
+import type { BufferUsage, ExternalResourceState, GraphResourceKind, TextureUsage } from '../types';
+import type {
+  AliasDecision,
+  AliasRejection,
+  AliasRejectionReason,
+  ResourceAliasPlan,
+  ResourceLifetime
+} from '../types';
 
-export interface ResourceLifetime {
-  readonly resourceId: number;
-  readonly resourceKind: GraphResourceKind;
-  readonly firstUse: number;
-  readonly lastUse: number;
-  readonly firstPassId: number;
-  readonly lastPassId: number;
-  readonly ranges: readonly GraphRange[];
-}
-
-export type AliasRejectionReason =
-  | 'overlapping-lifetime'
-  | 'descriptor-incompatible'
-  | 'origin-not-transient'
-  | 'backend-alignment'
-  | 'submission-pending';
-
-export interface AliasRejection {
-  readonly allocationId: number | null;
-  readonly againstResourceId: number;
-  readonly reason: AliasRejectionReason;
-}
-
-export interface AliasDecision {
-  readonly resourceId: number;
-  readonly allocationId: number | null;
-  readonly aliasedWithResourceIds: readonly number[];
-  readonly rejections: readonly AliasRejection[];
-}
-
-export interface ResourceAliasPlan {
-  readonly decisions: readonly AliasDecision[];
-  readonly allocationCount: number;
-  readonly aliasGroupCount: number;
-}
+export type {
+  AliasDecision,
+  AliasRejection,
+  AliasRejectionReason,
+  ResourceAliasPlan,
+  ResourceLifetime
+} from '../types';
 
 export interface AliasPlanningOptions {
   readonly aliasing?: boolean;

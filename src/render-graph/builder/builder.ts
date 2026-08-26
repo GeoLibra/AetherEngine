@@ -3,8 +3,17 @@ import {
   type GraphResourceCreateOptions,
   type GraphResourceRecord
 } from './resources';
-import type { GraphRange } from './ranges';
-import { assertGraphHandle, isGraphHandle } from './handles';
+import type { GraphRange } from '../compiler/ranges';
+import { assertGraphHandle } from './handles';
+import {
+  PassBuilderState,
+  snapshotSetupValue,
+  validatePassDescriptor,
+  isPromiseLike,
+  type PassBuilder,
+  type RenderGraphPassContextDelegate,
+  type SurfaceFrameToken
+} from './pass-builder';
 import type {
   BufferDescriptor,
   BufferHandle,
@@ -19,12 +28,10 @@ import type {
   TextureRange,
   TextureReadUsage,
   TextureWriteUsage
-} from './types';
+} from '../types';
 
-export interface SurfaceFrameToken {
-  readonly kind: 'surface-frame';
-  readonly id: string;
-}
+export type { PassBuilder, SurfaceFrameToken } from './pass-builder';
+
 export interface GraphReadAccess {
   readonly kind: 'read';
   readonly passId: number;
@@ -32,6 +39,7 @@ export interface GraphReadAccess {
   readonly usage: TextureReadUsage | BufferReadUsage;
   readonly range: GraphRange;
 }
+
 export interface GraphWriteAccess {
   readonly kind: 'write';
   readonly passId: number;
@@ -40,7 +48,9 @@ export interface GraphWriteAccess {
   readonly usage: TextureWriteUsage | BufferWriteUsage;
   readonly range: GraphRange;
 }
+
 export type GraphAccess = GraphReadAccess | GraphWriteAccess;
+
 export type GraphTerminal =
   | {
       readonly kind: 'export';
@@ -54,16 +64,19 @@ export type GraphTerminal =
       readonly handle: TextureHandle;
       readonly surfaceFrame: SurfaceFrameToken;
     };
+
 export interface SemanticEdge {
   readonly kind: 'after';
   readonly fromPassId: number;
   readonly toPassId: number;
 }
+
 export interface GraphPassDescriptor<TResources, TContext = unknown> {
   readonly id: string;
   setup(pass: PassBuilder): TResources;
   run(context: TContext, resources: TResources): void;
 }
+
 export interface GraphPassDeclaration {
   readonly id: string;
   readonly token: PassToken;
@@ -74,29 +87,13 @@ export interface GraphPassDeclaration {
   readonly resources: unknown;
   readonly run: (context: unknown) => void;
 }
+
 export interface RenderGraphSnapshot {
   readonly graphId: number;
   readonly resources: readonly GraphResourceRecord[];
   readonly passes: readonly GraphPassDeclaration[];
   readonly terminals: readonly GraphTerminal[];
   readonly semanticEdges: readonly SemanticEdge[];
-}
-export interface PassBuilder {
-  createTexture(descriptor: TextureDescriptor, options?: GraphResourceCreateOptions): TextureHandle;
-  createBuffer(descriptor: BufferDescriptor, options?: GraphResourceCreateOptions): BufferHandle;
-  readTexture(handle: TextureHandle, usage: TextureReadUsage, range?: TextureRange): TextureHandle;
-  writeTexture(
-    handle: TextureHandle,
-    usage: TextureWriteUsage,
-    range?: TextureRange
-  ): TextureHandle;
-  readBuffer(handle: BufferHandle, usage: BufferReadUsage, range?: BufferRange): BufferHandle;
-  writeBuffer(handle: BufferHandle, usage: BufferWriteUsage, range?: BufferRange): BufferHandle;
-  exportTexture(handle: TextureHandle, finalState: ExternalResourceState): void;
-  exportBuffer(handle: BufferHandle, finalState: ExternalResourceState): void;
-  presentTexture(handle: TextureHandle, surfaceFrame: SurfaceFrameToken): void;
-  sideEffect(reason: string): void;
-  after(pass: PassToken): void;
 }
 
 let nextGraphId = 1;
@@ -109,7 +106,7 @@ const BUFFER_READ_USAGES = new Set(
 );
 const BUFFER_WRITE_USAGES = new Set('copy-dst storage-write query-resolve'.split(' '));
 
-export class RenderGraphBuilder {
+export class RenderGraphBuilder implements RenderGraphPassContextDelegate {
   readonly graphId = nextGraphId++;
   private readonly resources = new ResourceVersionStore(this.graphId);
   private readonly passes: GraphPassDeclaration[] = [];
@@ -361,187 +358,6 @@ export class RenderGraphBuilder {
   }
 }
 
-class PassBuilderState implements PassBuilder {
-  private readonly accesses: GraphAccess[] = [];
-  private readonly terminals: GraphTerminal[] = [];
-  private readonly sideEffects: string[] = [];
-  private active = true;
-
-  constructor(
-    private readonly graph: RenderGraphBuilder,
-    private readonly passId: number
-  ) {}
-
-  createTexture(
-    descriptor: TextureDescriptor,
-    options?: GraphResourceCreateOptions
-  ): TextureHandle {
-    this.assertActive();
-    return this.graph.createTexture(descriptor, options);
-  }
-
-  createBuffer(descriptor: BufferDescriptor, options?: GraphResourceCreateOptions): BufferHandle {
-    this.assertActive();
-    return this.graph.createBuffer(descriptor, options);
-  }
-
-  readTexture(handle: TextureHandle, usage: TextureReadUsage, range?: TextureRange): TextureHandle {
-    this.assertActive();
-    this.accesses.push(this.graph.declareRead(this.passId, handle, usage, 'texture', range));
-    return handle;
-  }
-
-  writeTexture(
-    handle: TextureHandle,
-    usage: TextureWriteUsage,
-    range?: TextureRange
-  ): TextureHandle {
-    this.assertActive();
-    const access = this.graph.declareWrite(this.passId, handle, usage, 'texture', range);
-    this.accesses.push(access);
-    return access.handle as TextureHandle;
-  }
-
-  readBuffer(handle: BufferHandle, usage: BufferReadUsage, range?: BufferRange): BufferHandle {
-    this.assertActive();
-    this.accesses.push(this.graph.declareRead(this.passId, handle, usage, 'buffer', range));
-    return handle;
-  }
-
-  writeBuffer(handle: BufferHandle, usage: BufferWriteUsage, range?: BufferRange): BufferHandle {
-    this.assertActive();
-    const access = this.graph.declareWrite(this.passId, handle, usage, 'buffer', range);
-    this.accesses.push(access);
-    return access.handle as BufferHandle;
-  }
-
-  exportTexture(handle: TextureHandle, finalState: ExternalResourceState): void {
-    this.export(handle, finalState, 'texture');
-  }
-
-  exportBuffer(handle: BufferHandle, finalState: ExternalResourceState): void {
-    this.export(handle, finalState, 'buffer');
-  }
-
-  presentTexture(handle: TextureHandle, surfaceFrame: SurfaceFrameToken): void {
-    this.assertActive();
-    assertGraphHandle(handle, this.graph.graphId, 'texture');
-    if (surfaceFrame.kind !== 'surface-frame' || !surfaceFrame.id) {
-      throw new Error('Present terminal requires a valid surface frame token.');
-    }
-    this.graph.validatePresentBinding(handle, surfaceFrame);
-    const terminal = Object.freeze({
-      kind: 'present' as const,
-      passId: this.passId,
-      handle,
-      surfaceFrame: Object.freeze({ ...surfaceFrame })
-    });
-    this.graph.declareTerminal(terminal);
-    this.terminals.push(terminal);
-  }
-
-  sideEffect(reason: string): void {
-    this.assertActive();
-    if (!reason.trim()) throw new Error('Render graph side effects require a non-empty reason.');
-    this.sideEffects.push(reason);
-  }
-
-  after(pass: PassToken): void {
-    this.assertActive();
-    this.graph.declareAfter(pass, this.passId);
-  }
-
-  complete(): void {
-    this.active = false;
-  }
-
-  frozenAccesses(): readonly GraphAccess[] {
-    return Object.freeze([...this.accesses]);
-  }
-
-  frozenTerminals(): readonly GraphTerminal[] {
-    return Object.freeze([...this.terminals]);
-  }
-
-  frozenSideEffects(): readonly string[] {
-    return Object.freeze([...this.sideEffects]);
-  }
-
-  private export(
-    handle: GraphHandle,
-    finalState: ExternalResourceState,
-    expectedKind: GraphHandle['kind']
-  ): void {
-    this.assertActive();
-    assertGraphHandle(handle, this.graph.graphId, expectedKind);
-    this.graph.validateExportState(handle, finalState);
-    const terminal = Object.freeze({
-      kind: 'export' as const,
-      passId: this.passId,
-      handle,
-      finalState
-    });
-    this.graph.declareTerminal(terminal);
-    this.terminals.push(terminal);
-  }
-
-  private assertActive(): void {
-    if (!this.active)
-      throw new Error('Render graph pass setup is complete and its declaration is frozen.');
-  }
-}
-
-function validatePassDescriptor<TResources, TContext>(
-  descriptor: GraphPassDescriptor<TResources, TContext>
-): void {
-  if (!descriptor.id.trim()) throw new Error('Render graph pass id must be non-empty.');
-  if (typeof descriptor.setup !== 'function' || typeof descriptor.run !== 'function') {
-    throw new Error('Render graph passes require setup and run callbacks.');
-  }
-}
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return typeof value === 'object' && value !== null && 'then' in value;
-}
-function snapshotSetupValue<T>(
-  value: T,
-  visiting = new WeakSet<object>(),
-  completed = new WeakMap<object, unknown>()
-): T {
-  if (typeof value === 'function') {
-    throw new Error('Render graph setup resources cannot contain mutable function values.');
-  }
-  if (typeof value !== 'object' || value === null) return value;
-  if (isGraphHandle(value)) return value as T;
-  const prototype = Object.getPrototypeOf(value);
-  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
-    const name = prototype?.constructor?.name ?? 'unknown';
-    throw new Error(`Render graph setup resources cannot contain mutable container ${name}.`);
-  }
-  const existing = completed.get(value);
-  if (existing !== undefined) return existing as T;
-  if (visiting.has(value)) throw new Error('Render graph setup resources must not contain cycles.');
-  visiting.add(value);
-  const snapshot = Array.isArray(value) ? new Array(value.length) : Object.create(prototype);
-  for (const key of Reflect.ownKeys(value)) {
-    if (Array.isArray(value) && key === 'length') continue;
-    const property = Object.getOwnPropertyDescriptor(value, key);
-    if (property?.get !== undefined || property?.set !== undefined) {
-      throw new Error('Render graph setup resources must contain data properties only.');
-    }
-    if (property !== undefined && 'value' in property) {
-      Object.defineProperty(snapshot, key, {
-        ...property,
-        value: snapshotSetupValue(property.value, visiting, completed)
-      });
-    }
-  }
-  visiting.delete(value);
-  const frozen = Object.freeze(snapshot);
-  completed.set(value, frozen);
-  return frozen as T;
-}
-
 function assertAccessUsage(kind: GraphHandle['kind'], mode: 'read' | 'write', usage: string): void {
   const allowed = mode === 'read' ? readUsages(kind) : writeUsages(kind);
   if (!allowed.has(usage)) {
@@ -552,6 +368,7 @@ function assertAccessUsage(kind: GraphHandle['kind'], mode: 'read' | 'write', us
 function readUsages(kind: GraphHandle['kind']): ReadonlySet<string> {
   return kind === 'texture' ? TEXTURE_READ_USAGES : BUFFER_READ_USAGES;
 }
+
 function writeUsages(kind: GraphHandle['kind']): ReadonlySet<string> {
   return kind === 'texture' ? TEXTURE_WRITE_USAGES : BUFFER_WRITE_USAGES;
 }

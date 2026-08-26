@@ -4,9 +4,9 @@ import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
   createRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan,
-  type RestrictedPassContext
+  type RenderGraphExecutionPlan
 } from '../../src/render-graph/executor';
+import type { RestrictedPassContext } from '../../src/render-graph/types';
 import { NullDevice } from '../../src/rhi/null/device';
 import { NullSurface } from '../../src/rhi/null/surface';
 import type { RHISurface, RHISurfaceFrame } from '../../src/rhi/contracts/surface';

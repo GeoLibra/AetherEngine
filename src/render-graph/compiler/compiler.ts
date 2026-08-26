@@ -1,44 +1,26 @@
-import type { GraphPassDeclaration, RenderGraphSnapshot, SemanticEdge } from './builder';
+import type { GraphPassDeclaration, RenderGraphSnapshot, SemanticEdge } from '../builder/builder';
 import {
   deriveRenderGraphHazards,
   type RenderGraphHazardCounters,
   type RenderGraphHazardEdge
 } from './hazards';
+import type {
+  CompiledRenderGraph,
+  CompiledRenderGraphCounters,
+  CompiledRenderGraphEdge,
+  CulledRenderGraphPass,
+  RenderGraphSemanticEdge
+} from '../types';
+
+export type {
+  CompiledRenderGraph,
+  CompiledRenderGraphCounters,
+  CompiledRenderGraphEdge,
+  CulledRenderGraphPass,
+  RenderGraphSemanticEdge
+} from '../types';
 
 const COMPILED_RENDER_GRAPHS = new WeakMap<object, RenderGraphSnapshot>();
-
-export interface RenderGraphSemanticEdge {
-  readonly kind: 'semantic';
-  readonly fromPassId: number;
-  readonly toPassId: number;
-}
-
-export type CompiledRenderGraphEdge = RenderGraphHazardEdge | RenderGraphSemanticEdge;
-
-export interface CulledRenderGraphPass {
-  readonly passId: number;
-  readonly id: string;
-  readonly reason: 'unreachable-from-root';
-}
-
-export interface CompiledRenderGraphCounters extends RenderGraphHazardCounters {
-  readonly totalPasses: number;
-  readonly retainedPasses: number;
-  readonly culledPasses: number;
-  readonly hazardEdges: number;
-  readonly semanticEdges: number;
-  readonly edgeCount: number;
-}
-
-export interface CompiledRenderGraph {
-  readonly graphId: number;
-  readonly retainedPasses: readonly GraphPassDeclaration[];
-  readonly order: readonly number[];
-  readonly edges: readonly CompiledRenderGraphEdge[];
-  readonly rootPassIds: readonly number[];
-  readonly culledPasses: readonly CulledRenderGraphPass[];
-  readonly counters: CompiledRenderGraphCounters;
-}
 
 export class RenderGraphSemanticHazardError extends Error {
   readonly semanticEdge: RenderGraphSemanticEdge;

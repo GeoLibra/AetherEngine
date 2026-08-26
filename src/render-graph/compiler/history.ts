@@ -4,20 +4,12 @@ import type {
   RHISubmission,
   RHITexture,
   SubmissionResult
-} from '../rhi/contracts';
-import type { TransientAllocationDescriptor, TransientResource } from './transient-pool';
-import type { FeaturePolicyCacheInvalidation } from '../feature-policy/types';
+} from '../../rhi/contracts';
+import type { TransientAllocationDescriptor, TransientResource } from '../executor/transient-pool';
+import type { FeaturePolicyCacheInvalidation } from '../../feature-policy/types';
+import type { HistoryInvalidationReason } from '../types';
 
-export type HistoryInvalidationReason =
-  | 'new'
-  | 'generation-changed'
-  | 'resize'
-  | 'abi-changed'
-  | 'policy-changed'
-  | 'explicit-reset'
-  | 'view-destroyed'
-  | 'submission-failed'
-  | 'device-lost';
+export type { HistoryInvalidationReason } from '../types';
 
 export interface HistoryIdentity {
   readonly deviceGeneration: number;
