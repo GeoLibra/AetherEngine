@@ -109,6 +109,10 @@ export interface RenderGraphBenchmarkReport {
   readonly submissionSafety: {
     readonly pendingSubmissionAttempts: number;
     readonly prematureReuseCount: number;
+    readonly resizeGenerations: number;
+    readonly peakRetiringAllocations: number;
+    readonly finalTrackedAllocations: number;
+    readonly disposedResizeAllocations: number;
   };
   readonly coverage: RenderGraphCoverageEvidence;
   readonly results: readonly RenderGraphBenchmarkResult[];

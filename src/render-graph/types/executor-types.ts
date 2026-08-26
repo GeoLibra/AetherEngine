@@ -10,6 +10,14 @@ export interface SurfaceTransientScope {
   readonly height: number;
 }
 
+/** Structural allocation counts published by a transient resource pool. */
+export interface TransientResourcePoolCounters {
+  readonly activeAllocations: number;
+  readonly reusableAllocations: number;
+  readonly retiringAllocations: number;
+  readonly disposedAllocations: number;
+}
+
 export type TransientAllocationDescriptor =
   | { readonly kind: 'buffer'; readonly descriptor: GPUBufferDescriptor }
   | {

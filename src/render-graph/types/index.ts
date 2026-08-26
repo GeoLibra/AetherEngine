@@ -67,6 +67,7 @@ export type {
 export type {
   SurfaceTransientScope,
   TransientAllocationDescriptor,
+  TransientResourcePoolCounters,
   RenderGraphExecutionStep,
   RenderGraphExecutionPlan
 } from './executor-types';

@@ -6,9 +6,17 @@ import type {
   RHITexture,
   SubmissionResult
 } from '../../rhi/contracts';
-import type { SurfaceTransientScope, TransientAllocationDescriptor } from '../types';
+import type {
+  SurfaceTransientScope,
+  TransientAllocationDescriptor,
+  TransientResourcePoolCounters
+} from '../types';
 
-export type { SurfaceTransientScope, TransientAllocationDescriptor } from '../types';
+export type {
+  SurfaceTransientScope,
+  TransientAllocationDescriptor,
+  TransientResourcePoolCounters
+} from '../types';
 
 export type TransientResource = RHIBuffer | RHITexture;
 
@@ -30,9 +38,28 @@ export class TransientResourcePool {
   private readonly surfaceTargetIds = new Map<symbol, number>();
   private readonly surfaceGenerationFloors = new Map<symbol, number>();
   private nextSurfaceTargetId = 1;
+  private disposedAllocationCount = 0;
 
   constructor(private readonly device: RHIDevice) {
     void device.lost.then(() => this.dispose());
+  }
+
+  /** Returns an immutable diagnostic snapshot without changing allocation state. */
+  get counters(): TransientResourcePoolCounters {
+    let activeAllocations = 0;
+    let reusableAllocations = 0;
+    let retiringAllocations = 0;
+    for (const entry of this.entries.values()) {
+      if (entry.retired || entry.submissions.size > 0) retiringAllocations++;
+      else if (entry.released) reusableAllocations++;
+      else activeAllocations++;
+    }
+    return Object.freeze({
+      activeAllocations,
+      reusableAllocations,
+      retiringAllocations,
+      disposedAllocations: this.disposedAllocationCount
+    });
   }
 
   acquire(descriptor: TransientAllocationDescriptor): TransientResource {
@@ -138,6 +165,7 @@ export class TransientResourcePool {
     this.removeReusableEntry(entry);
     this.entries.delete(entry.resource);
     entry.resource.dispose();
+    this.disposedAllocationCount++;
   }
 
   private removeReusableEntry(entry: PoolEntry): void {

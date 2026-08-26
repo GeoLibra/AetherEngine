@@ -152,4 +152,45 @@ describe('TransientResourcePool', () => {
 
     expect(allocation.state).toBe('disposed');
   });
+
+  test('bounds repeated resize retirement by pending submissions and drains after completion', async () => {
+    const device = new NullDevice({ submissionMode: 'manual' });
+    const pool = new TransientResourcePool(device);
+    const targetId = Symbol('main');
+    const submissions = [];
+
+    for (let generation = 1; generation <= 3; generation += 1) {
+      const allocation = pool.acquire(surfaceTexture(targetId, generation, generation + 3, 4));
+      const submission = device.queue.submit([]);
+      submissions.push(submission);
+      pool.release(allocation, submission);
+      pool.retireSurfaceScopesBefore(targetId, generation + 1);
+    }
+
+    expect(pool.counters).toEqual({
+      activeAllocations: 0,
+      reusableAllocations: 0,
+      retiringAllocations: 3,
+      disposedAllocations: 0
+    });
+
+    device.queue.completeNextForTesting();
+    await submissions[0]!.done;
+    expect(pool.counters).toEqual({
+      activeAllocations: 0,
+      reusableAllocations: 0,
+      retiringAllocations: 2,
+      disposedAllocations: 1
+    });
+
+    device.queue.completeNextForTesting();
+    device.queue.completeNextForTesting();
+    await Promise.all(submissions.slice(1).map((submission) => submission.done));
+    expect(pool.counters).toEqual({
+      activeAllocations: 0,
+      reusableAllocations: 0,
+      retiringAllocations: 0,
+      disposedAllocations: 3
+    });
+  });
 });
