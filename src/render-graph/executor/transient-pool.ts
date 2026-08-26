@@ -6,9 +6,9 @@ import type {
   RHITexture,
   SubmissionResult
 } from '../../rhi/contracts';
-import type { TransientAllocationDescriptor } from '../types';
+import type { SurfaceTransientScope, TransientAllocationDescriptor } from '../types';
 
-export type { TransientAllocationDescriptor } from '../types';
+export type { SurfaceTransientScope, TransientAllocationDescriptor } from '../types';
 
 export type TransientResource = RHIBuffer | RHITexture;
 
@@ -16,8 +16,10 @@ interface PoolEntry {
   readonly key: string;
   readonly resource: TransientResource;
   readonly submissions: Set<number>;
+  readonly surfaceScope: SurfaceTransientScope | undefined;
   released: boolean;
   failed: boolean;
+  retired: boolean;
   discarded: boolean;
 }
 
@@ -25,13 +27,20 @@ interface PoolEntry {
 export class TransientResourcePool {
   private readonly reusable = new Map<string, PoolEntry[]>();
   private readonly entries = new Map<RHIResource, PoolEntry>();
+  private readonly surfaceTargetIds = new Map<symbol, number>();
+  private readonly surfaceGenerationFloors = new Map<symbol, number>();
+  private nextSurfaceTargetId = 1;
 
   constructor(private readonly device: RHIDevice) {
     void device.lost.then(() => this.dispose());
   }
 
   acquire(descriptor: TransientAllocationDescriptor): TransientResource {
-    const key = descriptorKey(descriptor);
+    const requestedScope = descriptor.kind === 'texture' ? descriptor.surfaceScope : undefined;
+    if (requestedScope !== undefined) this.validateSurfaceScope(requestedScope);
+    const surfaceScope =
+      requestedScope === undefined ? undefined : Object.freeze({ ...requestedScope });
+    const key = this.descriptorKey(descriptor, surfaceScope);
     const reusable = this.reusable.get(key);
     const entry = reusable?.pop();
     if (entry !== undefined) {
@@ -44,8 +53,10 @@ export class TransientResourcePool {
       key,
       resource,
       submissions: new Set(),
+      surfaceScope,
       released: false,
       failed: false,
+      retired: false,
       discarded: false
     });
     return resource;
@@ -73,6 +84,24 @@ export class TransientResourcePool {
     if (entry.submissions.size === 0) this.finish(entry);
   }
 
+  /**
+   * Prevents obsolete generations for one surface target from returning to the reusable pool.
+   * Resources retained by pending submissions remain live until those submissions become terminal.
+   */
+  retireSurfaceScopesBefore(targetId: symbol, generation: number): void {
+    validateSurfaceGeneration(generation);
+    const previousFloor = this.surfaceGenerationFloors.get(targetId) ?? 0;
+    const floor = Math.max(previousFloor, generation);
+    this.surfaceGenerationFloors.set(targetId, floor);
+    for (const entry of this.entries.values()) {
+      const scope = entry.surfaceScope;
+      if (scope === undefined || scope.targetId !== targetId || scope.generation >= floor) continue;
+      entry.retired = true;
+      this.removeReusableEntry(entry);
+      if (entry.released && entry.submissions.size === 0) this.disposeEntry(entry);
+    }
+  }
+
   dispose(): void {
     for (const entry of this.entries.values()) {
       entry.discarded = true;
@@ -90,6 +119,7 @@ export class TransientResourcePool {
   private finish(entry: PoolEntry): void {
     if (
       entry.discarded ||
+      entry.retired ||
       entry.failed ||
       this.device.state !== 'live' ||
       entry.resource.state !== 'live'
@@ -103,8 +133,46 @@ export class TransientResourcePool {
   }
 
   private disposeEntry(entry: PoolEntry): void {
+    if (!this.entries.has(entry.resource)) return;
     entry.discarded = true;
+    this.removeReusableEntry(entry);
+    this.entries.delete(entry.resource);
     entry.resource.dispose();
+  }
+
+  private removeReusableEntry(entry: PoolEntry): void {
+    const reusable = this.reusable.get(entry.key);
+    if (reusable === undefined) return;
+    const index = reusable.indexOf(entry);
+    if (index >= 0) reusable.splice(index, 1);
+    if (reusable.length === 0) this.reusable.delete(entry.key);
+  }
+
+  private validateSurfaceScope(scope: SurfaceTransientScope): void {
+    validateSurfaceGeneration(scope.generation);
+    validateSurfaceExtent(scope.width, 'width');
+    validateSurfaceExtent(scope.height, 'height');
+    const floor = this.surfaceGenerationFloors.get(scope.targetId) ?? 0;
+    if (scope.generation < floor) {
+      throw new Error(
+        `Cannot acquire a transient texture for obsolete surface generation ${scope.generation}; current generation is ${floor}.`
+      );
+    }
+  }
+
+  private descriptorKey(
+    descriptor: TransientAllocationDescriptor,
+    surfaceScope: SurfaceTransientScope | undefined
+  ): string {
+    const base = `${descriptor.kind}:${stableValue(descriptor.descriptor, new Set(['label']))}`;
+    if (descriptor.kind === 'buffer' || surfaceScope === undefined) return base;
+    const scope = surfaceScope;
+    let targetId = this.surfaceTargetIds.get(scope.targetId);
+    if (targetId === undefined) {
+      targetId = this.nextSurfaceTargetId++;
+      this.surfaceTargetIds.set(scope.targetId, targetId);
+    }
+    return `${base}:surface:${targetId}:${scope.generation}:${scope.width}x${scope.height}`;
   }
 
   private requiredEntry(resource: TransientResource): PoolEntry {
@@ -131,10 +199,6 @@ function normalizeSubmissions(
   return Array.isArray(submissions) ? submissions : [submissions as RHISubmission];
 }
 
-function descriptorKey(descriptor: TransientAllocationDescriptor): string {
-  return `${descriptor.kind}:${stableValue(descriptor.descriptor, new Set(['label']))}`;
-}
-
 function stableValue(value: unknown, omitted: ReadonlySet<string> = new Set()): string {
   if (Array.isArray(value)) return `[${value.map((item) => stableValue(item, omitted)).join(',')}]`;
   if (value !== null && typeof value === 'object') {
@@ -146,4 +210,16 @@ function stableValue(value: unknown, omitted: ReadonlySet<string> = new Set()): 
       .join(',')}}`;
   }
   return JSON.stringify(value);
+}
+
+function validateSurfaceGeneration(generation: number): void {
+  if (!Number.isSafeInteger(generation) || generation < 1) {
+    throw new Error('Surface transient generation must be a positive safe integer.');
+  }
+}
+
+function validateSurfaceExtent(value: number, name: 'width' | 'height'): void {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`Surface transient ${name} must be a positive safe integer.`);
+  }
 }

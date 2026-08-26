@@ -65,6 +65,7 @@ export type {
 } from './compiler-types';
 
 export type {
+  SurfaceTransientScope,
   TransientAllocationDescriptor,
   RenderGraphExecutionStep,
   RenderGraphExecutionPlan

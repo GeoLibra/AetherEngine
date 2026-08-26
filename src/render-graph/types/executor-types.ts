@@ -2,9 +2,21 @@ import type { GPUBufferDescriptor, GPUTextureDescriptor } from '../../rhi/contra
 import type { CompiledRenderGraph, ResourceAliasPlan } from './compiler-types';
 import type { RenderGraphSnapshot } from '../builder/builder';
 
+/** Identifies a transient texture derived from one surface configuration. */
+export interface SurfaceTransientScope {
+  readonly targetId: symbol;
+  readonly generation: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 export type TransientAllocationDescriptor =
   | { readonly kind: 'buffer'; readonly descriptor: GPUBufferDescriptor }
-  | { readonly kind: 'texture'; readonly descriptor: GPUTextureDescriptor };
+  | {
+      readonly kind: 'texture';
+      readonly descriptor: GPUTextureDescriptor;
+      readonly surfaceScope?: SurfaceTransientScope;
+    };
 
 export type RenderGraphExecutionStep =
   | { readonly kind: 'prelude' }
