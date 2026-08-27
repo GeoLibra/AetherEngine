@@ -14,6 +14,12 @@ export interface RoutingReason {
 
 export const E2E_ROUTING_RULES = Object.freeze([
   {
+    id: 'react-vite-render-example',
+    prefixes: Object.freeze(['examples/react-vite-ts/', 'src/rendering/baseline/']),
+    exact: Object.freeze([]),
+    projects: Object.freeze(['react-vite-webgl2', 'react-vite-webgpu'] as const)
+  },
+  {
     id: 'e2e-infrastructure',
     prefixes: Object.freeze(['e2e/', '.github/workflows/e2e.yml']),
     exact: Object.freeze(['playwright.config.ts']),

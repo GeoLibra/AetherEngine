@@ -117,7 +117,9 @@ export function createBrowserWebGL2RenderPassOperations(
         texture,
         0
       ]);
+      glCall(gl, 'readBuffer', [constant(gl, 'COLOR_ATTACHMENT0')]);
       glCall(gl, 'bindFramebuffer', [constant(gl, 'DRAW_FRAMEBUFFER'), null]);
+      glCall(gl, 'drawBuffers', [[constant(gl, 'BACK')]]);
       glCall(gl, 'blitFramebuffer', [
         0,
         0,

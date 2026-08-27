@@ -6,7 +6,7 @@ type Status =
   | Readonly<{ kind: 'ready'; message: string }>
   | Readonly<{ kind: 'error'; message: string }>;
 
-export function App() {
+export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState<Status>({
     kind: 'loading',
@@ -14,6 +14,7 @@ export function App() {
   });
 
   useEffect(() => {
+    if (!mountScene) return;
     const target = canvas.current;
     if (target === null) return;
     let active = true;
@@ -38,7 +39,7 @@ export function App() {
       active = false;
       void teardown?.();
     };
-  }, []);
+  }, [mountScene]);
 
   return (
     <main>

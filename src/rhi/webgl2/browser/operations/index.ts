@@ -6,18 +6,23 @@ import { createBrowserWebGL2FramebufferPort } from './framebuffer-port';
 import { createBrowserWebGL2ProgramPort } from './program-port';
 import { createBrowserWebGL2RenderPassOperations } from './render-pass-operations';
 import { createBrowserWebGL2RenderPort } from './render-port';
-import { createBrowserWebGL2ResourcePort, type BrowserWebGL2TextureFacts } from './resource-port';
+import {
+  createBrowserWebGL2ResourcePort,
+  type BrowserWebGL2BufferTarget,
+  type BrowserWebGL2TextureFacts
+} from './resource-port';
 import { createBrowserWebGL2TextureCopyPort } from './texture-copy-port';
 
 export function createBrowserWebGL2OperationPort(
   gl: BrowserWebGL2Object
 ): Partial<WebGL2NativeContextPort> {
   const textureFacts = new WeakMap<object, BrowserWebGL2TextureFacts>();
+  const bufferTargets = new WeakMap<object, BrowserWebGL2BufferTarget>();
   const framebufferState = { current: null as object | null };
   return {
-    ...createBrowserWebGL2ResourcePort(gl, textureFacts),
+    ...createBrowserWebGL2ResourcePort(gl, textureFacts, bufferTargets),
     ...createBrowserWebGL2RenderPort(gl, textureFacts),
-    ...createBrowserWebGL2CopyPort(gl),
+    ...createBrowserWebGL2CopyPort(gl, bufferTargets),
     ...createBrowserWebGL2FramebufferPort(gl, textureFacts, framebufferState),
     ...createBrowserWebGL2TextureCopyPort(gl, textureFacts),
     ...createBrowserWebGL2RenderPassOperations(gl, textureFacts, framebufferState),

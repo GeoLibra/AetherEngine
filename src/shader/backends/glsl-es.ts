@@ -69,9 +69,7 @@ function emitGlobals(context: EmitContext): string[] {
     if (context.entry.stage === 'fragment' && parameterStruct !== undefined) {
       for (const field of parameterStruct.fields) {
         if (field.location !== undefined) {
-          result.push(
-            `layout(location = ${field.location}) in ${glslType(field.type)} aether_in_${field.name};`
-          );
+          result.push(`in ${glslType(field.type)} aether_varying_${field.name};`);
         }
       }
     }
@@ -80,9 +78,7 @@ function emitGlobals(context: EmitContext): string[] {
     const outputStruct = findStruct(context.ir, context.entry.returnType);
     for (const field of outputStruct?.fields ?? []) {
       if (field.location !== undefined) {
-        result.push(
-          `layout(location = ${field.location}) out ${glslType(field.type)} aether_out_${field.name};`
-        );
+        result.push(`out ${glslType(field.type)} aether_varying_${field.name};`);
       }
     }
   }
@@ -113,7 +109,7 @@ function emitEntryPoint(entry: ShaderEntryPointIR, context: EmitContext): string
           `GLSL ES fragment interface field "${struct.name}.${field.name}" requires a location.`
         );
       }
-      return `aether_in_${field.name}`;
+      return `aether_varying_${field.name}`;
     });
     return [`${struct.name} ${parameter.name} = ${struct.name}(${arguments_.join(', ')});`];
   });
@@ -178,7 +174,7 @@ function emitStatement(
             field.builtin === 'position'
               ? 'gl_Position'
               : field.location !== undefined
-                ? `aether_out_${field.name}`
+                ? `aether_varying_${field.name}`
                 : undefined;
           if (target === undefined) {
             throw new Error(

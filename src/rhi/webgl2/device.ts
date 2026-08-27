@@ -203,7 +203,17 @@ export class WebGL2Device implements RHIDevice {
     const present = this.native.presentSurfaceTexture;
     if (present === undefined)
       throw new Error('Native WebGL2 context cannot present a surface texture.');
-    present.call(this.native, getWebGL2Handle(texture, this.owner), texture.width, texture.height);
+    try {
+      present.call(
+        this.native,
+        getWebGL2Handle(texture, this.owner),
+        texture.width,
+        texture.height
+      );
+    } finally {
+      // Presentation binds the default framebuffer and may disturb VAO/buffer state outside replay.
+      this.queue.invalidateExternalState();
+    }
   }
   createSampler(descriptor: RHISamplerDescriptor = {}): RHISampler {
     const create = this.native.createSampler;

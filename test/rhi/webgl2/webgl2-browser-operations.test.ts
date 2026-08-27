@@ -93,7 +93,7 @@ describe('browser WebGL2 native operations', () => {
     await port.createSubmissionFence?.();
     expect(gl.calls).toEqual(
       expect.arrayContaining([
-        ['bufferSubData', gl.COPY_WRITE_BUFFER, 4, upload],
+        ['bufferSubData', gl.ARRAY_BUFFER, 4, upload],
         ['copyBufferSubData', gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 4, 8, 4],
         ['fenceSync', gl.SYNC_GPU_COMMANDS_COMPLETE, 0],
         ['flush'],

@@ -11,9 +11,12 @@ export interface BrowserWebGL2TextureFacts {
   readonly mipLevelCount: number;
 }
 
+export type BrowserWebGL2BufferTarget = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
+
 export function createBrowserWebGL2ResourcePort(
   gl: BrowserWebGL2Object,
-  textureFacts: WeakMap<object, BrowserWebGL2TextureFacts>
+  textureFacts: WeakMap<object, BrowserWebGL2TextureFacts>,
+  bufferTargets: WeakMap<object, BrowserWebGL2BufferTarget> = new WeakMap()
 ): Pick<
   WebGL2NativeContextPort,
   | 'createBuffer'
@@ -26,12 +29,23 @@ export function createBrowserWebGL2ResourcePort(
   return {
     createBuffer(descriptor) {
       const buffer = glObject(gl, 'createBuffer');
-      glCall(gl, 'bindBuffer', [constant(gl, 'ARRAY_BUFFER'), buffer]);
+      const usage = requiredNumber(descriptor, 'usage');
+      const target: BrowserWebGL2BufferTarget =
+        (usage & (1 << 4)) !== 0 ? 'ELEMENT_ARRAY_BUFFER' : 'ARRAY_BUFFER';
+      bufferTargets.set(buffer, target);
+      const uploadVertexArray =
+        target === 'ELEMENT_ARRAY_BUFFER' ? glObject(gl, 'createVertexArray') : undefined;
+      if (uploadVertexArray !== undefined) glCall(gl, 'bindVertexArray', [uploadVertexArray]);
+      glCall(gl, 'bindBuffer', [constant(gl, target), buffer]);
       glCall(gl, 'bufferData', [
-        constant(gl, 'ARRAY_BUFFER'),
+        constant(gl, target),
         requiredNumber(descriptor, 'size'),
         constant(gl, 'DYNAMIC_DRAW')
       ]);
+      if (uploadVertexArray !== undefined) {
+        glCall(gl, 'bindVertexArray', [null]);
+        glCall(gl, 'deleteVertexArray', [uploadVertexArray]);
+      }
       return buffer;
     },
     deleteBuffer(buffer): void {

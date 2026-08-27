@@ -65,11 +65,37 @@ export default defineConfig({
           ]
         }
       }
+    },
+    {
+      name: 'react-vite-webgl2',
+      testMatch: 'react-vite-render.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
+        baseURL: 'http://127.0.0.1:4174'
+      }
+    },
+    {
+      name: 'react-vite-webgpu',
+      testMatch: 'react-vite-render.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
+        baseURL: 'http://127.0.0.1:4174',
+        launchOptions: { args: ['--enable-unsafe-webgpu'] }
+      }
     }
   ],
-  webServer: {
-    command:
-      'pnpm exec vite build --config e2e/vite.config.ts && pnpm exec vite preview --config e2e/vite.config.ts',
-    url: BASE_URL
-  }
+  webServer: [
+    {
+      command:
+        'pnpm exec vite build --config e2e/vite.config.ts && pnpm exec vite preview --config e2e/vite.config.ts',
+      url: BASE_URL
+    },
+    {
+      command:
+        'pnpm --dir examples/react-vite-ts build && pnpm --dir examples/react-vite-ts exec vite preview --host 127.0.0.1 --port 4174',
+      url: 'http://127.0.0.1:4174'
+    }
+  ]
 });

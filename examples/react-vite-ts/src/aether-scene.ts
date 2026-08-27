@@ -13,20 +13,32 @@ import {
   createBrowserGraphics,
   createStandardLitMaterial,
   definePlugin,
+  BaselineRenderDiagnosticsResource,
+  type BaselineRenderDiagnostics,
   type BrowserGraphicsSession
 } from '@aether/engine';
 
 export interface MountedAetherScene {
   readonly backend: BrowserGraphicsSession['backend'];
+  diagnostics(): BaselineRenderDiagnostics | undefined;
+  nativeMetrics(): unknown;
+  resize(width: number, height: number): void;
   destroy(): Promise<void>;
 }
 
+export interface AetherSceneOptions {
+  readonly preference?: readonly BrowserGraphicsSession['backend'][];
+}
+
 /** Mounts the public baseline renderer and one MainWorld-authored scene on a canvas. */
-export async function mountAetherScene(canvas: HTMLCanvasElement): Promise<MountedAetherScene> {
+export async function mountAetherScene(
+  canvas: HTMLCanvasElement,
+  options: AetherSceneOptions = {}
+): Promise<MountedAetherScene> {
   const size = physicalSize(canvas);
   const graphics = await createBrowserGraphics({
     canvas,
-    preference: ['webgpu', 'webgl2'],
+    preference: options.preference ?? ['webgpu', 'webgl2'],
     device: { requiredFeatures: [], optionalFeatures: [], label: 'Aether React example' },
     surface: { ...size, alphaMode: 'opaque' }
   });
@@ -119,6 +131,14 @@ export async function mountAetherScene(canvas: HTMLCanvasElement): Promise<Mount
   let destroyed = false;
   return Object.freeze({
     backend: graphics.backend,
+    diagnostics: () => app.getResource(BaselineRenderDiagnosticsResource),
+    nativeMetrics: () => {
+      const metrics = Reflect.get(graphics.device.queue, 'metrics');
+      return typeof metrics === 'function'
+        ? Reflect.apply(metrics, graphics.device.queue, [])
+        : undefined;
+    },
+    resize: (width: number, height: number) => graphics.resize({ width, height }),
     async destroy() {
       if (destroyed) return;
       destroyed = true;

@@ -23,7 +23,9 @@ describe('resolveE2EProjects', () => {
     expect(resolveE2EProjects(['playwright.config.ts']).projects).toEqual([
       'browser-host-smoke',
       'webgl2-render',
-      'webgpu-render'
+      'webgpu-render',
+      'react-vite-webgl2',
+      'react-vite-webgpu'
     ]);
   });
 
@@ -50,13 +52,26 @@ describe('resolveE2EProjects', () => {
         'src/platform/browser-host.ts',
         'e2e/spec.ts'
       ]).projects
-    ).toEqual(['browser-host-smoke', 'webgl2-render', 'webgpu-render']);
+    ).toEqual([
+      'browser-host-smoke',
+      'webgl2-render',
+      'webgpu-render',
+      'react-vite-webgl2',
+      'react-vite-webgpu'
+    ]);
   });
 
   test('reports normalized paths and routing rules', () => {
     expect(resolveE2EProjects(['.\\src\\platform\\browser-host.ts']).reasons).toEqual([
       { path: 'src/platform/browser-host.ts', ruleId: 'browser-host' }
     ]);
+  });
+
+  test('routes the public React example to both real rendering backends', () => {
+    expect(resolveE2EProjects(['examples/react-vite-ts/src/aether-scene.ts'])).toMatchObject({
+      projects: ['react-vite-webgl2', 'react-vite-webgpu'],
+      fallback: false
+    });
   });
 
   test('reports unmatched fallback reasons', () => {
@@ -72,7 +87,13 @@ describe('resolveE2EProjects', () => {
       'src/../platform/browser-host.ts'
     ]) {
       expect(resolveE2EProjects([path])).toMatchObject({
-        projects: ['browser-host-smoke', 'webgl2-render', 'webgpu-render'],
+        projects: [
+          'browser-host-smoke',
+          'webgl2-render',
+          'webgpu-render',
+          'react-vite-webgl2',
+          'react-vite-webgpu'
+        ],
         fallback: true,
         reasons: [{ path, ruleId: 'invalid-input-fallback' }]
       });
@@ -88,7 +109,13 @@ describe('resolveE2EProjects', () => {
         'README.md'
       ])
     ).toMatchObject({
-      projects: ['browser-host-smoke', 'webgl2-render', 'webgpu-render'],
+      projects: [
+        'browser-host-smoke',
+        'webgl2-render',
+        'webgpu-render',
+        'react-vite-webgl2',
+        'react-vite-webgpu'
+      ],
       fallback: true,
       reasons: [
         { path: 'src/platform/browser-host.ts', ruleId: 'browser-host' },

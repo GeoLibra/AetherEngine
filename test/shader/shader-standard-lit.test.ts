@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   STANDARD_LIT_SHADER_ABI_VERSION,
   STANDARD_LIT_SHADER_MODULE,
+  STANDARD_LIT_WEBGL2_TRANSLATOR,
   createShaderBindingManifest,
   emitGlslEsModule,
   emitWgslModule
@@ -44,10 +45,25 @@ describe('standard-lit built-in shader', () => {
     expect(wgsl).toContain('@location(0) normal: vec3<f32>');
     expect(wgsl).toContain('@group(3) @binding(0) var<uniform> lightData');
     expect(vertex).toContain('gl_Position =');
-    expect(vertex).toContain('aether_out_normal =');
-    expect(fragment).toContain('layout(location = 0) in vec3 aether_in_normal;');
+    expect(vertex).toContain('out vec3 aether_varying_normal;');
+    expect(vertex).toContain('aether_varying_normal =');
+    expect(fragment).toContain('in vec3 aether_varying_normal;');
     expect(fragment).toContain('aether_fragment_output =');
     expect(fragment).toContain('lightData.direction');
     expect(fragment).not.toMatch(/@vertex|@fragment|\bfn\b/);
+  });
+
+  test('applies the WebGL2 zero-to-one depth compatibility epilogue when required', () => {
+    const translated = STANDARD_LIT_WEBGL2_TRANSLATOR.translate({
+      wgsl: emitWgslModule(STANDARD_LIT_SHADER_MODULE),
+      stage: 'vertex',
+      entryPoint: 'standardLitVertex',
+      constants: {},
+      capabilities: [],
+      approvedExtensions: [],
+      clipDepthMode: 'vertex-remap'
+    });
+
+    expect(translated.source).toContain('gl_Position.z = 2.0 * gl_Position.z - gl_Position.w;');
   });
 });

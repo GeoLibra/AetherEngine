@@ -60,6 +60,8 @@ export function createOpaqueRenderSystem(
           depthClearValue: 1
         }
       });
+      raster.setViewport(0, 0, input.color.width, input.color.height, 0, 1);
+      raster.setScissorRect(0, 0, input.color.width, input.color.height);
       for (const draw of draws) {
         raster.setPipeline(draw.pipeline);
         draw.bindGroups.forEach((group, index) =>

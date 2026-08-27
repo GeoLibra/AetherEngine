@@ -151,7 +151,9 @@ describe('E2E GitHub Actions workflow', () => {
       include: [
         { project: 'browser-host-smoke' },
         { project: 'webgl2-render' },
-        { project: 'webgpu-render' }
+        { project: 'webgpu-render' },
+        { project: 'react-vite-webgl2' },
+        { project: 'react-vite-webgpu' }
       ]
     });
     expect(allOutputs.diagnostics).toEqual({

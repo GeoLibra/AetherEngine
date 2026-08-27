@@ -145,11 +145,11 @@ describe('typed shader stage IO', () => {
     const vertex = emitGlslEsModule(module, 'vertexMain');
     const fragment = emitGlslEsModule(module, 'fragmentMain');
 
-    expect(vertex).toContain('layout(location = 0) out vec3 aether_out_normal;');
+    expect(vertex).toContain('out vec3 aether_varying_normal;');
     expect(vertex).toContain('gl_Position = vec4(position, 1.0);');
-    expect(vertex).toContain('aether_out_normal = normal;');
-    expect(fragment).toContain('layout(location = 0) in vec3 aether_in_normal;');
-    expect(fragment).toContain('FragmentInput input = FragmentInput(aether_in_normal);');
+    expect(vertex).toContain('aether_varying_normal = normal;');
+    expect(fragment).toContain('in vec3 aether_varying_normal;');
+    expect(fragment).toContain('FragmentInput input = FragmentInput(aether_varying_normal);');
     expect(fragment).toContain('aether_fragment_output = vec4(input.normal, 1.0);');
   });
 });

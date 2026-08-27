@@ -26,7 +26,7 @@ export function resolveE2EProjects(paths: readonly string[] | undefined): E2ERes
 
     const rule = E2E_ROUTING_RULES.find(
       (candidate) =>
-        candidate.exact.includes(normalized) ||
+        (candidate.exact as readonly string[]).includes(normalized) ||
         candidate.prefixes.some((prefix) => normalized.startsWith(prefix))
     );
 

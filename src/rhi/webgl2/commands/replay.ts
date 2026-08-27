@@ -101,12 +101,15 @@ export class WebGL2ReplayExecutor {
           offset: command.offset,
           ...(command.size === undefined ? {} : { size: command.size })
         });
-        return this.state.applyVertexBuffer(
-          command.slot,
-          getWebGL2Handle(command.buffer, this.owner),
-          command.offset,
-          command.size
-        );
+        if (this.native.createVertexArray === undefined) {
+          return this.state.applyVertexBuffer(
+            command.slot,
+            getWebGL2Handle(command.buffer, this.owner),
+            command.offset,
+            command.size
+          );
+        }
+        return;
       case 'set-index-buffer':
         this.indexBuffer = {
           buffer: command.buffer as WebGL2Buffer,
@@ -114,12 +117,15 @@ export class WebGL2ReplayExecutor {
           offset: command.offset,
           ...(command.size === undefined ? {} : { size: command.size })
         };
-        return this.state.applyIndexBuffer(
-          getWebGL2Handle(command.buffer, this.owner),
-          command.indexFormat,
-          command.offset,
-          command.size
-        );
+        if (this.native.createVertexArray === undefined) {
+          return this.state.applyIndexBuffer(
+            getWebGL2Handle(command.buffer, this.owner),
+            command.indexFormat,
+            command.offset,
+            command.size
+          );
+        }
+        return;
       case 'set-viewport':
         return this.state.applyViewport([
           command.x,
@@ -221,6 +227,14 @@ export class WebGL2ReplayExecutor {
       this.indexBuffer
     );
     this.state.applyVertexArray(vertexArray);
+    if (this.indexBuffer !== undefined) {
+      this.state.applyIndexBuffer(
+        getWebGL2Handle(this.indexBuffer.buffer, this.owner),
+        this.indexBuffer.format,
+        this.indexBuffer.offset,
+        this.indexBuffer.size
+      );
+    }
   }
 
   private applyGroup(index: number, bound: BoundGroup, pipeline: WebGL2RenderPipeline): void {

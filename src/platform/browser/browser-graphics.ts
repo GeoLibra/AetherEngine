@@ -11,6 +11,7 @@ import type { SurfaceTarget } from '../types';
 import { WebGL2Adapter } from '../../rhi/webgl2/adapter';
 import { createBrowserWebGL2ContextPort, WebGL2BrowserSurface } from '../../rhi/webgl2/browser';
 import type { BrowserWebGL2Canvas } from '../../rhi/webgl2/browser';
+import { STANDARD_LIT_WEBGL2_TRANSLATOR } from '../../shader/builtins';
 import { BrowserGraphicsBootstrapError } from './browser-graphics-error';
 import type {
   BrowserGraphicsAttempt,
@@ -176,7 +177,10 @@ async function createWebGL2Session(
       attempt('webgl2', 'context', 'unavailable', 'Target canvas did not return a WebGL2 context.')
     ]);
   }
-  const adapter = new WebGL2Adapter(native, options.webgl2Translator);
+  const adapter = new WebGL2Adapter(
+    native,
+    options.webgl2Translator ?? STANDARD_LIT_WEBGL2_TRANSLATOR
+  );
   let device;
   try {
     device = await adapter.requestDevice(options.device);

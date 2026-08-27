@@ -6,8 +6,57 @@ import type {
   ShaderTypeId,
   SourceSpan
 } from '../types';
+import type { WebGL2ShaderTranslationPort } from '../../rhi/webgl2/types';
+import { emitGlslEsModule } from '../backends/glsl-es';
 
 export const STANDARD_LIT_SHADER_ABI_VERSION = 1;
+
+const STANDARD_LIT_WEBGL2_BINDINGS = Object.freeze(
+  ['objectData', 'viewData', 'materialData', 'lightData'].map((name, group) =>
+    Object.freeze({ group, binding: 0, name, kind: 'uniform-buffer' as const })
+  )
+);
+
+/** Built-in typed-shader lowering used by the browser baseline WebGL2 path. */
+export const STANDARD_LIT_WEBGL2_TRANSLATOR: WebGL2ShaderTranslationPort = Object.freeze({
+  translatorId: 'aether.standard-lit.typed-glsl',
+  version: STANDARD_LIT_SHADER_ABI_VERSION,
+  translate(input: Parameters<WebGL2ShaderTranslationPort['translate']>[0]) {
+    if (input.entryPoint !== 'standardLitVertex' && input.entryPoint !== 'standardLitFragment') {
+      throw new Error(`Unsupported standard-lit entry point "${input.entryPoint}".`);
+    }
+    const emitted = emitGlslEsModule(STANDARD_LIT_SHADER_MODULE, input.entryPoint);
+    const source =
+      input.stage === 'vertex' && input.clipDepthMode === 'vertex-remap'
+        ? emitted.replace(
+            /(?=\n\s*return;\n}\s*$)/,
+            '\n  gl_Position.z = 2.0 * gl_Position.z - gl_Position.w;'
+          )
+        : emitted;
+    return Object.freeze({
+      source,
+      bindings: STANDARD_LIT_WEBGL2_BINDINGS,
+      targetAbiFingerprint: `standard-lit-v${STANDARD_LIT_SHADER_ABI_VERSION}`,
+      physicalBindings: Object.freeze(
+        STANDARD_LIT_WEBGL2_BINDINGS.map((binding) =>
+          Object.freeze({ ...binding, slot: binding.group })
+        )
+      ),
+      programBindings: Object.freeze(
+        STANDARD_LIT_WEBGL2_BINDINGS.map((binding) =>
+          Object.freeze({
+            kind: 'uniform-buffer' as const,
+            name: `Aether_${binding.group}_${binding.binding}`,
+            slot: binding.group
+          })
+        )
+      ),
+      requiredExtensions: EMPTY_REQUIRED_EXTENSIONS,
+      sourceMap: EMPTY_TRANSLATED_SOURCE_MAP,
+      translatorFingerprint: `${input.entryPoint}:v${STANDARD_LIT_SHADER_ABI_VERSION}`
+    });
+  }
+});
 
 const span: SourceSpan = {
   uri: 'asset://aether/builtins/standard-lit.flux',
@@ -20,6 +69,11 @@ const normalId = 2 as ShaderSymbolId;
 const fragmentInputId = 3 as ShaderSymbolId;
 const EMPTY_FUNCTIONS: ShaderModuleIR['functions'] = Object.freeze([]);
 const EMPTY_VARIANTS: ShaderModuleIR['variants'] = Object.freeze([]);
+const EMPTY_REQUIRED_EXTENSIONS: readonly string[] = Object.freeze([]);
+const EMPTY_TRANSLATED_SOURCE_MAP: readonly Readonly<{
+  generatedLine: number;
+  authoredLine: number;
+}>[] = Object.freeze([]);
 
 /** Versioned typed shader module for the baseline standard-lit material. */
 export const STANDARD_LIT_SHADER_MODULE: ShaderModuleIR = Object.freeze({
@@ -96,7 +150,7 @@ export const STANDARD_LIT_SHADER_MODULE: ShaderModuleIR = Object.freeze({
       parameters: Object.freeze([
         Object.freeze({
           id: fragmentInputId,
-          name: 'input',
+          name: 'fragmentInput',
           type: shaderType('StandardLitFragmentInput'),
           span
         })
@@ -165,7 +219,7 @@ function worldNormal(): ShaderExpressionIR {
 
 function fragmentColor(): ShaderExpressionIR {
   const inputNormal = field(
-    symbol(fragmentInputId, 'input', 'StandardLitFragmentInput'),
+    symbol(fragmentInputId, 'fragmentInput', 'StandardLitFragmentInput'),
     'normal',
     'vec3<f32>'
   );
