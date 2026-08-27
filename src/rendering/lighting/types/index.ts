@@ -3,6 +3,8 @@ export type {
   CpuLightListCounters,
   CpuLightListHeader,
   CpuLightListResult,
+  DirectionalLightExtractionInput,
+  DirectionalLightSourceView,
   LightReceiver,
   LinearRgb,
   PreparedLight,

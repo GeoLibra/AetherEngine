@@ -3,6 +3,8 @@ export type {
   CpuLightListCounters,
   CpuLightListHeader,
   CpuLightListResult,
+  DirectionalLightExtractionInput,
+  DirectionalLightSourceView,
   LightReceiver,
   LinearRgb,
   PreparedLight,
@@ -17,6 +19,7 @@ export type {
   ShadowRequestSelection
 } from './types';
 export * from './light';
+export * from './directional-light-source';
 export * from './light-buffer';
 export * from './light-list';
 export * from './light-list-feature';

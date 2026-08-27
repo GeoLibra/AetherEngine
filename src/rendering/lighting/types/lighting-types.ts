@@ -4,6 +4,21 @@ import type { WorldBounds } from '../../visibility/types';
 
 export type LinearRgb = Vec3;
 
+/** Validated MainWorld intent for one world-space directional light. */
+export interface DirectionalLightSourceView {
+  readonly direction: Vec3;
+  readonly colorLinear: LinearRgb;
+  readonly illuminanceLux: number;
+  readonly enabled: boolean;
+  readonly layerMask: number;
+  readonly castsShadow: boolean;
+}
+
+/** Monotonic source boundary for directional-light RenderWorld publication. */
+export interface DirectionalLightExtractionInput {
+  readonly sourceTick: number;
+}
+
 interface LightCommon {
   readonly entity: RenderEntityId;
   readonly payloadVersion: number;

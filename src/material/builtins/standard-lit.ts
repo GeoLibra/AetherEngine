@@ -2,9 +2,14 @@ import { createMaterialAsset, createMaterialInstance, resolveMaterialAsset } fro
 import { defineMaterialSchema } from '../schema';
 import { createMaterialTechniqueRole } from '../technique';
 import type { MaterialAsset, MaterialInstance, ResolvedMaterialAsset } from '../types';
+import { STANDARD_LIT_SHADER_ABI_VERSION, STANDARD_LIT_SHADER_MODULE } from '../../shader/builtins';
+import { createShaderBindingManifest } from '../../shader/layout';
 
 export const STANDARD_LIT_SHADER_MODULE_KEY = 'aether.shader.standard-lit.v1';
-export const STANDARD_LIT_BINDING_LAYOUT_HASH = 'aether.standard-lit.binding-layout.v1';
+export const STANDARD_LIT_BINDING_LAYOUT_HASH = createShaderBindingManifest(
+  STANDARD_LIT_SHADER_MODULE,
+  STANDARD_LIT_SHADER_ABI_VERSION
+).layoutHash;
 export const STANDARD_LIT_FORWARD_ROLE = createMaterialTechniqueRole('standard-forward');
 
 /** Canonical parameter schema for the baseline standard-lit material. */

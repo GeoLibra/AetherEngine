@@ -1,12 +1,24 @@
 import {
+  DirectionalLightExtraction,
+  DirectionalLightSource,
+  RenderWorld,
+  World,
   buildPreparedDrawPhase,
+  createDirectionalLightExtractorPlan,
   type PreparedDrawPacket,
   type RenderEntityId
-} from '../../src/rendering';
+} from '../../src';
 
 export interface PreparedDrawPhaseWorkload {
   readonly packets: readonly PreparedDrawPacket[];
   readonly ownership: { transfers: number };
+}
+
+export interface BaselinePluginStructuralSummary {
+  readonly extractedLights: number;
+  readonly queuedPackets: number;
+  readonly queueSkips: number;
+  readonly firstLightEntity: number;
 }
 
 export interface PreparedDrawPhaseSummary {
@@ -73,6 +85,55 @@ export function runPreparedDrawPhaseReference(
     count: packets.length,
     checksum: checksum(packets),
     ownershipTransfers: workload.ownership.transfers
+  });
+}
+
+/** Exercises the baseline light-publication and prepared opaque Queue structural boundaries. */
+export function runBaselinePluginStructuralSubject(count: number): BaselinePluginStructuralSummary {
+  const main = new World().registerComponent(DirectionalLightSource);
+  const render = new RenderWorld({ extractorPlan: createDirectionalLightExtractorPlan() });
+  for (let index = 0; index < count; index += 1) {
+    main
+      .spawn()
+      .insert(DirectionalLightSource, {
+        direction: [0, -1, 0],
+        colorLinear: [1, 1, 1],
+        illuminanceLux: 10_000,
+        enabled: true,
+        layerMask: 1,
+        castsShadow: false
+      })
+      .build();
+  }
+  const extraction = new DirectionalLightExtraction(main, render);
+  const revision = extraction.extract({ sourceTick: 1 });
+  const lights = extraction.lights();
+  const workload = createPreparedDrawPhaseWorkload(count);
+  const packets = workload.packets.map((packet, index) =>
+    index % 5 === 0 ? Object.freeze({ ...packet, retentionReady: false }) : packet
+  );
+  const phase = buildPreparedDrawPhase('benchmark', 'opaque', packets);
+  const summary = Object.freeze({
+    extractedLights: lights.length,
+    queuedPackets: phase.snapshot.packets.length,
+    queueSkips: phase.skipped.length,
+    firstLightEntity: lights[0]?.entity ?? -1
+  });
+  revision.release();
+  extraction.dispose();
+  return summary;
+}
+
+/** Independent structural oracle for the deterministic baseline workload. */
+export function runBaselinePluginStructuralReference(
+  count: number
+): BaselinePluginStructuralSummary {
+  const queueSkips = count === 0 ? 0 : Math.floor((count - 1) / 5) + 1;
+  return Object.freeze({
+    extractedLights: count,
+    queuedPackets: count - queueSkips,
+    queueSkips,
+    firstLightEntity: count === 0 ? -1 : 1
   });
 }
 

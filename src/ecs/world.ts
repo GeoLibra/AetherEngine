@@ -759,15 +759,15 @@ export class World {
 
   withChangeReader<T>(reader: ChangeReader, run: () => T): T {
     this.assertUsable();
-    if (this.activeChangeWindow) {
-      throw new Error('Change reader scopes cannot be nested.');
-    }
+    const outerWindow = this.activeChangeWindow;
     const window = this.changeTracker.windowFor(reader);
     this.activeChangeWindow = window;
     try {
       return run();
     } finally {
-      this.activeChangeWindow = undefined;
+      // Extraction adapters may own an independent reader while running inside a tracked App
+      // system. Restore the scheduler window so later reads keep the system reader's semantics.
+      this.activeChangeWindow = outerWindow;
       this.changeTracker.advanceReader(reader, window.untilInclusive);
     }
   }
