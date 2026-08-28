@@ -5,6 +5,7 @@ declare global {
     __AETHER_EXAMPLE__?: {
       state(): Record<string, unknown>;
       resize(width: number, height: number): void;
+      setRotation(angleRadians: number): void;
     };
   }
 }
@@ -26,10 +27,30 @@ test('renders the public React example and survives surface suspension', async (
     expect(Number(metrics.logicalDraws), JSON.stringify(initial)).toBeGreaterThan(0);
     expect(Number(metrics.physicalDraws), JSON.stringify(initial)).toBeGreaterThan(0);
   }
+  await page.evaluate(() => window.__AETHER_EXAMPLE__!.setRotation(Math.PI / 6));
+  const initialFrame = (initial.diagnostics as { frame: number }).frame;
+  await expect
+    .poll(async () => {
+      const state = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
+      return (state.diagnostics as { frame: number }).frame;
+    })
+    .toBeGreaterThan(initialFrame);
   await expect(page.locator('canvas')).toHaveScreenshot('react-vite-standard-lit-box.png', {
     animations: 'disabled',
     maxDiffPixelRatio: 0.01
   });
+  const firstPose = await page.locator('canvas').screenshot();
+  await page.evaluate(() => window.__AETHER_EXAMPLE__!.setRotation(-Math.PI / 6));
+  const firstPoseFrame = await page.evaluate(
+    () => (window.__AETHER_EXAMPLE__!.state().diagnostics as { frame: number }).frame
+  );
+  await expect
+    .poll(async () => {
+      const state = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
+      return (state.diagnostics as { frame: number }).frame;
+    })
+    .toBeGreaterThan(firstPoseFrame);
+  expect(await page.locator('canvas').screenshot()).not.toEqual(firstPose);
 
   await page.evaluate(() => window.__AETHER_EXAMPLE__!.resize(0, 0));
   await expect

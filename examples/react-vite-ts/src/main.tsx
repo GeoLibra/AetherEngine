@@ -9,6 +9,7 @@ declare global {
     __AETHER_EXAMPLE__?: Readonly<{
       state(): Readonly<Record<string, unknown>>;
       resize(width: number, height: number): void;
+      setRotation(angleRadians: number): void;
       destroy(): Promise<void>;
     }>;
   }
@@ -35,6 +36,7 @@ if (acceptance) {
         cause: cause instanceof Error ? cause.message : String(cause)
       }),
       resize: () => undefined,
+      setRotation: () => undefined,
       destroy: async () => undefined
     });
   });
@@ -49,7 +51,10 @@ async function mountForAcceptance(): Promise<void> {
   } as const;
   const preference = requested === null ? preferences.webgpu : preferences[requested];
   if (preference === undefined) throw new Error(`Unsupported example backend: ${requested}.`);
-  const scene: MountedAetherScene = await mountAetherScene(canvas, { preference });
+  const scene: MountedAetherScene = await mountAetherScene(canvas, {
+    preference,
+    animate: false
+  });
   const gl = canvas.getContext('webgl2');
   window.__AETHER_EXAMPLE__ = Object.freeze({
     state: () => ({
@@ -59,6 +64,7 @@ async function mountForAcceptance(): Promise<void> {
       nativeError: gl?.getError()
     }),
     resize: (width, height) => scene.resize(width, height),
+    setRotation: (angleRadians) => scene.setRotation(angleRadians),
     destroy: () => scene.destroy()
   });
 }

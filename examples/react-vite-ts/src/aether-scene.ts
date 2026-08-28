@@ -3,9 +3,12 @@ import {
   BrowserRunner,
   CameraRenderSource,
   DirectionalLightSource,
+  FrameTimeResource,
+  Mat4,
   MaterialAssetType,
   MeshAssetType,
   MeshRenderSource,
+  Quat,
   WorldTransform,
   createAssetHandle,
   createBaselineRenderingPlugin,
@@ -15,19 +18,24 @@ import {
   definePlugin,
   BaselineRenderDiagnosticsResource,
   type BaselineRenderDiagnostics,
-  type BrowserGraphicsSession
+  type BrowserGraphicsSession,
+  type WorldTransformView
 } from '@aether/engine';
 
 export interface MountedAetherScene {
   readonly backend: BrowserGraphicsSession['backend'];
   diagnostics(): BaselineRenderDiagnostics | undefined;
   nativeMetrics(): unknown;
+  /** Overrides automatic rotation with a deterministic YXZ angle in radians. */
+  setRotation(angleRadians: number): void;
   resize(width: number, height: number): void;
   destroy(): Promise<void>;
 }
 
 export interface AetherSceneOptions {
   readonly preference?: readonly BrowserGraphicsSession['backend'][];
+  /** Enables frame-time rotation; defaults to true and is disabled only for deterministic capture. */
+  readonly animate?: boolean;
 }
 
 /** Mounts the public baseline renderer and one MainWorld-authored scene on a canvas. */
@@ -50,6 +58,7 @@ export async function mountAetherScene(
   });
   const meshHandle = createAssetHandle(MeshAssetType, 'example.mesh.box');
   const materialHandle = createAssetHandle(MaterialAssetType, 'example.material.standard-lit');
+  let forcedRotation = options.animate === false ? 0 : undefined;
   const app = new App()
     .addPlugin(
       createBaselineRenderingPlugin({
@@ -107,6 +116,21 @@ export async function mountAetherScene(
                 .build();
             }
           });
+          builder.addSystem('Update', {
+            id: 'example.standard-lit-scene.rotate',
+            reads: [FrameTimeResource, MeshRenderSource],
+            writes: [WorldTransform],
+            run(world) {
+              const frameTime = world.getResource(FrameTimeResource);
+              if (frameTime === undefined) {
+                throw new Error('Rotating scene requires the frame-time resource.');
+              }
+              const angle = forcedRotation ?? frameTime.elapsed * 0.8;
+              for (const [, worldTransform] of world.query([WorldTransform, MeshRenderSource])) {
+                rotateWorldTransform(worldTransform, angle);
+              }
+            }
+          });
         }
       })
     );
@@ -138,6 +162,10 @@ export async function mountAetherScene(
         ? Reflect.apply(metrics, graphics.device.queue, [])
         : undefined;
     },
+    setRotation(angleRadians: number) {
+      if (!Number.isFinite(angleRadians)) throw new Error('Scene rotation angle must be finite.');
+      forcedRotation = angleRadians;
+    },
     resize: (width: number, height: number) => graphics.resize({ width, height }),
     async destroy() {
       if (destroyed) return;
@@ -148,6 +176,28 @@ export async function mountAetherScene(
       await graphics.destroy();
     }
   });
+}
+
+function rotateWorldTransform(worldTransform: WorldTransformView, angleRadians: number): void {
+  worldTransform.previousMatrix.set(worldTransform.matrix);
+  const matrix = Mat4.fromTRS(
+    [0, 0, -2],
+    Quat.fromEulerYXZ([angleRadians * 0.55, angleRadians, 0]),
+    [1, 1, 1]
+  );
+  worldTransform.matrix.set(matrix);
+  worldTransform.normalMatrix.set([
+    matrix[0]!,
+    matrix[1]!,
+    matrix[2]!,
+    matrix[4]!,
+    matrix[5]!,
+    matrix[6]!,
+    matrix[8]!,
+    matrix[9]!,
+    matrix[10]!
+  ]);
+  worldTransform.worldVersion += 1;
 }
 
 function physicalSize(canvas: HTMLCanvasElement): { width: number; height: number } {
