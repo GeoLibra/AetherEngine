@@ -9,6 +9,7 @@ import {
   MeshAssetType,
   MeshRenderSource,
   Quat,
+  TimePlugin,
   WorldTransform,
   createAssetHandle,
   createBaselineRenderingPlugin,
@@ -60,6 +61,7 @@ export async function mountAetherScene(
   const materialHandle = createAssetHandle(MaterialAssetType, 'example.material.standard-lit');
   let forcedRotation = options.animate === false ? 0 : undefined;
   const app = new App()
+    .addPlugin(TimePlugin)
     .addPlugin(
       createBaselineRenderingPlugin({
         graphics,
@@ -70,7 +72,7 @@ export async function mountAetherScene(
     .addPlugin(
       definePlugin({
         id: 'example.standard-lit-scene',
-        dependencies: ['aether.baseline-rendering'],
+        dependencies: ['aether.time', 'aether.baseline-rendering'],
         build(builder) {
           builder.addSystem('Startup', {
             id: 'example.standard-lit-scene.spawn',
