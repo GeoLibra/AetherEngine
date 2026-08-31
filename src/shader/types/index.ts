@@ -1,52 +1,84 @@
+export type { SourceSpan, ShaderDiagnostic } from './diagnostics';
+
 export type {
-  BindingGroupManifest,
-  BufferFieldLayout,
-  BufferFieldLayoutShape,
-  BufferLayoutManifest,
-  ResolvedShaderSource,
-  ShaderBinaryExpressionIR,
-  ShaderBindingEntryManifest,
-  ShaderBindingManifest,
+  ShaderSourceRef,
+  ShaderSourceResolver,
+  ShaderSourceModule,
+  ShaderIncludeReference,
+  ResolvedShaderSource
+} from './source';
+
+export type {
+  ShaderLayoutPolicyId,
+  ShaderTarget,
+  ShaderScalarKind,
   ShaderStage,
-  ShaderBindingManifestOptions,
-  ShaderBindingReflectionDiagnostic,
-  ShaderBindingReflectionDiagnosticCode,
-  ShaderBindingRequirement,
+  BufferFieldLayoutShape,
+  BufferFieldLayout,
+  BufferLayoutManifest,
   ShaderBufferBindingEntryManifest,
+  ShaderTextureBindingEntryManifest,
+  ShaderSamplerBindingEntryManifest,
+  ShaderBindingEntryManifest,
+  BindingGroupManifest,
+  ShaderSamplerBindingRequirement,
+  ShaderBindingRequirement,
+  ShaderBindingManifestOptions,
+  ShaderBindingReflectionDiagnosticCode,
+  ShaderBindingReflectionDiagnostic,
+  ShaderBindingManifest
+} from './manifest';
+
+export type { ShaderCompileRequest } from './compiler';
+
+export type {
+  FluxAttribute,
+  FluxTypeNode,
+  FluxParameterNode,
+  FluxStructNode,
+  FluxGlobalNode,
+  FluxVariantNode,
+  FluxFunctionNode,
+  FluxDeclarationNode,
+  FluxModuleNode,
+  FluxExpressionNode,
+  FluxStatementNode,
+  FluxSwitchCaseNode
+} from './ast';
+
+export type {
+  ShaderGraphNode,
+  ShaderGraph,
+  ShaderGraphWorkerRequest,
+  ShaderGraphWorkerResult,
+  ShaderGraphWorkerPort,
+  ShaderGraphServiceResult
+} from './graph';
+
+export type {
+  ShaderBinaryExpressionIR,
   ShaderCallExpressionIR,
-  ShaderCompileRequest,
   ShaderConstructExpressionIR,
-  ShaderDiagnostic,
   ShaderEntryPointIR,
   ShaderExpressionIR,
   ShaderFieldExpressionIR,
   ShaderFunctionId,
   ShaderFunctionIR,
   ShaderGlobalIR,
-  ShaderIncludeReference,
   ShaderIndexExpressionIR,
   ShaderIntrinsicExpressionIR,
   ShaderLiteralExpressionIR,
   ShaderModuleIR,
   ShaderParameterIR,
-  ShaderSamplerBindingEntryManifest,
-  ShaderSamplerBindingRequirement,
-  ShaderScalarKind,
   ShaderSourceMap,
-  ShaderSourceModule,
-  ShaderSourceRef,
-  ShaderSourceResolver,
   ShaderStatementIR,
   ShaderStructFieldIR,
   ShaderStructTypeIR,
   ShaderSwitchCaseIR,
   ShaderSymbolExpressionIR,
   ShaderSymbolId,
-  ShaderTarget,
-  ShaderTextureBindingEntryManifest,
   ShaderTypeId,
   ShaderTypeIR,
   ShaderUnaryExpressionIR,
-  ShaderVariantDimension,
-  SourceSpan
-} from './shader-types';
+  ShaderVariantDimension
+} from '../ir';

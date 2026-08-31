@@ -21,3 +21,14 @@ export function initializeWebGL2ClipDepth(
   }
   native.setClipControl('lower-left', 'zero-to-one');
 }
+
+/**
+ * Remaps the vertex shader gl_Position.z from WebGPU zero-to-one [0, 1] range to OpenGL [-1, 1] range
+ * by injecting `gl_Position.z = 2.0 * gl_Position.z - gl_Position.w;` before returning in main.
+ */
+export function remapVertexClipDepth(source: string): string {
+  return source.replace(
+    /(?=\n\s*return;\n}\s*$)/,
+    '\n  gl_Position.z = 2.0 * gl_Position.z - gl_Position.w;'
+  );
+}

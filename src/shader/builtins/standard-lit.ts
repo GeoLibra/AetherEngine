@@ -3,11 +3,23 @@ import type {
   ShaderFunctionId,
   ShaderModuleIR,
   ShaderSymbolId,
-  ShaderTypeId,
   SourceSpan
 } from '../types';
+import {
+  binaryExpr,
+  constructExpr,
+  createStructTypeIR,
+  createUniformGlobalIR,
+  fieldExpr,
+  intrinsicExpr,
+  literalExpr,
+  shaderType,
+  symbolExpr,
+  unaryExpr
+} from '../ir';
 import type { WebGL2ShaderTranslationPort } from '../../rhi/webgl2/types';
-import { emitGlslEsModule } from '../backends/glsl-es';
+import { remapVertexClipDepth } from '../../rhi/webgl2/pipeline/clip-depth';
+import { emitGlslEsModule } from '../backends/glsl';
 
 export const STANDARD_LIT_SHADER_ABI_VERSION = 1;
 
@@ -28,10 +40,7 @@ export const STANDARD_LIT_WEBGL2_TRANSLATOR: WebGL2ShaderTranslationPort = Objec
     const emitted = emitGlslEsModule(STANDARD_LIT_SHADER_MODULE, input.entryPoint);
     const source =
       input.stage === 'vertex' && input.clipDepthMode === 'vertex-remap'
-        ? emitted.replace(
-            /(?=\n\s*return;\n}\s*$)/,
-            '\n  gl_Position.z = 2.0 * gl_Position.z - gl_Position.w;'
-          )
+        ? remapVertexClipDepth(emitted)
         : emitted;
     return Object.freeze({
       source,
@@ -79,37 +88,31 @@ const EMPTY_TRANSLATED_SOURCE_MAP: readonly Readonly<{
 export const STANDARD_LIT_SHADER_MODULE: ShaderModuleIR = Object.freeze({
   version: 1,
   types: Object.freeze([
-    structure('ObjectData', [['world', 'mat4x4<f32>']]),
-    structure('ViewData', [['viewProjection', 'mat4x4<f32>']]),
-    structure('MaterialData', [
+    createStructTypeIR('ObjectData', [['world', 'mat4x4<f32>']]),
+    createStructTypeIR('ViewData', [['viewProjection', 'mat4x4<f32>']]),
+    createStructTypeIR('MaterialData', [
       ['baseColor', 'vec4<f32>'],
       ['metallic', 'f32'],
       ['roughness', 'f32']
     ]),
-    structure('DirectionalLightData', [
+    createStructTypeIR('DirectionalLightData', [
       ['direction', 'vec3<f32>'],
       ['illuminance', 'f32'],
       ['color', 'vec3<f32>']
     ]),
-    {
-      kind: 'struct' as const,
-      name: 'StandardLitVertexOutput',
-      fields: Object.freeze([
-        Object.freeze({ name: 'position', type: 'vec4<f32>', builtin: 'position' as const }),
-        Object.freeze({ name: 'normal', type: 'vec3<f32>', location: 0 })
-      ])
-    },
-    {
-      kind: 'struct' as const,
-      name: 'StandardLitFragmentInput',
-      fields: Object.freeze([Object.freeze({ name: 'normal', type: 'vec3<f32>', location: 0 })])
-    }
+    createStructTypeIR('StandardLitVertexOutput', [
+      { name: 'position', type: 'vec4<f32>', builtin: 'position' },
+      { name: 'normal', type: 'vec3<f32>', location: 0 }
+    ]),
+    createStructTypeIR('StandardLitFragmentInput', [
+      { name: 'normal', type: 'vec3<f32>', location: 0 }
+    ])
   ]),
   globals: Object.freeze([
-    uniform(10, 'objectData', 'ObjectData', 0),
-    uniform(11, 'viewData', 'ViewData', 1),
-    uniform(12, 'materialData', 'MaterialData', 2),
-    uniform(13, 'lightData', 'DirectionalLightData', 3)
+    createUniformGlobalIR(10, 'objectData', 'ObjectData', 0, 0, span),
+    createUniformGlobalIR(11, 'viewData', 'ViewData', 1, 0, span),
+    createUniformGlobalIR(12, 'materialData', 'MaterialData', 2, 0, span),
+    createUniformGlobalIR(13, 'lightData', 'DirectionalLightData', 3, 0, span)
   ]),
   functions: EMPTY_FUNCTIONS,
   entryPoints: Object.freeze([
@@ -137,7 +140,7 @@ export const STANDARD_LIT_SHADER_MODULE: ShaderModuleIR = Object.freeze({
       body: Object.freeze([
         Object.freeze({
           kind: 'return' as const,
-          value: construct('StandardLitVertexOutput', [clipPosition(), worldNormal()]),
+          value: constructExpr('StandardLitVertexOutput', [clipPosition(), worldNormal()], span),
           span
         })
       ]),
@@ -172,136 +175,111 @@ export const STANDARD_LIT_SHADER_MODULE: ShaderModuleIR = Object.freeze({
   sourceClosureHash: 'aether-standard-lit-ir-v1'
 });
 
-function structure(name: string, fields: readonly (readonly [string, string])[]) {
-  return Object.freeze({
-    kind: 'struct' as const,
-    name,
-    fields: Object.freeze(fields.map(([field, type]) => Object.freeze({ name: field, type })))
-  });
-}
-
-function uniform(id: number, name: string, type: string, group: number) {
-  return Object.freeze({
-    id: id as ShaderSymbolId,
-    name,
-    type,
-    addressSpace: 'uniform' as const,
-    access: 'read' as const,
-    group,
-    binding: 0,
-    span
-  });
-}
-
 function clipPosition(): ShaderExpressionIR {
-  return binary(
+  return binaryExpr(
     '*',
-    field(symbol(11, 'viewData', 'ViewData'), 'viewProjection', 'mat4x4<f32>'),
-    binary(
+    fieldExpr(symbolExpr(11, 'viewData', 'ViewData', span), 'viewProjection', 'mat4x4<f32>', span),
+    binaryExpr(
       '*',
-      field(symbol(10, 'objectData', 'ObjectData'), 'world', 'mat4x4<f32>'),
-      construct('vec4<f32>', [symbol(positionId, 'position', 'vec3<f32>'), literal(1)]),
-      'vec4<f32>'
+      fieldExpr(symbolExpr(10, 'objectData', 'ObjectData', span), 'world', 'mat4x4<f32>', span),
+      constructExpr(
+        'vec4<f32>',
+        [symbolExpr(positionId, 'position', 'vec3<f32>', span), literalExpr(1, 'f32', span)],
+        span
+      ),
+      'vec4<f32>',
+      span
     ),
-    'vec4<f32>'
+    'vec4<f32>',
+    span
   );
 }
 
 function worldNormal(): ShaderExpressionIR {
-  const transformed = binary(
+  const transformed = binaryExpr(
     '*',
-    field(symbol(10, 'objectData', 'ObjectData'), 'world', 'mat4x4<f32>'),
-    construct('vec4<f32>', [symbol(normalId, 'normal', 'vec3<f32>'), literal(0)]),
-    'vec4<f32>'
+    fieldExpr(symbolExpr(10, 'objectData', 'ObjectData', span), 'world', 'mat4x4<f32>', span),
+    constructExpr(
+      'vec4<f32>',
+      [symbolExpr(normalId, 'normal', 'vec3<f32>', span), literalExpr(0, 'f32', span)],
+      span
+    ),
+    'vec4<f32>',
+    span
   );
-  return intrinsic('normalize', [field(transformed, 'xyz', 'vec3<f32>')], 'vec3<f32>');
+  return intrinsicExpr(
+    'normalize',
+    [fieldExpr(transformed, 'xyz', 'vec3<f32>', span)],
+    'vec3<f32>',
+    span
+  );
 }
 
 function fragmentColor(): ShaderExpressionIR {
-  const inputNormal = field(
-    symbol(fragmentInputId, 'fragmentInput', 'StandardLitFragmentInput'),
+  const inputNormal = fieldExpr(
+    symbolExpr(fragmentInputId, 'fragmentInput', 'StandardLitFragmentInput', span),
     'normal',
-    'vec3<f32>'
+    'vec3<f32>',
+    span
   );
-  const lightDirection = field(
-    symbol(13, 'lightData', 'DirectionalLightData'),
+  const lightDirection = fieldExpr(
+    symbolExpr(13, 'lightData', 'DirectionalLightData', span),
     'direction',
-    'vec3<f32>'
+    'vec3<f32>',
+    span
   );
-  const lambert = intrinsic(
+  const lambert = intrinsicExpr(
     'max',
     [
-      intrinsic(
+      intrinsicExpr(
         'dot',
         [
-          intrinsic('normalize', [inputNormal], 'vec3<f32>'),
-          unary('-', intrinsic('normalize', [lightDirection], 'vec3<f32>'), 'vec3<f32>')
+          intrinsicExpr('normalize', [inputNormal], 'vec3<f32>', span),
+          unaryExpr(
+            '-',
+            intrinsicExpr('normalize', [lightDirection], 'vec3<f32>', span),
+            'vec3<f32>',
+            span
+          )
         ],
-        'f32'
+        'f32',
+        span
       ),
-      literal(0)
+      literalExpr(0, 'f32', span)
     ],
-    'f32'
+    'f32',
+    span
   );
-  const factor = binary('+', literal(0.15), binary('*', literal(0.85), lambert, 'f32'), 'f32');
-  const baseColor = field(symbol(12, 'materialData', 'MaterialData'), 'baseColor', 'vec4<f32>');
-  const lit = binary(
+  const factor = binaryExpr(
+    '+',
+    literalExpr(0.15, 'f32', span),
+    binaryExpr('*', literalExpr(0.85, 'f32', span), lambert, 'f32', span),
+    'f32',
+    span
+  );
+  const baseColor = fieldExpr(
+    symbolExpr(12, 'materialData', 'MaterialData', span),
+    'baseColor',
+    'vec4<f32>',
+    span
+  );
+  const lit = binaryExpr(
     '*',
-    binary(
+    binaryExpr(
       '*',
-      field(baseColor, 'rgb', 'vec3<f32>'),
-      field(symbol(13, 'lightData', 'DirectionalLightData'), 'color', 'vec3<f32>'),
-      'vec3<f32>'
+      fieldExpr(baseColor, 'rgb', 'vec3<f32>', span),
+      fieldExpr(
+        symbolExpr(13, 'lightData', 'DirectionalLightData', span),
+        'color',
+        'vec3<f32>',
+        span
+      ),
+      'vec3<f32>',
+      span
     ),
     factor,
-    'vec3<f32>'
-  );
-  return construct('vec4<f32>', [lit, field(baseColor, 'a', 'f32')]);
-}
-
-function shaderType(type: string): ShaderTypeId {
-  return type as ShaderTypeId;
-}
-
-function symbol(id: number | ShaderSymbolId, name: string, type: string): ShaderExpressionIR {
-  return { kind: 'symbol', symbol: id as ShaderSymbolId, name, type: shaderType(type), span };
-}
-
-function literal(value: number): ShaderExpressionIR {
-  return { kind: 'literal', value, type: shaderType('f32'), span };
-}
-
-function field(base: ShaderExpressionIR, name: string, type: string): ShaderExpressionIR {
-  return { kind: 'field', base, field: name, type: shaderType(type), span };
-}
-
-function construct(type: string, arguments_: readonly ShaderExpressionIR[]): ShaderExpressionIR {
-  return { kind: 'construct', type: shaderType(type), arguments: arguments_, span };
-}
-
-function binary(
-  operator: string,
-  left: ShaderExpressionIR,
-  right: ShaderExpressionIR,
-  type: string
-): ShaderExpressionIR {
-  return { kind: 'binary', operator, left, right, type: shaderType(type), span };
-}
-
-function unary(operator: string, operand: ShaderExpressionIR, type: string): ShaderExpressionIR {
-  return { kind: 'unary', operator, operand, type: shaderType(type), span };
-}
-
-function intrinsic(
-  name: string,
-  arguments_: readonly ShaderExpressionIR[],
-  type: string
-): ShaderExpressionIR {
-  return {
-    kind: 'intrinsic',
-    intrinsic: name,
-    arguments: arguments_,
-    type: shaderType(type),
+    'vec3<f32>',
     span
-  };
+  );
+  return constructExpr('vec4<f32>', [lit, fieldExpr(baseColor, 'a', 'f32', span)], span);
 }
