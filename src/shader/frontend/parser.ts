@@ -260,6 +260,8 @@ class FluxParser implements IExpressionParserHost {
       let value: number | string | undefined;
       let end = name;
       if (this.match('(')) {
+        if (['vertex', 'fragment', 'compute'].includes(name.text))
+          this.unexpected(`Attribute @${name.text} does not accept arguments.`);
         const token = this.consume();
         if (token.kind !== 'number' && token.kind !== 'identifier')
           this.unexpected(`Attribute @${name.text} requires a numeric or identifier value.`, token);
@@ -269,6 +271,8 @@ class FluxParser implements IExpressionParserHost {
           this.unsupported(`Attribute @${name.text} requires a numeric value.`, token);
         value = token.kind === 'number' ? Number(token.text.replace(/[uif]$/, '')) : token.text;
         end = this.expect(')');
+      } else if (['builtin', 'location', 'group', 'binding'].includes(name.text)) {
+        this.unexpected(`Attribute @${name.text} requires a value enclosed in parentheses.`);
       }
       attributes.push({
         name: name.text,
