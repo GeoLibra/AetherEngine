@@ -110,9 +110,7 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
   glErrors.push(gl?.getError() ?? -1);
   await execution.execution.submission.done;
   const centerPixel = presentProbe?.beforePresentPixel ?? new Uint8Array(4);
-  const presentedPixel = new Uint8Array(4);
-  gl?.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-  gl?.readPixels(320, 180, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, presentedPixel);
+  const presentedPixel = presentProbe?.afterPresentPixel ?? new Uint8Array(4);
   glErrors.push(gl?.getError() ?? -1);
   const metrics = Reflect.apply(
     Reflect.get(session.device.queue, 'metrics'),
@@ -157,10 +155,12 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
 
 interface WebGL2PresentProbe {
   readonly beforePresentPixel: Uint8Array;
+  readonly afterPresentPixel: Uint8Array;
 }
 
 function instrumentGL(gl: WebGL2RenderingContext): WebGL2PresentProbe {
   const beforePresentPixel = new Uint8Array(4);
+  const afterPresentPixel = new Uint8Array(4);
   for (const name of [
     'bindFramebuffer',
     'framebufferTexture2D',
@@ -185,6 +185,12 @@ function instrumentGL(gl: WebGL2RenderingContext): WebGL2PresentProbe {
           gl.readPixels(320, 180, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, beforePresentPixel);
         }
         const result = Reflect.apply(original, gl, args);
+        if (name === 'blitFramebuffer') {
+          const source = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+          gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+          gl.readPixels(320, 180, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, afterPresentPixel);
+          gl.bindFramebuffer(gl.READ_FRAMEBUFFER, source);
+        }
         const error = gl.getError();
         if (error !== gl.NO_ERROR)
           throw new Error(`WebGL2 ${name} failed with 0x${error.toString(16)}.`);
@@ -192,7 +198,7 @@ function instrumentGL(gl: WebGL2RenderingContext): WebGL2PresentProbe {
       }
     });
   }
-  return Object.freeze({ beforePresentPixel });
+  return Object.freeze({ beforePresentPixel, afterPresentPixel });
 }
 
 function sceneView(): RenderView {

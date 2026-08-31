@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { browserGraphicsArgs } from './e2e/browser-launch-options';
 
 const BASE_URL = 'http://127.0.0.1:4173';
 
@@ -29,17 +30,7 @@ export default defineConfig({
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
         deviceScaleFactor: 1,
         launchOptions: {
-          args: [
-            ...(process.platform === 'linux'
-              ? [
-                  '--use-angle=vulkan',
-                  '--enable-features=Vulkan',
-                  '--use-vulkan=swiftshader',
-                  '--disable-vulkan-surface',
-                  '--ignore-gpu-blocklist'
-                ]
-              : [])
-          ]
+          args: browserGraphicsArgs('webgl2', process.platform)
         }
       }
     },
@@ -51,18 +42,7 @@ export default defineConfig({
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
         deviceScaleFactor: 1,
         launchOptions: {
-          args: [
-            '--enable-unsafe-webgpu',
-            ...(process.platform === 'linux'
-              ? [
-                  '--use-angle=vulkan',
-                  '--enable-features=Vulkan',
-                  '--use-vulkan=swiftshader',
-                  '--disable-vulkan-surface',
-                  '--ignore-gpu-blocklist'
-                ]
-              : [])
-          ]
+          args: browserGraphicsArgs('webgpu', process.platform)
         }
       }
     },
@@ -82,7 +62,7 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
         baseURL: 'http://127.0.0.1:4174',
-        launchOptions: { args: ['--enable-unsafe-webgpu'] }
+        launchOptions: { args: browserGraphicsArgs('webgpu', process.platform) }
       }
     }
   ],
