@@ -156,9 +156,10 @@ class FluxParser implements IExpressionParserHost {
     const start = this.expect('struct');
     const name = this.expectIdentifier();
     this.expect('{');
-    const fields: Array<Readonly<{ name: string; type: FluxTypeNode; span: SourceSpan }>> = [];
+    const fields: FluxStructNode['fields'][number][] = [];
     while (!this.at('}')) {
       if (this.at('eof')) this.unexpectedEof('Unterminated struct declaration.');
+      const attributes = this.parseAttributes();
       const field = this.expectIdentifier();
       if (!this.match(':'))
         throw new FluxParseFailure(
@@ -172,7 +173,7 @@ class FluxParser implements IExpressionParserHost {
       const end = this.current();
       if (!this.at('}') && !this.match(',') && !this.match(';'))
         this.unexpected('Expected "," or ";" after struct field.');
-      fields.push({ name: field.text, type, span: this.span(field, end) });
+      fields.push({ name: field.text, type, attributes, span: this.span(field, end) });
     }
     this.expect('}');
     const end = this.expect(';');
@@ -256,13 +257,17 @@ class FluxParser implements IExpressionParserHost {
     while (this.at('@')) {
       const start = this.consume();
       const name = this.expectIdentifier();
-      let value: number | undefined;
+      let value: number | string | undefined;
       let end = name;
       if (this.match('(')) {
         const token = this.consume();
-        if (token.kind !== 'number')
-          this.unexpected(`Attribute @${name.text} requires a numeric value.`, token);
-        value = Number(token.text.replace(/[uif]$/, ''));
+        if (token.kind !== 'number' && token.kind !== 'identifier')
+          this.unexpected(`Attribute @${name.text} requires a numeric or identifier value.`, token);
+        if (name.text === 'builtin' && (token.kind !== 'identifier' || token.text !== 'position'))
+          this.unsupported(`Unsupported shader built-in "${token.text}".`, token);
+        if (name.text !== 'builtin' && token.kind !== 'number')
+          this.unsupported(`Attribute @${name.text} requires a numeric value.`, token);
+        value = token.kind === 'number' ? Number(token.text.replace(/[uif]$/, '')) : token.text;
         end = this.expect(')');
       }
       attributes.push({

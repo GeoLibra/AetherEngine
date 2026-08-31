@@ -19,6 +19,7 @@ export type {
   ShadowRequestSelection
 } from './types';
 export * from './light';
+export * from './pbr-reference';
 export * from './directional-light-source';
 export * from './light-buffer';
 export * from './light-list';

@@ -5,6 +5,7 @@ import {
   emitWgslModule
 } from '../../shader';
 import { StandardLitMaterialSchema } from '../../material';
+import { STANDARD_LIT_SHADER_MODULE_KEY } from '../../material/builtins';
 import type { RHIBindGroup, RHIBuffer, RHIResource, RHISubmission } from '../../rhi/contracts';
 import {
   compileBindingLayoutPlan,
@@ -19,6 +20,7 @@ import type { PreparedDrawPacket } from '../phase';
 import type { ExtractedView } from '../camera';
 import type { PreparedLight } from '../lighting';
 import type { RenderEntityId } from '../world';
+import type { RenderTransformFact } from '../mesh';
 import type { BaselineRenderingOptions } from './types';
 
 const UNIFORM_BUFFER_USAGE = (1 << 3) | (1 << 6);
@@ -117,7 +119,7 @@ export class BaselineStandardLitPreparation {
     }).value;
     this.bindingLayoutHash = compiled.plan.hash;
     this.pipelineKey = createPipelineKey({
-      shaderModuleKey: 'aether.shader.standard-lit.v1',
+      shaderModuleKey: STANDARD_LIT_SHADER_MODULE_KEY,
       entryPoints: [
         { stage: 'vertex', name: 'standardLitVertex' },
         { stage: 'fragment', name: 'standardLitFragment' }
@@ -152,15 +154,15 @@ export class BaselineStandardLitPreparation {
 
   createPacket(input: {
     entity: RenderEntityId;
-    transform: readonly number[];
+    transform: RenderTransformFact;
     view: ExtractedView;
     light: PreparedLight;
   }): PreparedDrawPacket {
     this.assertLive();
     const { device } = this.options.graphics;
     const buffers = [
-      uniformBuffer(device, input.transform),
-      uniformBuffer(device, Array.from(input.view.viewProjection)),
+      uniformBuffer(device, objectUniform(input.transform)),
+      uniformBuffer(device, viewUniform(input.view)),
       uniformBuffer(device, materialUniform(this.options.material.material)),
       uniformBuffer(device, lightUniform(input.light))
     ];
@@ -279,6 +281,40 @@ function materialUniform(material: RegisteredOptions['material']['material']): r
     material.instance.parameters.get(StandardLitMaterialSchema.fields.metallic),
     material.instance.parameters.get(StandardLitMaterialSchema.fields.roughness),
     0,
+    0
+  ];
+}
+
+function objectUniform(transform: RenderTransformFact): readonly number[] {
+  const normal = transform.normalMatrix;
+  if (normal.length !== 9) throw new Error('Standard-lit normal matrix must contain nine values.');
+  return [
+    ...transform.matrix,
+    normal[0]!,
+    normal[1]!,
+    normal[2]!,
+    0,
+    normal[3]!,
+    normal[4]!,
+    normal[5]!,
+    0,
+    normal[6]!,
+    normal[7]!,
+    normal[8]!,
+    0,
+    0,
+    0,
+    0,
+    1
+  ];
+}
+
+function viewUniform(view: ExtractedView): readonly number[] {
+  return [
+    ...Array.from(view.viewProjection),
+    view.cameraPosition[0],
+    view.cameraPosition[1],
+    view.cameraPosition[2],
     0
   ];
 }

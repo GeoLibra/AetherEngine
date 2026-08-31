@@ -149,6 +149,7 @@ function lowerBinary(
   const right = lowerExpression(expression.right, ctx);
   const comparison = ['==', '!=', '<', '<=', '>', '>='].includes(expression.operator);
   const logical = expression.operator === '&&' || expression.operator === '||';
+  const arithmeticType = inferArithmeticType(expression.operator, left.type, right.type);
   if (logical && (left.type !== 'bool' || right.type !== 'bool'))
     ctx.diagnostics.push(
       typeDiagnostic(
@@ -157,7 +158,7 @@ function lowerBinary(
         expression.span
       )
     );
-  else if (!logical && !compatible(left.type, right.type))
+  else if (!logical && arithmeticType === undefined)
     ctx.diagnostics.push(
       typeDiagnostic(
         'FLUX_OPERAND_TYPE',
@@ -170,9 +171,36 @@ function lowerBinary(
     operator: expression.operator,
     left,
     right,
-    type: comparison || logical ? ('bool' as ShaderTypeId) : left.type,
+    type: comparison || logical ? ('bool' as ShaderTypeId) : (arithmeticType ?? ERROR_TYPE),
     span: expression.span
   });
+}
+
+function inferArithmeticType(
+  operator: string,
+  left: ShaderTypeId,
+  right: ShaderTypeId
+): ShaderTypeId | undefined {
+  if (compatible(left, right)) return left;
+  if (!['+', '-', '*', '/'].includes(operator)) return undefined;
+
+  const leftVector = /^vec([234])<(f32|i32|u32)>$/.exec(left);
+  const rightVector = /^vec([234])<(f32|i32|u32)>$/.exec(right);
+  if (leftVector && right === leftVector[2]) return left;
+  if (rightVector && left === rightVector[2]) return right;
+
+  if (operator !== '*') return undefined;
+  const leftMatrix = /^mat([234])x([234])<f32>$/.exec(left);
+  const rightMatrix = /^mat([234])x([234])<f32>$/.exec(right);
+  if (leftMatrix && right === 'f32') return left;
+  if (rightMatrix && left === 'f32') return right;
+  if (leftMatrix && rightVector?.[2] === 'f32' && leftMatrix[1] === rightVector[1])
+    return `vec${leftMatrix[2]}<f32>` as ShaderTypeId;
+  if (leftVector?.[2] === 'f32' && rightMatrix && leftVector[1] === rightMatrix[2])
+    return `vec${rightMatrix[1]}<f32>` as ShaderTypeId;
+  if (leftMatrix && rightMatrix && leftMatrix[1] === rightMatrix[2])
+    return `mat${rightMatrix[1]}x${leftMatrix[2]}<f32>` as ShaderTypeId;
+  return undefined;
 }
 
 function lowerCall(

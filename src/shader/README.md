@@ -1,6 +1,6 @@
 # AetherEngine Shader Subsystem
 
-> Status: `Production / P1 Baseline`
+> Status: `Migrating / P1 Baseline`
 > Design Authority: [`engine/design/v2/04-rendering/02-shader-system.md`](../../engine/design/v2/04-rendering/02-shader-system.md)
 
 ---
@@ -29,7 +29,7 @@ The Shader subsystem is a deterministic, content-addressed, type-safe compiler a
 | [`backends/`](./backends/) | Backend emitters (WGSL, GLSL ES 3.00), WebGL2 binding fusion, and backend validation dispatch     | `emitShaderBackend`, `emitWgslModule`, `emitGlslEsModule`, `fuseGlslTextureSamplerBindings`   |
 | [`pipeline/`](./pipeline/) | High-level compiler orchestration, variant specialization, content-addressed cache, and cooking   | `ShaderCompiler`, `resolveShaderVariants`, `ShaderArtifactCache`, `cookShaderArtifact`        |
 | [`graph/`](./graph/)       | ShaderGraph DAG compiler, node caching, and IR lowering service                                   | `ShaderGraphCompiler`, `ShaderGraphCompileService`                                            |
-| [`builtins/`](./builtins/) | Built-in standard lit PBR shaders and WebGL2 translation ports                                    | `STANDARD_LIT_SHADER_MODULE`, `STANDARD_LIT_WEBGL2_TRANSLATOR`                                |
+| [`builtins/`](./builtins/) | Authored built-in FluxSL, generated typed artifacts, and WebGL2 translation ports                 | `STANDARD_LIT_SHADER_SOURCE`, `STANDARD_LIT_SHADER_MODULE`, `STANDARD_LIT_WEBGL2_TRANSLATOR`  |
 | [`utils/`](./utils/)       | Deterministic 64-bit FNV-1a content hashing and canonical JSON stringification                    | `stableHash`, `canonicalStringify`                                                            |
 
 ---
@@ -75,6 +75,14 @@ flowchart TD
     classDef stage fill:#f8fafc,stroke:#94a3b8,stroke-width:1px;
     class Frontend,IR_Stage,Layout_Stage,Backend_Stage,Pipeline_Stage stage;
 ```
+
+Built-in shaders use the same frontend during repository cooking. The authored `.flux` file is
+the source of truth; `pnpm run shader:generate` publishes a generated immutable IR snapshot, and
+`pnpm run shader:check` rejects stale generated artifacts. Loading the runtime package never parses
+the authored source. Standard-lit implements the direct GGX/Smith/Schlick metallic-roughness BRDF
+with world-space normal, position, and camera inputs. Its first LDR browser slice treats the light
+color as normalized direct radiance; physical lux, HDR accumulation, exposure, tonemap, and IBL
+remain coordinated Lighting and Post/Color work.
 
 ---
 

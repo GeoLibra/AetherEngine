@@ -23,6 +23,8 @@ export interface ExtractedView {
   readonly projection: ArrayLike<number>;
   readonly viewProjection: ArrayLike<number>;
   readonly inverseViewProjection: ArrayLike<number>;
+  /** Camera origin in world space, expressed in engine world units. */
+  readonly cameraPosition: readonly [number, number, number];
   readonly unjitteredProjection: ArrayLike<number>;
   readonly unjitteredViewProjection: ArrayLike<number>;
   readonly viewportPixels: Readonly<{ x: number; y: number; width: number; height: number }>;

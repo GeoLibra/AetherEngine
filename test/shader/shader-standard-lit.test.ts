@@ -2,13 +2,41 @@ import { describe, expect, test } from 'vitest';
 import {
   STANDARD_LIT_SHADER_ABI_VERSION,
   STANDARD_LIT_SHADER_MODULE,
+  STANDARD_LIT_SHADER_SOURCE,
   STANDARD_LIT_WEBGL2_TRANSLATOR,
+  AETHER_SHADER_STANDARD_LIBRARY_VERSION,
+  cookShaderArtifact,
+  createStandardLitShaderResolver,
   createShaderBindingManifest,
   emitGlslEsModule,
   emitWgslModule
 } from '../../src';
 
 describe('standard-lit built-in shader', () => {
+  test('cooks the authored FluxSL source into the published built-in module', async () => {
+    const cooked = await cookShaderArtifact(
+      STANDARD_LIT_SHADER_SOURCE,
+      createStandardLitShaderResolver(),
+      {
+        compiler: 1,
+        ir: 1,
+        abi: STANDARD_LIT_SHADER_ABI_VERSION,
+        standardLibrary: AETHER_SHADER_STANDARD_LIBRARY_VERSION
+      }
+    );
+
+    expect(cooked.source.uri).toBe('asset://aether/builtins/standard-lit.flux');
+    expect(cooked.dependencies.map(({ uri }) => uri)).toEqual([
+      'asset://aether/builtins/standard-lit.flux'
+    ]);
+    expect(emitWgslModule(cooked.ir)).toBe(emitWgslModule(STANDARD_LIT_SHADER_MODULE));
+    expect(emitGlslEsModule(cooked.ir, 'standardLitFragment')).toBe(
+      emitGlslEsModule(STANDARD_LIT_SHADER_MODULE, 'standardLitFragment')
+    );
+    expect(cooked.ir.sourceClosureHash).toBe(STANDARD_LIT_SHADER_MODULE.sourceClosureHash);
+    expect(cooked.ir.sourceMap.spans.every(({ uri }) => uri === cooked.source.uri)).toBe(true);
+  });
+
   test('publishes the canonical object, view, material, and light ABI', () => {
     const manifest = createShaderBindingManifest(
       STANDARD_LIT_SHADER_MODULE,
@@ -33,6 +61,21 @@ describe('standard-lit built-in shader', () => {
     expect(manifest.fragmentOutputs).toEqual([
       { location: 0, name: 'standardLitFragment', type: 'vec4<f32>' }
     ]);
+    expect(manifest.buffers.find(({ name }) => name === 'objectData')).toMatchObject({
+      byteSize: 128,
+      fields: [
+        { path: 'world', offset: 0 },
+        { path: 'normalWorld', offset: 64 }
+      ]
+    });
+    expect(manifest.buffers.find(({ name }) => name === 'viewData')).toMatchObject({
+      byteSize: 80,
+      fields: [
+        { path: 'viewProjection', offset: 0 },
+        { path: 'cameraPosition', offset: 64 },
+        { path: 'padding', offset: 76 }
+      ]
+    });
   });
 
   test('deterministically lowers the same typed module to WGSL and GLSL ES', () => {
@@ -51,6 +94,20 @@ describe('standard-lit built-in shader', () => {
     expect(fragment).toContain('aether_fragment_output =');
     expect(fragment).toContain('lightData.direction');
     expect(fragment).not.toMatch(/@vertex|@fragment|\bfn\b/);
+  });
+
+  test('emits the GGX, Smith, and Schlick terms from authored FluxSL', () => {
+    const wgsl = emitWgslModule(STANDARD_LIT_SHADER_MODULE);
+    const fragment = emitGlslEsModule(STANDARD_LIT_SHADER_MODULE, 'standardLitFragment');
+
+    expect(wgsl).toContain('fn distributionGgx');
+    expect(wgsl).toContain('fn geometrySmith');
+    expect(wgsl).toContain('fn fresnelSchlick');
+    expect(fragment).toContain('materialData.metallic');
+    expect(fragment).toContain('materialData.roughness');
+    expect(fragment).toContain('viewData.cameraPosition');
+    expect(fragment).toContain('fragmentInput.worldPosition');
+    expect(wgsl).toContain('objectData.normalWorld');
   });
 
   test('applies the WebGL2 zero-to-one depth compatibility epilogue when required', () => {
