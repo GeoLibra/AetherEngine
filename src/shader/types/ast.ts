@@ -2,7 +2,7 @@ import type { SourceSpan } from './diagnostics';
 
 export interface FluxAttribute {
   readonly name: string;
-  readonly value?: number;
+  readonly value?: number | string;
   readonly span: SourceSpan;
 }
 
@@ -21,7 +21,12 @@ export interface FluxParameterNode {
 export interface FluxStructNode {
   readonly kind: 'struct';
   readonly name: string;
-  readonly fields: readonly Readonly<{ name: string; type: FluxTypeNode; span: SourceSpan }>[];
+  readonly fields: readonly Readonly<{
+    name: string;
+    type: FluxTypeNode;
+    attributes: readonly FluxAttribute[];
+    span: SourceSpan;
+  }>[];
   readonly span: SourceSpan;
 }
 

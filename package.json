@@ -9,8 +9,11 @@
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "build": "vite build",
+    "prebuild": "pnpm run shader:check",
     "dev": "vite --host 127.0.0.1",
     "test": "vitest run",
+    "shader:generate": "vite-node --script scripts/cook-built-in-shaders.ts",
+    "shader:check": "vite-node --script scripts/cook-built-in-shaders.ts --check",
     "bench": "vite-node benchmark/framework/cli.ts",
     "bench:validate": "pnpm bench validate",
     "bench:changed": "pnpm bench changed",

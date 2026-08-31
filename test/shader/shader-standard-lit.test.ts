@@ -2,13 +2,41 @@ import { describe, expect, test } from 'vitest';
 import {
   STANDARD_LIT_SHADER_ABI_VERSION,
   STANDARD_LIT_SHADER_MODULE,
+  STANDARD_LIT_SHADER_SOURCE,
   STANDARD_LIT_WEBGL2_TRANSLATOR,
+  AETHER_SHADER_STANDARD_LIBRARY_VERSION,
+  cookShaderArtifact,
+  createStandardLitShaderResolver,
   createShaderBindingManifest,
   emitGlslEsModule,
   emitWgslModule
 } from '../../src';
 
 describe('standard-lit built-in shader', () => {
+  test('cooks the authored FluxSL source into the published built-in module', async () => {
+    const cooked = await cookShaderArtifact(
+      STANDARD_LIT_SHADER_SOURCE,
+      createStandardLitShaderResolver(),
+      {
+        compiler: 1,
+        ir: 1,
+        abi: STANDARD_LIT_SHADER_ABI_VERSION,
+        standardLibrary: AETHER_SHADER_STANDARD_LIBRARY_VERSION
+      }
+    );
+
+    expect(cooked.source.uri).toBe('asset://aether/builtins/standard-lit.flux');
+    expect(cooked.dependencies.map(({ uri }) => uri)).toEqual([
+      'asset://aether/builtins/standard-lit.flux'
+    ]);
+    expect(emitWgslModule(cooked.ir)).toBe(emitWgslModule(STANDARD_LIT_SHADER_MODULE));
+    expect(emitGlslEsModule(cooked.ir, 'standardLitFragment')).toBe(
+      emitGlslEsModule(STANDARD_LIT_SHADER_MODULE, 'standardLitFragment')
+    );
+    expect(cooked.ir.sourceClosureHash).toBe(STANDARD_LIT_SHADER_MODULE.sourceClosureHash);
+    expect(cooked.ir.sourceMap.spans.every(({ uri }) => uri === cooked.source.uri)).toBe(true);
+  });
+
   test('publishes the canonical object, view, material, and light ABI', () => {
     const manifest = createShaderBindingManifest(
       STANDARD_LIT_SHADER_MODULE,

@@ -65,10 +65,19 @@ export function attributeValue(
 }
 
 export function attributeValueFromList(
-  attributes: readonly { readonly name: string; readonly value?: number }[],
+  attributes: readonly { readonly name: string; readonly value?: number | string }[],
   name: string
 ): number | undefined {
-  return attributes.find((attribute) => attribute.name === name)?.value;
+  const value = attributes.find((attribute) => attribute.name === name)?.value;
+  return typeof value === 'number' ? value : undefined;
+}
+
+export function attributeStringValueFromList(
+  attributes: readonly { readonly name: string; readonly value?: number | string }[],
+  name: string
+): string | undefined {
+  const value = attributes.find((attribute) => attribute.name === name)?.value;
+  return typeof value === 'string' ? value : undefined;
 }
 
 export function typeDiagnostic(

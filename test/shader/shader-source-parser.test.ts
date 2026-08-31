@@ -220,6 +220,58 @@ describe('FluxSL source and parser', () => {
     expect(entry).not.toHaveProperty('source');
   });
 
+  test('preserves built-in and location attributes on struct fields used for entry IO', async () => {
+    const result = await parseSource([
+      'struct VertexOutput {',
+      '  @builtin(position) position: vec4<f32>,',
+      '  @location(0) normal: vec3<f32>',
+      '};',
+      '@vertex fn main() -> VertexOutput {',
+      '  return VertexOutput(vec4<f32>(0.0), vec3<f32>(0.0));',
+      '}'
+    ]);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.ir?.types[0]).toMatchObject({
+      fields: [
+        { name: 'position', builtin: 'position' },
+        { name: 'normal', location: 0 }
+      ]
+    });
+  });
+
+  test.each([
+    ['unknown built-in', '@builtin(color) value: vec4<f32>', 'FLUX_UNSUPPORTED_SYNTAX'],
+    ['non-numeric location', '@location(primary) value: vec4<f32>', 'FLUX_UNSUPPORTED_SYNTAX']
+  ])('rejects %s struct field attributes', async (_name, field, code) => {
+    const result = await parseSource([`struct Output { ${field} };`]);
+
+    expect(result.ir).toBeUndefined();
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(code);
+  });
+
+  test('types matrix-vector and vector-scalar shader arithmetic', async () => {
+    const result = await parseSource([
+      '@vertex fn main(',
+      '  @location(0) position: vec3<f32>,',
+      '  @location(1) normal: vec3<f32>',
+      ') -> @builtin(position) vec4<f32> {',
+      '  let world: mat4x4<f32> = mat4x4<f32>();',
+      '  let transformed = world * vec4<f32>(position, 1.0);',
+      '  let scaled = normal * 0.5;',
+      '  return transformed + vec4<f32>(scaled, 0.0);',
+      '}'
+    ]);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.ir?.entryPoints[0]?.body).toMatchObject([
+      { kind: 'declare', type: 'mat4x4<f32>' },
+      { kind: 'declare', type: 'vec4<f32>' },
+      { kind: 'declare', type: 'vec3<f32>' },
+      { kind: 'return', value: { type: 'vec4<f32>' } }
+    ]);
+  });
+
   test.each([
     ['unbalanced body', '@fragment fn main() { if (true) { return; }', 'FLUX_UNEXPECTED_EOF'],
     ['unsupported syntax', '@fragment fn main() { for (;;) {} }', 'FLUX_UNSUPPORTED_SYNTAX'],

@@ -19,6 +19,7 @@ import {
   ADDRESS_SPACES,
   attributeValue,
   attributeValueFromList,
+  attributeStringValueFromList,
   BUILTIN_SCALARS,
   collectSpans,
   ERROR_TYPE,
@@ -104,14 +105,18 @@ export function lowerFluxModules(
   };
 
   for (const struct of structs.values()) {
-    const fields = struct.fields.map((field) =>
-      Object.freeze({
+    const fields = struct.fields.map((field) => {
+      const builtin = attributeStringValueFromList(field.attributes, 'builtin');
+      const location = attributeValueFromList(field.attributes, 'location');
+      return Object.freeze({
         name: field.name,
         type: field.type.name,
         typeId: resolveType(field.type.name, field.type.span),
+        ...(builtin === 'position' ? { builtin: 'position' as const } : {}),
+        ...(location === undefined ? {} : { location }),
         span: field.span
-      })
-    );
+      });
+    });
     types.push(
       Object.freeze({
         kind: 'struct',
