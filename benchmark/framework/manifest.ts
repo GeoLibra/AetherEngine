@@ -290,6 +290,8 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'benchmark/shader-system-runner.mjs',
         'engine/design/v2/04-rendering/02-shader-system.md',
         'engine/design/v2/04-rendering/09-pipeline-layout-specialization.md',
+        'engine/design/v2/05-assets-scene/06-render-artifact-package.md',
+        'engine/design/v2/08-tooling/03-build-release.md',
         'src/rendering/pipeline/binding-layout-',
         'src/rendering/pipeline/layout-cache.ts',
         'src/rendering/pipeline/types/binding-layout-',
@@ -300,7 +302,8 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'test/rendering/layout-cache.test.ts',
         'test/benchmark/shader-binding-layout.test.ts',
         'src/shader/',
-        'test/shader/'
+        'test/shader/',
+        'tools/naga-shader-validator/'
       ]),
       command: Object.freeze({
         executable: 'node',
