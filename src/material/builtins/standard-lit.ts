@@ -5,7 +5,7 @@ import type { MaterialAsset, MaterialInstance, ResolvedMaterialAsset } from '../
 import { STANDARD_LIT_SHADER_ABI_VERSION, STANDARD_LIT_SHADER_MODULE } from '../../shader/builtins';
 import { createShaderBindingManifest } from '../../shader/layout';
 
-export const STANDARD_LIT_SHADER_MODULE_KEY = 'aether.shader.standard-lit.v1';
+export const STANDARD_LIT_SHADER_MODULE_KEY = 'aether.shader.standard-lit.v2';
 export const STANDARD_LIT_BINDING_LAYOUT_HASH = createShaderBindingManifest(
   STANDARD_LIT_SHADER_MODULE,
   STANDARD_LIT_SHADER_ABI_VERSION

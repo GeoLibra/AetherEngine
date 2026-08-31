@@ -86,8 +86,10 @@ export function extractView(options: ExtractViewOptions): ExtractedView {
     options.jitterPixels === undefined ? [0, 0] : [options.jitterPixels[0], options.jitterPixels[1]]
   ) as readonly [number, number];
   let inverseViewProjection: Float32Array;
+  let inverseView: Float32Array;
   try {
     inverseViewProjection = Mat4.invert(viewProjection);
+    inverseView = Mat4.invert(view);
   } catch {
     throw new CameraViewError(
       options.camera,
@@ -103,6 +105,11 @@ export function extractView(options: ExtractViewOptions): ExtractedView {
     projection: snapshotMatrix(projection),
     viewProjection: snapshotMatrix(viewProjection),
     inverseViewProjection: snapshotMatrix(inverseViewProjection),
+    cameraPosition: Object.freeze([
+      inverseView[12]!,
+      inverseView[13]!,
+      inverseView[14]!
+    ]) as readonly [number, number, number],
     unjitteredProjection: snapshotMatrix(unjitteredProjection),
     unjitteredViewProjection: snapshotMatrix(unjitteredViewProjection),
     viewportPixels: computeViewportPixels(options.viewport),

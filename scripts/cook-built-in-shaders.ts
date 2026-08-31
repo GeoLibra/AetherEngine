@@ -10,7 +10,7 @@ const ROOT = resolve(import.meta.dirname, '..');
 const SOURCE_PATH = resolve(ROOT, 'src/shader/builtins/standard-lit.flux');
 const OUTPUT_PATH = resolve(ROOT, 'src/shader/builtins/standard-lit.generated.ts');
 const SOURCE_URI = 'asset://aether/builtins/standard-lit.flux';
-const ABI_VERSION = 1;
+const ABI_VERSION = 2;
 
 const sourceText = await readFile(SOURCE_PATH, 'utf8');
 const resolver = new InMemoryShaderSourceResolver({ [SOURCE_URI]: sourceText });

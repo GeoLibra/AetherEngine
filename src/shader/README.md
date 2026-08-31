@@ -79,8 +79,10 @@ flowchart TD
 Built-in shaders use the same frontend during repository cooking. The authored `.flux` file is
 the source of truth; `pnpm run shader:generate` publishes a generated immutable IR snapshot, and
 `pnpm run shader:check` rejects stale generated artifacts. Loading the runtime package never parses
-the authored source. The current standard-lit source intentionally preserves the first rendered
-slice's Lambert lighting; Cook-Torrance PBR and IBL remain separate Lighting/Shadow work.
+the authored source. Standard-lit implements the direct GGX/Smith/Schlick metallic-roughness BRDF
+with world-space normal, position, and camera inputs. Its first LDR browser slice treats the light
+color as normalized direct radiance; physical lux, HDR accumulation, exposure, tonemap, and IBL
+remain coordinated Lighting and Post/Color work.
 
 ---
 

@@ -8,7 +8,7 @@ import {
   STANDARD_LIT_SHADER_SOURCE_TEXT
 } from './standard-lit.generated';
 
-export const STANDARD_LIT_SHADER_ABI_VERSION = 1;
+export const STANDARD_LIT_SHADER_ABI_VERSION = 2;
 
 /** Authored FluxSL source identity used by cook tools and source-mapped diagnostics. */
 export const STANDARD_LIT_SHADER_SOURCE: ShaderSourceRef = Object.freeze({

@@ -80,6 +80,7 @@ describe('camera surface View extraction', () => {
     });
     const view = result.views[0]!;
     expect(view.viewportPixels).toEqual({ x: 400, y: 0, width: 800, height: 1200 });
+    expect(view.cameraPosition).toEqual([0, 0, 0]);
     expect(view.camera).toBe(render.mapEntity(camera));
     expect(render.read(view.camera, CameraIntentField)).toEqual(intent());
     expect('surface' in render.read(view.camera, CameraIntentField)!).toBe(false);

@@ -193,7 +193,7 @@ class BaselineRenderingRuntime {
     if (transform === undefined) throw new Error('Visible baseline mesh is missing its transform.');
     const packet = this.standardLit.createPacket({
       entity: selected.renderEntity,
-      transform: transform.matrix,
+      transform,
       view: camera.views[0]!,
       light
     });
