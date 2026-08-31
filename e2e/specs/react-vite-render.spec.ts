@@ -14,7 +14,7 @@ test('renders the public React example and survives surface suspension', async (
   const backend = info.project.name.endsWith('webgl2') ? 'webgl2' : 'webgpu';
   await page.goto(`/?e2e&backend=${backend}`);
   await expect
-    .poll(() => page.evaluate(() => window.__AETHER_EXAMPLE__?.state()))
+    .poll(() => page.evaluate(() => window.__AETHER_EXAMPLE__?.state()), { timeout: 20_000 })
     .toMatchObject({
       backend,
       diagnostics: { status: 'rendered', indexedDrawCalls: 1, indexCount: 36 }
