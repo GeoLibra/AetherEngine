@@ -242,9 +242,35 @@ describe('FluxSL source and parser', () => {
 
   test.each([
     ['unknown built-in', '@builtin(color) value: vec4<f32>', 'FLUX_UNSUPPORTED_SYNTAX'],
-    ['non-numeric location', '@location(primary) value: vec4<f32>', 'FLUX_UNSUPPORTED_SYNTAX']
+    ['non-numeric location', '@location(primary) value: vec4<f32>', 'FLUX_UNSUPPORTED_SYNTAX'],
+    ['missing location argument', '@location value: vec4<f32>', 'FLUX_UNSUPPORTED_SYNTAX'],
+    ['missing builtin argument', '@builtin position: vec4<f32>', 'FLUX_UNSUPPORTED_SYNTAX']
   ])('rejects %s struct field attributes', async (_name, field, code) => {
     const result = await parseSource([`struct Output { ${field} };`]);
+
+    expect(result.ir).toBeUndefined();
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(code);
+  });
+
+  test.each([
+    [
+      'missing group argument',
+      '@group @binding(0) var<uniform> data: Data;',
+      'FLUX_UNSUPPORTED_SYNTAX'
+    ],
+    [
+      'missing binding argument',
+      '@group(0) @binding var<uniform> data: Data;',
+      'FLUX_UNSUPPORTED_SYNTAX'
+    ],
+    [
+      'parameter missing location argument',
+      '@vertex fn main(@location position: vec3<f32>) {}',
+      'FLUX_UNSUPPORTED_SYNTAX'
+    ],
+    ['stage attribute with argument', '@vertex(0) fn main() {}', 'FLUX_UNSUPPORTED_SYNTAX']
+  ])('rejects %s in shader declarations', async (_name, source, code) => {
+    const result = await parseSource([source]);
 
     expect(result.ir).toBeUndefined();
     expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(code);
