@@ -1,15 +1,25 @@
 import type { WebGL2NativeContextPort } from '../../types';
 import { constant } from '../capability-query';
-import { glCall } from '../gl-call';
+import { glCall, glObject } from '../gl-call';
 import type { BrowserWebGL2Object } from '../types';
+import type { BrowserWebGL2BufferTarget } from './resource-port';
 
 export function createBrowserWebGL2CopyPort(
-  gl: BrowserWebGL2Object
+  gl: BrowserWebGL2Object,
+  bufferTargets: WeakMap<object, BrowserWebGL2BufferTarget> = new WeakMap()
 ): Pick<WebGL2NativeContextPort, 'writeBuffer' | 'copyBufferToBuffer' | 'createSubmissionFence'> {
   return {
     writeBuffer(buffer, offset, data): void {
-      glCall(gl, 'bindBuffer', [constant(gl, 'COPY_WRITE_BUFFER'), buffer]);
-      glCall(gl, 'bufferSubData', [constant(gl, 'COPY_WRITE_BUFFER'), offset, data]);
+      const target = bufferTargets.get(buffer) ?? 'ARRAY_BUFFER';
+      const uploadVertexArray =
+        target === 'ELEMENT_ARRAY_BUFFER' ? glObject(gl, 'createVertexArray') : undefined;
+      if (uploadVertexArray !== undefined) glCall(gl, 'bindVertexArray', [uploadVertexArray]);
+      glCall(gl, 'bindBuffer', [constant(gl, target), buffer]);
+      glCall(gl, 'bufferSubData', [constant(gl, target), offset, data]);
+      if (uploadVertexArray !== undefined) {
+        glCall(gl, 'bindVertexArray', [null]);
+        glCall(gl, 'deleteVertexArray', [uploadVertexArray]);
+      }
     },
     copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size): void {
       glCall(gl, 'bindBuffer', [constant(gl, 'COPY_READ_BUFFER'), source]);

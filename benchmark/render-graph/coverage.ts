@@ -1,6 +1,9 @@
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
-import { compileRenderGraph } from '../../src/render-graph/compiler';
-import { analyzeResourceLifetimes, planResourceAliases } from '../../src/render-graph/lifetimes';
+import {
+  analyzeResourceLifetimes,
+  compileRenderGraph,
+  planResourceAliases
+} from '../../src/render-graph/compiler';
 
 export interface RenderGraphCoverageEvidence {
   readonly scaleAxes: {

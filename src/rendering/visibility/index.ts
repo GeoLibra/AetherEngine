@@ -16,6 +16,7 @@ export type {
   VisibleItem,
   WorldBounds
 } from './types';
+export * from './visibility';
 export * from './linear-culler';
 export * from './static-bvh';
 export * from './spatial-index';

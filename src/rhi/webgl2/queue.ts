@@ -40,6 +40,7 @@ export class WebGL2Queue extends WebGL2UploadQueue implements RHIQueue {
   private failedCount = 0;
   private deviceLostCount = 0;
   private lossHandled = false;
+  private lastFailure: string | undefined;
 
   constructor(owner: WebGL2DeviceOwner, native: WebGL2NativeContextPort) {
     const metrics = new WebGL2Metrics();
@@ -112,7 +113,8 @@ export class WebGL2Queue extends WebGL2UploadQueue implements RHIQueue {
       vertexArrayCacheMisses: this.webgl2Metrics.vertexArrayCacheMisses,
       uploadBytes: this.webgl2Metrics.uploadBytes,
       syncLag: this.pending.size,
-      contextLosses: this.webgl2Metrics.contextLosses
+      contextLosses: this.webgl2Metrics.contextLosses,
+      ...(this.lastFailure === undefined ? {} : { lastFailure: this.lastFailure })
     });
   }
 
@@ -184,7 +186,10 @@ export class WebGL2Queue extends WebGL2UploadQueue implements RHIQueue {
     if (!this.pending.delete(epoch.submission.id)) return;
     for (const resource of epoch.resources) this.release(resource);
     if (status === 'completed') this.completedCount += 1;
-    if (status === 'failed') this.failedCount += 1;
+    if (status === 'failed') {
+      this.failedCount += 1;
+      this.lastFailure = error instanceof Error ? error.message : String(error);
+    }
     if (status === 'device-lost') this.deviceLostCount += 1;
     epoch.submission.settle(status, error);
   }

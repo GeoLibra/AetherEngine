@@ -6,6 +6,8 @@ import {
   createMaterialInstance,
   createMaterialTechniqueRole,
   createPipelineKey,
+  createShaderBindingManifest,
+  createStandardLitMaterial,
   defineMaterialSchema,
   getMaterialMetrics,
   resetMaterialMetrics,
@@ -13,6 +15,8 @@ import {
   resolveMaterialRenderState,
   selectMaterialTechnique,
   writeMaterialParameters,
+  STANDARD_LIT_SHADER_ABI_VERSION,
+  STANDARD_LIT_SHADER_MODULE,
   type BindingKeyParts,
   type BufferLayoutManifest,
   type CanonicalKey,
@@ -42,6 +46,7 @@ import type {
 import { createMaterialPipelineCompatibilityCase } from './compatibility-scenario';
 import { createMaterialBindingCompatibilityCase } from './binding-compatibility-scenario';
 import { createPipelineCacheResolutionCase } from './pipeline-cache-scenario';
+import { createMaterialBindGroupCacheCase } from './bind-group-cache-scenario';
 
 export interface ParameterEditUploadOptions {
   readonly fieldCount: 8 | 32 | 64;
@@ -109,18 +114,75 @@ export function createMaterialScenarioCases(
       concurrentRequests: profile === 'nightly' ? 16 : profile === 'standard' ? 4 : 1
     });
   });
+  const bindGroupCacheCases = instanceCounts.map((instanceCount) =>
+    createMaterialBindGroupCacheCase({
+      lookupCount: instanceCount,
+      uniqueKeys: Math.min(256, Math.max(16, Math.floor(instanceCount / 10)))
+    })
+  );
+  const standardLitCases = instanceCounts.map((instanceCount) =>
+    createStandardLitBuiltinCase(instanceCount)
+  );
   return Object.freeze([
     ...parameterCases,
     ...pipelineCases,
     ...compatibilityCases,
     ...bindingCompatibilityCases,
-    ...pipelineCacheCases
+    ...pipelineCacheCases,
+    ...bindGroupCacheCases,
+    ...standardLitCases
   ]);
 }
 
 export { createMaterialPipelineCompatibilityCase } from './compatibility-scenario';
 export { createMaterialBindingCompatibilityCase } from './binding-compatibility-scenario';
 export { createPipelineCacheResolutionCase } from './pipeline-cache-scenario';
+export { createMaterialBindGroupCacheCase } from './bind-group-cache-scenario';
+
+export function createStandardLitBuiltinCase(instanceCount: number): MaterialScenarioCase {
+  const semantic = Object.freeze({
+    schemaFields: 3,
+    bindingGroups: 4,
+    vertexInputs: 2,
+    fragmentOutputs: 1
+  });
+  const counters = Object.freeze({
+    constructions: instanceCount,
+    schemaFields: 3,
+    bindingGroups: 4,
+    vertexInputs: 2,
+    staleReuse: 0
+  });
+  return Object.freeze({
+    scenarioId: 'standard-lit-construction-v1',
+    scenarioVersion: 1,
+    caseId: `instances-${instanceCount}`,
+    scale: Object.freeze({ instanceCount }),
+    expected: Object.freeze({ reference: counters, subject: counters }),
+    runReference: () => observation(semantic, counters),
+    runSubject: () => {
+      let last = createStandardLitMaterial();
+      for (let index = 1; index < instanceCount; index += 1) {
+        last = createStandardLitMaterial({
+          baseColor: [1, 1, 1, 1],
+          metallic: 0,
+          roughness: 0.5
+        });
+      }
+      const manifest = createShaderBindingManifest(
+        STANDARD_LIT_SHADER_MODULE,
+        STANDARD_LIT_SHADER_ABI_VERSION
+      );
+      const observed = Object.freeze({
+        schemaFields: Object.keys(last.asset.schema.fields).length,
+        bindingGroups: manifest.groups.length,
+        vertexInputs: manifest.vertexInputs.length,
+        fragmentOutputs: manifest.fragmentOutputs.length
+      });
+      return observation(observed, counters);
+    }
+  });
+}
 
 export function createParameterEditUploadCase(
   options: ParameterEditUploadOptions

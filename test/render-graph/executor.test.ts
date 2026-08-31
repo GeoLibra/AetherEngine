@@ -1,20 +1,22 @@
-import { describe, expect, test } from 'vitest';
-import { RenderGraphBuilder } from '../../src/render-graph/builder';
+import {
+  RenderGraphBuilder,
+  createPreparedComputePipelineToken,
+  createPreparedRenderPipelineToken
+} from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
   createRenderGraphExecutionPlan,
+  TransientResourcePool,
   type RenderGraphExecutionPlan,
-  type RestrictedPassContext
+  type TransientAllocationDescriptor
 } from '../../src/render-graph/executor';
-import {
-  createPreparedComputePipelineToken,
-  createPreparedRenderPipelineToken
-} from '../../src/render-graph/prepared-resources';
 import { NullDevice } from '../../src/rhi/null/device';
-import { TransientResourcePool } from '../../src/render-graph/transient-pool';
-import type { TransientAllocationDescriptor } from '../../src/render-graph/transient-pool';
-import type { BufferDescriptor, TextureDescriptor } from '../../src/render-graph/types';
+import type {
+  BufferDescriptor,
+  TextureDescriptor,
+  RestrictedPassContext
+} from '../../src/render-graph/types';
 
 const TEXTURE: TextureDescriptor = {
   width: 4,
@@ -202,6 +204,7 @@ describe('RenderGraphExecutor', () => {
       'computePipeline',
       'copyBufferToBuffer',
       'device',
+      'drawResources',
       'renderPipeline',
       'texture'
     ]);

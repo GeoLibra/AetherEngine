@@ -1,6 +1,7 @@
 import type { RHIRenderPipeline } from '../../contracts/resource';
 import type { WebGL2RenderPassSnapshot } from '../types';
 import type { WebGL2Buffer } from '../resources/resource';
+import type { GPUIndexFormat } from '../../contracts/webgpu';
 
 export interface WebGL2VertexBufferState {
   readonly buffer: WebGL2Buffer;
@@ -9,7 +10,7 @@ export interface WebGL2VertexBufferState {
 }
 
 export interface WebGL2IndexBufferState extends WebGL2VertexBufferState {
-  readonly format: string;
+  readonly format: GPUIndexFormat;
 }
 
 export function createFramebufferCacheKey(

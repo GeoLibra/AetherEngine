@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   PipelineCache,
   createPipelineCompileRequest,
@@ -6,6 +6,7 @@ import {
   type PipelineCompiler
 } from '../../src';
 import type { RHIRenderPipeline } from '../../src/rhi/contracts';
+import { deferredSubmission, disposablePipeline } from './pipeline-cache-fixtures';
 
 const UNUSED_COMPILER: PipelineCompiler = Object.freeze({
   compile: async () => {
@@ -231,7 +232,7 @@ describe('PipelineCache invalidation', () => {
     const second = deferredOutcome();
     const outcomes = [first.promise, second.promise];
     let compileIndex = 0;
-    let staleDisposals = 0;
+    const stalePipeline = disposablePipeline(101);
     const newerPipeline = Object.freeze({ id: 102 }) as unknown as RHIRenderPipeline;
     const cache = new PipelineCache({
       compile: async () => outcomes[compileIndex++] as Promise<PipelineCompileOutcome>
@@ -249,14 +250,11 @@ describe('PipelineCache invalidation', () => {
     await Promise.resolve();
     first.resolve({
       status: 'success',
-      pipeline: PIPELINE,
-      disposeUnpublished: () => {
-        staleDisposals += 1;
-      }
+      pipeline: stalePipeline
     });
     await flushCompilation();
 
-    expect(staleDisposals).toBe(1);
+    expect(stalePipeline.dispose).toHaveBeenCalledOnce();
     expect(cache.snapshot('pipeline:a')).toMatchObject({ kind: 'compiling' });
 
     second.resolve({ status: 'success', pipeline: newerPipeline });
@@ -316,5 +314,83 @@ describe('PipelineCache invalidation', () => {
 
     expect(compileCount).toBe(2);
     expect(cache.snapshot('pipeline:a').kind).toBe('ready');
+  });
+});
+
+describe('PipelineCache ready ownership', () => {
+  it('retains an invalidated ready pipeline until its pending submission completes', async () => {
+    const submission = deferredSubmission(10);
+    const pipeline = disposablePipeline(201);
+    const cache = new PipelineCache({
+      compile: async () => ({ status: 'success', pipeline })
+    });
+    cache.request(requestFor());
+    await flushCompilation();
+
+    const lease = cache.acquireReady('pipeline:a')!;
+    expect(lease.pipeline).toBe(pipeline);
+    expect(lease.deviceGeneration).toBe(4);
+    lease.retain(submission.value);
+    cache.invalidate('pipeline:a', 'shader-revision-changed');
+    lease.release();
+
+    expect(cache.acquireReady('pipeline:a')).toBeUndefined();
+    expect(pipeline.dispose).not.toHaveBeenCalled();
+    submission.resolve({ status: 'completed' });
+    await submission.value.done;
+    await Promise.resolve();
+    expect(pipeline.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('invalidates only the requested device generation and immediately disposes unleased entries', async () => {
+    const oldPipeline = disposablePipeline(202);
+    const nextPipeline = disposablePipeline(203);
+    const cache = new PipelineCache({
+      compile: async (request) => ({
+        status: 'success',
+        pipeline: request.deviceGeneration === 4 ? oldPipeline : nextPipeline
+      })
+    });
+    cache.request(requestFor('pipeline:old'));
+    cache.request(
+      createPipelineCompileRequest({
+        ...requestFor('pipeline:next'),
+        deviceGeneration: 5
+      })
+    );
+    await flushCompilation();
+
+    expect(cache.invalidateDeviceGeneration(4)).toBe(1);
+    expect(cache.acquireReady('pipeline:old')).toBeUndefined();
+    expect(cache.acquireReady('pipeline:next')?.pipeline).toBe(nextPipeline);
+    expect(oldPipeline.dispose).toHaveBeenCalledOnce();
+    expect(nextPipeline.dispose).not.toHaveBeenCalled();
+    expect(() => cache.request(requestWith({ requestRevision: 2 }))).toThrow(
+      /device generation has been invalidated/i
+    );
+  });
+
+  it('does not compile or wait when a ready lease is unavailable', () => {
+    const compile = vi.fn(UNUSED_COMPILER.compile);
+    const cache = new PipelineCache({ compile });
+
+    expect(cache.acquireReady('pipeline:absent')).toBeUndefined();
+    expect(compile).not.toHaveBeenCalled();
+  });
+
+  it('reports contained pipeline disposal failures', async () => {
+    const pipeline = disposablePipeline(204);
+    pipeline.dispose.mockImplementation(() => {
+      throw new Error('pipeline dispose failed');
+    });
+    const cache = new PipelineCache({
+      compile: async () => ({ status: 'success', pipeline })
+    });
+    cache.request(requestFor());
+    await flushCompilation();
+
+    cache.invalidate('pipeline:a', 'shader-revision-changed');
+
+    expect(cache.cleanupErrors()).toHaveLength(1);
   });
 });

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { browserGraphicsArgs } from './e2e/browser-launch-options';
 
 const BASE_URL = 'http://127.0.0.1:4173';
 
@@ -29,17 +30,7 @@ export default defineConfig({
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
         deviceScaleFactor: 1,
         launchOptions: {
-          args: [
-            ...(process.platform === 'linux'
-              ? [
-                  '--use-angle=vulkan',
-                  '--enable-features=Vulkan',
-                  '--use-vulkan=swiftshader',
-                  '--disable-vulkan-surface',
-                  '--ignore-gpu-blocklist'
-                ]
-              : [])
-          ]
+          args: browserGraphicsArgs('webgl2', process.platform)
         }
       }
     },
@@ -51,25 +42,40 @@ export default defineConfig({
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
         deviceScaleFactor: 1,
         launchOptions: {
-          args: [
-            '--enable-unsafe-webgpu',
-            ...(process.platform === 'linux'
-              ? [
-                  '--use-angle=vulkan',
-                  '--enable-features=Vulkan',
-                  '--use-vulkan=swiftshader',
-                  '--disable-vulkan-surface',
-                  '--ignore-gpu-blocklist'
-                ]
-              : [])
-          ]
+          args: browserGraphicsArgs('webgpu', process.platform)
         }
+      }
+    },
+    {
+      name: 'react-vite-webgl2',
+      testMatch: 'react-vite-render.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
+        baseURL: 'http://127.0.0.1:4174'
+      }
+    },
+    {
+      name: 'react-vite-webgpu',
+      testMatch: 'react-vite-render.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
+        baseURL: 'http://127.0.0.1:4174',
+        launchOptions: { args: browserGraphicsArgs('webgpu', process.platform) }
       }
     }
   ],
-  webServer: {
-    command:
-      'pnpm exec vite build --config e2e/vite.config.ts && pnpm exec vite preview --config e2e/vite.config.ts',
-    url: BASE_URL
-  }
+  webServer: [
+    {
+      command:
+        'pnpm exec vite build --config e2e/vite.config.ts && pnpm exec vite preview --config e2e/vite.config.ts',
+      url: BASE_URL
+    },
+    {
+      command:
+        'pnpm --dir examples/react-vite-ts build && pnpm --dir examples/react-vite-ts exec vite preview --host 127.0.0.1 --port 4174',
+      url: 'http://127.0.0.1:4174'
+    }
+  ]
 });

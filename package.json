@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "build": "vite build",
@@ -20,6 +23,9 @@
     "e2e": "playwright test",
     "e2e:project": "playwright test --project",
     "e2e:resolve": "vite-node --script e2e/cli.ts",
+    "example:dev": "pnpm --dir examples/react-vite-ts dev",
+    "example:build": "pnpm --dir examples/react-vite-ts build",
+    "example:typecheck": "pnpm --dir examples/react-vite-ts typecheck",
     "verify:commit": "pnpm run typecheck && pnpm test && pnpm run build && pnpm bench validate && pnpm bench changed"
   },
   "devDependencies": {

@@ -15,11 +15,12 @@ import type {
   RHIRenderPassEncoder,
   RHIRenderPipelineDescriptor
 } from '../../rhi/contracts';
-import type { TextureGraphRange } from '../ranges';
+import type { TextureGraphRange } from '../compiler/ranges';
 import type {
   PreparedComputePipelineToken,
+  PreparedDrawResourcesToken,
   PreparedRenderPipelineToken
-} from '../prepared-resources';
+} from '../builder/prepared-resources';
 import type {
   BufferHandle,
   BufferRange,
@@ -92,6 +93,18 @@ export interface RestrictedRenderPipeline {
 
 export interface RestrictedComputePipeline {
   readonly kind: 'restricted-compute-pipeline';
+}
+
+/** Pass-local capabilities for one externally prepared indexed draw. */
+export interface RestrictedPreparedDrawResources {
+  readonly pipeline: RestrictedRenderPipeline;
+  readonly bindGroups: readonly RestrictedBindGroup[];
+  readonly dynamicOffsetsByGroup: readonly (readonly number[])[];
+  readonly vertexBuffers: readonly RestrictedBufferSlice[];
+  readonly indexBuffer: RestrictedBufferSlice;
+  readonly indexFormat: 'uint16' | 'uint32';
+  readonly firstIndex: number;
+  readonly indexCount: number;
 }
 
 export interface RestrictedPipelineLayoutDescriptor {
@@ -182,6 +195,7 @@ export interface RestrictedPassContext {
   buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice;
   renderPipeline(token: PreparedRenderPipelineToken): RestrictedRenderPipeline;
   computePipeline(token: PreparedComputePipelineToken): RestrictedComputePipeline;
+  drawResources(token: PreparedDrawResourcesToken): RestrictedPreparedDrawResources;
   beginRaster(descriptor: DeclaredRasterPass): RestrictedRenderPassEncoder;
   beginCompute(descriptor?: GPUComputePassDescriptor): RestrictedComputePassEncoder;
   copyBufferToBuffer(

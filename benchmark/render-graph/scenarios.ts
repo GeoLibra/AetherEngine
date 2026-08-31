@@ -7,16 +7,18 @@ import type {
   RenderGraphWorkloadOptions
 } from './types';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
-import { compileRenderGraph } from '../../src/render-graph/compiler';
-import { createRenderGraphDebugIR } from '../../src/render-graph/debug-ir';
+import { compileRenderGraph, createRenderGraphDebugIR } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
   createRenderGraphExecutionPlan,
-  type RestrictedPassContext
+  TransientResourcePool
 } from '../../src/render-graph/executor';
 import { NullDevice } from '../../src/rhi/null/device';
-import { TransientResourcePool } from '../../src/render-graph/transient-pool';
-import type { BufferHandle, GraphHandle } from '../../src/render-graph/types';
+import type {
+  BufferHandle,
+  GraphHandle,
+  RestrictedPassContext
+} from '../../src/render-graph/types';
 import type { RHIBuffer } from '../../src/rhi/contracts';
 
 export interface RenderGraphCompilerSemantic {
@@ -73,6 +75,10 @@ export interface RenderGraphCompilerScenario {
 export function probeSubmissionSafety(): Readonly<{
   pendingSubmissionAttempts: number;
   prematureReuseCount: number;
+  resizeGenerations: number;
+  peakRetiringAllocations: number;
+  finalTrackedAllocations: number;
+  disposedResizeAllocations: number;
 }> {
   const device = new NullDevice({ submissionMode: 'manual' });
   const pool = new TransientResourcePool(device);
@@ -90,7 +96,49 @@ export function probeSubmissionSafety(): Readonly<{
   if (prematureReuseCount !== 0) {
     throw new Error('RenderGraph transient pool reused a resource before submission completion.');
   }
-  return Object.freeze({ pendingSubmissionAttempts: 1, prematureReuseCount });
+
+  const resizeGenerations = 64;
+  const resizePool = new TransientResourcePool(new NullDevice());
+  const targetId = Symbol('benchmark-surface');
+  let peakRetiringAllocations = 0;
+  for (let generation = 1; generation <= resizeGenerations; generation += 1) {
+    const allocation = resizePool.acquire({
+      kind: 'texture',
+      descriptor: {
+        size: { width: generation + 16, height: 16, depthOrArrayLayers: 1 },
+        format: 'rgba8unorm',
+        usage: 0x10
+      },
+      surfaceScope: {
+        targetId,
+        generation,
+        width: generation + 16,
+        height: 16
+      }
+    });
+    resizePool.release(allocation);
+    resizePool.retireSurfaceScopesBefore(targetId, generation + 1);
+    peakRetiringAllocations = Math.max(
+      peakRetiringAllocations,
+      resizePool.counters.retiringAllocations
+    );
+  }
+  const resizeCounters = resizePool.counters;
+  const finalTrackedAllocations =
+    resizeCounters.activeAllocations +
+    resizeCounters.reusableAllocations +
+    resizeCounters.retiringAllocations;
+  if (finalTrackedAllocations !== 0 || resizeCounters.disposedAllocations !== resizeGenerations) {
+    throw new Error('RenderGraph repeated resize retirement did not drain deterministically.');
+  }
+  return Object.freeze({
+    pendingSubmissionAttempts: 1,
+    prematureReuseCount,
+    resizeGenerations,
+    peakRetiringAllocations,
+    finalTrackedAllocations,
+    disposedResizeAllocations: resizeCounters.disposedAllocations
+  });
 }
 
 export function createReferenceRenderGraphScenario(

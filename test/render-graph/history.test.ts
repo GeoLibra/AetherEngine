@@ -5,8 +5,11 @@ import {
 } from '../../src/render-graph/executor';
 import { NullDevice } from '../../src/rhi';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
-import { compileRenderGraph } from '../../src/render-graph/compiler';
-import { HistoryRegistry, type HistoryIdentity } from '../../src/render-graph/history';
+import {
+  compileRenderGraph,
+  HistoryRegistry,
+  type HistoryIdentity
+} from '../../src/render-graph/compiler';
 import type { TextureDescriptor } from '../../src/render-graph/types';
 
 const GRAPH_TEXTURE: TextureDescriptor = Object.freeze({

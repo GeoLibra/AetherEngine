@@ -13,7 +13,7 @@ import {
 } from './lighting-shadow/scenario';
 import { RenderGraphBuilder } from '../src/render-graph';
 import { declareShadowDepthPasses } from '../src/rendering';
-import { ReadonlyMapSnapshot } from '../src/rendering/readonly-collection-snapshot';
+import { ReadonlyMapSnapshot } from '../src/rendering/world/readonly-collection-snapshot';
 import {
   assertDeclaredShadowLayers,
   createShadowDeclarationWorkload

@@ -16,6 +16,7 @@ export interface WebGL2MetricsSnapshot extends RHIQueueMetrics {
   readonly uploadBytes: number;
   readonly syncLag: number;
   readonly contextLosses: number;
+  readonly lastFailure?: string;
 }
 
 export class WebGL2Metrics {

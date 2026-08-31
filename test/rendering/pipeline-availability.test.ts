@@ -3,7 +3,8 @@ import {
   resolvePipelineAvailability,
   type BoundMaterialPhaseItem,
   type PipelineAvailabilityIdentity,
-  type PipelineCacheEntryState
+  type PipelineCacheEntryState,
+  type PipelineReadyLease
 } from '../../src';
 import type { RHIRenderPipeline } from '../../src/rhi/contracts';
 
@@ -39,30 +40,47 @@ const BOUND = Object.freeze({
 
 function resolve(
   primary: PipelineCacheEntryState,
+  primaryLease?: PipelineReadyLease,
   fallback?: Readonly<{
     identity: PipelineAvailabilityIdentity;
     state: PipelineCacheEntryState;
+    lease?: PipelineReadyLease;
   }>
 ) {
   return resolvePipelineAvailability({
     bound: BOUND,
     identity: IDENTITY,
     primary,
+    ...(primaryLease === undefined ? {} : { primaryLease }),
     ...(fallback === undefined ? {} : { fallback })
   });
 }
 
 describe('pipeline availability', () => {
   it('publishes a ready primary pipeline without invoking asynchronous work', () => {
-    const result = resolve({ kind: 'ready', pipeline: PRIMARY_PIPELINE, deviceGeneration: 4 });
+    const lease = pipelineLease('pipeline:a', PRIMARY_PIPELINE);
+    const result = resolve(
+      { kind: 'ready', pipeline: PRIMARY_PIPELINE, deviceGeneration: 4 },
+      lease
+    );
 
     expect(result).toEqual({
       status: 'ready',
       bound: BOUND,
       pipeline: PRIMARY_PIPELINE,
+      pipelineLease: lease,
       selection: 'primary'
     });
     expect(Object.isFrozen(result)).toBe(true);
+  });
+
+  it('returns a typed stale skip when a ready snapshot has no ownership lease', () => {
+    expect(resolve({ kind: 'ready', pipeline: PRIMARY_PIPELINE, deviceGeneration: 4 })).toEqual({
+      status: 'skipped',
+      entity: 7,
+      reason: 'pipeline-unavailable',
+      code: 'device-generation-stale'
+    });
   });
 
   it.each(['absent', 'queued', 'compiling'] as const)(
@@ -76,9 +94,10 @@ describe('pipeline availability', () => {
             : ({ kind, requestId: 'request:a', startedAt: 1 } as const);
 
       expect(
-        resolve(primary, {
+        resolve(primary, undefined, {
           identity: IDENTITY,
-          state: { kind: 'ready', pipeline: FALLBACK_PIPELINE, deviceGeneration: 4 }
+          state: { kind: 'ready', pipeline: FALLBACK_PIPELINE, deviceGeneration: 4 },
+          lease: pipelineLease('pipeline:fallback', FALLBACK_PIPELINE)
         })
       ).toMatchObject({ status: 'ready', pipeline: FALLBACK_PIPELINE, selection: 'fallback' });
     }
@@ -113,13 +132,10 @@ describe('pipeline availability', () => {
     const fallbackIdentity = Object.freeze({ ...IDENTITY, sampleCount: 4 });
 
     expect(
-      resolve(
-        { kind: 'queued', requestId: 'request:a' },
-        {
-          identity: fallbackIdentity,
-          state: { kind: 'ready', pipeline: FALLBACK_PIPELINE, deviceGeneration: 4 }
-        }
-      )
+      resolve({ kind: 'queued', requestId: 'request:a' }, undefined, {
+        identity: fallbackIdentity,
+        state: { kind: 'ready', pipeline: FALLBACK_PIPELINE, deviceGeneration: 4 }
+      })
     ).toEqual({
       status: 'skipped',
       entity: 7,
@@ -134,7 +150,10 @@ describe('pipeline availability', () => {
       code: 'device-generation-stale'
     });
     expect(
-      resolve({ kind: 'ready', pipeline: PRIMARY_PIPELINE, deviceGeneration: 3 })
+      resolve(
+        { kind: 'ready', pipeline: PRIMARY_PIPELINE, deviceGeneration: 3 },
+        pipelineLease('pipeline:a', PRIMARY_PIPELINE)
+      )
     ).toMatchObject({ status: 'skipped', code: 'device-generation-stale' });
   });
 
@@ -153,3 +172,14 @@ describe('pipeline availability', () => {
     ).toThrow('Pipeline availability phase mismatch.');
   });
 });
+
+function pipelineLease(pipelineKey: string, pipeline: RHIRenderPipeline): PipelineReadyLease {
+  return Object.freeze({
+    pipelineKey,
+    pipeline,
+    deviceGeneration: 4,
+    released: false,
+    retain() {},
+    release() {}
+  });
+}

@@ -118,11 +118,62 @@ flowchart TD
 
 ---
 
-## 3. 源码结构与核心 API
+## 3. Dawn Direct Hot Path 指针直通机制与代码体现
+
+### 3.1 为什么渲染绝对不能走通用 RPC Bridge？
+
+在 [`src/native-runtime/bridge.ts`](file:///Users/hgis/myproject/AetherEngine/src/native-runtime/bridge.ts) 中，低频系统服务（读文件、查传感器）采用结构化打包与 Promise 决议。  
+但一帧渲染包含上千次 `setPipeline`、`setBindGroup`、`draw` 和 `copyBuffer`。若每条指令都经过序列化与 Promise 调度，每秒数十万次 FFI 封包将造成灾难性的 CPU 瓶颈。
+
+### 3.2 代码体现与实现原理
+
+#### 1. `NativeDawnAdapter` 复用 `WebGPUDevice`，直连原生驱动 Port
+
+在 [`src/rhi/native/adapter.ts`](file:///Users/hgis/myproject/AetherEngine/src/rhi/native/adapter.ts#L55-L61)：
+
+```typescript
+const device = await this.native.requestDevice(createNativeRequest(request, extensions));
+// The WebGPU-like Dawn port is the RHI hot path; generic bridge dispatch is intentionally absent.
+return new WebGPUDevice(
+  createNativeDawnCapabilities(this.native, extensions),
+  device,
+  this.diagnostics
+);
+```
+
+- **核心机制**：Google Dawn C++ 的对象模型（`wgpu::Device`、`wgpu::CommandEncoder`）与 W3C WebGPU 1:1 对齐。C++ 宿主侧通过 N-API / JSI 直接导出原生绑定对象（`WebGPUNativeDevicePort`），每个 JS 对象底层持有一个 **C++ 对象的裸指针（Raw Pointer / Handle）**。
+- `NativeDawnAdapter` 彻底复用了 `WebGPUDevice` 与编码器体系，**中间无任何通用 Bridge 拦截与异步排队**。
+
+#### 2. 指令录制的 1:1 薄 Lowering（Zero Overhead）
+
+在 [`src/rhi/webgpu/passes.ts`](file:///Users/hgis/myproject/AetherEngine/src/rhi/webgpu/passes.ts) 与 [`src/rhi/webgpu/command.ts`](file:///Users/hgis/myproject/AetherEngine/src/rhi/webgpu/command.ts)：
+
+```typescript
+draw(vertexCount: number, instanceCount = 1, firstVertex = 0, firstInstance = 0): void {
+  // 直接同步调用 C++ 导出的原生绑定函数
+  this.native.draw(vertexCount, instanceCount, firstVertex, firstInstance);
+}
+
+setBindGroup(index: number, bindGroup: RHIBindGroup): void {
+  // 提取底层 C++ Dawn 指针 Handle
+  const nativeHandle = getWebGPUNativeHandle(bindGroup);
+  // 直接传递指针给 C++ 驱动
+  this.native.setBindGroup(index, nativeHandle);
+}
+```
+
+- **指针流转流程**：
+  1. TS 端执行 `this.native.draw(...)` 同步触发 C++ FFI 绑定函数；
+  2. C++ 侧直接调用 `wgpuRenderPassEncoderDraw(...)` 写入原生二进制命令缓冲；
+  3. 全程仅消耗纳秒级函数跳转开销，随后 `queue.submit()` 一次性将 C++ 原生命令提交至 Metal (`MTLCommandBuffer`) / Vulkan (`VkCommandBuffer`) / D3D12 硬件队列。
+
+---
+
+## 4. 源码结构与核心 API
 
 ```txt
 src/rhi/native/
-├── README.md            # 本文档：Dawn 绑定、Shader 转译机制与参考演进
+├── README.md            # 本文档：Dawn 绑定、Hot Path、Shader 转译与架构演进
 ├── index.ts             # Native 模块导出入口
 ├── adapter.ts           # NativeDawnAdapter 实现与 DeviceRequest 协商
 ├── capabilities.ts      # createNativeDawnCapabilities（Baseline 特性与 timestamp-query 协商）

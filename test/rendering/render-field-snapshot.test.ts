@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { copyRenderFieldValue } from '../../src/rendering/render-field-snapshot';
+import { copyRenderFieldValue } from '../../src/rendering/world/render-field-snapshot';
 import {
   RenderExtractorRegistryBuilder,
   RenderWorld,

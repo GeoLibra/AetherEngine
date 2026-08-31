@@ -1,4 +1,4 @@
-import { ShaderParameterWriter } from '../shader/writer';
+import { ShaderParameterWriter } from '../shader/layout';
 import type {
   BufferFieldLayout,
   BufferFieldLayoutShape,

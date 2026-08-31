@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   compileMaterialBindingLayout,
+  compileBindingLayoutPlan,
   createMaterialParameterBlock,
   createShaderBindingManifest,
   defineMaterialSchema,
@@ -30,6 +31,7 @@ describe('Material binding compatibility', () => {
     expect(result.bound).toHaveLength(2);
     expect(result.bound[0]?.item.bindingKey).toBe(result.bound[0]?.bindingKey.hash);
     expect(result.bound[0]?.bindingKey.hash).toBe(result.bound[1]?.bindingKey.hash);
+    expect(result.bound[0]?.bindingKey.parts.bindingLayoutHash).toBe(first.bindingPlan.hash);
     expect(result.snapshot.batches).toHaveLength(1);
     expect(first.item.bindingKey).toBeUndefined();
     expect(Object.isFrozen(result)).toBe(true);
@@ -85,6 +87,14 @@ describe('Material binding compatibility', () => {
         { ...malformed, item: { ...malformed.item, bindingKey: 'existing' } }
       ])
     ).toThrow('unbound');
+    expect(() =>
+      resolveMaterialBindingCompatibility('main', 'opaque', [
+        {
+          ...malformed,
+          bindingPlan: { ...malformed.bindingPlan, sourceLayoutHash: 'different-layout' }
+        }
+      ])
+    ).toThrow('canonical binding plan');
   });
 });
 
@@ -115,23 +125,23 @@ function request(
     kind: 'texture',
     assetId: 'requested'
   });
-  const layout = compileMaterialBindingLayout(
-    schema,
-    createShaderBindingManifest(
-      emptyIr([
-        {
-          name: 'surfaceTexture',
-          type: 'texture_2d<f32>',
-          addressSpace: 'handle',
-          access: 'read',
-          group: 1,
-          binding: 0,
-          span
-        }
-      ]),
-      1
-    )
+  const manifest = createShaderBindingManifest(
+    emptyIr([
+      {
+        name: 'surfaceTexture',
+        type: 'texture_2d<f32>',
+        addressSpace: 'handle',
+        access: 'read',
+        group: 1,
+        binding: 0,
+        span
+      }
+    ]),
+    1
   );
+  const layout = compileMaterialBindingLayout(schema, manifest);
+  const bindingPlanResult = compileBindingLayoutPlan(manifest);
+  if (bindingPlanResult.kind !== 'success') throw new Error(bindingPlanResult.diagnostic.message);
   const item: PhaseItem = {
     entity: entity as RenderEntityId,
     phase: 'opaque',
@@ -153,6 +163,7 @@ function request(
       pipelineKey: { parts: { bindingLayoutHash: layout.shaderLayoutHash, deviceGeneration: 3 } }
     } as ResolvedMaterialPipelineCandidate,
     layout,
+    bindingPlan: bindingPlanResult.plan,
     supplied: parameters,
     resolver,
     allocation: {

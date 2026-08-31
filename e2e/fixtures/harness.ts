@@ -5,7 +5,9 @@ import type { E2EState } from '../harness/types';
 const SCENARIO_BY_PROJECT = {
   'browser-host-smoke': 'browser-host',
   'webgl2-render': 'webgl2',
-  'webgpu-render': 'webgpu'
+  'webgpu-render': 'webgpu',
+  'react-vite-webgl2': 'webgl2',
+  'react-vite-webgpu': 'webgpu'
 } as const satisfies Record<E2EProject, string>;
 
 export interface E2EHarnessFixture {

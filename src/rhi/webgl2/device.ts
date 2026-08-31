@@ -1,3 +1,44 @@
+/**
+ * @fileoverview WebGL2 RHI Device Implementation.
+ *
+ * Adapts modern WebGPU-like explicit RHI contracts (RHIDevice) onto the legacy,
+ * stateful WebGL2 / OpenGL ES 3.0 driver.
+ *
+ * Architecture Overview:
+ * ```
+ *                         ┌─────────────────────────────────────┐
+ *                         │         RHIDevice Contract          │
+ *                         └──────────────────┬──────────────────┘
+ *                                            │ Implements
+ *                                            ▼
+ * ┌────────────────────────────────────────────────────────────────────────────────────────┐
+ * │                                     WebGL2Device                                       │
+ * │                                                                                        │
+ * │  1. Resource Factory                                                                   │
+ * │     ├── createBuffer / createTexture / createSampler                                   │
+ * │     ├── createBindGroup / createBindGroupLayout / createPipelineLayout                 │
+ * │     └── createRenderPipeline / createCommandEncoder                                    │
+ * │                                                                                        │
+ * │  2. Feature Guards & Fallback Interception (Fail-Fast)                                 │
+ * │     ├── Intercept Compute Pipelines                                                    │
+ * │     ├── Intercept Storage Buffers (SSBO) & Storage Textures                            │
+ * │     └── Validate Hardware Limits (UBO bindings, texture units)                         │
+ * │                                                                                        │
+ * │  3. Internal Ownership & Resource Lifecycle (WebGL2DeviceOwner)                        │
+ * │     ├── Cross-device ownership validation (assertWebGL2Resource)                       │
+ * │     └── Resource release listener pipeline (releaseListeners -> queue.disposeResource) │
+ * │                                                                                        │
+ * │  4. Queue & External State Invalidation (WebGL2Queue & ContextControl)                 │
+ * │     ├── Command replay & state machine cache synchronization                           │
+ * │     └── Clip depth adaptation (WebGL2 [-1, 1] vs WebGPU [0, 1])                        │
+ * │                                                                                        │
+ * │  5. Lifecycle & Context Loss Management                                                │
+ * │     ├── Monotonic generation counter tracking                                          │
+ * │     └── lost Promise (Context Lost / Destroy diagnostics)                              │
+ * └────────────────────────────────────────────────────────────────────────────────────────┘
+ * ```
+ */
+
 import type { DeviceCapabilities } from '../contracts/capability';
 import type { RHICommandEncoder } from '../contracts/command';
 import type {
@@ -162,7 +203,17 @@ export class WebGL2Device implements RHIDevice {
     const present = this.native.presentSurfaceTexture;
     if (present === undefined)
       throw new Error('Native WebGL2 context cannot present a surface texture.');
-    present.call(this.native, getWebGL2Handle(texture, this.owner), texture.width, texture.height);
+    try {
+      present.call(
+        this.native,
+        getWebGL2Handle(texture, this.owner),
+        texture.width,
+        texture.height
+      );
+    } finally {
+      // Presentation binds the default framebuffer and may disturb VAO/buffer state outside replay.
+      this.queue.invalidateExternalState();
+    }
   }
   createSampler(descriptor: RHISamplerDescriptor = {}): RHISampler {
     const create = this.native.createSampler;

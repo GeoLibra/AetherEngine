@@ -13,5 +13,6 @@ export {
   WEBGL2_CLIP_CONTROL_EXTENSION,
   type WebGL2ClipDepthMode,
   selectWebGL2ClipDepthMode,
-  initializeWebGL2ClipDepth
+  initializeWebGL2ClipDepth,
+  remapVertexClipDepth
 } from './clip-depth';

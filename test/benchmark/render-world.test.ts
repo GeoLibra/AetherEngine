@@ -6,8 +6,31 @@ import {
   runRenderPhaseReference,
   runRenderPhaseSubject
 } from '../../benchmark/render-world/render-phase-scenario';
+import {
+  createPreparedDrawPhaseWorkload,
+  runBaselinePluginStructuralReference,
+  runBaselinePluginStructuralSubject,
+  runPreparedDrawPhaseReference,
+  runPreparedDrawPhaseSubject
+} from '../../benchmark/render-world/prepared-draw-phase-scenario';
 
 describe('render-world benchmark oracle', () => {
+  test('keeps baseline extraction and queue structural counters exact', () => {
+    for (const count of [1, 100, 1_000]) {
+      expect(runBaselinePluginStructuralSubject(count)).toEqual(
+        runBaselinePluginStructuralReference(count)
+      );
+    }
+  });
+  test('keeps prepared opaque packet ordering exact at 1K and 10K', () => {
+    for (const count of [1_000, 10_000]) {
+      const workload = createPreparedDrawPhaseWorkload(count);
+      expect(runPreparedDrawPhaseSubject(workload)).toEqual(
+        runPreparedDrawPhaseReference(workload)
+      );
+    }
+  });
+
   test('constructs deterministic 1K and 10K phases without ownership transfer', () => {
     for (const count of [1_000, 10_000]) {
       const workload = createPhaseConstructionWorkload(count);

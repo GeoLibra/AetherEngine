@@ -18,6 +18,7 @@ export type {
   TextureUsage,
   TextureWriteUsage
 } from './render-graph-types';
+
 export type {
   DeclaredRasterColorAttachment,
   DeclaredRasterDepthStencilAttachment,
@@ -32,6 +33,7 @@ export type {
   RestrictedComputePipelineDescriptor,
   RestrictedFragmentState,
   RestrictedPassContext,
+  RestrictedPreparedDrawResources,
   RestrictedPipelineLayout,
   RestrictedPipelineLayoutDescriptor,
   RestrictedPortableDevice,
@@ -44,3 +46,28 @@ export type {
   RestrictedTextureView,
   RestrictedVertexState
 } from './restricted-context-types';
+
+export type {
+  RenderGraphHazardKind,
+  RenderGraphHazardEdge,
+  RenderGraphHazardCounters,
+  RenderGraphSemanticEdge,
+  CompiledRenderGraphEdge,
+  CulledRenderGraphPass,
+  CompiledRenderGraphCounters,
+  CompiledRenderGraph,
+  ResourceLifetime,
+  AliasRejectionReason,
+  AliasRejection,
+  AliasDecision,
+  ResourceAliasPlan,
+  HistoryInvalidationReason
+} from './compiler-types';
+
+export type {
+  SurfaceTransientScope,
+  TransientAllocationDescriptor,
+  TransientResourcePoolCounters,
+  RenderGraphExecutionStep,
+  RenderGraphExecutionPlan
+} from './executor-types';

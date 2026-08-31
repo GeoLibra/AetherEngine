@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { Schedule, World, defineComponent } from '../../src';
+import { Schedule, World, defineComponent, type Entity } from '../../src';
 
 const Counter = defineComponent<{ value: number }>({
   id: 'test.change-counter',
@@ -71,5 +71,29 @@ describe('monotonic change tracking', () => {
     expect(secondRemoved.map((entry) => entry.entity)).toEqual([entity]);
     expect(firstRemoved[0]?.component).toBe(Counter);
     expect(secondRemoved[0]?.tick).toBe(firstRemoved[0]?.tick);
+  });
+
+  test('restores a tracked system window after a nested extraction reader', () => {
+    const world = new World();
+    world.registerComponent(Counter);
+    const entity = world.spawn().insert(Counter, { value: 1 }).build();
+    const extractionReader = world.createChangeReader({ from: 'beginning' });
+    const observations: Entity[][] = [];
+
+    world.runTrackedSystem('reader-owner', () => {
+      observations.push(
+        [...world.query([Counter], { changed: [Counter] })].map(([changed]) => changed)
+      );
+      world.withChangeReader(extractionReader, () => {
+        observations.push(
+          [...world.query([Counter], { changed: [Counter] })].map(([changed]) => changed)
+        );
+      });
+      observations.push(
+        [...world.query([Counter], { changed: [Counter] })].map(([changed]) => changed)
+      );
+    });
+
+    expect(observations).toEqual([[entity], [entity], [entity]]);
   });
 });

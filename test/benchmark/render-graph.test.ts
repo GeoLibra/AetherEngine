@@ -118,7 +118,11 @@ describe('render graph benchmark oracle', () => {
     expect(result.report).toMatchObject({ schemaVersion: 1, profile: 'smoke' });
     expect(result.report.submissionSafety).toEqual({
       pendingSubmissionAttempts: 1,
-      prematureReuseCount: 0
+      prematureReuseCount: 0,
+      resizeGenerations: 64,
+      peakRetiringAllocations: 0,
+      finalTrackedAllocations: 0,
+      disposedResizeAllocations: 64
     });
     expect(result.report.results[0]).toMatchObject({
       seed: 23,

@@ -13,6 +13,7 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
     host: 'browser',
     backend: 'webgpu',
     detail: {
+      renderPath: 'opaque-render-system',
       generation: expect.any(Number),
       surfaceGeneration: 1,
       // Preferred canvas format varies across platform drivers (e.g. rgba8unorm on Linux CI vs bgra8unorm on macOS/Windows).
@@ -20,8 +21,8 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
       colorSpace: 'srgb',
       alphaMode: 'opaque',
       renderPasses: 1,
-      drawCalls: 1,
-      indexedDrawCalls: 1,
+      drawCalls: 0,
+      indexedDrawCalls: 2,
       nativeQueueSubmits: 1,
       validationErrors: 0
     }

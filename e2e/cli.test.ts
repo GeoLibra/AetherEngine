@@ -37,7 +37,9 @@ describe('createMatrixOutput', () => {
       include: [
         { project: 'browser-host-smoke' },
         { project: 'webgl2-render' },
-        { project: 'webgpu-render' }
+        { project: 'webgpu-render' },
+        { project: 'react-vite-webgl2' },
+        { project: 'react-vite-webgpu' }
       ],
       fallback: true
     });
@@ -60,7 +62,9 @@ describe('runCli', () => {
       include: [
         { project: 'browser-host-smoke' },
         { project: 'webgl2-render' },
-        { project: 'webgpu-render' }
+        { project: 'webgpu-render' },
+        { project: 'react-vite-webgl2' },
+        { project: 'react-vite-webgpu' }
       ],
       fallback: true
     });

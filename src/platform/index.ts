@@ -1,37 +1,26 @@
 export { DEFAULT_DEVICE_PIXEL_RATIO, DEFAULT_WINDOW_TITLE } from './constants';
-export { BrowserHost } from './browser-host';
-export { createBrowserGraphics } from './browser-graphics';
-export { BrowserGraphicsBootstrapError } from './browser-graphics-error';
-export type {
-  BrowserGraphicsAttempt,
-  BrowserGraphicsLifecycleEvent,
-  BrowserGraphicsLoss,
-  BrowserGraphicsOptions,
-  BrowserGraphicsSession,
-  BrowserSurfaceOptions,
-  PhysicalSize
-} from './types';
-export type { BrowserPlatformPort, BrowserWindowPort } from './browser-host';
-export { MutablePlatformServiceRegistry, createPlatformServiceToken } from './services';
-export { HostBoundaryRunner } from './host-runner';
-export { HeadlessHost, ManualClock } from './headless-host';
-export type { HeadlessHostOptions } from './headless-host';
-export { PlatformWindow } from './window';
-export { NativeHost, NativeHostDestroyError } from './native-host';
-export { NativeRunner } from './native-runner';
-export type { NativeRunnerBoundary } from './native-runner';
-export type {
-  NativeFramePort,
-  NativePlatformLifecycleEvent,
-  NativePlatformPort,
-  NativeWindowPort
-} from './types';
+export {
+  HostBoundaryRunner,
+  MutablePlatformServiceRegistry,
+  PlatformWindow,
+  createPlatformServiceToken,
+  createWindowMetrics,
+  equalWindowMetrics,
+  updateWindowMetrics
+} from './core';
+export { BrowserGraphicsBootstrapError, BrowserHost, createBrowserGraphics } from './browser';
+export type { BrowserPlatformPort, BrowserWindowPort } from './browser';
+export { HeadlessHost, ManualClock } from './headless';
+export type { HeadlessHostOptions } from './headless';
 export {
   NativeAudioServiceToken,
   NativeClipboardServiceToken,
   NativeFilesystemServiceToken,
+  NativeHost,
+  NativeHostDestroyError,
   NativeNetworkServiceToken,
   NativePermissionsServiceToken,
+  NativeRunner,
   NativeSensorsServiceToken,
   NativeXrServiceToken,
   createNativeFilesystemService,
@@ -39,26 +28,35 @@ export {
   defineNativeServiceModule,
   normalizeNativeMountUri,
   registerNativeServiceModules
-} from './native-services';
+} from './native';
+export type { NativeRunnerBoundary } from './native';
 export type {
-  NativeAudioService,
-  NativeClipboardService,
-  NativeFilesystemPort,
-  NativeFilesystemService,
-  NativeNetworkService,
-  NativePermissionsService,
-  NativeSensorEvent,
-  NativeSensorKind,
-  NativeSensorPort,
-  NativeSensorsService,
-  NativeXrService
-} from './types';
-export { createWindowMetrics, equalWindowMetrics, updateWindowMetrics } from './window-metrics';
-export type {
+  BrowserGraphicsAttempt,
+  BrowserGraphicsLifecycleEvent,
+  BrowserGraphicsLoss,
+  BrowserGraphicsOptions,
+  BrowserGraphicsSession,
+  BrowserSurfaceOptions,
   Host,
   HostKind,
   HostState,
   HostWindow,
+  NativeAudioService,
+  NativeClipboardService,
+  NativeFilesystemPort,
+  NativeFilesystemService,
+  NativeFramePort,
+  NativeNetworkService,
+  NativePermissionsService,
+  NativePlatformLifecycleEvent,
+  NativePlatformPort,
+  NativeSensorEvent,
+  NativeSensorKind,
+  NativeSensorPort,
+  NativeSensorsService,
+  NativeWindowPort,
+  NativeXrService,
+  PhysicalSize,
   PlatformServiceEntry,
   PlatformServiceRegistry,
   PlatformServiceToken,

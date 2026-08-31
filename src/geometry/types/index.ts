@@ -1,4 +1,5 @@
 export type {
+  BoxMeshOptions,
   MeshBounds,
   MeshData,
   MeshDataInput,
