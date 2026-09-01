@@ -41,9 +41,9 @@ export interface CookedShaderBinding {
   readonly binding: number;
   readonly name: string;
   readonly kind: ShaderBindingKind;
-  readonly addressSpace?: string;
-  readonly access?: string;
-  readonly typeName?: string;
+  readonly addressSpace: string;
+  readonly access: string;
+  readonly typeName: string;
   readonly [key: string]: unknown;
 }
 

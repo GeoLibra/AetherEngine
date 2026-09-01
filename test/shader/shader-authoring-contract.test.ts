@@ -123,6 +123,77 @@ describe('WgslShaderMetadata validation', () => {
     };
     expect(() => validateWgslShaderMetadata(invalidStage)).toThrow(/invalid stage/i);
   });
+
+  test('rejects non-string or duplicate variant values and out-of-set defaultValue', () => {
+    // Non-string variant value (e.g. number)
+    expect(() =>
+      validateWgslShaderMetadata({
+        ...validMetadata,
+        variants: [{ name: 'HAS_SHADOW', values: [0, 1] }]
+      })
+    ).toThrow(/non-empty string/i);
+
+    // Duplicate variant values
+    expect(() =>
+      validateWgslShaderMetadata({
+        ...validMetadata,
+        variants: [{ name: 'HAS_SHADOW', values: ['1', '1'] }]
+      })
+    ).toThrow(/duplicate value/i);
+
+    // Duplicate variant dimension names
+    expect(() =>
+      validateWgslShaderMetadata({
+        ...validMetadata,
+        variants: [
+          { name: 'HAS_SHADOW', values: ['0', '1'] },
+          { name: 'HAS_SHADOW', values: ['0', '1'] }
+        ]
+      })
+    ).toThrow(/duplicate variant dimension/i);
+
+    // defaultValue not in values
+    expect(() =>
+      validateWgslShaderMetadata({
+        ...validMetadata,
+        variants: [{ name: 'HAS_SHADOW', values: ['0', '1'], defaultValue: '2' }]
+      })
+    ).toThrow(/default value.*must be one of/i);
+
+    // Non-string defaultValue
+    expect(() =>
+      validateWgslShaderMetadata({
+        ...validMetadata,
+        variants: [{ name: 'HAS_SHADOW', values: ['0', '1'], defaultValue: 0 }]
+      })
+    ).toThrow(/non-empty string/i);
+  });
+
+  test('rejects invalid cookPolicy options', () => {
+    // Invalid optimization value
+    expect(() =>
+      validateWgslShaderMetadata({
+        ...validMetadata,
+        cookPolicy: { optimization: 'ultra' }
+      })
+    ).toThrow(/invalid optimization/i);
+
+    // Non-boolean preserveNames
+    expect(() =>
+      validateWgslShaderMetadata({
+        ...validMetadata,
+        cookPolicy: { preserveNames: 'yes' }
+      })
+    ).toThrow(/invalid preserveNames/i);
+
+    // Unknown cookPolicy field
+    expect(() =>
+      validateWgslShaderMetadata({
+        ...validMetadata,
+        cookPolicy: { extraOption: true }
+      })
+    ).toThrow(/unknown cookPolicy field/i);
+  });
 });
 
 describe('decodeCookedShaderRuntimeArtifact validation', () => {
@@ -305,5 +376,74 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
         }
       })
     ).toThrow(/unexpected glsl/i);
+  });
+
+  test('rejects entry point with missing or non-array bindings', () => {
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        entryPoints: [
+          {
+            name: 'vertexMain',
+            stage: 'vertex',
+            bindings: undefined
+          }
+        ]
+      })
+    ).toThrow(/bindings must be an array/i);
+
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        entryPoints: [
+          {
+            name: 'vertexMain',
+            stage: 'vertex',
+            bindings: {}
+          }
+        ]
+      })
+    ).toThrow(/bindings must be an array/i);
+  });
+
+  test('rejects bindings with missing addressSpace, access, or typeName', () => {
+    // Missing addressSpace
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        bindings: [
+          {
+            ...validBinding,
+            addressSpace: undefined
+          }
+        ]
+      })
+    ).toThrow(/addressSpace must be a non-empty string/i);
+
+    // Missing access
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        bindings: [
+          {
+            ...validBinding,
+            access: ''
+          }
+        ]
+      })
+    ).toThrow(/access must be a non-empty string/i);
+
+    // Missing typeName
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        bindings: [
+          {
+            ...validBinding,
+            typeName: undefined
+          }
+        ]
+      })
+    ).toThrow(/typeName must be a non-empty string/i);
   });
 });

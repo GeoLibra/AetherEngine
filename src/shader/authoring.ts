@@ -201,11 +201,15 @@ export function validateWgslShaderMetadata(value: unknown): WgslShaderMetadata {
     );
   }
 
+  const VALID_OPTIMIZATIONS = new Set(['none', 'size', 'performance']);
+  const ALLOWED_COOK_POLICY_KEYS = new Set(['optimization', 'preserveNames']);
+
   let frozenVariants: readonly WgslVariantDimension[] | undefined;
   if (raw.variants !== undefined) {
     if (!Array.isArray(raw.variants)) {
       throw new Error('Metadata variants must be an array when provided.');
     }
+    const variantNames = new Set<string>();
     frozenVariants = Object.freeze(
       raw.variants.map((dim) => {
         if (!dim || typeof dim !== 'object' || Array.isArray(dim)) {
@@ -215,13 +219,45 @@ export function validateWgslShaderMetadata(value: unknown): WgslShaderMetadata {
         if (typeof name !== 'string' || !name.trim()) {
           throw new Error('Variant dimension name must be a non-empty string.');
         }
+        if (variantNames.has(name)) {
+          throw new Error(`Duplicate variant dimension name "${name}" in metadata.`);
+        }
+        variantNames.add(name);
+
         if (!Array.isArray(values) || values.length === 0) {
           throw new Error(`Variant dimension "${name}" must have a non-empty values array.`);
         }
+
+        const seenValues = new Set<string>();
+        const stringValues: string[] = [];
+        for (const v of values) {
+          if (typeof v !== 'string' || !v.trim()) {
+            throw new Error(`Variant dimension "${name}" value must be a non-empty string.`);
+          }
+          if (seenValues.has(v)) {
+            throw new Error(`Duplicate value "${v}" in variant dimension "${name}".`);
+          }
+          seenValues.add(v);
+          stringValues.push(v);
+        }
+
+        if (defaultValue !== undefined) {
+          if (typeof defaultValue !== 'string' || !defaultValue.trim()) {
+            throw new Error(
+              `Variant dimension "${name}" defaultValue must be a non-empty string when provided.`
+            );
+          }
+          if (!seenValues.has(defaultValue)) {
+            throw new Error(
+              `Default value "${defaultValue}" for variant dimension "${name}" must be one of [${stringValues.join(', ')}].`
+            );
+          }
+        }
+
         return Object.freeze({
           name,
-          values: Object.freeze(values.map(String)),
-          ...(typeof defaultValue === 'string' ? { defaultValue } : {})
+          values: Object.freeze(stringValues),
+          ...(defaultValue !== undefined ? { defaultValue } : {})
         });
       })
     );
@@ -241,9 +277,12 @@ export function validateWgslShaderMetadata(value: unknown): WgslShaderMetadata {
         if (typeof feature !== 'string' || !feature.trim()) {
           throw new Error('Capability feature must be a non-empty string.');
         }
+        if (fallback !== undefined && (typeof fallback !== 'string' || !fallback.trim())) {
+          throw new Error('Capability fallback must be a non-empty string when provided.');
+        }
         return Object.freeze({
           feature,
-          ...(typeof fallback === 'string' ? { fallback } : {})
+          ...(fallback !== undefined ? { fallback } : {})
         });
       })
     );
@@ -276,12 +315,28 @@ export function validateWgslShaderMetadata(value: unknown): WgslShaderMetadata {
     if (!raw.cookPolicy || typeof raw.cookPolicy !== 'object' || Array.isArray(raw.cookPolicy)) {
       throw new Error('Metadata cookPolicy must be an object when provided.');
     }
-    const { optimization, preserveNames } = raw.cookPolicy as Record<string, unknown>;
+    const cookPolicyRaw = raw.cookPolicy as Record<string, unknown>;
+    for (const key of Object.keys(cookPolicyRaw)) {
+      if (!ALLOWED_COOK_POLICY_KEYS.has(key)) {
+        throw new Error(`Unknown cookPolicy field "${key}".`);
+      }
+    }
+    const { optimization, preserveNames } = cookPolicyRaw;
+    if (optimization !== undefined) {
+      if (typeof optimization !== 'string' || !VALID_OPTIMIZATIONS.has(optimization)) {
+        throw new Error(
+          `Invalid optimization "${String(optimization)}" in cookPolicy. Expected "none", "size", or "performance".`
+        );
+      }
+    }
+    if (preserveNames !== undefined && typeof preserveNames !== 'boolean') {
+      throw new Error('Invalid preserveNames in cookPolicy. Expected boolean.');
+    }
     frozenCookPolicy = Object.freeze({
-      ...(typeof optimization === 'string'
+      ...(optimization !== undefined
         ? { optimization: optimization as 'none' | 'size' | 'performance' }
         : {}),
-      ...(typeof preserveNames === 'boolean' ? { preserveNames } : {})
+      ...(preserveNames !== undefined ? { preserveNames } : {})
     });
   }
 
