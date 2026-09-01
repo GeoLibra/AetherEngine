@@ -1,5 +1,6 @@
-import type { Vec3 } from '../../math/types';
-import { normalizedLightDirection } from './light';
+import { Vec3Math } from '../../../math';
+import type { Vec3 } from '../../../math/types';
+import { normalizedLightDirection } from '../core/light';
 
 export interface StableLightBasis {
   readonly x: Vec3;
@@ -67,10 +68,12 @@ export function stableLightBasis(lightDirection: Vec3): StableLightBasis {
     { name: 'y' as const, value: [0, 1, 0] as Vec3 },
     { name: 'z' as const, value: [0, 0, 1] as Vec3 }
   ];
-  axes.sort((left, right) => Math.abs(dot(left.value, z)) - Math.abs(dot(right.value, z)));
+  axes.sort(
+    (left, right) => Math.abs(Vec3Math.dot(left.value, z)) - Math.abs(Vec3Math.dot(right.value, z))
+  );
   const up = axes[0]!;
-  const x = normalize(cross(up.value, z));
-  const y = normalize(cross(z, x));
+  const x = Vec3Math.normalize(Vec3Math.cross(up.value, z));
+  const y = Vec3Math.normalize(Vec3Math.cross(z, x));
   return Object.freeze({ x, y, z, upAxis: up.name });
 }
 
@@ -143,7 +146,7 @@ function quantizeRadius(radius: number, quantum: number | undefined): number {
 }
 
 function transformBasis(basis: StableLightBasis, point: Vec3): Vec3 {
-  return [dot(basis.x, point), dot(basis.y, point), dot(basis.z, point)];
+  return [Vec3Math.dot(basis.x, point), Vec3Math.dot(basis.y, point), Vec3Math.dot(basis.z, point)];
 }
 
 function average(values: readonly Vec3[]): Vec3 {
@@ -165,23 +168,6 @@ function compensatedSum(values: readonly Vec3[], axis: number): number {
     sum = next;
   }
   return sum;
-}
-
-function cross(left: Vec3, right: Vec3): Vec3 {
-  return [
-    left[1] * right[2] - left[2] * right[1],
-    left[2] * right[0] - left[0] * right[2],
-    left[0] * right[1] - left[1] * right[0]
-  ];
-}
-
-function normalize(value: Vec3): Vec3 {
-  const length = Math.hypot(value[0], value[1], value[2]);
-  return [value[0] / length, value[1] / length, value[2] / length];
-}
-
-function dot(left: Vec3, right: Vec3): number {
-  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
 }
 
 function finiteVec3(value: Vec3): boolean {

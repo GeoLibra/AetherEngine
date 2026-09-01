@@ -1,8 +1,10 @@
-import type { Vec3 } from '../../math/types';
-import type { PreparedLight } from './types';
+import { Vec3Math } from '../../../math';
+import type { Vec3 } from '../../../math/types';
+import type { PreparedLight } from '../types';
 
 const UINT32_MAX = 0xffff_ffff;
 
+/** Validates physical light properties, units, and ranges at trust boundaries. */
 export function validatePreparedLight(light: PreparedLight): void {
   assertEntity(light.entity);
   assertNonNegativeInteger(light.payloadVersion, 'Light payloadVersion');
@@ -30,6 +32,9 @@ export function validatePreparedLight(light: PreparedLight): void {
   }
 }
 
+/**
+ * Validates, defensively copies, and deterministically sorts prepared lights by entity ID.
+ */
 export function orderLightsForGpu(lights: readonly PreparedLight[]): readonly PreparedLight[] {
   for (const light of lights) validatePreparedLight(light);
   const ordered = lights
@@ -90,10 +95,10 @@ function snapshotVec3(value: Vec3): Vec3 {
   return Object.freeze([value[0], value[1], value[2]]) as Vec3;
 }
 
+/** Normalizes a light direction vector, throwing if zero or non-finite. */
 export function normalizedLightDirection(direction: Vec3): Vec3 {
   assertDirection(direction, 'Light direction');
-  const length = Math.hypot(direction[0], direction[1], direction[2]);
-  return [direction[0] / length, direction[1] / length, direction[2] / length];
+  return Vec3Math.normalize(direction, 'Light direction');
 }
 
 function assertDirection(value: Vec3, name: string): void {

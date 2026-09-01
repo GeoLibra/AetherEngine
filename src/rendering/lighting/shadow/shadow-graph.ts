@@ -4,10 +4,10 @@ import {
   type RestrictedPassContext,
   type TextureHandle,
   type TextureRange
-} from '../../render-graph';
-import { shadowRequestKey } from './shadow';
-import type { ShadowRequest } from './types';
-import { ReadonlyMapSnapshot } from '../world/readonly-collection-snapshot';
+} from '../../../render-graph';
+import { shadowRequestKey } from './shadow-request';
+import type { ShadowRequest } from '../types';
+import { ReadonlyMapSnapshot } from '../../world/readonly-collection-snapshot';
 
 export interface ShadowGraphDeclaration {
   readonly texture: TextureHandle | undefined;

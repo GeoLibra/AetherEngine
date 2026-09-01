@@ -1,22 +1,22 @@
-import { isRecord } from '../../core';
-import { defineObjectComponent } from '../../ecs/component';
-import type { ChangeReader } from '../../ecs/change-tracker';
-import type { Entity } from '../../ecs/types';
-import type { World } from '../../ecs/world';
-import { RenderExtractorRegistryBuilder } from '../world/extractor-registry';
+import { isRecord } from '../../../core';
+import { defineObjectComponent } from '../../../ecs/component';
+import type { ChangeReader } from '../../../ecs/change-tracker';
+import type { Entity } from '../../../ecs/types';
+import type { World } from '../../../ecs/world';
+import { RenderExtractorRegistryBuilder } from '../../world/extractor-registry';
 import {
   defineExtractorToken,
   defineRenderField,
   type RenderEntityId,
   type RenderRevision,
   type RenderWorld
-} from '../world';
-import { normalizedLightDirection, orderLightsForGpu } from './light';
+} from '../../world';
+import { normalizedLightDirection, orderLightsForGpu } from '../core/light';
 import type {
   DirectionalLightExtractionInput,
   DirectionalLightSourceView,
   PreparedLight
-} from './types';
+} from '../types';
 
 const UINT32_MAX = 0xffff_ffff;
 

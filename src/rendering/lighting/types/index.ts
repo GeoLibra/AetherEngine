@@ -1,13 +1,20 @@
 export type {
+  DirectionalLightExtractionInput,
+  DirectionalLightSourceView,
+  LightCommon,
+  LinearRgb,
+  PreparedLight
+} from './light';
+
+export type {
   CpuLightListCapacity,
   CpuLightListCounters,
   CpuLightListHeader,
   CpuLightListResult,
-  DirectionalLightExtractionInput,
-  DirectionalLightSourceView,
-  LightReceiver,
-  LinearRgb,
-  PreparedLight,
+  LightReceiver
+} from './light-list';
+
+export type {
   ShadowAtlasCompactionResult,
   ShadowAtlasMetrics,
   ShadowAtlasRelocation,
@@ -17,4 +24,4 @@ export type {
   ShadowRequest,
   ShadowRequestKind,
   ShadowRequestSelection
-} from './lighting-types';
+} from './shadow';

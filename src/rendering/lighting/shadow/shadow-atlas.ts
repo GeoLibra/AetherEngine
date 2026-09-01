@@ -1,10 +1,10 @@
-import { compareCodeUnits } from '../../core';
+import { compareCodeUnits } from '../../../core';
 import type {
   ShadowAtlasCompactionResult,
   ShadowAtlasMetrics,
   ShadowAtlasRelocation,
   ShadowAtlasTileHandle
-} from './types';
+} from '../types';
 
 interface FreeRectangle {
   readonly x: number;
