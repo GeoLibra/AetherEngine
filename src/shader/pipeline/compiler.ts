@@ -1,6 +1,6 @@
 import { emitShaderBackend, type ShaderBackendValidator } from '../backends/backend-emitter';
 import { ShaderArtifactCache } from './cache';
-import { canonicalStringify, stableHash } from '../utils/hash';
+import { canonicalStringify, stableHash } from '../../core/hash';
 import { parseFluxShader } from '../frontend/parser';
 import { createShaderBindingManifest } from '../layout/binding-reflection';
 import { resolveShaderSource } from '../frontend/source-resolver';

@@ -235,7 +235,7 @@ export type CapabilityPredicate =
 
 ### 2.6 不可变决策快照与 64-bit FNV-1a Hash
 
-在 [`hash.ts`](hash.ts) 中，实现了跨平台完全一致的 **64-bit FNV-1a 规范化哈希算法**：
+引入 [`src/core/hash.ts`](../core/hash.ts)，实现了跨平台完全一致的 **64-bit FNV-1a 规范化哈希算法**：
 
 - 对象键按字典序排序序列化；
 - 最终 Hash 字符串作为 Shader 变体、管线布局、材质缓存和 Composition Plan 的失效与重建键。
@@ -469,7 +469,6 @@ const result = implementation.execute(preparedContext, frameInput);
 | [`ids.ts`](ids.ts)                                               | `featureId()`, `implementationId()`, `hostServiceId()`                                                                       | 强类型 ID 创建与非空校验工厂                                         |
 | [`budget.ts`](budget.ts)                                         | `RESOURCE_BUDGET_FIELDS`, `ZERO_RESOURCE_BUDGET`, `validateResourceBudget()`, `addResourceBudgets()`, `resourceBudgetFits()` | 7 维资源预算校验、累加与超额裁定                                     |
 | [`predicates.ts`](predicates.ts)                                 | `evaluateCapabilityPredicate()`, `snapshotPredicate()`                                                                       | 硬件特性、限制、格式、队列及宿主服务断言求值                         |
-| [`hash.ts`](hash.ts)                                             | `stablePolicyHash()`                                                                                                         | 64-bit FNV-1a 确定性规范化哈希计算                                   |
 | [`registry.ts`](registry.ts)                                     | `FeatureImplementationRegistry`                                                                                              | 候选实现注册、防重校验与规范化排序快照                               |
 | [`resolver.ts`](resolver.ts)                                     | `resolveFeaturePolicy()`                                                                                                     | 纯函数仲裁引擎（拓扑分析、断言校验、预算扣减、回溯、不可变快照生成） |
 | [`coordinator.ts`](coordinator.ts)                               | `FeaturePolicyCoordinator`, `FeaturePolicyRetirement`                                                                        | 事务协调器（异步 prepare、帧边界原子 publish、延迟销毁、错误聚合）   |

@@ -5,7 +5,7 @@ import {
   validateResourceBudget,
   ZERO_RESOURCE_BUDGET
 } from './budget';
-import { stablePolicyHash } from './hash';
+import { stableHash } from '../core/hash';
 import { evaluateCapabilityPredicate, snapshotPredicate } from './predicates';
 import type {
   CandidateDisposition,
@@ -248,7 +248,7 @@ export function resolveFeaturePolicy(input: FeaturePolicyInput): FeaturePolicyRe
     input.deviceGeneration,
     publishedDecisions
   );
-  const hash = stablePolicyHash({
+  const hash = stableHash({
     schemaVersion: input.schemaVersion,
     profileId: input.profileId,
     deviceGeneration: input.deviceGeneration,
@@ -448,7 +448,7 @@ function createCacheDomainHashes(
       (domain) =>
         [
           domain,
-          stablePolicyHash({
+          stableHash({
             schemaVersion,
             profileId,
             deviceGeneration,

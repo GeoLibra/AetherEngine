@@ -1,3 +1,4 @@
+import { fnv1a32Hex } from '../../core/hash';
 import { resolveMaterialRenderState, selectMaterialTechnique } from '../../material';
 import { createPipelineKey } from '../pipeline/pipeline-resolver';
 import type {
@@ -192,12 +193,7 @@ function skip(
 
 function hashParts(label: string, value: unknown): string {
   const canonical = JSON.stringify(value);
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < canonical.length; index += 1) {
-    hash ^= canonical.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `${label}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  return `${label}:${fnv1a32Hex(canonical)}`;
 }
 
 function compareCodeUnits(left: string, right: string): number {
