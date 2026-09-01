@@ -198,7 +198,7 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
       const glslKey = `${ep.stage}:${ep.name}`;
       if (!frozenGlsl[glslKey]) {
         throw new Error(
-          `Missing GLSL ES 300 module for entry point "${ep.name}" (key: "${glslKey}").`
+          `[artifact-module-missing] Missing GLSL ES 300 module for entry point "${ep.name}" (key: "${glslKey}").`
         );
       }
     }
