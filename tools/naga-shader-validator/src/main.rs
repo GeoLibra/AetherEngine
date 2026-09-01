@@ -1,3 +1,6 @@
+mod protocol;
+mod version;
+
 use std::{env, fs, process};
 
 use naga::{
