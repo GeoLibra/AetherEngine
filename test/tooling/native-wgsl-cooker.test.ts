@@ -85,7 +85,7 @@ describe('NativeWgslCooker adapter', () => {
     expect(Object.isFrozen(result)).toBe(true);
   });
 
-  test('passes metadata argument when provided', async () => {
+  test('accepts custom manifest path and cargo path', async () => {
     const calls: { command: string; args: readonly string[] }[] = [];
     const mockRunner: NativeCookerProcessRunner = async (command, args) => {
       calls.push({ command, args });
@@ -98,17 +98,17 @@ describe('NativeWgslCooker adapter', () => {
 
     const cooker = new NativeWgslCooker({
       runner: mockRunner,
-      manifestPath: 'tools/naga-shader-validator/Cargo.toml'
+      cargoPath: 'custom-cargo',
+      manifestPath: 'custom/Cargo.toml'
     });
 
     await cooker.cook({
       sourcePath: '/workspace/shaders/test.wgsl',
-      sourceUri: 'asset://shaders/test.wgsl',
-      metadataPath: '/workspace/shaders/test.wgsl.meta.json'
+      sourceUri: 'asset://shaders/test.wgsl'
     });
 
-    expect(calls[0]?.args).toContain('--metadata');
-    expect(calls[0]?.args).toContain('/workspace/shaders/test.wgsl.meta.json');
+    expect(calls[0]?.command).toBe('custom-cargo');
+    expect(calls[0]?.args).toContain('custom/Cargo.toml');
   });
 
   test('maps structured stderr JSON diagnostic on cooker failure and redacts local path', async () => {
