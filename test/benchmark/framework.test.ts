@@ -133,6 +133,19 @@ describe('changed-file routing', () => {
         'engine/design/v2/05-assets-scene/06-render-artifact-package.md'
       ])
     ).toEqual(expect.arrayContaining(['shader-system', 'asset-pipeline']));
+
+    expect(resolveAffectedBenchmarkSuites(['tools/shader-cooker/native-wgsl-cooker.ts'])).toEqual([
+      'shader-system'
+    ]);
+    expect(resolveAffectedBenchmarkSuites(['tools/vite/native-wgsl-plugin.ts'])).toEqual([
+      'shader-system'
+    ]);
+    expect(resolveAffectedBenchmarkSuites(['scripts/cook-wgsl-shader.ts'])).toEqual([
+      'shader-system'
+    ]);
+    expect(resolveAffectedBenchmarkSuites(['scripts/check-runtime-shader-bundle.ts'])).toEqual([
+      'shader-system'
+    ]);
   });
 
   test('routes Runtime and Jobs to their shared deterministic suite', () => {

@@ -27,3 +27,27 @@ export interface ResolvedShaderSource {
   readonly references: readonly ShaderIncludeReference[];
   readonly hash: string;
 }
+
+export type {
+  ShaderSourceKind,
+  ShaderAuthoringSource,
+  DefineShaderAuthoringSourceOptions,
+  WgslEntryMetadata,
+  WgslImportRef,
+  WgslVariantDimension,
+  WgslCapabilityRequirement,
+  WgslMaterialBindingMetadata,
+  WgslCookPolicy,
+  WgslShaderMetadata
+} from './authoring';
+
+export type {
+  ShaderBindingKind,
+  CookedShaderToolchainInfo,
+  CookedShaderSourceInfo,
+  CookedShaderBinding,
+  CookedShaderEntryPoint,
+  CookedShaderModules,
+  CookedShaderRuntimeArtifact,
+  NativeWgslCookResult
+} from './artifact';

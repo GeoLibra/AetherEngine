@@ -5,7 +5,25 @@ export type {
   ShaderSourceResolver,
   ShaderSourceModule,
   ShaderIncludeReference,
-  ResolvedShaderSource
+  ResolvedShaderSource,
+  ShaderSourceKind,
+  ShaderBindingKind,
+  ShaderAuthoringSource,
+  DefineShaderAuthoringSourceOptions,
+  WgslEntryMetadata,
+  WgslImportRef,
+  WgslVariantDimension,
+  WgslCapabilityRequirement,
+  WgslMaterialBindingMetadata,
+  WgslCookPolicy,
+  WgslShaderMetadata,
+  CookedShaderToolchainInfo,
+  CookedShaderSourceInfo,
+  CookedShaderBinding,
+  CookedShaderEntryPoint,
+  CookedShaderModules,
+  CookedShaderRuntimeArtifact,
+  NativeWgslCookResult
 } from './source';
 
 export type {

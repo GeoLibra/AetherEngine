@@ -3,9 +3,9 @@ import { describe, expect, test } from 'vitest';
 import {
   AETHER_SHADER_STANDARD_LIBRARY_ROOT,
   AETHER_SHADER_STANDARD_LIBRARY_VERSION,
-  StandardLibraryShaderResolver,
-  cookShaderArtifact
-} from '../../src/shader';
+  StandardLibraryShaderResolver
+} from '../../src/shader/frontend/standard-library';
+import { cookShaderArtifact } from '../../src/shader/pipeline/cook';
 
 describe('cookable shader standard library', () => {
   test.each(['math', 'noise', 'pbr', 'sdf'])(
