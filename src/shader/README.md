@@ -7,14 +7,15 @@
 
 ## 1. Overview & Architecture Philosophy
 
-The Shader subsystem is a deterministic, content-addressed, type-safe compiler and reflection production chain. It bridges high-level authoring inputs (FluxSL, WGSL bootstrap, and ShaderGraph) with downstream GPU execution in the Render System and RHI.
+The approved production authoring contract is standard WGSL plus versioned typed sidecar metadata. A planned native build/dev cooker will validate and reflect WGSL with Naga and publish cooked modules and manifests for downstream GPU execution. That native cooker is not implemented yet. The repository currently implements the FluxSL compiler pipeline; FluxSL remains available as an explicitly opted-in experimental compatibility input, not the default production recommendation. ShaderGraph remains Proposed.
 
 ### Core Invariants
 
-1. **Frontend Convergence at Typed IR**: All input dialects (FluxSL, WGSL bootstrap, ShaderGraph) must lower into the strongly typed `ShaderModuleIR`. Materials, RenderGraph, and RHI never branch on authoring language or parse raw source strings.
+1. **Closed Authoring Boundary**: `ShaderSourceKind` is exactly `'wgsl' | 'flux-experimental' | 'shader-graph'`. Materials, RenderGraph, and RHI never branch on authoring language or parse raw source strings; they consume cooked modules and manifests.
 2. **Reflection-Driven ABI**: Uniform and storage buffer offsets, sizes, alignments, and strides are strictly derived from layout policy calculators (`std140` / `WGSL uniform` / `WGSL storage`) via `ShaderBindingManifest` and `BufferLayoutManifest`. CPU writers must never guess padding or offsets.
 3. **Multi-Backend & Variant Specialization**: Backends emit target-compliant code (WGSL for WebGPU, GLSL ES 3.00 with binding fusion for WebGL2) and perform validation before caching. Variant selections are normalized into canonical `VariantKey` strings with conflict/mutex validation.
-4. **Content-Addressed Immutability**: All compiled artifacts, IR modules, and reflection manifests are keyed by deterministic 64-bit FNV-1a content hashes. Cache eviction is LRU-managed with active submission leasing to prevent in-flight use-after-free.
+4. **Tool/Runtime Separation**: Naga belongs only in the planned native build/dev cooker. Production browser/runtime bundles contain no compiler/parser or Naga WASM fallback and never download compiler components.
+5. **Metadata Is Not Source Rewriting**: Typed sidecars carry schema version, entry points, imports, variants, capability requirements, material bindings, and cook policy. They cannot override reflected types, resource layouts, offsets, or entry-point signatures and cannot textually preprocess WGSL.
 
 ---
 
@@ -39,14 +40,14 @@ The Shader subsystem is a deterministic, content-addressed, type-safe compiler a
 ```mermaid
 flowchart TD
     subgraph Frontend ["1. Frontend (Parsing & Analysis)"]
-        Src["FluxSL / WGSL / Include Closure"] --> Res["SourceResolver (Cycle Detection & Hash Closure)"]
-        Res --> Lex["Lexer (Token Scanning)"]
-        Lex --> Parse["Parser (FluxAST Construction)"]
+        Src["Standard WGSL + Typed Metadata"] --> NativeCook["Native Cooker (Target; Not Implemented)"]
+        Flux["FluxSL (Experimental Compatibility; Implemented)"] --> Existing["Existing FluxSL Frontend"]
         Graph["ShaderGraph (DAG)"] --> GraphLower["Graph Lowering"]
     end
 
     subgraph IR_Stage ["2. Typed Intermediate Representation"]
-        Parse --> TC["Typecheck & Lowering"]
+        NativeCook --> TC["Validate / Reflect / Specialize"]
+        Existing --> TC
         GraphLower --> TC
         TC --> IR["ShaderModuleIR (Structs / Globals / Functions / EntryPoints)"]
     end
@@ -76,10 +77,11 @@ flowchart TD
     class Frontend,IR_Stage,Layout_Stage,Backend_Stage,Pipeline_Stage stage;
 ```
 
-Built-in shaders use the same frontend during repository cooking. The authored `.flux` file is
-the source of truth; `pnpm run shader:generate` publishes a generated immutable IR snapshot, and
-`pnpm run shader:check` rejects stale generated artifacts. Loading the runtime package never parses
-the authored source. Standard-lit implements the direct GGX/Smith/Schlick metallic-roughness BRDF
+Built-in shaders currently use the implemented FluxSL frontend during repository cooking. The authored
+`.flux` file remains the source of truth for this compatibility implementation; `pnpm run shader:generate`
+publishes a generated immutable IR snapshot, and `pnpm run shader:check` rejects stale generated artifacts.
+This describes current behavior, not the approved authoring target or an implemented native WGSL cooker.
+Loading the runtime package never parses the authored source. Standard-lit implements the direct GGX/Smith/Schlick metallic-roughness BRDF
 with world-space normal, position, and camera inputs. Its first LDR browser slice treats the light
 color as normalized direct radiance; physical lux, HDR accumulation, exposure, tonemap, and IBL
 remain coordinated Lighting and Post/Color work.
