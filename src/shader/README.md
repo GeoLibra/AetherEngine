@@ -39,43 +39,23 @@ The approved production authoring contract is standard WGSL plus versioned typed
 
 ```mermaid
 flowchart TD
-    subgraph Frontend ["1. Frontend (Parsing & Analysis)"]
-        Src["Standard WGSL + Typed Metadata"] --> NativeCook["Native Cooker (Target; Not Implemented)"]
-        Flux["FluxSL (Experimental Compatibility; Implemented)"] --> Existing["Existing FluxSL Frontend"]
-        Graph["ShaderGraph (DAG)"] --> GraphLower["Graph Lowering"]
-    end
+    WGSL["Standard WGSL + Typed Metadata"] --> Naga["Native Naga Cooker (Target; Not Implemented)"]
+    Naga --> Stable["Stable Aether Reflection/Layout Manifests + Backend Modules"]
 
-    subgraph IR_Stage ["2. Typed Intermediate Representation"]
-        NativeCook --> TC["Validate / Reflect / Specialize"]
-        Existing --> TC
-        GraphLower --> TC
-        TC --> IR["ShaderModuleIR (Structs / Globals / Functions / EntryPoints)"]
-    end
+    Flux["FluxSL (Experimental Compatibility; Implemented)"] --> FluxIR["FluxSL ShaderModuleIR / Layout / Backend Emitters"]
+    Graph["ShaderGraph (Proposed)"] --> GraphIR["ShaderGraph Internal IR / Lowering"]
+    FluxIR --> Stable
+    GraphIR --> Stable
 
-    subgraph Layout_Stage ["3. Reflection & Layout Engine"]
-        IR --> LayoutEng["Layout Policy Calculator (std140 / WGSL)"]
-        LayoutEng --> BindingMan["ShaderBindingManifest (Bind Groups & Slots)"]
-        LayoutEng --> BufferMan["BufferLayoutManifest (Offsets & Alignments)"]
-        BufferMan --> Writer["ShaderParameterWriter (Safe ArrayBuffer I/O)"]
-    end
-
-    subgraph Backend_Stage ["4. Backend Codegen & Validation"]
-        IR --> EmitterSelect{"Target Backend"}
-        EmitterSelect -->|WebGPU| WGSLEmit["WGSL Emitter"]
-        EmitterSelect -->|WebGL2| GLSLEmit["GLSL ES 3.00 Emitter + Binding Fusion"]
-        WGSLEmit --> Val["Backend Validator"]
-        GLSLEmit --> Val
-    end
-
-    subgraph Pipeline_Stage ["5. Pipeline & Cache"]
-        Val --> Cache["ShaderArtifactCache (LRU + Submission Leasing)"]
-        BindingMan --> Cache
-        Cache --> Artifact["CompiledShaderArtifact"]
-    end
-
-    classDef stage fill:#f8fafc,stroke:#94a3b8,stroke-width:1px;
-    class Frontend,IR_Stage,Layout_Stage,Backend_Stage,Pipeline_Stage stage;
+    Stable --> Artifact["Cooked Artifact Boundary"]
+    Artifact --> Runtime["Runtime Module / Layout / Pipeline Consumers"]
 ```
+
+`ShaderModuleIR`, the TypeScript layout calculators, and the TypeScript WGSL/GLSL emitters describe
+the implemented FluxSL pipeline. They are not a normative intermediate representation or lowering path
+for authored WGSL. The future native cooker owns WGSL parsing, validation, reflection, layout derivation,
+and backend lowering, then publishes the same stable Aether-owned manifest/module boundary consumed by
+the runtime. ShaderGraph may use its own internal IR, but must converge at that boundary as well.
 
 Built-in shaders currently use the implemented FluxSL frontend during repository cooking. The authored
 `.flux` file remains the source of truth for this compatibility implementation; `pnpm run shader:generate`
