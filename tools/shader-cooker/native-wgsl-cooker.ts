@@ -151,7 +151,7 @@ export class NativeWgslCooker {
       throw new Error('Native WGSL cook was aborted before execution.');
     }
 
-    const { sourcePath, sourceUri, metadataPath } = request;
+    const { sourcePath, sourceUri } = request;
 
     const args: string[] = [
       '+1.95.0',
@@ -165,10 +165,6 @@ export class NativeWgslCooker {
       '--source-uri',
       sourceUri
     ];
-
-    if (metadataPath) {
-      args.push('--metadata', metadataPath);
-    }
 
     let result: NativeCookerProcessResult;
     try {

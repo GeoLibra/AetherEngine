@@ -14,6 +14,8 @@
     "test": "vitest run",
     "shader:generate": "vite-node --script scripts/cook-built-in-shaders.ts",
     "shader:check": "vite-node --script scripts/cook-built-in-shaders.ts --check",
+    "shader:wgsl:cook": "vite-node --script scripts/cook-wgsl-shader.ts",
+    "shader:bundle:check": "vite-node --script scripts/check-runtime-shader-bundle.ts",
     "shader:native:test": "cargo +1.95.0 test --manifest-path tools/naga-shader-validator/Cargo.toml",
     "bench": "vite-node benchmark/framework/cli.ts",
     "bench:validate": "pnpm bench validate",
