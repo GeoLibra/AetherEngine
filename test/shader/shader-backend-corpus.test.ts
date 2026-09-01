@@ -28,8 +28,36 @@ function cook(fixture: string, sourceUri: string) {
 
 nativeCorpus(`native WGSL cooker corpus (${installExpectation} when skipped)`, () => {
   test('cooks reflected WGSL into the versioned protocol and both graphics backends', () => {
-    const sourceUri = 'asset://shader/basic.wgsl';
-    const result = cook('basic.wgsl', sourceUri);
+    const sourceUri = 'asset://shader/bound-resources.wgsl';
+    const result = cook('bound-resources.wgsl', sourceUri);
+
+    const sceneBinding = {
+      group: 0,
+      binding: 0,
+      name: 'scene',
+      kind: 'uniform-buffer',
+      addressSpace: 'uniform',
+      access: 'read',
+      typeName: 'SceneUniforms'
+    };
+    const textureBinding = {
+      group: 1,
+      binding: 0,
+      name: 'colorTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    };
+    const samplerBinding = {
+      group: 1,
+      binding: 1,
+      name: 'colorSampler',
+      kind: 'sampler',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'sampler'
+    };
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
@@ -46,16 +74,17 @@ nativeCorpus(`native WGSL cooker corpus (${installExpectation} when skipped)`, (
       },
       source: { sourceUri },
       entryPoints: [
-        { name: 'vertexMain', stage: 'vertex' },
-        { name: 'fragmentMain', stage: 'fragment' }
+        { name: 'vertexMain', stage: 'vertex', bindings: [sceneBinding] },
+        {
+          name: 'fragmentMain',
+          stage: 'fragment',
+          bindings: [textureBinding, samplerBinding]
+        }
       ],
-      bindings: []
+      bindings: [sceneBinding, textureBinding, samplerBinding]
     });
     expect(artifact.source.contentHash).toMatch(/^[a-f0-9]{64}$/);
     expect(artifact.source.byteLength).toBeGreaterThan(0);
-    expect(
-      artifact.entryPoints.every((entry: { bindings: unknown[] }) => entry.bindings.length === 0)
-    ).toBe(true);
     expect(artifact.modules.wgsl).toContain('@vertex\nfn vertexMain');
     expect(Object.keys(artifact.modules.glslEs300)).toEqual([
       'fragment:fragmentMain',
@@ -73,6 +102,7 @@ nativeCorpus(`native WGSL cooker corpus (${installExpectation} when skipped)`, (
 
     expect(result.status).not.toBe(0);
     expect(result.stdout).toBe('');
+    expect(result.stderr).not.toContain(process.cwd());
     expect(JSON.parse(result.stderr)).toMatchObject({
       schemaVersion: 1,
       severity: 'error',
