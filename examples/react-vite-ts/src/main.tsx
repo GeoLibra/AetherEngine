@@ -53,7 +53,8 @@ async function mountForAcceptance(): Promise<void> {
   if (preference === undefined) throw new Error(`Unsupported example backend: ${requested}.`);
   const scene: MountedAetherScene = await mountAetherScene(canvas, {
     preference,
-    animate: false
+    animate: false,
+    ground: false
   });
   const gl = canvas.getContext('webgl2');
   window.__AETHER_EXAMPLE__ = Object.freeze({

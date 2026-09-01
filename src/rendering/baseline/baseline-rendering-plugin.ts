@@ -171,13 +171,13 @@ class BaselineRenderingRuntime {
       ];
     });
     const visible = computeVisibility(view, candidates).items;
-    const selected = visible.find(({ renderEntity }) =>
+    const matching = visible.filter(({ renderEntity }) =>
       this.matchesRegistration(camera.revision, renderEntity)
     );
     const light = this.lightExtraction!.lights().find(
       (candidate) => candidate.enabled && (candidate.layerMask & view.layerMask) !== 0
     );
-    if (selected === undefined || light === undefined) {
+    if (matching.length === 0 || light === undefined) {
       this.prepared = Object.freeze({
         status: 'missing',
         view,
@@ -187,20 +187,23 @@ class BaselineRenderingRuntime {
       camera.revision.release();
       return;
     }
-    const transform = camera.revision.snapshot
-      .get(selected.renderEntity)
-      ?.get(MeshTransformField) as RenderTransformFact | undefined;
-    if (transform === undefined) throw new Error('Visible baseline mesh is missing its transform.');
-    const packet = this.standardLit.createPacket({
-      entity: selected.renderEntity,
-      transform,
-      view: camera.views[0]!,
-      light
+    const packets = matching.map((selected) => {
+      const transform = camera.revision.snapshot
+        .get(selected.renderEntity)
+        ?.get(MeshTransformField) as RenderTransformFact | undefined;
+      if (transform === undefined)
+        throw new Error('Visible baseline mesh is missing its transform.');
+      return this.standardLit!.createPacket({
+        entity: selected.renderEntity,
+        transform,
+        view: camera.views[0]!,
+        light
+      });
     });
     this.prepared = Object.freeze({
       status: 'ready',
       view,
-      packets: Object.freeze([packet]),
+      packets: Object.freeze(packets),
       deviceGeneration: this.options.graphics.device.generation,
       surfaceGeneration: this.options.graphics.surface.generation
     });

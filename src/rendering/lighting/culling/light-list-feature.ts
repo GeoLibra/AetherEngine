@@ -5,14 +5,14 @@ import {
   snapshotResourceBudget,
   type ResourceBudget,
   type RuntimeFeatureImplementation
-} from '../../feature-policy';
+} from '../../../feature-policy';
 import { buildCpuLightLists } from './light-list';
 import type {
   CpuLightListCapacity,
   CpuLightListResult,
   LightReceiver,
   PreparedLight
-} from './types';
+} from '../types';
 
 export const BuiltInFeature = Object.freeze({
   LightListBuild: featureId('aether.rendering.light-list-build')

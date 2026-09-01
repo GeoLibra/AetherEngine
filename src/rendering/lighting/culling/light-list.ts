@@ -1,12 +1,12 @@
-import type { WorldBounds } from '../visibility/types';
-import { orderLightsForGpu } from './light';
+import type { WorldBounds } from '../../visibility/types';
+import { orderLightsForGpu } from '../core/light';
 import type {
   CpuLightListCapacity,
   CpuLightListHeader,
   CpuLightListResult,
   LightReceiver,
   PreparedLight
-} from './types';
+} from '../types';
 
 export function buildCpuLightLists(input: {
   readonly viewLayerMask: number;

@@ -1,8 +1,9 @@
+import { Vec3Math } from '../../../math';
+import type { Vec3 } from '../../../math/types';
+
 const PI = Math.PI;
 const MIN_PERCEPTUAL_ROUGHNESS = 0.045;
 const MIN_BRDF_DENOMINATOR = 1e-6;
-
-type Vec3 = readonly [number, number, number];
 
 /** Inputs for the deterministic CPU oracle of the direct-light metallic-roughness BRDF. */
 export interface CookTorranceDirectInput {
@@ -31,15 +32,15 @@ export function evaluateCookTorranceDirect(input: CookTorranceDirectInput): Vec3
     MIN_PERCEPTUAL_ROUGHNESS,
     normalizedScalar(input.roughness, 'roughness')
   );
-  const normal = normalizedDirection(input.normal, 'normal');
-  const view = normalizedDirection(input.viewDirection, 'viewDirection');
-  const light = normalizedDirection(input.lightDirection, 'lightDirection');
-  const normalDotLight = Math.max(dot(normal, light), 0);
-  const normalDotView = Math.max(dot(normal, view), 0);
+  const normal = Vec3Math.normalize(input.normal, 'PBR normal');
+  const view = Vec3Math.normalize(input.viewDirection, 'PBR viewDirection');
+  const light = Vec3Math.normalize(input.lightDirection, 'PBR lightDirection');
+  const normalDotLight = Math.max(Vec3Math.dot(normal, light), 0);
+  const normalDotView = Math.max(Vec3Math.dot(normal, view), 0);
   if (normalDotLight === 0 || normalDotView === 0) return BLACK;
-  const half = normalizedDirection(add(view, light), 'viewDirection + lightDirection');
-  const normalDotHalf = Math.max(dot(normal, half), 0);
-  const viewDotHalf = Math.max(dot(view, half), 0);
+  const half = Vec3Math.normalize(Vec3Math.add(view, light), 'PBR viewDirection + lightDirection');
+  const normalDotHalf = Math.max(Vec3Math.dot(normal, half), 0);
+  const viewDotHalf = Math.max(Vec3Math.dot(view, half), 0);
 
   const alpha = roughness * roughness;
   const alphaSquared = alpha * alpha;
@@ -49,20 +50,23 @@ export function evaluateCookTorranceDirect(input: CookTorranceDirectInput): Vec3
     Math.max(PI * distributionDenominator * distributionDenominator, MIN_BRDF_DENOMINATOR);
   const geometryK = ((roughness + 1) * (roughness + 1)) / 8;
   const geometry = smithSchlick(normalDotView, geometryK) * smithSchlick(normalDotLight, geometryK);
-  const f0 = mixColor(DIELECTRIC_F0, baseColor, metallic);
+  const f0 = Vec3Math.lerp(DIELECTRIC_F0, baseColor, metallic);
   const fresnelFactor = fifthPower(1 - viewDotHalf);
-  const fresnel = mixColor(f0, WHITE, fresnelFactor);
-  const diffuseWeight = scale(subtract(WHITE, fresnel), 1 - metallic);
-  const diffuse = scale(multiply(diffuseWeight, baseColor), 1 / PI);
-  const specular = scale(
+  const fresnel = Vec3Math.lerp(f0, WHITE, fresnelFactor);
+  const diffuseWeight = Vec3Math.scale(Vec3Math.subtract(WHITE, fresnel), 1 - metallic);
+  const diffuse = Vec3Math.scale(Vec3Math.multiply(diffuseWeight, baseColor), 1 / PI);
+  const specular = Vec3Math.scale(
     fresnel,
     (distribution * geometry) / Math.max(4 * normalDotView * normalDotLight, MIN_BRDF_DENOMINATOR)
   );
-  return freezeVec3(scale(multiply(add(diffuse, specular), radiance), normalDotLight));
+  return Vec3Math.scale(
+    Vec3Math.multiply(Vec3Math.add(diffuse, specular), radiance),
+    normalDotLight
+  );
 }
 
-const BLACK = Object.freeze([0, 0, 0] as const);
-const WHITE = Object.freeze([1, 1, 1] as const);
+const BLACK = Vec3Math.zero();
+const WHITE = Vec3Math.one();
 const DIELECTRIC_F0 = Object.freeze([0.04, 0.04, 0.04] as const);
 
 function smithSchlick(normalDotDirection: number, k: number): number {
@@ -72,37 +76,6 @@ function smithSchlick(normalDotDirection: number, k: number): number {
 function fifthPower(value: number): number {
   const squared = value * value;
   return squared * squared * value;
-}
-
-function dot(left: Vec3, right: Vec3): number {
-  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
-}
-
-function add(left: Vec3, right: Vec3): Vec3 {
-  return [left[0] + right[0], left[1] + right[1], left[2] + right[2]];
-}
-
-function subtract(left: Vec3, right: Vec3): Vec3 {
-  return [left[0] - right[0], left[1] - right[1], left[2] - right[2]];
-}
-
-function multiply(left: Vec3, right: Vec3): Vec3 {
-  return [left[0] * right[0], left[1] * right[1], left[2] * right[2]];
-}
-
-function scale(value: Vec3, factor: number): Vec3 {
-  return [value[0] * factor, value[1] * factor, value[2] * factor];
-}
-
-function mixColor(from: Vec3, to: Vec3, factor: number): Vec3 {
-  return add(scale(from, 1 - factor), scale(to, factor));
-}
-
-function normalizedDirection(value: Vec3, name: string): Vec3 {
-  finiteVec3(value, name);
-  const length = Math.hypot(value[0], value[1], value[2]);
-  if (length <= Number.EPSILON) throw new Error(`PBR ${name} must be non-zero.`);
-  return [value[0] / length, value[1] / length, value[2] / length];
 }
 
 function normalizedColor(value: Vec3, name: string): Vec3 {
@@ -128,8 +101,4 @@ function normalizedScalar(value: number, name: string): number {
 function finiteVec3(value: Vec3, name: string): void {
   if (value.length !== 3 || value.some((component) => !Number.isFinite(component)))
     throw new Error(`PBR ${name} must contain three finite values.`);
-}
-
-function freezeVec3(value: Vec3): Vec3 {
-  return Object.freeze([value[0], value[1], value[2]]);
 }

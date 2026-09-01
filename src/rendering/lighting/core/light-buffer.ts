@@ -1,7 +1,7 @@
-import { ShaderParameterWriter } from '../../shader';
-import type { BufferLayoutManifest } from '../../shader/types';
+import { ShaderParameterWriter } from '../../../shader';
+import type { BufferLayoutManifest } from '../../../shader/types';
 import { normalizedLightDirection, orderLightsForGpu } from './light';
-import type { PreparedLight } from './types';
+import type { PreparedLight } from '../types';
 
 export const LIGHT_KIND = Object.freeze({ directional: 0, point: 1, spot: 2 } as const);
 export const LIGHT_FLAG_ENABLED = 1 << 0;

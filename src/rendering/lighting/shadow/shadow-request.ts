@@ -1,4 +1,4 @@
-import type { ShadowBudget, ShadowRequest, ShadowRequestSelection } from './types';
+import type { ShadowBudget, ShadowRequest, ShadowRequestSelection } from '../types';
 
 /** Stable logical request identity; quality/resolution revisions do not allocate a second owner. */
 export function shadowRequestKey(request: ShadowRequest): string {

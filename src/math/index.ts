@@ -6,6 +6,7 @@ export type { FrustumClassification, FrustumIntersection } from './frustum';
 export { Mat4 } from './matrix';
 export { projectPoint, unprojectPoint } from './projection';
 export { Quat } from './quaternion';
+export { Vec3Math } from './vec3';
 export type {
   ColorRgba,
   DepthConvention,
