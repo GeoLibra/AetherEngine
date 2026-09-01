@@ -190,9 +190,10 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
           { cooker }
         );
 
-        if (revisions.get(wgslFilePath) === nextRev) {
-          lastGoodCache.set(wgslFilePath, artifact);
-        }
+        // Completion order is not publication order: only the newest requested revision owns HMR
+        // side effects. An older cook must not invalidate a module that already published newer code.
+        if (revisions.get(wgslFilePath) !== nextRev) return [];
+        lastGoodCache.set(wgslFilePath, artifact);
 
         const mod = ctx.server.moduleGraph.getModuleById(virtualId);
         if (mod) {
@@ -201,6 +202,8 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
         }
         return [];
       } catch (err: unknown) {
+        // A diagnostic from an obsolete revision is stale state, not an actionable author error.
+        if (revisions.get(wgslFilePath) !== nextRev) return [];
         ctx.server.config.logger.error(
           `[aether:native-wgsl] HMR cook failed for "${wgslFilePath}": ${err instanceof Error ? err.message : String(err)}`
         );
