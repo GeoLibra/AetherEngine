@@ -1,25 +1,24 @@
 mod cli;
+mod cook;
 mod diagnostics;
 mod protocol;
 mod reflection;
 mod version;
 
 use cli::{Command, CookArgumentError, CookCommand};
+use cook::{cook, emit_glsl, parse_and_validate, ParseValidationError};
 use diagnostics::{
-    error as cook_error, parse_error, write_diagnostic, BACKEND_EMISSION_FAILED, INVALID_ARGUMENTS,
-    INVALID_SOURCE_URI, SOURCE_READ_FAILED, WGSL_VALIDATION_FAILED,
+    error as cook_error, write_diagnostic, INVALID_ARGUMENTS, INVALID_SOURCE_URI,
+    SOURCE_READ_FAILED,
 };
-use protocol::CookDiagnostic;
-use reflection::reflect_module;
-use std::{env, fs, process};
+use protocol::{CookDiagnostic, CookRequest};
+use std::{
+    env, fs,
+    io::{self, Write},
+    process,
+};
 
-use naga::{
-    back::glsl,
-    front::wgsl,
-    proc::BoundsCheckPolicies,
-    valid::{Capabilities, ValidationFlags, Validator},
-    ShaderStage,
-};
+use naga::ShaderStage;
 
 fn main() {
     let args = env::args().skip(1).collect();
@@ -59,39 +58,44 @@ fn main() {
 
 #[allow(clippy::result_large_err)] // Diagnostics are the stable protocol error value, not a hot path.
 fn run_cook(command: CookCommand) -> Result<(), CookDiagnostic> {
-    let source = fs::read_to_string(&command.input_path).map_err(|_| {
+    let bytes = fs::read(&command.input_path).map_err(|_| {
         cook_error(
             SOURCE_READ_FAILED,
             "failed to read WGSL source",
             &command.source_uri,
         )
     })?;
-    let module = wgsl::parse_str(&source)
-        .map_err(|error| parse_error(&error, &source, &command.source_uri))?;
-    let info = Validator::new(ValidationFlags::all(), Capabilities::all())
-        .validate(&module)
-        .map_err(|error| {
-            let location = error.location(&source);
-            let mut diagnostic = cook_error(
-                WGSL_VALIDATION_FAILED,
-                &format!("WGSL validation failed: {error}"),
-                &command.source_uri,
-            );
-            diagnostic.line = location.map(|value| value.line_number);
-            diagnostic.column = location.map(|value| value.line_position);
-            diagnostic.backend_stage = Some("validation".to_owned());
-            diagnostic
-        })?;
-    reflect_module(&module, &info).map_err(|mut diagnostic| {
-        diagnostic.source_uri = command.source_uri.clone();
-        diagnostic
+    let source = String::from_utf8(bytes).map_err(|_| {
+        cook_error(
+            SOURCE_READ_FAILED,
+            "WGSL source is not valid UTF-8",
+            &command.source_uri,
+        )
     })?;
-
-    Err(cook_error(
-        BACKEND_EMISSION_FAILED,
-        "backend module emission is not implemented",
-        &command.source_uri,
-    ))
+    let source = source.replace("\r\n", "\n").replace('\r', "\n");
+    let result = cook(CookRequest {
+        schema_version: version::COOK_SCHEMA_VERSION,
+        source_kind: "wgsl".to_owned(),
+        source_uri: command.source_uri,
+        source,
+    })?;
+    let stdout = io::stdout();
+    let mut writer = stdout.lock();
+    serde_json::to_writer(&mut writer, &result).map_err(|_| {
+        cook_error(
+            diagnostics::BACKEND_EMISSION_FAILED,
+            "failed to serialize cook result",
+            &result.source.source_uri,
+        )
+    })?;
+    writer.write_all(b"\n").map_err(|_| {
+        cook_error(
+            diagnostics::BACKEND_EMISSION_FAILED,
+            "failed to write cook result",
+            &result.source.source_uri,
+        )
+    })?;
+    Ok(())
 }
 
 fn run_legacy(args: Vec<String>) -> Result<(), String> {
@@ -102,10 +106,10 @@ fn run_legacy(args: Vec<String>) -> Result<(), String> {
     let path = args.next().ok_or("missing WGSL file path")?;
     let source =
         fs::read_to_string(&path).map_err(|error| format!("failed to read {path}: {error}"))?;
-    let module = wgsl::parse_str(&source).map_err(|error| error.emit_to_string(&source))?;
-    let info = Validator::new(ValidationFlags::all(), Capabilities::all())
-        .validate(&module)
-        .map_err(|error| format!("WGSL validation failed: {error}"))?;
+    let (module, info) = parse_and_validate(&source).map_err(|error| match error {
+        ParseValidationError::Parse(error) => error.emit_to_string(&source),
+        ParseValidationError::Validation(error) => format!("WGSL validation failed: {error}"),
+    })?;
 
     if command == "validate" {
         println!("ok");
@@ -122,27 +126,7 @@ fn run_legacy(args: Vec<String>) -> Result<(), String> {
         None => return Err("missing GLSL stage".into()),
     };
     let entry_point = args.next().ok_or("missing entry point")?;
-    let mut output = String::new();
-    let options = glsl::Options {
-        version: glsl::Version::new_gles(300),
-        ..Default::default()
-    };
-    let pipeline = glsl::PipelineOptions {
-        shader_stage: stage,
-        entry_point,
-        multiview: None,
-    };
-    glsl::Writer::new(
-        &mut output,
-        &module,
-        &info,
-        &options,
-        &pipeline,
-        BoundsCheckPolicies::default(),
-    )
-    .map_err(|error| format!("GLSL writer creation failed: {error}"))?
-    .write()
-    .map_err(|error| format!("GLSL emission failed: {error}"))?;
+    let output = emit_glsl(&module, &info, stage, &entry_point)?;
     print!("{output}");
     Ok(())
 }
