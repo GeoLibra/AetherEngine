@@ -1,4 +1,4 @@
-import { stableHash } from '../utils/hash';
+import { stableHash } from '../../core/hash';
 import type {
   ResolvedShaderSource,
   ShaderIncludeReference,

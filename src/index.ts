@@ -114,6 +114,7 @@ export type {
   ObserverEventKind,
   ObserverRegistration
 } from './ecs/observer';
+export * from './core';
 export * from './events';
 export * from './diagnostics';
 export * from './math';

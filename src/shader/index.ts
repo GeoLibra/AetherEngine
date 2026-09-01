@@ -6,7 +6,6 @@
 
 export * from './types';
 export * from './ir';
-export * from './utils';
 export * from './frontend';
 export * from './layout';
 export * from './backends';

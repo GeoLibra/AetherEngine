@@ -1,4 +1,4 @@
-import { stableHash } from '../utils/hash';
+import { stableHash } from '../../core/hash';
 import { selectShaderLayoutPolicy } from './policy';
 import { createBoundBufferLayoutManifest } from './struct-layout';
 import type {

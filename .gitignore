@@ -15,3 +15,5 @@ benchmark/artifacts/
 .pnpm-store
 graphify-out
 .DS_Store
+target/
+tools/naga-shader-validator/target/
