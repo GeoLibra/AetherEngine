@@ -18,7 +18,7 @@ use std::{
     process,
 };
 
-use naga::ShaderStage;
+use naga::{valid::Capabilities, ShaderStage};
 
 fn main() {
     let args = env::args().skip(1).collect();
@@ -106,10 +106,11 @@ fn run_legacy(args: Vec<String>) -> Result<(), String> {
     let path = args.next().ok_or("missing WGSL file path")?;
     let source =
         fs::read_to_string(&path).map_err(|error| format!("failed to read {path}: {error}"))?;
-    let (module, info) = parse_and_validate(&source).map_err(|error| match error {
-        ParseValidationError::Parse(error) => error.emit_to_string(&source),
-        ParseValidationError::Validation(error) => format!("WGSL validation failed: {error}"),
-    })?;
+    let (module, info) =
+        parse_and_validate(&source, Capabilities::all()).map_err(|error| match error {
+            ParseValidationError::Parse(error) => error.emit_to_string(&source),
+            ParseValidationError::Validation(error) => format!("WGSL validation failed: {error}"),
+        })?;
 
     if command == "validate" {
         println!("ok");

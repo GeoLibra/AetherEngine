@@ -51,8 +51,9 @@ fn is_valid_source_uri(source_uri: &str) -> bool {
     };
 
     !path.is_empty()
-        && !path.contains(['\\', '#'])
+        && !path.contains(['\\', '?', '#', '%'])
+        && !path.chars().any(char::is_control)
         && path
             .split('/')
-            .all(|segment| !segment.is_empty() && segment != "..")
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }

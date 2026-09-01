@@ -189,9 +189,27 @@ fn invalid_source_uris_are_rejected() {
         "",
         "/absolute/file.wgsl",
         "asset://",
+        "package://",
         "asset://shader\\basic.wgsl",
+        "package://shader\\basic.wgsl",
+        "asset://shader/./basic.wgsl",
+        "package://shader/./basic.wgsl",
         "asset://shader/../basic.wgsl",
+        "package://shader/../basic.wgsl",
+        "asset://shader/basic.wgsl?variant=debug",
+        "package://shader/basic.wgsl?variant=debug",
         "asset://shader/basic.wgsl#fragment",
+        "package://shader/basic.wgsl#fragment",
+        "asset://shader/%2e%2e/basic.wgsl",
+        "package://shader/%2E%2E/basic.wgsl",
+        "asset://shader/%2fetc.wgsl",
+        "package://shader/%5cbasic.wgsl",
+        "asset://shader/control\u{0001}.wgsl",
+        "package://shader/control\n.wgsl",
+        "asset:///shader/basic.wgsl",
+        "package:///shader/basic.wgsl",
+        "asset://shader//basic.wgsl",
+        "package://shader//basic.wgsl",
         "https://example.com/basic.wgsl",
     ] {
         let output = run(&["cook", path.to_str().unwrap(), "--source-uri", source_uri]);
@@ -205,6 +223,17 @@ fn invalid_source_uris_are_rejected() {
             "invalid-source-uri",
             "wrong diagnostic for URI: {source_uri}"
         );
+    }
+}
+
+#[test]
+fn canonical_source_uris_are_accepted_for_both_schemes() {
+    let path = basic_fixture();
+    for source_uri in [
+        "asset://shader/basic.wgsl",
+        "package://core/shader/basic.wgsl",
+    ] {
+        successful_cook(&path, source_uri);
     }
 }
 
@@ -303,6 +332,32 @@ fn invalid_wgsl_semantics_reports_validation_failure_without_local_path() {
     assert_eq!(
         diagnostic["sourceUri"],
         "asset://shader/invalid-semantics.wgsl"
+    );
+    assert_path_is_sanitized(&output, directory.path());
+}
+
+#[test]
+fn cook_rejects_compute_only_wgsl_outside_baseline_webgpu_capabilities() {
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("unsupported-capability.wgsl");
+    fs::write(
+        &path,
+        "@compute @workgroup_size(1) fn main() { let value: f64 = 1.0lf; }\n",
+    )
+    .unwrap();
+    let output = run(&[
+        "cook",
+        path.to_str().unwrap(),
+        "--source-uri",
+        "asset://shader/unsupported-capability.wgsl",
+    ]);
+
+    assert!(!output.status.success());
+    let diagnostic = diagnostic(&output);
+    assert_eq!(diagnostic["code"], "wgsl-validation-failed");
+    assert_eq!(
+        diagnostic["sourceUri"],
+        "asset://shader/unsupported-capability.wgsl"
     );
     assert_path_is_sanitized(&output, directory.path());
 }

@@ -27,9 +27,12 @@ pub enum ParseValidationError {
     Validation(Box<naga::WithSpan<naga::valid::ValidationError>>),
 }
 
-pub fn parse_and_validate(source: &str) -> Result<(Module, ModuleInfo), ParseValidationError> {
+pub fn parse_and_validate(
+    source: &str,
+    capabilities: Capabilities,
+) -> Result<(Module, ModuleInfo), ParseValidationError> {
     let module = wgsl::parse_str(source).map_err(ParseValidationError::Parse)?;
-    let info = Validator::new(ValidationFlags::all(), Capabilities::all())
+    let info = Validator::new(ValidationFlags::all(), capabilities)
         .validate(&module)
         .map_err(|error| ParseValidationError::Validation(Box::new(error)))?;
     Ok((module, info))
@@ -67,23 +70,25 @@ pub fn emit_glsl(
 
 #[allow(clippy::result_large_err)]
 pub fn cook(request: CookRequest) -> Result<CookResult, CookDiagnostic> {
-    let (module, info) = parse_and_validate(&request.source).map_err(|error| match error {
-        ParseValidationError::Parse(error) => {
-            parse_error(&error, &request.source, &request.source_uri)
-        }
-        ParseValidationError::Validation(error) => {
-            let location = error.location(&request.source);
-            let mut diagnostic = cook_error(
-                WGSL_VALIDATION_FAILED,
-                &format!("WGSL validation failed: {error}"),
-                &request.source_uri,
-            );
-            diagnostic.line = location.map(|value| value.line_number);
-            diagnostic.column = location.map(|value| value.line_position);
-            diagnostic.backend_stage = Some("validation".to_owned());
-            diagnostic
-        }
-    })?;
+    let (module, info) = parse_and_validate(&request.source, Capabilities::default()).map_err(
+        |error| match error {
+            ParseValidationError::Parse(error) => {
+                parse_error(&error, &request.source, &request.source_uri)
+            }
+            ParseValidationError::Validation(error) => {
+                let location = error.location(&request.source);
+                let mut diagnostic = cook_error(
+                    WGSL_VALIDATION_FAILED,
+                    &format!("WGSL validation failed: {error}"),
+                    &request.source_uri,
+                );
+                diagnostic.line = location.map(|value| value.line_number);
+                diagnostic.column = location.map(|value| value.line_position);
+                diagnostic.backend_stage = Some("validation".to_owned());
+                diagnostic
+            }
+        },
+    )?;
     let (entry_points, bindings) = reflect_module(&module, &info).map_err(|mut diagnostic| {
         diagnostic.source_uri = request.source_uri.clone();
         diagnostic
