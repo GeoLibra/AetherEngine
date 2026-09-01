@@ -1,34 +1,29 @@
 import type {
+  DecodedSchemaPayload,
   FieldId,
-  SchemaId,
-  SchemaRegistration,
-  SchemaMigrationRegistration,
-  SchemaView,
-  SchemaViewKind,
-  SchemaVersion,
   MigrationResult,
   MigrationWarning,
-  SchemaMigration,
-  TypeSchema
-} from './types';
-import { defineResource } from '../ecs/resource';
-import { cloneRecord, cloneUnknown, freezeRecord, freezeUnknown } from './migration';
-import { decodeKnownPayload, encodeDecodedPayload, freezePayload } from './payload';
-import { mapSchemaReferences, visitSchemaReferences } from './references';
-import {
-  freezeResolvedEntries,
-  ReferenceResolutionError
-} from './reference-transaction';
-import type {
-  DecodedSchemaPayload,
+  ReferenceMapper,
   ReferenceResolutionIssue,
   ReferenceResolver,
-  ReferenceMapper,
   ReferenceTransactionEntry,
   ReferenceVisitor,
   ResolvedReferenceEntry,
-  SchemaPayload
+  SchemaId,
+  SchemaMigration,
+  SchemaMigrationRegistration,
+  SchemaPayload,
+  SchemaRegistration,
+  SchemaVersion,
+  SchemaView,
+  SchemaViewKind,
+  TypeSchema
 } from './types';
+import { defineResource } from '../ecs/resource';
+import { cloneRecord, cloneUnknown, freezeRecord, freezeUnknown, isRecord } from './utils';
+import { decodeKnownPayload, encodeDecodedPayload, freezePayload } from './payload';
+import { mapSchemaReferences, visitSchemaReferences } from './references';
+import { freezeResolvedEntries, ReferenceResolutionError } from './reference-transaction';
 
 interface RegisteredSchema {
   readonly schema: TypeSchema<unknown>;
@@ -42,11 +37,30 @@ interface RegisteredMigration {
   registrations: number;
 }
 
+/**
+ * Central runtime registry for schema contracts, versions, continuous migrations, and derived views.
+ *
+ * Responsibilities:
+ * - SchemaId uniqueness and multi-version registration with reference counted ownership handles.
+ * - Allocation of runtime numeric type indexes and field indexes for fast-path engine operations.
+ * - Continuous N -> N+1 version migration execution with lossy warnings tracking.
+ * - Lossless round-trip payload decoding and encoding preserving unknown plugin extensions.
+ * - Document/Entity reference visiting, remapping, and transaction-scoped resolution.
+ * - Projection of specialized consumer views (serialization, editor Inspector hints, networked replication).
+ */
 export class SchemaRegistry {
   private readonly schemas = new Map<SchemaId, Map<SchemaVersion, RegisteredSchema>>();
   private readonly migrations = new Map<SchemaId, Map<SchemaVersion, RegisteredMigration>>();
   private nextTypeIndex = 0;
 
+  /**
+   * Registers an immutable `TypeSchema<T>` into the registry.
+   *
+   * @typeParam T - The runtime data type represented by the schema.
+   * @param schema - The schema contract to register.
+   * @returns An ownership handle with a `remove()` method to release this registration.
+   * @throws {Error} If a schema with the same ID and version is already registered with a different contract.
+   */
   register<T>(schema: TypeSchema<T>): SchemaRegistration<T> {
     let versions = this.schemas.get(schema.id);
     if (!versions) {
@@ -77,10 +91,25 @@ export class SchemaRegistry {
     return this.createSchemaRegistration(schema, typeIndex);
   }
 
+  /**
+   * Retrieves a registered schema by its stable ID and version.
+   *
+   * @typeParam T - The expected runtime type.
+   * @param id - The stable namespaced schema identifier.
+   * @param version - The specific integer schema version.
+   * @returns The registered `TypeSchema<T>` or undefined if not found.
+   */
   get<T>(id: string, version: number): TypeSchema<T> | undefined {
     return this.getEntry(id, version)?.schema as TypeSchema<T> | undefined;
   }
 
+  /**
+   * Retrieves the highest version registered for a given schema ID.
+   *
+   * @typeParam T - The expected runtime type.
+   * @param id - The stable namespaced schema identifier.
+   * @returns The latest `TypeSchema<T>` or undefined if the schema is not registered.
+   */
   getLatest<T>(id: string): TypeSchema<T> | undefined {
     const versions = this.schemas.get(id as SchemaId);
     if (!versions || versions.size === 0) {
@@ -90,14 +119,38 @@ export class SchemaRegistry {
     return versions.get(latestVersion as SchemaVersion)?.schema as TypeSchema<T> | undefined;
   }
 
+  /**
+   * Returns the runtime numeric type index assigned to a registered schema.
+   *
+   * @param id - The schema identifier.
+   * @param version - The schema version.
+   * @returns The numeric type index or undefined if not registered.
+   */
   getTypeIndex(id: string, version: number): number | undefined {
     return this.getEntry(id, version)?.typeIndex;
   }
 
+  /**
+   * Returns the zero-based field index for a specific stable field ID within a registered schema.
+   *
+   * @param id - The schema identifier.
+   * @param version - The schema version.
+   * @param field - The stable field ID.
+   * @returns The field index or undefined if not found.
+   */
   getFieldIndex(id: string, version: number, field: string): number | undefined {
     return this.getEntry(id, version)?.fieldIndexes.get(field as FieldId);
   }
 
+  /**
+   * Derives a consumer-specific `SchemaView<T>` (e.g. serialization-only fields, editor hints, or replication).
+   *
+   * @typeParam T - The runtime data type.
+   * @param id - The schema identifier.
+   * @param version - The schema version.
+   * @param kind - The desired view projection (`serialization`, `editor`, or `replication`).
+   * @returns The derived `SchemaView<T>` or undefined if the schema is not registered.
+   */
   getView<T>(id: string, version: number, kind: SchemaViewKind): SchemaView<T> | undefined {
     const entry = this.getEntry(id, version);
     if (!entry) {
@@ -121,6 +174,13 @@ export class SchemaRegistry {
     });
   }
 
+  /**
+   * Registers a continuous single-step version migration (`from -> to`, where `to === from + 1`).
+   *
+   * @param migration - The migration step definition.
+   * @returns An ownership handle with a `remove()` method to release this migration step.
+   * @throws {Error} If version numbers are invalid, non-continuous, or referenced schema versions are not registered.
+   */
   registerMigration(migration: SchemaMigration): SchemaMigrationRegistration {
     if (
       !Number.isInteger(migration.from) ||
@@ -161,6 +221,16 @@ export class SchemaRegistry {
     return this.createMigrationRegistration(migration);
   }
 
+  /**
+   * Migrates a raw payload record from a source version to a target version along a continuous migration chain.
+   *
+   * @param id - The schema identifier.
+   * @param from - The initial version number.
+   * @param to - The target version number (must be >= from).
+   * @param input - The raw input record to migrate.
+   * @returns The migrated record alongside any lossy migration warnings.
+   * @throws {Error} If downgrade is attempted, schemas are unknown, or any step in the migration chain is missing.
+   */
   migrate(
     id: string,
     from: number,
@@ -201,6 +271,14 @@ export class SchemaRegistry {
     });
   }
 
+  /**
+   * Decodes a serialized `SchemaPayload`. If the schema is registered, decodes it into a typed
+   * `KnownSchemaPayload<T>`; otherwise, preserves it as an `OpaqueSchemaPayload`.
+   *
+   * @typeParam T - The expected value type.
+   * @param payload - The raw payload to decode.
+   * @returns The decoded known or opaque payload.
+   */
   decodePayload<T>(payload: SchemaPayload): DecodedSchemaPayload<T> {
     const frozenPayload = freezePayload(payload);
     const schema = this.get<T>(frozenPayload.schema, frozenPayload.version);
@@ -210,25 +288,57 @@ export class SchemaRegistry {
     return decodeKnownPayload(schema, frozenPayload);
   }
 
+  /**
+   * Encodes a `DecodedSchemaPayload` into a serialized `SchemaPayload`.
+   *
+   * @typeParam T - The value type.
+   * @param decoded - The decoded payload.
+   * @returns A serialized raw schema payload.
+   */
   encodePayload<T>(decoded: DecodedSchemaPayload<T>): SchemaPayload {
     return encodeDecodedPayload(decoded);
   }
 
-  visitReferences<T>(
-    id: string,
-    version: number,
-    value: T,
-    visitor: ReferenceVisitor
-  ): void {
+  /**
+   * Traverses all entity and asset references in a schema-typed instance.
+   *
+   * @typeParam T - The typed schema value.
+   * @param id - The schema identifier.
+   * @param version - The schema version.
+   * @param value - The value instance to inspect.
+   * @param visitor - The callback invoked for each detected reference.
+   * @throws {Error} If the schema is not registered.
+   */
+  visitReferences<T>(id: string, version: number, value: T, visitor: ReferenceVisitor): void {
     const schema = this.requireSchema<T>(id, version);
     visitSchemaReferences(schema, value, visitor);
   }
 
+  /**
+   * Remaps all entity and asset references in a schema-typed instance.
+   *
+   * @typeParam T - The typed schema value.
+   * @param id - The schema identifier.
+   * @param version - The schema version.
+   * @param value - The value instance to remap.
+   * @param mapper - The transformation callback invoked for each reference.
+   * @returns A cloned copy with remapped references.
+   * @throws {Error} If the schema is not registered or a required reference is cleared.
+   */
   mapReferences<T>(id: string, version: number, value: T, mapper: ReferenceMapper): T {
     const schema = this.requireSchema<T>(id, version);
     return mapSchemaReferences(schema, value, mapper);
   }
 
+  /**
+   * Resolves references across an entire batch of transaction entries in an all-or-nothing operation.
+   *
+   * @param entries - The transaction entries to resolve.
+   * @param resolver - The resolver callback providing target references.
+   * @returns An immutable array of resolved and remapped entries.
+   * @throws {ReferenceResolutionError} If any required references fail resolution.
+   * @throws {Error} If entry keys are empty or duplicated, or schema validation fails.
+   */
   resolveReferenceTransaction(
     entries: readonly ReferenceTransactionEntry[],
     resolver: ReferenceResolver
@@ -291,6 +401,16 @@ export class SchemaRegistry {
     return freezeResolvedEntries(resolved);
   }
 
+  /**
+   * Deeply clones a value conforming to a registered schema.
+   *
+   * @typeParam T - The typed schema value.
+   * @param id - The schema identifier.
+   * @param version - The schema version.
+   * @param value - The value to clone.
+   * @returns A deep clone of the value.
+   * @throws {Error} If the schema is not registered.
+   */
   clone<T>(id: string, version: number, value: T): T {
     this.requireSchema<T>(id, version);
     return cloneUnknown(value) as T;
@@ -332,9 +452,7 @@ export class SchemaRegistry {
     });
   }
 
-  private createMigrationRegistration(
-    migration: SchemaMigration
-  ): SchemaMigrationRegistration {
+  private createMigrationRegistration(migration: SchemaMigration): SchemaMigrationRegistration {
     let active = true;
     return Object.freeze({
       migration,
@@ -387,8 +505,7 @@ export class SchemaRegistry {
   }
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
+/**
+ * ECS ResourceToken providing access to the engine's central `SchemaRegistry`.
+ */
 export const SchemaRegistryResource = defineResource<SchemaRegistry>('aether.schema-registry');

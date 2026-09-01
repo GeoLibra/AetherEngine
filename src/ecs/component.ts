@@ -1,7 +1,7 @@
 import { FIELD_TYPE_SIZES } from './constants';
 import { defineSchema } from '../schema';
 import type { ValidationIssue, ValidationResult, ValueTypeDefinition } from '../schema/types';
-import { cloneUnknown } from '../schema/migration';
+import { cloneUnknown } from '../schema/utils';
 import type {
   ComponentDefinition,
   ComponentField,

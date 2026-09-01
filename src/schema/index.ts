@@ -1,34 +1,44 @@
+export { FIELD_ID_PATTERN, SCHEMA_ID_PATTERN } from './constants';
 export { defineSchema } from './definition';
 export { SchemaValidationError } from './payload';
 export { applyPrefabOverride, createPrefabOverridePath } from './prefab-path';
 export { ReferenceResolutionError } from './reference-transaction';
 export { mapSchemaReferences, visitSchemaReferences } from './references';
 export { SchemaRegistry, SchemaRegistryResource } from './registry';
+export {
+  cloneRecord,
+  cloneUnknown,
+  freezeRecord,
+  freezeUnknown,
+  isPlainRecord,
+  isRecord
+} from './utils';
+
 export type {
-  EditorHint,
   DecodedSchemaPayload,
   DocumentReference,
+  EditorHint,
   FieldComparison,
   FieldDefinition,
   FieldId,
   FieldSchema,
   FieldSerialization,
+  KnownSchemaPayload,
   MigrationResult,
   MigrationStepResult,
   MigrationWarning,
-  KnownSchemaPayload,
   OpaqueSchemaPayload,
   PrefabOverridePath,
   PrefabOverridePathDefinition,
   PrefabPathSegment,
   ReferenceMapper,
+  ReferencePathSegment,
+  ReferencePolicy,
   ReferenceResolutionIssue,
   ReferenceResolver,
-  ReferencePathSegment,
   ReferenceTransactionEntry,
   ReferenceVisit,
   ReferenceVisitor,
-  ReferencePolicy,
   ReplicationPolicy,
   ResolvedReferenceEntry,
   SchemaDefinition,
@@ -36,12 +46,12 @@ export type {
   SchemaKind,
   SchemaMigration,
   SchemaMigrationRegistration,
-  SchemaRegistration,
   SchemaPayload,
+  SchemaRegistration,
   SchemaStorage,
+  SchemaVersion,
   SchemaView,
   SchemaViewKind,
-  SchemaVersion,
   TypeSchema,
   ValidationIssue,
   ValidationResult,

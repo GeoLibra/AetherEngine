@@ -1,9 +1,9 @@
-import { cloneUnknown, freezeUnknown } from './migration';
-import type {
-  ReferenceResolutionIssue,
-  ResolvedReferenceEntry
-} from './types';
+import { cloneUnknown, freezeUnknown } from './utils';
+import type { ReferenceResolutionIssue, ResolvedReferenceEntry } from './types';
 
+/**
+ * Error thrown when one or more required references cannot be resolved during a reference transaction.
+ */
 export class ReferenceResolutionError extends Error {
   readonly code = 'schema/reference-resolution-failed';
 
@@ -16,6 +16,12 @@ export class ReferenceResolutionError extends Error {
   }
 }
 
+/**
+ * Deeply clones and freezes an array of resolved reference entries.
+ *
+ * @param entries - The resolved reference entries to freeze.
+ * @returns An immutable, frozen list of entries.
+ */
 export function freezeResolvedEntries(
   entries: readonly ResolvedReferenceEntry[]
 ): readonly ResolvedReferenceEntry[] {

@@ -1,4 +1,4 @@
-import { cloneUnknown } from './migration';
+import { cloneUnknown, isRecord } from './utils';
 import type {
   FieldSchema,
   FieldId,
@@ -9,6 +9,15 @@ import type {
   ValueType
 } from './types';
 
+/**
+ * Validates and creates an immutable `PrefabOverridePath` from an authoring definition.
+ *
+ * Rejects numerical array indexing, enforcing stable `FieldId` or `elementKey` path segments.
+ *
+ * @param definition - The raw definition specifying local entity ID, schema, and path segments.
+ * @returns A validated, deeply frozen `PrefabOverridePath`.
+ * @throws {Error} If localEntityId, schema, or segment keys are empty, or if an unsupported segment kind is provided.
+ */
 export function createPrefabOverridePath(
   definition: PrefabOverridePathDefinition
 ): PrefabOverridePath {
@@ -43,6 +52,20 @@ export function createPrefabOverridePath(
   });
 }
 
+/**
+ * Applies a replacement value at the targeted `PrefabOverridePath` within a schema-typed value.
+ *
+ * Navigates through nested struct fields, element keyed array items, and map keys.
+ * Validates the modified instance against the schema before returning.
+ *
+ * @typeParam T - The typed schema value.
+ * @param schema - The schema describing the root data structure.
+ * @param value - The base instance to clone and patch.
+ * @param path - The validated override path.
+ * @param replacement - The replacement value to inject at the path target.
+ * @returns A cloned and validated instance with the patch applied.
+ * @throws {Error} If the schema mismatch, path is unresolvable, element key is duplicated/missing, or schema validation fails.
+ */
 export function applyPrefabOverride<T>(
   schema: TypeSchema<T>,
   value: T,
@@ -50,9 +73,7 @@ export function applyPrefabOverride<T>(
   replacement: unknown
 ): T {
   if (path.schema !== schema.id) {
-    throw new Error(
-      `Prefab override schema "${path.schema}" does not match "${schema.id}".`
-    );
+    throw new Error(`Prefab override schema "${path.schema}" does not match "${schema.id}".`);
   }
   const cloned = cloneUnknown(value);
   let cursor: unknown = cloned;
@@ -89,9 +110,7 @@ export function applyPrefabOverride<T>(
       }
       const matches = cursor
         .map((entry, entryIndex) =>
-          isRecord(entry) && String(entry[keyField.name]) === segment.key
-            ? entryIndex
-            : -1
+          isRecord(entry) && String(entry[keyField.name]) === segment.key ? entryIndex : -1
         )
         .filter((entryIndex) => entryIndex >= 0);
       if (matches.length > 1) {
@@ -134,17 +153,10 @@ export function applyPrefabOverride<T>(
   return cloneUnknown(validation.value) as T;
 }
 
-function findField(
-  fields: readonly FieldSchema[],
-  id: string
-): FieldSchema | undefined {
+function findField(fields: readonly FieldSchema[], id: string): FieldSchema | undefined {
   return fields.find((field) => String(field.id) === String(id));
 }
 
 function invalidPath(index: number, reason: string): Error {
   return new Error(`Invalid Prefab override segment ${index}: ${reason}.`);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

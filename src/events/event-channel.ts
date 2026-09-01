@@ -1,4 +1,4 @@
-import { cloneUnknown, freezeUnknown } from '../schema/migration';
+import { cloneUnknown, freezeUnknown } from '../schema/utils';
 import type { EventChannelDiagnostics, EventChannelOptions, EventReaderOptions } from './types';
 
 interface EventEntry<T> {

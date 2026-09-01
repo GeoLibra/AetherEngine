@@ -9,11 +9,26 @@ import type {
   ValueType,
   ValueTypeDefinition
 } from './types';
-import { cloneUnknown, freezeUnknown } from './migration';
+import { FIELD_ID_PATTERN, SCHEMA_ID_PATTERN } from './constants';
+import { cloneUnknown, freezeUnknown, isRecord } from './utils';
 
-const SCHEMA_ID_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/;
-const FIELD_ID_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_.-]*$/;
-
+/**
+ * Validates, constructs, and deeply freezes a `TypeSchema<T>` contract.
+ *
+ * Enforces architectural invariants:
+ * - `SchemaId` must be a namespaced identifier (e.g. `aether.transform.local`).
+ * - `SchemaVersion` must be a positive integer.
+ * - Tag schemas cannot declare fields.
+ * - Component schemas must explicitly declare a storage strategy (`packed`, `object`, or `tag`).
+ * - Packed schemas must only contain fixed-size numeric, vector, matrix, entity reference, or nested packed struct fields.
+ * - Field IDs and field names must be unique within the schema.
+ * - Default values, if specified, must conform to the field's `ValueType`.
+ *
+ * @typeParam T - The runtime data type represented by this schema.
+ * @param definition - The raw authoring definition for the schema.
+ * @returns An immutable, frozen `TypeSchema<T>` contract ready for registration.
+ * @throws {Error} If any structural or type validation rule is violated.
+ */
 export function defineSchema<T>(definition: SchemaDefinition<T>): TypeSchema<T> {
   if (!SCHEMA_ID_PATTERN.test(definition.id)) {
     throw new Error(`Schema id "${definition.id}" must be a namespaced stable id.`);
@@ -114,13 +129,9 @@ function freezeValueType(schemaId: string, type: ValueTypeDefinition): ValueType
       const element = freezeValueType(schemaId, type.element);
       if (type.elementKey !== undefined) {
         if (element.kind !== 'struct') {
-          throw new Error(
-            `Schema "${schemaId}" array elementKey requires a struct element type.`
-          );
+          throw new Error(`Schema "${schemaId}" array elementKey requires a struct element type.`);
         }
-        const keyField = element.fields.find(
-          (field) => String(field.id) === type.elementKey
-        );
+        const keyField = element.fields.find((field) => String(field.id) === type.elementKey);
         if (!keyField || !isStableKeyType(keyField.type)) {
           throw new Error(
             `Schema "${schemaId}" array elementKey "${type.elementKey}" must name a string, enum, or integer struct field.`
@@ -130,9 +141,7 @@ function freezeValueType(schemaId: string, type: ValueTypeDefinition): ValueType
       return Object.freeze({
         kind: 'array' as const,
         element,
-        ...(type.elementKey === undefined
-          ? {}
-          : { elementKey: type.elementKey as FieldId })
+        ...(type.elementKey === undefined ? {} : { elementKey: type.elementKey as FieldId })
       });
     }
     case 'map':
@@ -199,7 +208,9 @@ function isValueOfType(value: unknown, type: ValueType): boolean {
     case 'array':
       return Array.isArray(value) && value.every((entry) => isValueOfType(entry, type.element));
     case 'map':
-      return isRecord(value) && Object.values(value).every((entry) => isValueOfType(entry, type.value));
+      return (
+        isRecord(value) && Object.values(value).every((entry) => isValueOfType(entry, type.value))
+      );
     case 'struct':
       return (
         isRecord(value) &&
@@ -240,8 +251,4 @@ function isNumericArray(
     value.length === length &&
     value.every((entry) => isNumberOfFormat(entry, format))
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

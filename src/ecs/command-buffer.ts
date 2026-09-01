@@ -1,4 +1,4 @@
-import { cloneUnknown } from '../schema/migration';
+import { cloneUnknown } from '../schema/utils';
 import { defineResource } from './resource';
 import { validateComponentInput } from './component';
 import type { CommandApplyResult, CommandEntity, ComponentBundle, WorldCommand } from './types';

@@ -1,4 +1,4 @@
-import { cloneUnknown, freezeUnknown } from './migration';
+import { cloneUnknown, freezeUnknown, isRecord } from './utils';
 import type {
   DecodedSchemaPayload,
   KnownSchemaPayload,
@@ -7,6 +7,9 @@ import type {
   ValidationIssue
 } from './types';
 
+/**
+ * Error thrown when a payload violates schema validation rules or is missing required fields.
+ */
 export class SchemaValidationError extends Error {
   readonly code = 'schema/validation-failed';
 
@@ -19,6 +22,19 @@ export class SchemaValidationError extends Error {
   }
 }
 
+/**
+ * Decodes a raw `SchemaPayload` into a strongly typed `KnownSchemaPayload<T>`.
+ *
+ * Populates missing optional fields with their defined defaults, validates required fields,
+ * runs the schema's runtime validator, and preserves unknown fields in the `extensions` bag
+ * to enable lossless round-trip serialization.
+ *
+ * @typeParam T - The decoded value type.
+ * @param schema - The target type schema to decode against.
+ * @param payload - The raw payload containing serialized fields.
+ * @returns The decoded and frozen known payload.
+ * @throws {SchemaValidationError} If required fields are missing or schema validation fails.
+ */
 export function decodeKnownPayload<T>(
   schema: TypeSchema<T>,
   payload: SchemaPayload
@@ -59,6 +75,16 @@ export function decodeKnownPayload<T>(
   });
 }
 
+/**
+ * Encodes a `DecodedSchemaPayload` back into a raw `SchemaPayload`.
+ *
+ * Only fields with `serialization === 'save'` are exported, and all preserved `extensions`
+ * are merged back into the serialized output.
+ *
+ * @typeParam T - The value type.
+ * @param decoded - The decoded schema payload (either known or opaque).
+ * @returns An immutable, frozen raw schema payload.
+ */
 export function encodeDecodedPayload<T>(decoded: DecodedSchemaPayload<T>): SchemaPayload {
   if (decoded.kind === 'opaque') {
     return freezePayload(decoded.payload);
@@ -81,6 +107,13 @@ export function encodeDecodedPayload<T>(decoded: DecodedSchemaPayload<T>): Schem
   });
 }
 
+/**
+ * Validates the structure of a `SchemaPayload` and returns a deeply frozen copy.
+ *
+ * @param payload - The payload to validate and freeze.
+ * @returns The frozen payload.
+ * @throws {Error} If schema name is invalid, version is non-positive, or fields is not an object.
+ */
 export function freezePayload(payload: SchemaPayload): SchemaPayload {
   if (
     typeof payload.schema !== 'string' ||
@@ -95,8 +128,4 @@ export function freezePayload(payload: SchemaPayload): SchemaPayload {
     version: payload.version,
     fields: freezeUnknown(cloneUnknown(payload.fields) as Record<string, unknown>)
   });
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

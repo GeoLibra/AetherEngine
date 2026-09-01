@@ -1,4 +1,4 @@
-import { cloneUnknown } from './migration';
+import { cloneUnknown, isRecord } from './utils';
 import type {
   DocumentReference,
   FieldSchema,
@@ -10,6 +10,16 @@ import type {
   ValueType
 } from './types';
 
+/**
+ * Traverses all entity and asset references declared in a schema-typed value and invokes a visitor callback.
+ *
+ * Supports arbitrary nesting within structs, arrays, and maps.
+ *
+ * @typeParam T - The typed schema value.
+ * @param schema - The schema describing field layouts and reference policies.
+ * @param value - The value instance to inspect.
+ * @param visitor - The callback invoked for each detected reference.
+ */
 export function visitSchemaReferences<T>(
   schema: TypeSchema<T>,
   value: T,
@@ -23,6 +33,19 @@ export function visitSchemaReferences<T>(
   }
 }
 
+/**
+ * Traverses and remaps all entity and asset references within a schema-typed value.
+ *
+ * Returns a cloned copy of `value` with updated references. If a required reference mapper returns `null`,
+ * an error is thrown.
+ *
+ * @typeParam T - The typed schema value.
+ * @param schema - The schema describing field layouts and reference policies.
+ * @param value - The value instance containing references to remap.
+ * @param mapper - The transformation callback invoked for each reference.
+ * @returns A structurally cloned value with remapped references.
+ * @throws {Error} If a required reference is cleared (`null` returned) or reference kind changes.
+ */
 export function mapSchemaReferences<T>(
   schema: TypeSchema<T>,
   value: T,
@@ -213,8 +236,4 @@ function arrayPath(index: number): ReferencePathSegment {
 
 function mapPath(key: string): ReferencePathSegment {
   return Object.freeze({ kind: 'map', key });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

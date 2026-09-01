@@ -1,44 +1,52 @@
+export type { FieldId, SchemaId, SchemaKind, SchemaStorage, SchemaVersion } from './identity';
+
+export type { ValueType, ValueTypeDefinition } from './value-types';
+
 export type {
-  DecodedSchemaPayload,
-  DocumentReference,
   EditorHint,
   FieldComparison,
   FieldDefinition,
-  FieldId,
   FieldSchema,
   FieldSerialization,
-  KnownSchemaPayload,
+  ReferencePolicy,
+  ReplicationPolicy
+} from './fields';
+
+export type { ValidationIssue, ValidationResult } from './validation';
+
+export type {
+  SchemaDefinition,
+  SchemaRegistration,
+  SchemaView,
+  SchemaViewKind,
+  TypeSchema
+} from './definition';
+
+export type {
   MigrationResult,
   MigrationStepResult,
   MigrationWarning,
+  SchemaMigration,
+  SchemaMigrationRegistration
+} from './migration';
+
+export type {
+  DecodedSchemaPayload,
+  KnownSchemaPayload,
   OpaqueSchemaPayload,
-  PrefabOverridePath,
-  PrefabOverridePathDefinition,
-  PrefabPathSegment,
+  SchemaPayload
+} from './payload';
+
+export type {
+  DocumentReference,
   ReferenceMapper,
   ReferencePathSegment,
-  ReferencePolicy,
   ReferenceResolutionIssue,
   ReferenceResolver,
   ReferenceTransactionEntry,
   ReferenceVisit,
   ReferenceVisitor,
-  ReplicationPolicy,
-  ResolvedReferenceEntry,
-  SchemaDefinition,
-  SchemaId,
-  SchemaKind,
-  SchemaMigration,
-  SchemaMigrationRegistration,
-  SchemaPayload,
-  SchemaRegistration,
-  SchemaStorage,
-  SchemaVersion,
-  SchemaView,
-  SchemaViewKind,
-  TypeSchema,
-  ValidationIssue,
-  ValidationResult,
-  ValueType,
-  ValueTypeDefinition
-} from './schema-types';
+  ResolvedReferenceEntry
+} from './references';
+
+export type { PrefabOverridePath, PrefabOverridePathDefinition, PrefabPathSegment } from './prefab';
