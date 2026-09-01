@@ -7,6 +7,10 @@ import { renderSuiteCommand, runBenchmarkPlan } from '../../benchmark/framework/
 import type { BenchmarkManifest } from '../../benchmark/framework/types';
 import { validateManifest } from '../../benchmark/framework/validation';
 
+function resolveAffectedBenchmarkSuites(changedFiles: readonly string[]): readonly string[] {
+  return routeChangedFiles(BENCHMARK_MANIFEST, changedFiles).suiteIds;
+}
+
 describe('benchmark manifest', () => {
   test('registers ECS while keeping future performance domains visible', () => {
     const result = validateManifest(BENCHMARK_MANIFEST);
@@ -108,6 +112,20 @@ describe('changed-file routing', () => {
     expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/shader/compiler.ts']).suiteIds).toEqual([
       'shader-system'
     ]);
+
+    expect(
+      resolveAffectedBenchmarkSuites(['engine/design/v2/08-tooling/03-build-release.md'])
+    ).toEqual(['shader-system']);
+
+    expect(resolveAffectedBenchmarkSuites(['tools/naga-shader-validator/src/main.rs'])).toEqual([
+      'shader-system'
+    ]);
+
+    expect(
+      resolveAffectedBenchmarkSuites([
+        'engine/design/v2/05-assets-scene/06-render-artifact-package.md'
+      ])
+    ).toEqual(expect.arrayContaining(['shader-system', 'asset-pipeline']));
   });
 
   test('routes Runtime and Jobs to their shared deterministic suite', () => {
