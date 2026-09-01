@@ -1,14 +1,16 @@
 import { describe, expect, test } from 'vitest';
 import {
-  InMemoryShaderSourceResolver,
   ShaderBindingReflectionError,
   ShaderParameterWriter,
   createBufferLayoutManifest,
   createShaderBindingManifest,
-  parseFluxShader,
-  resolveShaderSource,
   type ShaderModuleIR
 } from '../../src/shader';
+import {
+  InMemoryShaderSourceResolver,
+  parseFluxShader,
+  resolveShaderSource
+} from '../../src/shader/frontend';
 
 const SOURCE_URI = 'asset://shader/material-bindings.flux';
 

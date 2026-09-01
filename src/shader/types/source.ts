@@ -42,6 +42,7 @@ export type {
 } from './authoring';
 
 export type {
+  ShaderBindingKind,
   CookedShaderToolchainInfo,
   CookedShaderSourceInfo,
   CookedShaderBinding,

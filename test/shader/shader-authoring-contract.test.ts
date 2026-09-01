@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import {
+  assertValidCanonicalShaderSourceUri,
   defineShaderAuthoringSource,
+  isValidCanonicalShaderSourceUri,
   validateWgslShaderMetadata
 } from '../../src/shader/authoring';
 import { decodeCookedShaderRuntimeArtifact } from '../../src/shader/artifact';
 import type { CookedShaderRuntimeArtifact, WgslShaderMetadata } from '../../src/shader/types';
 
-describe('ShaderAuthoringSource contracts', () => {
+describe('ShaderAuthoringSource contracts and URI validation', () => {
   test('creates default WGSL authoring source with canonical URI', () => {
     const source = defineShaderAuthoringSource({ uri: 'asset://shaders/lit.wgsl' });
     expect(source).toEqual({
@@ -27,6 +29,26 @@ describe('ShaderAuthoringSource contracts', () => {
       uri: 'package://engine/standard-lit.flux',
       languageVersion: 'flux-1'
     });
+  });
+
+  test('rejects relative traversal, query, fragment, backslash, percent-encoding, or empty segments in canonical URIs', () => {
+    expect(isValidCanonicalShaderSourceUri('asset://shaders/common.wgsl')).toBe(true);
+    expect(isValidCanonicalShaderSourceUri('package://engine/standard-lit.wgsl')).toBe(true);
+
+    // Forbidden variants
+    expect(isValidCanonicalShaderSourceUri('asset://a/../b.wgsl')).toBe(false);
+    expect(isValidCanonicalShaderSourceUri('asset://a/./b.wgsl')).toBe(false);
+    expect(isValidCanonicalShaderSourceUri('asset://a//b.wgsl')).toBe(false);
+    expect(isValidCanonicalShaderSourceUri('asset://a/b.wgsl?version=1')).toBe(false);
+    expect(isValidCanonicalShaderSourceUri('asset://a/b.wgsl#section')).toBe(false);
+    expect(isValidCanonicalShaderSourceUri('asset://a\\b.wgsl')).toBe(false);
+    expect(isValidCanonicalShaderSourceUri('asset://a%20b.wgsl')).toBe(false);
+    expect(isValidCanonicalShaderSourceUri('http://example.com/shader.wgsl')).toBe(false);
+    expect(isValidCanonicalShaderSourceUri('/local/path.wgsl')).toBe(false);
+
+    expect(() => assertValidCanonicalShaderSourceUri('asset://a/../b.wgsl')).toThrow(
+      /canonical URI/i
+    );
   });
 
   test('rejects local file paths or invalid URIs without canonical scheme', () => {
@@ -204,6 +226,60 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
     ).toThrow(/duplicate binding/i);
   });
 
+  test('rejects entry point binding not declared in global bindings', () => {
+    const undeclaredBinding = { ...validBinding, binding: 1 };
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        entryPoints: [
+          {
+            name: 'vertexMain',
+            stage: 'vertex',
+            bindings: [undeclaredBinding]
+          }
+        ]
+      })
+    ).toThrow(/not declared in global bindings/i);
+  });
+
+  test('rejects entry point binding that does not match global binding definition', () => {
+    const mismatchedBinding = { ...validBinding, name: 'otherName' };
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        entryPoints: [
+          {
+            name: 'vertexMain',
+            stage: 'vertex',
+            bindings: [mismatchedBinding]
+          }
+        ]
+      })
+    ).toThrow(/does not match/i);
+  });
+
+  test('rejects duplicate global bindings', () => {
+    const duplicateSlot = { ...validBinding, name: 'otherScene' };
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        bindings: [validBinding, duplicateSlot]
+      })
+    ).toThrow(/duplicate global binding/i);
+  });
+
+  test('rejects non-64-character hex content hash', () => {
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        source: {
+          ...validArtifact.source,
+          contentHash: 'invalid-hash'
+        }
+      })
+    ).toThrow(/64-character/i);
+  });
+
   test('rejects non-canonical source URI', () => {
     expect(() =>
       decodeCookedShaderRuntimeArtifact({
@@ -214,5 +290,20 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
         }
       })
     ).toThrow(/canonical URI/i);
+  });
+
+  test('rejects unexpected GLSL module keys not matching declared entry points', () => {
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        modules: {
+          ...validArtifact.modules,
+          glslEs300: {
+            ...validArtifact.modules.glslEs300,
+            'vertex:unknownEntry': '#version 300 es\nvoid main() {}'
+          }
+        }
+      })
+    ).toThrow(/unexpected glsl/i);
   });
 });

@@ -1,22 +1,23 @@
 /**
- * @file CLI script to cook WGSL or experimental FluxSL shader into deterministic JSON artifact.
+ * @file CLI script to cook WGSL shader into deterministic JSON artifact.
  *
  * Usage:
- *   vite-node --script scripts/cook-wgsl-shader.ts -- <file> [--source-uri <uri>] [--metadata <file>] [--output <file>] [--allow-experimental-flux]
+ *   vite-node --script scripts/cook-wgsl-shader.ts -- <file.wgsl> [--source-uri <uri>] [--metadata <file>] [--output <file>]
  */
 
 import { existsSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
-import { defineShaderAuthoringSource } from '../src/shader/authoring';
+import {
+  assertValidCanonicalShaderSourceUri,
+  defineShaderAuthoringSource
+} from '../src/shader/authoring';
 import { cookAuthoredShader } from '../tools/shader-cooker/authoring-dispatch';
-import type { ShaderSourceKind } from '../src/shader/types';
 
 interface CookCliArgs {
   readonly inputPath: string;
   readonly sourceUri: string;
   readonly metadataPath?: string | undefined;
   readonly outputPath?: string | undefined;
-  readonly allowExperimentalFlux: boolean;
 }
 
 function parseCliArgs(argv: readonly string[]): CookCliArgs {
@@ -24,7 +25,6 @@ function parseCliArgs(argv: readonly string[]): CookCliArgs {
   let sourceUri = '';
   let metadataPath: string | undefined;
   let outputPath: string | undefined;
-  let allowExperimentalFlux = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -36,8 +36,6 @@ function parseCliArgs(argv: readonly string[]): CookCliArgs {
       if (i + 1 < argv.length) {
         outputPath = argv[++i]!;
       }
-    } else if (arg === '--allow-experimental-flux') {
-      allowExperimentalFlux = true;
     } else if (arg === '--input' && i + 1 < argv.length) {
       inputPath = argv[++i]!;
     } else if (!arg.startsWith('-') && !inputPath) {
@@ -47,7 +45,7 @@ function parseCliArgs(argv: readonly string[]): CookCliArgs {
 
   if (!inputPath) {
     throw new Error(
-      'Missing required input shader file.\nUsage: vite-node --script scripts/cook-wgsl-shader.ts -- <file> [--source-uri <uri>] [--metadata <meta>] [--output <file>]'
+      'Missing required input shader file.\nUsage: vite-node --script scripts/cook-wgsl-shader.ts -- <file.wgsl> [--source-uri <uri>] [--metadata <meta>] [--output <file>]'
     );
   }
 
@@ -56,37 +54,36 @@ function parseCliArgs(argv: readonly string[]): CookCliArgs {
     throw new Error(`Input shader file not found at: ${resolvedInput}`);
   }
 
+  if (!resolvedInput.endsWith('.wgsl')) {
+    throw new Error(
+      `[cook-wgsl-shader] Input shader file must have a .wgsl extension, received: "${inputPath}".`
+    );
+  }
+
   const resolvedUri = sourceUri || `asset://shaders/${basename(inputPath)}`;
+  assertValidCanonicalShaderSourceUri(resolvedUri);
 
   return {
     inputPath: resolvedInput,
     sourceUri: resolvedUri,
     metadataPath: metadataPath ? resolve(process.cwd(), metadataPath) : undefined,
-    outputPath: outputPath ? resolve(process.cwd(), outputPath) : undefined,
-    allowExperimentalFlux
+    outputPath: outputPath ? resolve(process.cwd(), outputPath) : undefined
   };
 }
 
 export async function main(): Promise<void> {
   const args = parseCliArgs(process.argv.slice(2));
-  const isFlux = args.inputPath.endsWith('.flux');
-  const kind: ShaderSourceKind = isFlux ? 'flux-experimental' : 'wgsl';
 
   const source = defineShaderAuthoringSource({
-    kind,
+    kind: 'wgsl',
     uri: args.sourceUri
   });
 
-  const artifact = await cookAuthoredShader(
-    {
-      source,
-      sourcePath: args.inputPath,
-      ...(args.metadataPath !== undefined ? { metadataPath: args.metadataPath } : {})
-    },
-    {
-      ...(args.allowExperimentalFlux ? { allowExperimentalFlux: true } : {})
-    }
-  );
+  const artifact = await cookAuthoredShader({
+    source,
+    sourcePath: args.inputPath,
+    ...(args.metadataPath !== undefined ? { metadataPath: args.metadataPath } : {})
+  });
 
   const json = JSON.stringify(artifact, null, 2);
 

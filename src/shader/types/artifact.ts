@@ -23,13 +23,24 @@ export interface CookedShaderSourceInfo {
 }
 
 /**
+ * Allowed reflected binding kinds in cooked runtime artifacts.
+ */
+export type ShaderBindingKind =
+  | 'uniform-buffer'
+  | 'storage-buffer'
+  | 'texture'
+  | 'sampler'
+  | 'storage-texture'
+  | 'comparison-sampler';
+
+/**
  * Reflected binding item in a cooked shader artifact.
  */
 export interface CookedShaderBinding {
   readonly group: number;
   readonly binding: number;
   readonly name: string;
-  readonly kind: string;
+  readonly kind: ShaderBindingKind;
   readonly addressSpace?: string;
   readonly access?: string;
   readonly typeName?: string;

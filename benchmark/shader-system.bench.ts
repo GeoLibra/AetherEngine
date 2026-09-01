@@ -1,11 +1,11 @@
 import { bench, expect } from 'vitest';
+import { createShaderBindingManifest } from '../src/shader';
 import {
   InMemoryShaderSourceResolver,
-  ShaderCompiler,
-  createShaderBindingManifest,
   parseFluxShader,
   resolveShaderSource
-} from '../src/shader';
+} from '../src/shader/frontend';
+import { ShaderCompiler } from '../src/shader/pipeline/compiler';
 import { runBindingLayoutScenario } from './shader-system/binding-layout-scenario';
 
 const structFields = Array.from({ length: 64 }, (_, index) => `field${index}: vec4<f32>`).join(

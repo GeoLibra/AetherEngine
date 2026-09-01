@@ -1,7 +1,6 @@
 import type { WebGL2ShaderTranslationPort } from '../../rhi/webgl2/types';
 import { remapVertexClipDepth } from '../../rhi/webgl2/pipeline/clip-depth';
 import { emitGlslEsModule } from '../backends/glsl';
-import { InMemoryShaderSourceResolver } from '../frontend/source-resolver';
 import type { ShaderSourceRef, ShaderSourceResolver } from '../types';
 import {
   STANDARD_LIT_SHADER_GENERATED_MODULE,
@@ -20,14 +19,11 @@ export const STANDARD_LIT_SHADER_SOURCE: ShaderSourceRef = Object.freeze({
 export function createStandardLitShaderResolver(
   fallback?: ShaderSourceResolver
 ): ShaderSourceResolver {
-  const authored = new InMemoryShaderSourceResolver({
-    [STANDARD_LIT_SHADER_SOURCE.uri]: STANDARD_LIT_SHADER_SOURCE_TEXT
-  });
-  if (!fallback) return authored;
   return Object.freeze({
     async load(uri: string): Promise<string> {
-      if (uri === STANDARD_LIT_SHADER_SOURCE.uri) return authored.load(uri);
-      return fallback.load(uri);
+      if (uri === STANDARD_LIT_SHADER_SOURCE.uri) return STANDARD_LIT_SHADER_SOURCE_TEXT;
+      if (fallback) return fallback.load(uri);
+      throw new Error(`Shader source not found: ${uri}`);
     }
   });
 }

@@ -2,6 +2,7 @@
  * @file Cooked runtime artifact decoding and validation functions.
  */
 
+import { assertValidCanonicalShaderSourceUri } from './authoring';
 import type {
   CookedShaderBinding,
   CookedShaderEntryPoint,
@@ -9,11 +10,35 @@ import type {
   CookedShaderRuntimeArtifact,
   CookedShaderSourceInfo,
   CookedShaderToolchainInfo,
+  ShaderBindingKind,
   ShaderSourceKind
 } from './types';
 
-const CANONICAL_URI_PATTERN = /^(?:asset|package):\/\/.+/u;
 const VALID_STAGES = new Set(['vertex', 'fragment', 'compute']);
+
+const VALID_BINDING_KINDS = new Set<ShaderBindingKind>([
+  'uniform-buffer',
+  'storage-buffer',
+  'texture',
+  'sampler',
+  'storage-texture',
+  'comparison-sampler'
+]);
+
+const HASH_64_HEX_PATTERN = /^[0-9a-f]{64}$/u;
+const GLSL_KEY_PATTERN = /^(vertex|fragment):[a-zA-Z0-9_]+$/u;
+
+function bindingsAreEqual(a: CookedShaderBinding, b: CookedShaderBinding): boolean {
+  return (
+    a.group === b.group &&
+    a.binding === b.binding &&
+    a.name === b.name &&
+    a.kind === b.kind &&
+    a.addressSpace === b.addressSpace &&
+    a.access === b.access &&
+    a.typeName === b.typeName
+  );
+}
 
 /**
  * Decodes and validates untrusted cooker output into an immutable CookedShaderRuntimeArtifact.
@@ -81,17 +106,19 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
   }
   const sourceRaw = raw.source as Record<string, unknown>;
   const sourceUri = typeof sourceRaw.sourceUri === 'string' ? sourceRaw.sourceUri.trim() : '';
-  if (!sourceUri || !CANONICAL_URI_PATTERN.test(sourceUri)) {
+  assertValidCanonicalShaderSourceUri(sourceUri);
+
+  const contentHash = typeof sourceRaw.contentHash === 'string' ? sourceRaw.contentHash.trim() : '';
+  if (!HASH_64_HEX_PATTERN.test(contentHash)) {
     throw new Error(
-      `Artifact sourceUri must be a canonical URI (asset:// or package://), received: "${sourceUri}"`
+      `Artifact source contentHash must be a 64-character lowercase hexadecimal hash, received: "${contentHash}".`
     );
   }
 
-  const contentHash = typeof sourceRaw.contentHash === 'string' ? sourceRaw.contentHash.trim() : '';
-  if (!contentHash) throw new Error('Artifact source contentHash must be a non-empty string.');
-
   const byteLength = typeof sourceRaw.byteLength === 'number' ? sourceRaw.byteLength : -1;
-  if (byteLength < 0) throw new Error('Artifact source byteLength must be a non-negative number.');
+  if (!Number.isInteger(byteLength) || byteLength < 0) {
+    throw new Error('Artifact source byteLength must be a non-negative integer.');
+  }
 
   const frozenSource: CookedShaderSourceInfo = Object.freeze({
     sourceUri,
@@ -105,24 +132,64 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
     const bindingObj = b as Record<string, unknown>;
     const group = typeof bindingObj.group === 'number' ? bindingObj.group : -1;
     const binding = typeof bindingObj.binding === 'number' ? bindingObj.binding : -1;
-    const name = typeof bindingObj.name === 'string' ? bindingObj.name : '';
-    const kind = typeof bindingObj.kind === 'string' ? bindingObj.kind : '';
-    if (group < 0 || binding < 0) {
-      throw new Error(`Invalid group/binding index (${group}, ${binding}).`);
+    const name = typeof bindingObj.name === 'string' ? bindingObj.name.trim() : '';
+    const kindRaw = typeof bindingObj.kind === 'string' ? bindingObj.kind : '';
+
+    if (!Number.isInteger(group) || group < 0 || !Number.isInteger(binding) || binding < 0) {
+      throw new Error(
+        `[artifact-binding-invalid] Invalid group/binding index (${group}, ${binding}).`
+      );
     }
-    if (!name) throw new Error('Binding must have a non-empty name.');
+    if (!name) {
+      throw new Error('[artifact-binding-invalid] Binding must have a non-empty name.');
+    }
+    if (!VALID_BINDING_KINDS.has(kindRaw as ShaderBindingKind)) {
+      throw new Error(`[artifact-binding-invalid] Unsupported binding kind "${kindRaw}".`);
+    }
+    const kind = kindRaw as ShaderBindingKind;
+
+    const addressSpace =
+      typeof bindingObj.addressSpace === 'string' ? bindingObj.addressSpace : undefined;
+    const access = typeof bindingObj.access === 'string' ? bindingObj.access : undefined;
+    const typeName = typeof bindingObj.typeName === 'string' ? bindingObj.typeName : undefined;
+
     return Object.freeze({
-      ...bindingObj,
       group,
       binding,
       name,
-      kind
+      kind,
+      ...(addressSpace !== undefined ? { addressSpace } : {}),
+      ...(access !== undefined ? { access } : {}),
+      ...(typeName !== undefined ? { typeName } : {})
     });
   }
 
   // Global Bindings
-  const rawBindings = Array.isArray(raw.bindings) ? raw.bindings : [];
-  const frozenGlobalBindings = Object.freeze(rawBindings.map(decodeBinding));
+  if (!Array.isArray(raw.bindings)) {
+    throw new Error('Artifact must specify a bindings array.');
+  }
+
+  const globalBindingMap = new Map<string, CookedShaderBinding>();
+  const globalBindingNames = new Set<string>();
+  const frozenGlobalBindings: CookedShaderBinding[] = [];
+
+  for (const b of raw.bindings) {
+    const decoded = decodeBinding(b);
+    const key = `${decoded.group}:${decoded.binding}`;
+    if (globalBindingMap.has(key)) {
+      throw new Error(
+        `[artifact-binding-invalid] Duplicate global binding for (group ${decoded.group}, binding ${decoded.binding}).`
+      );
+    }
+    if (globalBindingNames.has(decoded.name)) {
+      throw new Error(
+        `[artifact-binding-invalid] Duplicate global binding name "${decoded.name}".`
+      );
+    }
+    globalBindingMap.set(key, decoded);
+    globalBindingNames.add(decoded.name);
+    frozenGlobalBindings.push(decoded);
+  }
 
   // EntryPoints
   if (!Array.isArray(raw.entryPoints) || raw.entryPoints.length === 0) {
@@ -131,6 +198,7 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
 
   const frozenEntryPoints: CookedShaderEntryPoint[] = [];
   const entryNames = new Set<string>();
+  const declaredEntryPointsMap = new Map<string, 'vertex' | 'fragment' | 'compute'>();
 
   for (const ep of raw.entryPoints) {
     if (!ep || typeof ep !== 'object') throw new Error('EntryPoint must be an object.');
@@ -145,6 +213,8 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
       throw new Error(`Invalid stage "${stage}" in entryPoint "${name}".`);
     }
 
+    declaredEntryPointsMap.set(name, stage as 'vertex' | 'fragment' | 'compute');
+
     const epBindingsRaw = Array.isArray(epObj.bindings) ? epObj.bindings : [];
     const seenBindings = new Set<string>();
     const frozenEpBindings: CookedShaderBinding[] = [];
@@ -154,10 +224,23 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
       const key = `${decoded.group}:${decoded.binding}`;
       if (seenBindings.has(key)) {
         throw new Error(
-          `Duplicate binding (group ${decoded.group}, binding ${decoded.binding}) in entry point "${name}".`
+          `[artifact-binding-invalid] Duplicate binding (group ${decoded.group}, binding ${decoded.binding}) in entry point "${name}".`
         );
       }
       seenBindings.add(key);
+
+      const matchingGlobal = globalBindingMap.get(key);
+      if (!matchingGlobal) {
+        throw new Error(
+          `[artifact-binding-invalid] Entry point "${name}" references binding (group ${decoded.group}, binding ${decoded.binding}) which is not declared in global bindings.`
+        );
+      }
+      if (!bindingsAreEqual(decoded, matchingGlobal)) {
+        throw new Error(
+          `[artifact-binding-invalid] Entry point "${name}" binding (group ${decoded.group}, binding ${decoded.binding}) does not match corresponding global binding.`
+        );
+      }
+
       frozenEpBindings.push(decoded);
     }
 
@@ -187,9 +270,24 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
 
   const frozenGlsl: Record<string, string> = {};
   for (const [key, code] of Object.entries(glslEs300Raw)) {
-    if (typeof code === 'string') {
-      frozenGlsl[key] = code;
+    if (typeof code !== 'string' || !code.trim()) {
+      throw new Error(
+        `[artifact-module-invalid] GLSL ES 300 module for key "${key}" must be a non-empty string.`
+      );
     }
+    if (!GLSL_KEY_PATTERN.test(key)) {
+      throw new Error(
+        `[artifact-module-invalid] Invalid GLSL ES 300 module key format "${key}". Expected stage:entryName.`
+      );
+    }
+    const [keyStage, keyEntry] = key.split(':');
+    const declaredStage = declaredEntryPointsMap.get(keyEntry!);
+    if (!declaredStage || declaredStage !== keyStage) {
+      throw new Error(
+        `[artifact-module-invalid] Unexpected GLSL ES 300 module key "${key}" does not match declared entry point "${keyEntry}".`
+      );
+    }
+    frozenGlsl[key] = code;
   }
 
   // Verify that every vertex / fragment entry point has a corresponding GLSL ES 300 module
@@ -217,7 +315,7 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
     toolchain: frozenToolchain,
     source: frozenSource,
     entryPoints: Object.freeze(frozenEntryPoints),
-    bindings: frozenGlobalBindings,
+    bindings: Object.freeze(frozenGlobalBindings),
     modules: frozenModules
   });
 }

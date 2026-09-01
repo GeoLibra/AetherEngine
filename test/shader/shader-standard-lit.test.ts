@@ -4,13 +4,13 @@ import {
   STANDARD_LIT_SHADER_MODULE,
   STANDARD_LIT_SHADER_SOURCE,
   STANDARD_LIT_WEBGL2_TRANSLATOR,
-  AETHER_SHADER_STANDARD_LIBRARY_VERSION,
-  cookShaderArtifact,
   createStandardLitShaderResolver,
   createShaderBindingManifest,
   emitGlslEsModule,
   emitWgslModule
 } from '../../src';
+import { AETHER_SHADER_STANDARD_LIBRARY_VERSION } from '../../src/shader/frontend/standard-library';
+import { cookShaderArtifact } from '../../src/shader/pipeline/cook';
 
 describe('standard-lit built-in shader', () => {
   test('cooks the authored FluxSL source into the published built-in module', async () => {

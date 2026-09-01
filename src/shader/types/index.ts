@@ -7,6 +7,7 @@ export type {
   ShaderIncludeReference,
   ResolvedShaderSource,
   ShaderSourceKind,
+  ShaderBindingKind,
   ShaderAuthoringSource,
   DefineShaderAuthoringSourceOptions,
   WgslEntryMetadata,
