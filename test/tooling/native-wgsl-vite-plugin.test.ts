@@ -245,6 +245,76 @@ describe('nativeWgslPlugin for Vite', () => {
     expect(codeFinal).toContain('0000000000000000000000000000000000000000000000000000000000000002');
   });
 
+  test('stale successful HMR completion does not invalidate after a newer revision publishes', async () => {
+    let resolveFirstCook: (artifact: CookedShaderRuntimeArtifact) => void = () => {};
+    const firstCook = new Promise<CookedShaderRuntimeArtifact>((resolveCook) => {
+      resolveFirstCook = resolveCook;
+    });
+    let cookCount = 0;
+    const mockCooker = {
+      cook: vi.fn().mockImplementation(async () => {
+        cookCount += 1;
+        if (cookCount === 1) return firstCook;
+        return sampleArtifact;
+      })
+    } as unknown as NativeWgslCooker;
+    const plugin = nativeWgslPlugin({ cooker: mockCooker });
+    const mockModule = { id: `\0aether-shader-artifact:${fixtureWgsl}` };
+    const invalidateModule = vi.fn();
+    const mockServer = {
+      moduleGraph: {
+        getModuleById: vi.fn().mockReturnValue(mockModule),
+        invalidateModule
+      },
+      config: { logger: { error: vi.fn() } }
+    };
+    const context = { file: fixtureWgsl, server: mockServer, modules: [mockModule] };
+
+    // @ts-expect-error test hook call
+    const staleUpdate = plugin.handleHotUpdate(context);
+    // @ts-expect-error test hook call
+    const currentUpdate = plugin.handleHotUpdate(context);
+
+    await expect(currentUpdate).resolves.toEqual([mockModule]);
+    resolveFirstCook(sampleArtifact);
+    await expect(staleUpdate).resolves.toEqual([]);
+    expect(invalidateModule).toHaveBeenCalledTimes(1);
+  });
+
+  test('stale failed HMR completion does not report an obsolete diagnostic', async () => {
+    let rejectFirstCook: (error: Error) => void = () => {};
+    const firstCook = new Promise<CookedShaderRuntimeArtifact>((_resolveCook, rejectCook) => {
+      rejectFirstCook = rejectCook;
+    });
+    let cookCount = 0;
+    const mockCooker = {
+      cook: vi.fn().mockImplementation(async () => {
+        cookCount += 1;
+        if (cookCount === 1) return firstCook;
+        return sampleArtifact;
+      })
+    } as unknown as NativeWgslCooker;
+    const plugin = nativeWgslPlugin({ cooker: mockCooker });
+    const mockModule = { id: `\0aether-shader-artifact:${fixtureWgsl}` };
+    const logger = { error: vi.fn() };
+    const mockServer = {
+      moduleGraph: {
+        getModuleById: vi.fn().mockReturnValue(mockModule),
+        invalidateModule: vi.fn()
+      },
+      config: { logger }
+    };
+    const context = { file: fixtureWgsl, server: mockServer, modules: [mockModule] };
+
+    // @ts-expect-error test hook call
+    const staleUpdate = plugin.handleHotUpdate(context);
+    // @ts-expect-error test hook call
+    await plugin.handleHotUpdate(context);
+    rejectFirstCook(new Error('obsolete parse error'));
+    await expect(staleUpdate).resolves.toEqual([]);
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
   test('runs programmatic Vite build and outputs pure artifact with no compiler/tooling symbols', async () => {
     const { build } = await import('vite');
     const fixtureDir = resolve(__dirname, '../fixtures/native-wgsl-plugin');
