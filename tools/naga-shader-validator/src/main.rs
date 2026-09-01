@@ -1,6 +1,7 @@
 mod cli;
 mod diagnostics;
 mod protocol;
+mod reflection;
 mod version;
 
 use cli::{Command, CookArgumentError, CookCommand};
@@ -9,6 +10,7 @@ use diagnostics::{
     INVALID_SOURCE_URI, SOURCE_READ_FAILED, WGSL_VALIDATION_FAILED,
 };
 use protocol::CookDiagnostic;
+use reflection::reflect_module;
 use std::{env, fs, process};
 
 use naga::{
@@ -66,7 +68,7 @@ fn run_cook(command: CookCommand) -> Result<(), CookDiagnostic> {
     })?;
     let module = wgsl::parse_str(&source)
         .map_err(|error| parse_error(&error, &source, &command.source_uri))?;
-    Validator::new(ValidationFlags::all(), Capabilities::all())
+    let info = Validator::new(ValidationFlags::all(), Capabilities::all())
         .validate(&module)
         .map_err(|error| {
             let location = error.location(&source);
@@ -80,6 +82,10 @@ fn run_cook(command: CookCommand) -> Result<(), CookDiagnostic> {
             diagnostic.backend_stage = Some("validation".to_owned());
             diagnostic
         })?;
+    reflect_module(&module, &info).map_err(|mut diagnostic| {
+        diagnostic.source_uri = command.source_uri.clone();
+        diagnostic
+    })?;
 
     Err(cook_error(
         BACKEND_EMISSION_FAILED,

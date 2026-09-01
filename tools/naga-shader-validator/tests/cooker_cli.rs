@@ -180,3 +180,33 @@ fn invalid_wgsl_semantics_reports_validation_failure_without_local_path() {
     );
     assert_path_is_sanitized(&output, directory.path());
 }
+
+#[test]
+fn unsupported_bound_resource_reports_sanitized_reflection_failure() {
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("unsupported-resource.wgsl");
+    fs::write(
+        &path,
+        "@group(0) @binding(0) var image: texture_storage_2d<rgba8unorm, write>;\n\
+         @compute @workgroup_size(1) fn main() {\n\
+             textureStore(image, vec2<i32>(0), vec4<f32>(0.0));\n\
+         }\n",
+    )
+    .unwrap();
+    let output = run(&[
+        "cook",
+        path.to_str().unwrap(),
+        "--source-uri",
+        "asset://shader/unsupported-resource.wgsl",
+    ]);
+
+    assert!(!output.status.success());
+    let diagnostic = diagnostic(&output);
+    assert_eq!(diagnostic["code"], "reflection-failed");
+    assert_eq!(
+        diagnostic["sourceUri"],
+        "asset://shader/unsupported-resource.wgsl"
+    );
+    assert_eq!(diagnostic["backendStage"], "reflection");
+    assert_path_is_sanitized(&output, directory.path());
+}
