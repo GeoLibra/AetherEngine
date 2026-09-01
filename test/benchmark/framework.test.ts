@@ -105,6 +105,10 @@ describe('changed-file routing', () => {
   });
 
   test('routes Shader work to the dedicated semantic suite', () => {
+    const shaderSuite = BENCHMARK_MANIFEST.suites.find((suite) => suite.id === 'shader-system');
+    expect(shaderSuite?.description).toBe(
+      'WGSL and FluxSL authoring, reflection, backend cooking, ABI, variant, and cache paths.'
+    );
     expect(
       routeChangedFiles(BENCHMARK_MANIFEST, ['engine/design/v2/04-rendering/02-shader-system.md'])
         .suiteIds
@@ -118,6 +122,9 @@ describe('changed-file routing', () => {
     ).toEqual(['shader-system']);
 
     expect(resolveAffectedBenchmarkSuites(['tools/naga-shader-validator/src/main.rs'])).toEqual([
+      'shader-system'
+    ]);
+    expect(resolveAffectedBenchmarkSuites(['tools/naga-shader-validator/'])).toEqual([
       'shader-system'
     ]);
 

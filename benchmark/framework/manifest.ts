@@ -282,7 +282,8 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
     }),
     Object.freeze({
       id: 'shader-system',
-      description: 'FluxSL source closure, typed parsing, ABI reflection, variant and cache paths.',
+      description:
+        'WGSL and FluxSL authoring, reflection, backend cooking, ABI, variant, and cache paths.',
       domainIds: Object.freeze(['rendering']),
       pathPrefixes: Object.freeze([
         'benchmark/shader-system.bench.ts',
