@@ -1,0 +1,248 @@
+/**
+ * @file Closed authoring source construction and metadata validation functions.
+ */
+
+import type {
+  DefineShaderAuthoringSourceOptions,
+  ShaderAuthoringSource,
+  ShaderSourceKind,
+  WgslCapabilityRequirement,
+  WgslCookPolicy,
+  WgslEntryMetadata,
+  WgslImportRef,
+  WgslMaterialBindingMetadata,
+  WgslShaderMetadata,
+  WgslVariantDimension
+} from './types';
+
+const CANONICAL_URI_PATTERN = /^(?:asset|package):\/\/.+/u;
+
+/**
+ * Defines and validates an immutable ShaderAuthoringSource.
+ *
+ * @param options Source parameters. `kind` defaults to `'wgsl'`.
+ * @returns An immutable, validated ShaderAuthoringSource.
+ * @throws {Error} When URI is not a canonical `asset://` or `package://` URI or when source kind is unsupported.
+ */
+export function defineShaderAuthoringSource(
+  options: DefineShaderAuthoringSourceOptions
+): ShaderAuthoringSource {
+  if (!options || typeof options !== 'object') {
+    throw new Error('Shader authoring source options must be a non-null object.');
+  }
+
+  const { uri, kind = 'wgsl', languageVersion } = options;
+
+  if (typeof uri !== 'string' || !CANONICAL_URI_PATTERN.test(uri)) {
+    throw new Error(
+      `Shader authoring source URI must be a canonical URI starting with 'asset://' or 'package://', received: "${uri}"`
+    );
+  }
+
+  const validKinds: readonly ShaderSourceKind[] = Object.freeze([
+    'wgsl',
+    'flux-experimental',
+    'shader-graph'
+  ]);
+  if (!validKinds.includes(kind)) {
+    throw new Error(`Unsupported shader source kind "${kind}". Allowed: ${validKinds.join(', ')}`);
+  }
+
+  const resolvedLanguageVersion =
+    languageVersion ??
+    (kind === 'wgsl' ? 'wgsl-1' : kind === 'flux-experimental' ? 'flux-1' : 'graph-1');
+
+  return Object.freeze({
+    kind,
+    uri,
+    languageVersion: resolvedLanguageVersion
+  });
+}
+
+const ALLOWED_METADATA_KEYS = new Set([
+  'schemaVersion',
+  'entryPoints',
+  'imports',
+  'variants',
+  'capabilityRequirements',
+  'materialBindings',
+  'cookPolicy'
+]);
+
+const VALID_STAGES = new Set(['vertex', 'fragment', 'compute']);
+
+/**
+ * Validates untrusted WGSL sidecar metadata against the schema, returning a defensively copied and frozen snapshot.
+ *
+ * @param value Untrusted JSON value.
+ * @returns Frozen WgslShaderMetadata snapshot.
+ * @throws {Error} On schema violations, unknown keys, duplicate entry points, or malformed fields.
+ */
+export function validateWgslShaderMetadata(value: unknown): WgslShaderMetadata {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('WGSL shader metadata must be a non-null object.');
+  }
+
+  const raw = value as Record<string, unknown>;
+
+  for (const key of Object.keys(raw)) {
+    if (!ALLOWED_METADATA_KEYS.has(key)) {
+      throw new Error(`Unknown metadata field "${key}".`);
+    }
+  }
+
+  if (raw.schemaVersion !== 1) {
+    throw new Error(`Unsupported schemaVersion ${String(raw.schemaVersion)}. Expected 1.`);
+  }
+
+  if (!Array.isArray(raw.entryPoints) || raw.entryPoints.length === 0) {
+    throw new Error('WGSL shader metadata must specify a non-empty array of entryPoints.');
+  }
+
+  const entryNames = new Set<string>();
+  const frozenEntryPoints: WgslEntryMetadata[] = [];
+
+  for (const entry of raw.entryPoints) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error('Each entryPoint must be a non-null object.');
+    }
+    const { name, stage, label } = entry as Record<string, unknown>;
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      throw new Error('Entry point name must be a non-empty string.');
+    }
+    if (entryNames.has(name)) {
+      throw new Error(`Duplicate entry point name "${name}" in metadata.`);
+    }
+    entryNames.add(name);
+
+    if (typeof stage !== 'string' || !VALID_STAGES.has(stage)) {
+      throw new Error(
+        `Invalid stage "${String(stage)}" for entry point "${name}". Must be vertex, fragment, or compute.`
+      );
+    }
+
+    frozenEntryPoints.push(
+      Object.freeze({
+        name,
+        stage: stage as 'vertex' | 'fragment' | 'compute',
+        ...(typeof label === 'string' ? { label } : {})
+      })
+    );
+  }
+
+  let frozenImports: readonly WgslImportRef[] | undefined;
+  if (raw.imports !== undefined) {
+    if (!Array.isArray(raw.imports)) {
+      throw new Error('Metadata imports must be an array when provided.');
+    }
+    frozenImports = Object.freeze(
+      raw.imports.map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          throw new Error('Import entry must be an object.');
+        }
+        const { path, alias } = item as Record<string, unknown>;
+        if (typeof path !== 'string' || !path.trim()) {
+          throw new Error('Import path must be a non-empty string.');
+        }
+        return Object.freeze({
+          path,
+          ...(typeof alias === 'string' ? { alias } : {})
+        });
+      })
+    );
+  }
+
+  let frozenVariants: readonly WgslVariantDimension[] | undefined;
+  if (raw.variants !== undefined) {
+    if (!Array.isArray(raw.variants)) {
+      throw new Error('Metadata variants must be an array when provided.');
+    }
+    frozenVariants = Object.freeze(
+      raw.variants.map((dim) => {
+        if (!dim || typeof dim !== 'object' || Array.isArray(dim)) {
+          throw new Error('Variant dimension must be an object.');
+        }
+        const { name, values, defaultValue } = dim as Record<string, unknown>;
+        if (typeof name !== 'string' || !name.trim()) {
+          throw new Error('Variant dimension name must be a non-empty string.');
+        }
+        if (!Array.isArray(values) || values.length === 0) {
+          throw new Error(`Variant dimension "${name}" must have a non-empty values array.`);
+        }
+        return Object.freeze({
+          name,
+          values: Object.freeze(values.map(String)),
+          ...(typeof defaultValue === 'string' ? { defaultValue } : {})
+        });
+      })
+    );
+  }
+
+  let frozenCapabilities: readonly WgslCapabilityRequirement[] | undefined;
+  if (raw.capabilityRequirements !== undefined) {
+    if (!Array.isArray(raw.capabilityRequirements)) {
+      throw new Error('Metadata capabilityRequirements must be an array when provided.');
+    }
+    frozenCapabilities = Object.freeze(
+      raw.capabilityRequirements.map((cap) => {
+        if (!cap || typeof cap !== 'object' || Array.isArray(cap)) {
+          throw new Error('Capability requirement must be an object.');
+        }
+        const { feature, fallback } = cap as Record<string, unknown>;
+        if (typeof feature !== 'string' || !feature.trim()) {
+          throw new Error('Capability feature must be a non-empty string.');
+        }
+        return Object.freeze({
+          feature,
+          ...(typeof fallback === 'string' ? { fallback } : {})
+        });
+      })
+    );
+  }
+
+  let frozenMaterialBindings: readonly WgslMaterialBindingMetadata[] | undefined;
+  if (raw.materialBindings !== undefined) {
+    if (!Array.isArray(raw.materialBindings)) {
+      throw new Error('Metadata materialBindings must be an array when provided.');
+    }
+    frozenMaterialBindings = Object.freeze(
+      raw.materialBindings.map((mb) => {
+        if (!mb || typeof mb !== 'object' || Array.isArray(mb)) {
+          throw new Error('Material binding must be an object.');
+        }
+        const { binding, property } = mb as Record<string, unknown>;
+        if (typeof binding !== 'string' || !binding.trim()) {
+          throw new Error('Material binding name must be a non-empty string.');
+        }
+        if (typeof property !== 'string' || !property.trim()) {
+          throw new Error('Material binding property must be a non-empty string.');
+        }
+        return Object.freeze({ binding, property });
+      })
+    );
+  }
+
+  let frozenCookPolicy: WgslCookPolicy | undefined;
+  if (raw.cookPolicy !== undefined) {
+    if (!raw.cookPolicy || typeof raw.cookPolicy !== 'object' || Array.isArray(raw.cookPolicy)) {
+      throw new Error('Metadata cookPolicy must be an object when provided.');
+    }
+    const { optimization, preserveNames } = raw.cookPolicy as Record<string, unknown>;
+    frozenCookPolicy = Object.freeze({
+      ...(typeof optimization === 'string'
+        ? { optimization: optimization as 'none' | 'size' | 'performance' }
+        : {}),
+      ...(typeof preserveNames === 'boolean' ? { preserveNames } : {})
+    });
+  }
+
+  return Object.freeze({
+    schemaVersion: 1 as const,
+    entryPoints: Object.freeze(frozenEntryPoints),
+    ...(frozenImports !== undefined ? { imports: frozenImports } : {}),
+    ...(frozenVariants !== undefined ? { variants: frozenVariants } : {}),
+    ...(frozenCapabilities !== undefined ? { capabilityRequirements: frozenCapabilities } : {}),
+    ...(frozenMaterialBindings !== undefined ? { materialBindings: frozenMaterialBindings } : {}),
+    ...(frozenCookPolicy !== undefined ? { cookPolicy: frozenCookPolicy } : {})
+  });
+}

@@ -5,6 +5,8 @@
  */
 
 export * from './types';
+export * from './authoring';
+export * from './artifact';
 export * from './ir';
 export * from './frontend';
 export * from './layout';

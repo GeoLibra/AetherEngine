@@ -304,7 +304,12 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'test/benchmark/shader-binding-layout.test.ts',
         'src/shader/',
         'test/shader/',
-        'tools/naga-shader-validator/'
+        'test/tooling/',
+        'tools/naga-shader-validator/',
+        'tools/shader-cooker/',
+        'tools/vite/',
+        'scripts/cook-wgsl-shader.ts',
+        'scripts/check-runtime-shader-bundle.ts'
       ]),
       command: Object.freeze({
         executable: 'node',
