@@ -32,6 +32,9 @@ const sampleValidArtifact = {
     }
   ],
   bindings: [],
+  bufferLayouts: [],
+  vertexInputs: [],
+  fragmentOutputs: [],
   modules: {
     wgsl: '@vertex\nfn vertexMain() {}\n@fragment\nfn fragmentMain() {}',
     glslEs300: {

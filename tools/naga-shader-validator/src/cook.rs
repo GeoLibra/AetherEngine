@@ -6,7 +6,7 @@ use crate::{
         CookBackendModules, CookDiagnostic, CookRequest, CookResult, CookSourceProvenance,
         CookToolchain,
     },
-    reflection::reflect_module,
+    reflection::{reflect_buffer_layouts, reflect_module, reflect_stage_io},
     version::{
         COOKER_ID, COOKER_VERSION, COOK_SCHEMA_VERSION, NAGA_VERSION,
         SHADER_MANIFEST_SCHEMA_VERSION, SHADER_MODULE_SCHEMA_VERSION,
@@ -93,6 +93,15 @@ pub fn cook(request: CookRequest) -> Result<CookResult, CookDiagnostic> {
         diagnostic.source_uri = request.source_uri.clone();
         diagnostic
     })?;
+    let buffer_layouts = reflect_buffer_layouts(&module).map_err(|mut diagnostic| {
+        diagnostic.source_uri = request.source_uri.clone();
+        diagnostic
+    })?;
+    let (vertex_inputs, fragment_outputs) =
+        reflect_stage_io(&module).map_err(|mut diagnostic| {
+            diagnostic.source_uri = request.source_uri.clone();
+            diagnostic
+        })?;
     let mut glsl_es300 = BTreeMap::new();
     for entry in &module.entry_points {
         let stage = match entry.stage {
@@ -138,6 +147,9 @@ pub fn cook(request: CookRequest) -> Result<CookResult, CookDiagnostic> {
         },
         entry_points,
         bindings,
+        buffer_layouts,
+        vertex_inputs,
+        fragment_outputs,
         modules: CookBackendModules {
             wgsl: request.source,
             glsl_es300,

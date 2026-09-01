@@ -1,8 +1,8 @@
 import {
   STANDARD_LIT_SHADER_ABI_VERSION,
+  STANDARD_LIT_SHADER_ARTIFACT,
   STANDARD_LIT_SHADER_MODULE,
-  createShaderBindingManifest,
-  emitWgslModule
+  createCookedShaderBindingManifest
 } from '../../shader';
 import { StandardLitMaterialSchema } from '../../material';
 import { STANDARD_LIT_SHADER_MODULE_KEY } from '../../material/builtins';
@@ -52,8 +52,8 @@ export class BaselineStandardLitPreparation {
 
   constructor(private readonly options: RegisteredOptions) {
     const { device } = options.graphics;
-    const manifest = createShaderBindingManifest(
-      STANDARD_LIT_SHADER_MODULE,
+    const manifest = createCookedShaderBindingManifest(
+      STANDARD_LIT_SHADER_ARTIFACT,
       STANDARD_LIT_SHADER_ABI_VERSION
     );
     const compiled = compileBindingLayoutPlan(manifest);
@@ -76,7 +76,7 @@ export class BaselineStandardLitPreparation {
     this.pipelineLayout = layout.layout.pipelineLayout;
     this.shaderModule = device.createShaderModule({
       label: 'aether-standard-lit',
-      code: emitWgslModule(STANDARD_LIT_SHADER_MODULE)
+      code: STANDARD_LIT_SHADER_MODULE
     });
     this.pipeline = device.createRenderPipeline({
       label: 'aether-standard-lit',

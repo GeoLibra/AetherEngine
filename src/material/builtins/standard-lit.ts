@@ -2,12 +2,15 @@ import { createMaterialAsset, createMaterialInstance, resolveMaterialAsset } fro
 import { defineMaterialSchema } from '../schema';
 import { createMaterialTechniqueRole } from '../technique';
 import type { MaterialAsset, MaterialInstance, ResolvedMaterialAsset } from '../types';
-import { STANDARD_LIT_SHADER_ABI_VERSION, STANDARD_LIT_SHADER_MODULE } from '../../shader/builtins';
-import { createShaderBindingManifest } from '../../shader/layout';
+import {
+  STANDARD_LIT_SHADER_ABI_VERSION,
+  STANDARD_LIT_SHADER_ARTIFACT
+} from '../../shader/builtins';
+import { createCookedShaderBindingManifest } from '../../shader/layout';
 
 export const STANDARD_LIT_SHADER_MODULE_KEY = 'aether.shader.standard-lit.v2';
-export const STANDARD_LIT_BINDING_LAYOUT_HASH = createShaderBindingManifest(
-  STANDARD_LIT_SHADER_MODULE,
+export const STANDARD_LIT_BINDING_LAYOUT_HASH = createCookedShaderBindingManifest(
+  STANDARD_LIT_SHADER_ARTIFACT,
   STANDARD_LIT_SHADER_ABI_VERSION
 ).layoutHash;
 export const STANDARD_LIT_FORWARD_ROLE = createMaterialTechniqueRole('standard-forward');

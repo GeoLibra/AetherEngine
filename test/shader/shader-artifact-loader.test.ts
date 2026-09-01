@@ -4,6 +4,7 @@ import {
   type CookedShaderModuleSelection
 } from '../../src/shader/pipeline/artifact-loader';
 import type { CookedShaderRuntimeArtifact } from '../../src/shader/types';
+import { createCookedShaderBindingManifest } from '../../src/shader/layout';
 
 const sampleBinding = Object.freeze({
   group: 0,
@@ -48,6 +49,26 @@ const sampleArtifact: CookedShaderRuntimeArtifact = Object.freeze({
     })
   ]),
   bindings: Object.freeze([sampleBinding]),
+  bufferLayouts: Object.freeze([
+    Object.freeze({
+      group: 0,
+      binding: 0,
+      name: 'camera',
+      byteSize: 64,
+      alignment: 16,
+      fields: Object.freeze([
+        Object.freeze({
+          path: 'viewProjection',
+          offset: 0,
+          size: 64,
+          alignment: 16,
+          typeName: 'mat4x4<f32>'
+        })
+      ])
+    })
+  ]),
+  vertexInputs: Object.freeze([]),
+  fragmentOutputs: Object.freeze([]),
   modules: Object.freeze({
     wgsl: '@vertex\nfn vertexMain() {}\n@fragment\nfn fragmentMain() {}\n@compute\nfn computeMain() {}',
     glslEs300: Object.freeze({
@@ -58,6 +79,30 @@ const sampleArtifact: CookedShaderRuntimeArtifact = Object.freeze({
 });
 
 describe('loadCookedShaderModule pure runtime loader', () => {
+  test('builds a canonical binding manifest from cooked reflection', () => {
+    const manifest = createCookedShaderBindingManifest(sampleArtifact, 2);
+    expect(manifest.groups).toEqual([
+      {
+        group: 0,
+        visibility: ['vertex'],
+        entries: [
+          {
+            kind: 'uniform-buffer',
+            group: 0,
+            binding: 0,
+            name: 'camera',
+            bufferLayoutName: 'camera'
+          }
+        ]
+      }
+    ]);
+    expect(manifest.buffers[0]).toMatchObject({
+      name: 'camera',
+      byteSize: 64,
+      fields: [{ path: 'viewProjection', offset: 0, shape: { kind: 'matrix' } }]
+    });
+  });
+
   test('selects WGSL module for WebGPU target with entry bindings and source provenance', () => {
     const selection: CookedShaderModuleSelection = {
       target: 'wgsl',
