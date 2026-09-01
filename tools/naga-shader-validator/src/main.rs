@@ -43,11 +43,11 @@ fn main() {
             let _ = write_diagnostic(&diagnostic);
             process::exit(1);
         }
-        Err(CookArgumentError::InvalidSourceUri(source_uri)) => {
+        Err(CookArgumentError::InvalidSourceUri) => {
             let diagnostic = cook_error(
                 INVALID_SOURCE_URI,
                 "source URI must use asset:// or package:// without traversal or fragments",
-                &source_uri,
+                "",
             );
             let _ = write_diagnostic(&diagnostic);
             process::exit(1);

@@ -19,7 +19,7 @@ pub enum Command {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CookArgumentError {
     InvalidArguments,
-    InvalidSourceUri(String),
+    InvalidSourceUri,
 }
 
 pub fn parse_command(args: Vec<String>) -> Result<Command, CookArgumentError> {
@@ -33,7 +33,7 @@ pub fn parse_command(args: Vec<String>) -> Result<Command, CookArgumentError> {
 
     let source_uri = args[3].clone();
     if !is_valid_source_uri(&source_uri) {
-        return Err(CookArgumentError::InvalidSourceUri(source_uri));
+        return Err(CookArgumentError::InvalidSourceUri);
     }
 
     Ok(Command::Cook(CookCommand {

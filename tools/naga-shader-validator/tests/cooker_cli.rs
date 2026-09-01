@@ -17,7 +17,14 @@ fn basic_fixture() -> PathBuf {
 }
 
 fn diagnostic(output: &std::process::Output) -> Value {
-    serde_json::from_slice(&output.stderr).unwrap()
+    assert_eq!(output.stderr.first(), Some(&b'{'));
+    assert_eq!(output.stderr.last(), Some(&b'\n'));
+    assert_eq!(
+        output.stderr.iter().filter(|byte| **byte == b'\n').count(),
+        1
+    );
+    assert_eq!(output.stderr.get(output.stderr.len() - 2), Some(&b'}'));
+    serde_json::from_slice(&output.stderr[..output.stderr.len() - 1]).unwrap()
 }
 
 fn assert_path_is_sanitized(output: &std::process::Output, directory: &Path) {
@@ -76,6 +83,25 @@ fn invalid_source_uris_are_rejected() {
 }
 
 #[test]
+fn invalid_source_uri_does_not_echo_an_unvalidated_absolute_path() {
+    let directory = TempDir::new().unwrap();
+    let path = basic_fixture();
+    let source_uri = directory.path().join("not-a-source-uri.wgsl");
+    let output = run(&[
+        "cook",
+        path.to_str().unwrap(),
+        "--source-uri",
+        source_uri.to_str().unwrap(),
+    ]);
+
+    assert!(!output.status.success());
+    let diagnostic = diagnostic(&output);
+    assert_eq!(diagnostic["code"], "invalid-source-uri");
+    assert_eq!(diagnostic["sourceUri"], "");
+    assert_path_is_sanitized(&output, directory.path());
+}
+
+#[test]
 fn extra_cook_arguments_are_rejected() {
     let path = basic_fixture();
     let output = run(&[
@@ -126,5 +152,31 @@ fn invalid_wgsl_reports_authored_location_without_local_path() {
     assert_eq!(diagnostic["sourceUri"], "package://shader/invalid.wgsl");
     assert!(diagnostic["line"].as_u64().unwrap() >= 1);
     assert!(diagnostic["column"].as_u64().unwrap() >= 1);
+    assert_path_is_sanitized(&output, directory.path());
+}
+
+#[test]
+fn invalid_wgsl_semantics_reports_validation_failure_without_local_path() {
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("invalid-semantics.wgsl");
+    fs::write(
+        &path,
+        "@vertex fn main() -> @builtin(position) f32 { return 0.0; }\n",
+    )
+    .unwrap();
+    let output = run(&[
+        "cook",
+        path.to_str().unwrap(),
+        "--source-uri",
+        "asset://shader/invalid-semantics.wgsl",
+    ]);
+
+    assert!(!output.status.success());
+    let diagnostic = diagnostic(&output);
+    assert_eq!(diagnostic["code"], "wgsl-validation-failed");
+    assert_eq!(
+        diagnostic["sourceUri"],
+        "asset://shader/invalid-semantics.wgsl"
+    );
     assert_path_is_sanitized(&output, directory.path());
 }
