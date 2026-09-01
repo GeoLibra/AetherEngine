@@ -1,3 +1,4 @@
+import { isRecord } from '../core';
 import { MaterialDiagnosticError } from './diagnostics';
 import {
   cloneMaterialValue,
@@ -464,8 +465,4 @@ function isKeywordRecord(value: unknown): value is Record<string, boolean | stri
           (typeof entry === 'number' && Number.isFinite(entry)))
     )
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

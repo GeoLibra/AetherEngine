@@ -1,4 +1,4 @@
-import { fnv1a32Hex } from '../../core/hash';
+import { fnv1a32Hex } from '../../core';
 import type { RenderGraphSnapshot } from '../builder/builder';
 import type { CompiledRenderGraph, CompiledRenderGraphEdge } from '../types';
 import { createRenderGraphExecutionSchedule } from '../executor/execution-plan';

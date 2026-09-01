@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../core';
 import type {
   MaterialAsset,
   MaterialTechnique,
@@ -113,8 +114,4 @@ function unsupported(
   return Object.freeze(
     requestedRole === undefined ? common : { ...common, requestedRole }
   ) as MaterialTechniqueSelection;
-}
-
-function compareCodeUnits(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }

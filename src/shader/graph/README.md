@@ -85,7 +85,7 @@ for (const node of order) {
 
 ## 四、 节点内容寻址 Hash 是怎么做的？
 
-在 `src/shader/graph/graph-compiler.ts` 中引入 `src/core/hash.ts`，实现了一个类似 Git / 区块链的 **Merkle DAG（默克尔有向无环图）内容寻址机制**：
+在 `src/shader/graph/graph-compiler.ts` 中引入 `src/core`（`src/core/utils/hash.ts`），实现了一个类似 Git / 区块链的 **Merkle DAG（默克尔有向无环图）内容寻址机制**：
 
 ```ts
 const hash = stableHash({

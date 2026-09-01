@@ -1,3 +1,4 @@
+import { compareCodeUnits, isRecord } from '../core';
 import { defineSchema } from '../schema';
 import type { FieldId, ValueTypeDefinition } from '../schema/types';
 import { MaterialDiagnosticError } from './diagnostics';
@@ -265,9 +266,7 @@ function canonicalType(type: MaterialValueType): unknown {
       );
 }
 
-export function compareCodeUnits(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
+export { compareCodeUnits };
 
 function toSharedValueType(type: MaterialValueType): ValueTypeDefinition {
   switch (type.kind) {
@@ -339,10 +338,6 @@ function isNumericArray(
 
 function isReference(value: unknown, kind: 'texture' | 'sampler'): boolean {
   return isRecord(value) && value.kind === kind && typeof value.assetId === 'string';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function diagnostic(

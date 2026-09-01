@@ -205,9 +205,7 @@ export function validatePassDescriptor<TResources, TContext>(descriptor: {
   }
 }
 
-export function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return typeof value === 'object' && value !== null && 'then' in value;
-}
+export { isPromiseLike } from '../../core';
 
 export function snapshotSetupValue<T>(
   value: T,

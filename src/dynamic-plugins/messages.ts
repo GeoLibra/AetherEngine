@@ -1,3 +1,4 @@
+import { isRecord } from '../core';
 import { dynamicPluginId, pluginActivationId, pluginVersionId } from './ids';
 import type {
   DynamicPluginId,
@@ -142,10 +143,6 @@ export class DynamicPluginMessageGuard<T> {
     }
     this.terminalRequests.add(key);
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function validateAndComputePayload<T>(

@@ -1,4 +1,4 @@
-import { stableHash } from '../../core/hash';
+import { compareCodeUnits, stableHash } from '../../core';
 import { selectShaderLayoutPolicy } from './policy';
 import { createBoundBufferLayoutManifest } from './struct-layout';
 import type {
@@ -335,8 +335,4 @@ function compareStageIo(
     compareCodeUnits(left.name, right.name) ||
     compareCodeUnits(left.type, right.type)
   );
-}
-
-function compareCodeUnits(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }

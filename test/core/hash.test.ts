@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { canonicalStringify, fnv1a32, fnv1a32Hex, fnv1a64, stableHash } from '../../src/core/hash';
+import {
+  canonicalStringify,
+  fnv1a32,
+  fnv1a32Hex,
+  fnv1a64,
+  stableHash
+} from '../../src/core/utils/hash';
 
 describe('core/hash', () => {
   describe('canonicalStringify', () => {

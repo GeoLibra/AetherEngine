@@ -1,5 +1,5 @@
 import type { RHISubmission } from '../../rhi/contracts/submission';
-import { stableHash } from '../../core/hash';
+import { stableHash } from '../../core';
 
 /**
  * A leased reference wrapper ensuring an artifact isn't evicted

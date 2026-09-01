@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../../core';
 import type {
   ShadowAtlasCompactionResult,
   ShadowAtlasMetrics,
@@ -267,8 +268,4 @@ function validateGeneration(value: number): void {
 function incrementGeneration(value: number): number {
   if (value >= Number.MAX_SAFE_INTEGER) throw new Error('Shadow atlas generation is exhausted.');
   return value + 1;
-}
-
-function compareCodeUnits(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }

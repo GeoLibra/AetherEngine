@@ -29,9 +29,7 @@ export function serviceFactory<T>(
   return { kind: 'factory', create, options };
 }
 
-export function isPromiseLike(value: void | Promise<void>): value is Promise<void> {
-  return typeof value === 'object' && value !== null && 'then' in value;
-}
+export { isPromiseLike } from '../core';
 
 export function definePlugin(config: Plugin): Plugin {
   return config;

@@ -1,4 +1,4 @@
-import { canonicalStringify, stableHash } from '../../core/hash';
+import { canonicalStringify, stableHash } from '../../core';
 import type { ShaderVariantDimension } from '../types';
 
 /**

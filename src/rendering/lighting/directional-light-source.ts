@@ -1,3 +1,4 @@
+import { isRecord } from '../../core';
 import { defineObjectComponent } from '../../ecs/component';
 import type { ChangeReader } from '../../ecs/change-tracker';
 import type { Entity } from '../../ecs/types';
@@ -220,10 +221,6 @@ function uint32(value: unknown, label: string): number {
     throw new Error(`Directional light ${label} must be an unsigned 32-bit integer.`);
   }
   return value as number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function invalid(message: string) {

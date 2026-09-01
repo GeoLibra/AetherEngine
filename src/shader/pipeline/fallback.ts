@@ -1,4 +1,4 @@
-import { canonicalStringify, stableHash } from '../../core/hash';
+import { canonicalStringify, stableHash } from '../../core';
 
 export interface ShaderFallbackCompatibility {
   readonly bindingLayout: string;

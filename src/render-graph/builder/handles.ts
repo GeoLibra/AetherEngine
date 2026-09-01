@@ -1,3 +1,4 @@
+import { isRecord } from '../../core';
 import type { GraphHandle, GraphResourceKind } from '../types';
 
 type GraphHandleForKind<K extends GraphResourceKind> = Extract<GraphHandle, { readonly kind: K }>;
@@ -47,10 +48,6 @@ export function assertGraphHandle(
   if (currentVersion !== undefined && value.version !== currentVersion) {
     throw new Error('Render graph handle is stale.');
   }
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null;
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
