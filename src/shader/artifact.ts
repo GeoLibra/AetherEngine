@@ -149,18 +149,30 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
     const kind = kindRaw as ShaderBindingKind;
 
     const addressSpace =
-      typeof bindingObj.addressSpace === 'string' ? bindingObj.addressSpace : undefined;
-    const access = typeof bindingObj.access === 'string' ? bindingObj.access : undefined;
-    const typeName = typeof bindingObj.typeName === 'string' ? bindingObj.typeName : undefined;
+      typeof bindingObj.addressSpace === 'string' ? bindingObj.addressSpace.trim() : '';
+    const access = typeof bindingObj.access === 'string' ? bindingObj.access.trim() : '';
+    const typeName = typeof bindingObj.typeName === 'string' ? bindingObj.typeName.trim() : '';
+
+    if (!addressSpace) {
+      throw new Error(
+        '[artifact-binding-invalid] Binding addressSpace must be a non-empty string.'
+      );
+    }
+    if (!access) {
+      throw new Error('[artifact-binding-invalid] Binding access must be a non-empty string.');
+    }
+    if (!typeName) {
+      throw new Error('[artifact-binding-invalid] Binding typeName must be a non-empty string.');
+    }
 
     return Object.freeze({
       group,
       binding,
       name,
       kind,
-      ...(addressSpace !== undefined ? { addressSpace } : {}),
-      ...(access !== undefined ? { access } : {}),
-      ...(typeName !== undefined ? { typeName } : {})
+      addressSpace,
+      access,
+      typeName
     });
   }
 
@@ -215,11 +227,16 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
 
     declaredEntryPointsMap.set(name, stage as 'vertex' | 'fragment' | 'compute');
 
-    const epBindingsRaw = Array.isArray(epObj.bindings) ? epObj.bindings : [];
+    if (!Array.isArray(epObj.bindings)) {
+      throw new Error(
+        `[artifact-binding-invalid] Entry point "${name}" bindings must be an array.`
+      );
+    }
+
     const seenBindings = new Set<string>();
     const frozenEpBindings: CookedShaderBinding[] = [];
 
-    for (const b of epBindingsRaw) {
+    for (const b of epObj.bindings) {
       const decoded = decodeBinding(b);
       const key = `${decoded.group}:${decoded.binding}`;
       if (seenBindings.has(key)) {
