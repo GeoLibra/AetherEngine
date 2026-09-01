@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
   checkBundleContent,
-  FORBIDDEN_BUNDLE_MARKERS
+  checkSourcemapSources,
+  FORBIDDEN_BUNDLE_IDENTIFIERS,
+  FORBIDDEN_SOURCEMAP_SOURCES
 } from '../../scripts/check-runtime-shader-bundle';
 
 describe('Runtime Shader Bundle Gate', () => {
@@ -47,14 +49,50 @@ describe('Runtime Shader Bundle Gate', () => {
     expect(markers).toContain('Cargo.toml');
   });
 
-  test('detects and rejects authored shader frontend parser imports', () => {
+  test('detects and rejects compiler function identifiers like parseFluxShader', () => {
     const dirtyBundle = `
-      import { parseFluxModule } from "src/shader/frontend/parser";
+      function parseFluxShader(source) { return { ir: {} }; }
+      export { parseFluxShader };
     `;
 
     const violations = checkBundleContent('dist/aether-engine.js', dirtyBundle);
     expect(violations.length).toBeGreaterThanOrEqual(1);
     const markers = violations.map((v) => v.marker);
-    expect(markers).toContain('src/shader/frontend/parser');
+    expect(markers).toContain('parseFluxShader');
+  });
+
+  test('detects and rejects sourcemaps containing forbidden frontend compiler sources', () => {
+    const dirtySourcemap = JSON.stringify({
+      version: 3,
+      sources: [
+        'src/app/app.ts',
+        'src/shader/frontend/parser.ts',
+        'src/shader/pipeline/compiler.ts'
+      ],
+      mappings: 'AAAA;'
+    });
+
+    const violations = checkSourcemapSources('dist/aether-engine.js.map', dirtySourcemap);
+    expect(violations.length).toBeGreaterThanOrEqual(2);
+    const markers = violations.map((v) => v.marker);
+    expect(markers).toContain('src/shader/frontend/');
+    expect(markers).toContain('src/shader/pipeline/compiler');
+  });
+
+  test('passes on clean sourcemaps containing only runtime engine sources', () => {
+    const cleanSourcemap = JSON.stringify({
+      version: 3,
+      sources: [
+        'src/app/app.ts',
+        'src/ecs/world.ts',
+        'src/shader/authoring.ts',
+        'src/shader/artifact.ts',
+        'src/shader/pipeline/artifact-loader.ts'
+      ],
+      mappings: 'AAAA;'
+    });
+
+    const violations = checkSourcemapSources('dist/aether-engine.js.map', cleanSourcemap);
+    expect(violations).toEqual([]);
   });
 });

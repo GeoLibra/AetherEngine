@@ -3,10 +3,15 @@
  */
 
 import { existsSync } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import type { Plugin, HmrContext, ModuleNode } from 'vite';
-import { NativeWgslCooker } from '../shader-cooker/native-wgsl-cooker';
+import {
+  assertValidCanonicalShaderSourceUri,
+  defineShaderAuthoringSource
+} from '../../src/shader/authoring';
 import type { CookedShaderRuntimeArtifact } from '../../src/shader/types';
+import { cookAuthoredShader } from '../shader-cooker/authoring-dispatch';
+import { NativeWgslCooker } from '../shader-cooker/native-wgsl-cooker';
 
 /**
  * Options for configuring nativeWgslPlugin.
@@ -34,9 +39,25 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
 
   function resolveSourceUri(filePath: string): string {
     if (options.sourceUriResolver) {
-      return options.sourceUriResolver(filePath);
+      const uri = options.sourceUriResolver(filePath);
+      assertValidCanonicalShaderSourceUri(uri);
+      return uri;
     }
-    return `asset://shaders/${basename(filePath)}`;
+
+    const root = resolve(options.root ?? process.cwd());
+    const absPath = resolve(filePath);
+    const rel = relative(root, absPath);
+
+    if (rel.startsWith('..') || isAbsolute(rel)) {
+      throw new Error(
+        `[native-wgsl-plugin] Shader file "${filePath}" escapes root "${root}". Provide a custom sourceUriResolver to map external files.`
+      );
+    }
+
+    const posixRel = rel.split('\\').join('/').replace(/^\/+/u, '');
+    const uri = `asset://${posixRel}`;
+    assertValidCanonicalShaderSourceUri(uri);
+    return uri;
   }
 
   function findMetadataPath(filePath: string): string | undefined {
@@ -89,12 +110,20 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
       const nextRev = (revisions.get(filePath) ?? 0) + 1;
       revisions.set(filePath, nextRev);
 
+      const authoringSource = defineShaderAuthoringSource({
+        kind: 'wgsl',
+        uri: sourceUri
+      });
+
       try {
-        const artifact = await cooker.cook({
-          sourcePath: filePath,
-          sourceUri,
-          ...(metadataPath !== undefined ? { metadataPath } : {})
-        });
+        const artifact = await cookAuthoredShader(
+          {
+            source: authoringSource,
+            sourcePath: filePath,
+            ...(metadataPath !== undefined ? { metadataPath } : {})
+          },
+          { cooker }
+        );
 
         // Only store if this is still the most recent revision completion
         if (revisions.get(filePath) === nextRev) {
@@ -132,17 +161,34 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
       }
 
       const virtualId = `${VIRTUAL_PREFIX}${wgslFilePath}`;
-      const sourceUri = resolveSourceUri(wgslFilePath);
+      let sourceUri: string;
+      try {
+        sourceUri = resolveSourceUri(wgslFilePath);
+      } catch (err: unknown) {
+        ctx.server.config.logger.error(
+          `[aether:native-wgsl] URI resolution failed for "${wgslFilePath}": ${err instanceof Error ? err.message : String(err)}`
+        );
+        return [];
+      }
+
       const metadataPath = findMetadataPath(wgslFilePath);
       const nextRev = (revisions.get(wgslFilePath) ?? 0) + 1;
       revisions.set(wgslFilePath, nextRev);
 
+      const authoringSource = defineShaderAuthoringSource({
+        kind: 'wgsl',
+        uri: sourceUri
+      });
+
       try {
-        const artifact = await cooker.cook({
-          sourcePath: wgslFilePath,
-          sourceUri,
-          ...(metadataPath !== undefined ? { metadataPath } : {})
-        });
+        const artifact = await cookAuthoredShader(
+          {
+            source: authoringSource,
+            sourcePath: wgslFilePath,
+            ...(metadataPath !== undefined ? { metadataPath } : {})
+          },
+          { cooker }
+        );
 
         if (revisions.get(wgslFilePath) === nextRev) {
           lastGoodCache.set(wgslFilePath, artifact);

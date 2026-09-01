@@ -3,7 +3,7 @@ import {
   ShaderGraphCompileService,
   ShaderGraphCompiler,
   classifyShaderGraphChange
-} from '../../src/shader';
+} from '../../src/shader/graph';
 
 describe('ShaderGraph', () => {
   test('typechecks and lowers a DAG with local hash reuse', async () => {

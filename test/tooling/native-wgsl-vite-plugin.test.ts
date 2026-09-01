@@ -18,7 +18,7 @@ const sampleArtifact: CookedShaderRuntimeArtifact = Object.freeze({
     nagaVersion: '30.0.0'
   }),
   source: Object.freeze({
-    sourceUri: 'asset://shaders/simple.wgsl',
+    sourceUri: 'asset://test/fixtures/native-wgsl-plugin/simple.wgsl',
     contentHash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     byteLength: 200
   }),
@@ -63,7 +63,10 @@ describe('nativeWgslPlugin for Vite', () => {
 
   test('loads virtual module, calls cooker, watches dependencies, and emits artifact literal', async () => {
     const mockCooker = {
-      cook: vi.fn().mockResolvedValue(sampleArtifact)
+      cook: vi.fn().mockImplementation(async (req: { sourceUri: string }) => ({
+        ...sampleArtifact,
+        source: { ...sampleArtifact.source, sourceUri: req.sourceUri }
+      }))
     } as unknown as NativeWgslCooker;
 
     const plugin = nativeWgslPlugin({ cooker: mockCooker });
@@ -84,14 +87,77 @@ describe('nativeWgslPlugin for Vite', () => {
     expect(code).not.toContain('Cargo.toml');
   });
 
+  test('generates canonical URI relative to project root and rejects files escaping root', async () => {
+    const mockCooker = {
+      cook: vi.fn().mockImplementation(async (req: { sourceUri: string }) => ({
+        ...sampleArtifact,
+        source: { ...sampleArtifact.source, sourceUri: req.sourceUri }
+      }))
+    } as unknown as NativeWgslCooker;
+
+    const rootDir = resolve(__dirname, '../..');
+    const plugin = nativeWgslPlugin({ cooker: mockCooker, root: rootDir });
+    const mockContext = { addWatchFile: vi.fn() };
+    const virtualId = `\0aether-shader-artifact:${fixtureWgsl}`;
+
+    // @ts-expect-error test hook call
+    const code = await plugin.load.call(mockContext, virtualId);
+    expect(code).toContain('asset://test/fixtures/native-wgsl-plugin/simple.wgsl');
+
+    // Escaped file outside root should throw
+    const escapedId = '\0aether-shader-artifact:/outside/root/shader.wgsl';
+    // @ts-expect-error test hook call
+    await expect(plugin.load.call(mockContext, escapedId)).rejects.toThrow(/escapes root/i);
+  });
+
+  test('validates sidecar metadata and cross-checks with reflection during load', async () => {
+    // Cooker reflecting a different entry point not matching metadata
+    const mismatchedArtifact: CookedShaderRuntimeArtifact = {
+      ...sampleArtifact,
+      entryPoints: [
+        {
+          name: 'otherVertex',
+          stage: 'vertex',
+          bindings: []
+        }
+      ],
+      modules: {
+        wgsl: sampleArtifact.modules.wgsl,
+        glslEs300: {
+          'vertex:otherVertex': '#version 300 es\nvoid main() {}'
+        }
+      }
+    };
+
+    const mockCooker = {
+      cook: vi.fn().mockImplementation(async (req: { sourceUri: string }) => ({
+        ...mismatchedArtifact,
+        source: { ...mismatchedArtifact.source, sourceUri: req.sourceUri }
+      }))
+    } as unknown as NativeWgslCooker;
+
+    const plugin = nativeWgslPlugin({ cooker: mockCooker });
+    const mockContext = { addWatchFile: vi.fn() };
+    const virtualId = `\0aether-shader-artifact:${fixtureWgsl}`;
+
+    // Loading should fail because simple.wgsl.meta.json expects vertexMain & fragmentMain
+    // @ts-expect-error test hook call
+    await expect(plugin.load.call(mockContext, virtualId)).rejects.toThrow(
+      /Metadata entry point "vertexMain" is not present in native reflection/i
+    );
+  });
+
   test('HMR retains last-known-good artifact when cook fails', async () => {
     let shouldFail = false;
     const mockCooker = {
-      cook: vi.fn().mockImplementation(async () => {
+      cook: vi.fn().mockImplementation(async (req: { sourceUri: string }) => {
         if (shouldFail) {
           throw new Error('Parse error in WGSL');
         }
-        return sampleArtifact;
+        return {
+          ...sampleArtifact,
+          source: { ...sampleArtifact.source, sourceUri: req.sourceUri }
+        };
       })
     } as unknown as NativeWgslCooker;
 
@@ -135,17 +201,19 @@ describe('nativeWgslPlugin for Vite', () => {
       resolveFirstCook = res;
     });
 
-    const secondArtifact: CookedShaderRuntimeArtifact = {
-      ...sampleArtifact,
-      source: { ...sampleArtifact.source, contentHash: 'newer_hash' }
-    };
-
     let cookCount = 0;
     const mockCooker = {
-      cook: vi.fn().mockImplementation(async () => {
+      cook: vi.fn().mockImplementation(async (req: { sourceUri: string }) => {
         cookCount++;
         if (cookCount === 1) return firstCookPromise;
-        return secondArtifact;
+        return {
+          ...sampleArtifact,
+          source: {
+            ...sampleArtifact.source,
+            sourceUri: req.sourceUri,
+            contentHash: '0000000000000000000000000000000000000000000000000000000000000002'
+          }
+        };
       })
     } as unknown as NativeWgslCooker;
 
@@ -162,7 +230,7 @@ describe('nativeWgslPlugin for Vite', () => {
     const load2Promise = plugin.load.call(mockContext, virtualId);
 
     const code2 = await load2Promise;
-    expect(code2).toContain('newer_hash');
+    expect(code2).toContain('0000000000000000000000000000000000000000000000000000000000000002');
 
     // Complete first load afterwards
     resolveFirstCook(sampleArtifact);
@@ -171,14 +239,17 @@ describe('nativeWgslPlugin for Vite', () => {
     // Load again should return newer artifact, not stale first artifact
     // @ts-expect-error test hook call
     const codeFinal = await plugin.load.call(mockContext, virtualId);
-    expect(codeFinal).toContain('newer_hash');
+    expect(codeFinal).toContain('0000000000000000000000000000000000000000000000000000000000000002');
   });
 
   test('runs programmatic Vite build and outputs pure artifact with no compiler/tooling symbols', async () => {
     const { build } = await import('vite');
     const fixtureDir = resolve(__dirname, '../fixtures/native-wgsl-plugin');
     const mockCooker = {
-      cook: vi.fn().mockResolvedValue(sampleArtifact)
+      cook: vi.fn().mockImplementation(async (req: { sourceUri: string }) => ({
+        ...sampleArtifact,
+        source: { ...sampleArtifact.source, sourceUri: req.sourceUri }
+      }))
     } as unknown as NativeWgslCooker;
 
     const buildOutput = await build({

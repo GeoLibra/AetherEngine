@@ -4,7 +4,7 @@ import {
   parseFluxShader,
   resolveShaderSource,
   normalizeAssetUri
-} from '../../src/shader';
+} from '../../src/shader/frontend';
 
 describe('FluxSL source and parser', () => {
   test('normalizes asset includes, deduplicates content and preserves references', async () => {

@@ -15,7 +15,60 @@ import type {
   WgslVariantDimension
 } from './types';
 
-const CANONICAL_URI_PATTERN = /^(?:asset|package):\/\/.+/u;
+/**
+ * Checks whether a URI is a strictly valid canonical shader source URI matching native cooker rules.
+ *
+ * Rules:
+ * 1. Must start with 'asset://' or 'package://'.
+ * 2. Path after prefix must be non-empty.
+ * 3. Path must not contain '\', '?', '#', '%', or ASCII control characters.
+ * 4. Segments split by '/' must each be non-empty, and no segment may be '.' or '..'.
+ *
+ * @param uri Candidate URI string.
+ * @returns True if valid canonical URI, false otherwise.
+ */
+export function isValidCanonicalShaderSourceUri(uri: string): boolean {
+  if (typeof uri !== 'string') return false;
+
+  let path: string;
+  if (uri.startsWith('asset://')) {
+    path = uri.slice('asset://'.length);
+  } else if (uri.startsWith('package://')) {
+    path = uri.slice('package://'.length);
+  } else {
+    return false;
+  }
+
+  if (path.length === 0) return false;
+
+  // Forbidden characters: backslash, query, fragment, percent-encoding, control characters
+  if (/[\x00-\x1F\x7F\\?#%]/u.test(path)) {
+    return false;
+  }
+
+  const segments = path.split('/');
+  for (const segment of segments) {
+    if (segment.length === 0 || segment === '.' || segment === '..') {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Asserts that a URI is a strictly valid canonical shader source URI.
+ *
+ * @param uri Candidate URI string.
+ * @throws {Error} If URI is invalid.
+ */
+export function assertValidCanonicalShaderSourceUri(uri: string): void {
+  if (!isValidCanonicalShaderSourceUri(uri)) {
+    throw new Error(
+      `Shader authoring source URI must be a canonical URI starting with 'asset://' or 'package://' without relative traversal, query, fragment, backslashes, or percent-encoding, received: "${uri}"`
+    );
+  }
+}
 
 /**
  * Defines and validates an immutable ShaderAuthoringSource.
@@ -33,11 +86,7 @@ export function defineShaderAuthoringSource(
 
   const { uri, kind = 'wgsl', languageVersion } = options;
 
-  if (typeof uri !== 'string' || !CANONICAL_URI_PATTERN.test(uri)) {
-    throw new Error(
-      `Shader authoring source URI must be a canonical URI starting with 'asset://' or 'package://', received: "${uri}"`
-    );
-  }
+  assertValidCanonicalShaderSourceUri(uri);
 
   const validKinds: readonly ShaderSourceKind[] = Object.freeze([
     'wgsl',
