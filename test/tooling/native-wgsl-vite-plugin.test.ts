@@ -35,6 +35,9 @@ const sampleArtifact: CookedShaderRuntimeArtifact = Object.freeze({
     })
   ]),
   bindings: Object.freeze([]),
+  bufferLayouts: Object.freeze([]),
+  vertexInputs: Object.freeze([]),
+  fragmentOutputs: Object.freeze([]),
   modules: Object.freeze({
     wgsl: '@vertex fn vertexMain() {}\n@fragment fn fragmentMain() {}',
     glslEs300: Object.freeze({

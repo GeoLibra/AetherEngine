@@ -47,6 +47,32 @@ export interface CookedShaderBinding {
   readonly [key: string]: unknown;
 }
 
+/** Flattened leaf field reflected from a cooked WGSL buffer layout. */
+export interface CookedShaderBufferField {
+  readonly path: string;
+  readonly offset: number;
+  readonly size: number;
+  readonly alignment: number;
+  readonly typeName: string;
+}
+
+/** Canonical layout reflected for one bound uniform or storage buffer. */
+export interface CookedShaderBufferLayout {
+  readonly group: number;
+  readonly binding: number;
+  readonly name: string;
+  readonly byteSize: number;
+  readonly alignment: number;
+  readonly fields: readonly CookedShaderBufferField[];
+}
+
+/** Canonical location-bound stage input or output reflected by the cooker. */
+export interface CookedShaderStageIo {
+  readonly location: number;
+  readonly name: string;
+  readonly typeName: string;
+}
+
 /**
  * Reflected entry point record in a cooked shader artifact.
  */
@@ -77,6 +103,9 @@ export interface CookedShaderRuntimeArtifact {
   readonly source: CookedShaderSourceInfo;
   readonly entryPoints: readonly CookedShaderEntryPoint[];
   readonly bindings: readonly CookedShaderBinding[];
+  readonly bufferLayouts: readonly CookedShaderBufferLayout[];
+  readonly vertexInputs: readonly CookedShaderStageIo[];
+  readonly fragmentOutputs: readonly CookedShaderStageIo[];
   readonly modules: CookedShaderModules;
 }
 

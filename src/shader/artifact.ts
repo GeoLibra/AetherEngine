@@ -5,6 +5,9 @@
 import { assertValidCanonicalShaderSourceUri } from './authoring';
 import type {
   CookedShaderBinding,
+  CookedShaderBufferField,
+  CookedShaderBufferLayout,
+  CookedShaderStageIo,
   CookedShaderEntryPoint,
   CookedShaderModules,
   CookedShaderRuntimeArtifact,
@@ -203,6 +206,138 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
     frozenGlobalBindings.push(decoded);
   }
 
+  if (!Array.isArray(raw.bufferLayouts)) {
+    throw new Error('[artifact-layout-invalid] Artifact bufferLayouts must be an array.');
+  }
+  const frozenBufferLayouts: CookedShaderBufferLayout[] = [];
+  const seenBufferLayouts = new Set<string>();
+  for (const value of raw.bufferLayouts) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('[artifact-layout-invalid] Buffer layout must be an object.');
+    }
+    const layout = value as Record<string, unknown>;
+    const group = typeof layout.group === 'number' ? layout.group : -1;
+    const binding = typeof layout.binding === 'number' ? layout.binding : -1;
+    const name = typeof layout.name === 'string' ? layout.name.trim() : '';
+    const byteSize = typeof layout.byteSize === 'number' ? layout.byteSize : -1;
+    const alignment = typeof layout.alignment === 'number' ? layout.alignment : -1;
+    if (!Number.isInteger(group) || group < 0 || !Number.isInteger(binding) || binding < 0) {
+      throw new Error(
+        '[artifact-layout-invalid] Buffer layout group/binding must be non-negative integers.'
+      );
+    }
+    if (!name || !Number.isInteger(byteSize) || byteSize <= 0 || !isPowerOfTwo(alignment)) {
+      throw new Error(
+        '[artifact-layout-invalid] Buffer layout name, byteSize, or alignment is invalid.'
+      );
+    }
+    const key = `${group}:${binding}`;
+    if (seenBufferLayouts.has(key)) {
+      throw new Error(`[artifact-layout-invalid] Duplicate buffer layout for (${key}).`);
+    }
+    const reflectedBinding = globalBindingMap.get(key);
+    if (
+      !reflectedBinding ||
+      reflectedBinding.name !== name ||
+      (reflectedBinding.kind !== 'uniform-buffer' && reflectedBinding.kind !== 'storage-buffer')
+    ) {
+      throw new Error(
+        `[artifact-layout-invalid] Buffer layout "${name}" does not match a reflected buffer binding.`
+      );
+    }
+    if (!Array.isArray(layout.fields) || layout.fields.length === 0) {
+      throw new Error(
+        `[artifact-layout-invalid] Buffer layout "${name}" fields must be a non-empty array.`
+      );
+    }
+    const fields: CookedShaderBufferField[] = [];
+    const seenPaths = new Set<string>();
+    for (const fieldValue of layout.fields) {
+      if (!fieldValue || typeof fieldValue !== 'object' || Array.isArray(fieldValue)) {
+        throw new Error('[artifact-layout-invalid] Buffer field must be an object.');
+      }
+      const field = fieldValue as Record<string, unknown>;
+      const path = typeof field.path === 'string' ? field.path.trim() : '';
+      const offset = typeof field.offset === 'number' ? field.offset : -1;
+      const size = typeof field.size === 'number' ? field.size : -1;
+      const fieldAlignment = typeof field.alignment === 'number' ? field.alignment : -1;
+      const typeName = typeof field.typeName === 'string' ? field.typeName.trim() : '';
+      if (
+        !path ||
+        seenPaths.has(path) ||
+        !Number.isInteger(offset) ||
+        offset < 0 ||
+        !Number.isInteger(size) ||
+        size <= 0 ||
+        offset + size > byteSize ||
+        !isPowerOfTwo(fieldAlignment) ||
+        offset % fieldAlignment !== 0 ||
+        !typeName
+      ) {
+        throw new Error(
+          `[artifact-layout-invalid] Invalid buffer field "${path}" in layout "${name}".`
+        );
+      }
+      seenPaths.add(path);
+      fields.push(Object.freeze({ path, offset, size, alignment: fieldAlignment, typeName }));
+    }
+    seenBufferLayouts.add(key);
+    frozenBufferLayouts.push(
+      Object.freeze({
+        group,
+        binding,
+        name,
+        byteSize,
+        alignment,
+        fields: Object.freeze(fields)
+      })
+    );
+  }
+
+  for (const binding of frozenGlobalBindings) {
+    if (
+      (binding.kind === 'uniform-buffer' || binding.kind === 'storage-buffer') &&
+      !seenBufferLayouts.has(`${binding.group}:${binding.binding}`)
+    ) {
+      throw new Error(
+        `[artifact-layout-invalid] Missing buffer layout for binding "${binding.name}".`
+      );
+    }
+  }
+
+  const decodeStageIo = (value: unknown, label: string): readonly CookedShaderStageIo[] => {
+    if (!Array.isArray(value)) {
+      throw new Error(`[artifact-stage-io-invalid] Artifact ${label} must be an array.`);
+    }
+    const seenLocations = new Set<number>();
+    return Object.freeze(
+      value.map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          throw new Error(`[artifact-stage-io-invalid] ${label} entry must be an object.`);
+        }
+        const rawIo = item as Record<string, unknown>;
+        const location = typeof rawIo.location === 'number' ? rawIo.location : -1;
+        const name = typeof rawIo.name === 'string' ? rawIo.name.trim() : '';
+        const typeName = typeof rawIo.typeName === 'string' ? rawIo.typeName.trim() : '';
+        if (
+          !Number.isInteger(location) ||
+          location < 0 ||
+          seenLocations.has(location) ||
+          !name ||
+          !typeName
+        ) {
+          throw new Error(
+            `[artifact-stage-io-invalid] Invalid ${label} entry at location ${location}.`
+          );
+        }
+        seenLocations.add(location);
+        return Object.freeze({ location, name, typeName });
+      })
+    );
+  };
+  const frozenVertexInputs = decodeStageIo(raw.vertexInputs, 'vertexInputs');
+  const frozenFragmentOutputs = decodeStageIo(raw.fragmentOutputs, 'fragmentOutputs');
+
   // EntryPoints
   if (!Array.isArray(raw.entryPoints) || raw.entryPoints.length === 0) {
     throw new Error('Artifact must have at least one entryPoint.');
@@ -333,6 +468,13 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
     source: frozenSource,
     entryPoints: Object.freeze(frozenEntryPoints),
     bindings: Object.freeze(frozenGlobalBindings),
+    bufferLayouts: Object.freeze(frozenBufferLayouts),
+    vertexInputs: frozenVertexInputs,
+    fragmentOutputs: frozenFragmentOutputs,
     modules: frozenModules
   });
+}
+
+function isPowerOfTwo(value: number): boolean {
+  return Number.isInteger(value) && value > 0 && (value & (value - 1)) === 0;
 }

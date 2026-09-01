@@ -25,6 +25,9 @@ pub struct CookResult {
     pub source: CookSourceProvenance,
     pub entry_points: Vec<CookEntryPoint>,
     pub bindings: Vec<CookBinding>,
+    pub buffer_layouts: Vec<CookBufferLayout>,
+    pub vertex_inputs: Vec<CookStageIo>,
+    pub fragment_outputs: Vec<CookStageIo>,
     pub modules: CookBackendModules,
 }
 
@@ -82,6 +85,38 @@ pub struct CookBinding {
     pub type_name: String,
 }
 
+/// Canonical reflected layout for one bound uniform or storage buffer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CookBufferLayout {
+    pub group: u32,
+    pub binding: u32,
+    pub name: String,
+    pub byte_size: u32,
+    pub alignment: u32,
+    pub fields: Vec<CookBufferField>,
+}
+
+/// Flattened leaf field in a reflected buffer layout.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CookBufferField {
+    pub path: String,
+    pub offset: u32,
+    pub size: u32,
+    pub alignment: u32,
+    pub type_name: String,
+}
+
+/// Canonical location-bound shader stage input or output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CookStageIo {
+    pub location: u32,
+    pub name: String,
+    pub type_name: String,
+}
+
 /// Validated WGSL and optional GLSL ES 3.00 modules keyed by entry identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,6 +157,9 @@ mod tests {
                 bindings: Vec::new(),
             }],
             bindings: Vec::new(),
+            buffer_layouts: Vec::new(),
+            vertex_inputs: Vec::new(),
+            fragment_outputs: Vec::new(),
             modules: CookBackendModules {
                 wgsl: "@vertex fn vertex_main() -> @builtin(position) vec4f { return vec4f(); }"
                     .to_owned(),

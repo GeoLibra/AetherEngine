@@ -1,48 +1,37 @@
 import { describe, expect, test } from 'vitest';
 import {
   STANDARD_LIT_SHADER_ABI_VERSION,
+  STANDARD_LIT_SHADER_ARTIFACT,
   STANDARD_LIT_SHADER_MODULE,
   STANDARD_LIT_SHADER_SOURCE,
   STANDARD_LIT_WEBGL2_TRANSLATOR,
-  createStandardLitShaderResolver,
-  createShaderBindingManifest,
-  emitGlslEsModule,
-  emitWgslModule
+  createCookedShaderBindingManifest
 } from '../../src';
-import { AETHER_SHADER_STANDARD_LIBRARY_VERSION } from '../../src/shader/frontend/standard-library';
-import { cookShaderArtifact } from '../../src/shader/pipeline/cook';
 
 describe('standard-lit built-in shader', () => {
-  test('cooks the authored FluxSL source into the published built-in module', async () => {
-    const cooked = await cookShaderArtifact(
-      STANDARD_LIT_SHADER_SOURCE,
-      createStandardLitShaderResolver(),
-      {
-        compiler: 1,
-        ir: 1,
-        abi: STANDARD_LIT_SHADER_ABI_VERSION,
-        standardLibrary: AETHER_SHADER_STANDARD_LIBRARY_VERSION
-      }
-    );
-
-    expect(cooked.source.uri).toBe('asset://aether/builtins/standard-lit.flux');
-    expect(cooked.dependencies.map(({ uri }) => uri)).toEqual([
-      'asset://aether/builtins/standard-lit.flux'
+  test('publishes a native-cooked WGSL artifact', () => {
+    expect(STANDARD_LIT_SHADER_SOURCE).toEqual({
+      kind: 'wgsl',
+      uri: 'asset://aether/builtins/standard-lit.wgsl',
+      languageVersion: 'wgsl-1'
+    });
+    expect(STANDARD_LIT_SHADER_ARTIFACT.sourceKind).toBe('wgsl');
+    expect(STANDARD_LIT_SHADER_ARTIFACT.source.sourceUri).toBe(STANDARD_LIT_SHADER_SOURCE.uri);
+    expect(STANDARD_LIT_SHADER_ARTIFACT.toolchain.nagaVersion).toBeTruthy();
+    expect(STANDARD_LIT_SHADER_MODULE).toBe(STANDARD_LIT_SHADER_ARTIFACT.modules.wgsl);
+    expect(
+      STANDARD_LIT_SHADER_ARTIFACT.entryPoints.map(({ name, stage }) => ({ name, stage }))
+    ).toEqual([
+      { name: 'standardLitVertex', stage: 'vertex' },
+      { name: 'standardLitFragment', stage: 'fragment' }
     ]);
-    expect(emitWgslModule(cooked.ir)).toBe(emitWgslModule(STANDARD_LIT_SHADER_MODULE));
-    expect(emitGlslEsModule(cooked.ir, 'standardLitFragment')).toBe(
-      emitGlslEsModule(STANDARD_LIT_SHADER_MODULE, 'standardLitFragment')
-    );
-    expect(cooked.ir.sourceClosureHash).toBe(STANDARD_LIT_SHADER_MODULE.sourceClosureHash);
-    expect(cooked.ir.sourceMap.spans.every(({ uri }) => uri === cooked.source.uri)).toBe(true);
   });
 
   test('publishes the canonical object, view, material, and light ABI', () => {
-    const manifest = createShaderBindingManifest(
-      STANDARD_LIT_SHADER_MODULE,
+    const manifest = createCookedShaderBindingManifest(
+      STANDARD_LIT_SHADER_ARTIFACT,
       STANDARD_LIT_SHADER_ABI_VERSION
     );
-
     expect(manifest.vertexInputs).toEqual([
       { location: 0, name: 'position', type: 'vec3<f32>' },
       { location: 1, name: 'normal', type: 'vec3<f32>' }
@@ -78,41 +67,22 @@ describe('standard-lit built-in shader', () => {
     });
   });
 
-  test('deterministically lowers the same typed module to WGSL and GLSL ES', () => {
-    const wgsl = emitWgslModule(STANDARD_LIT_SHADER_MODULE);
-    const vertex = emitGlslEsModule(STANDARD_LIT_SHADER_MODULE, 'standardLitVertex');
-    const fragment = emitGlslEsModule(STANDARD_LIT_SHADER_MODULE, 'standardLitFragment');
-
-    expect(emitWgslModule(STANDARD_LIT_SHADER_MODULE)).toBe(wgsl);
-    expect(wgsl).toContain('@builtin(position) position: vec4<f32>');
-    expect(wgsl).toContain('@location(0) normal: vec3<f32>');
-    expect(wgsl).toContain('@group(3) @binding(0) var<uniform> lightData');
-    expect(vertex).toContain('gl_Position =');
-    expect(vertex).toContain('out vec3 aether_varying_normal;');
-    expect(vertex).toContain('aether_varying_normal =');
-    expect(fragment).toContain('in vec3 aether_varying_normal;');
-    expect(fragment).toContain('aether_fragment_output =');
-    expect(fragment).toContain('lightData.direction');
-    expect(fragment).not.toMatch(/@vertex|@fragment|\bfn\b/);
-  });
-
-  test('emits the GGX, Smith, and Schlick terms from authored FluxSL', () => {
-    const wgsl = emitWgslModule(STANDARD_LIT_SHADER_MODULE);
-    const fragment = emitGlslEsModule(STANDARD_LIT_SHADER_MODULE, 'standardLitFragment');
-
+  test('contains the authored GGX, Smith, and Schlick PBR terms', () => {
+    const wgsl = STANDARD_LIT_SHADER_ARTIFACT.modules.wgsl;
+    const fragment = STANDARD_LIT_SHADER_ARTIFACT.modules.glslEs300['fragment:standardLitFragment'];
     expect(wgsl).toContain('fn distributionGgx');
     expect(wgsl).toContain('fn geometrySmith');
     expect(wgsl).toContain('fn fresnelSchlick');
-    expect(fragment).toContain('materialData.metallic');
-    expect(fragment).toContain('materialData.roughness');
-    expect(fragment).toContain('viewData.cameraPosition');
-    expect(fragment).toContain('fragmentInput.worldPosition');
+    expect(wgsl).toContain('materialData.metallic');
+    expect(wgsl).toContain('materialData.roughness');
     expect(wgsl).toContain('objectData.normalWorld');
+    expect(fragment).toContain('_group_2_binding_0_fs.metallic');
+    expect(fragment).not.toMatch(/@vertex|@fragment|\bfn\b/);
   });
 
-  test('applies the WebGL2 zero-to-one depth compatibility epilogue when required', () => {
+  test('uses Naga GLSL block names and applies clip conversion exactly once', () => {
     const translated = STANDARD_LIT_WEBGL2_TRANSLATOR.translate({
-      wgsl: emitWgslModule(STANDARD_LIT_SHADER_MODULE),
+      wgsl: STANDARD_LIT_SHADER_MODULE,
       stage: 'vertex',
       entryPoint: 'standardLitVertex',
       constants: {},
@@ -120,7 +90,12 @@ describe('standard-lit built-in shader', () => {
       approvedExtensions: [],
       clipDepthMode: 'vertex-remap'
     });
-
-    expect(translated.source).toContain('gl_Position.z = 2.0 * gl_Position.z - gl_Position.w;');
+    expect(translated.source).not.toMatch(/^#version/m);
+    expect(translated.source.match(/gl_Position\.yz =/g)).toHaveLength(1);
+    expect(translated.source).not.toContain('gl_Position.z = 2.0 * gl_Position.z - gl_Position.w;');
+    expect(translated.programBindings).toEqual([
+      { kind: 'uniform-buffer', name: 'ObjectData_block_0Vertex', slot: 0 },
+      { kind: 'uniform-buffer', name: 'ViewData_block_1Vertex', slot: 1 }
+    ]);
   });
 });

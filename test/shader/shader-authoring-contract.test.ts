@@ -235,6 +235,29 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
       }
     ],
     bindings: [validBinding],
+    bufferLayouts: [
+      {
+        group: 0,
+        binding: 0,
+        name: 'scene',
+        byteSize: 80,
+        alignment: 16,
+        fields: [
+          {
+            path: 'viewProjection',
+            offset: 0,
+            size: 64,
+            alignment: 16,
+            typeName: 'mat4x4<f32>'
+          }
+        ]
+      }
+    ],
+    vertexInputs: [
+      { location: 0, name: 'position', typeName: 'vec3<f32>' },
+      { location: 1, name: 'normal', typeName: 'vec3<f32>' }
+    ],
+    fragmentOutputs: [{ location: 0, name: 'fragmentMain', typeName: 'vec4<f32>' }],
     modules: {
       wgsl: '@vertex\nfn vertexMain() {}\n@fragment\nfn fragmentMain() {}',
       glslEs300: {
@@ -445,5 +468,12 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
         ]
       })
     ).toThrow(/typeName must be a non-empty string/i);
+  });
+
+  test('rejects missing cooked buffer layout reflection', () => {
+    const { bufferLayouts: _, ...missingLayouts } = validArtifact;
+    expect(() => decodeCookedShaderRuntimeArtifact(missingLayouts)).toThrow(
+      /bufferLayouts must be an array/i
+    );
   });
 });

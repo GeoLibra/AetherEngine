@@ -1,11 +1,156 @@
 use crate::{
     diagnostics::{error as cook_error, REFLECTION_FAILED},
-    protocol::{CookBinding, CookDiagnostic, CookEntryPoint},
+    protocol::{
+        CookBinding, CookBufferField, CookBufferLayout, CookDiagnostic, CookEntryPoint, CookStageIo,
+    },
 };
 use naga::{
-    valid::ModuleInfo, AddressSpace, ArraySize, Handle, ImageClass, ImageDimension, Module, Scalar,
-    ScalarKind, ShaderStage, StorageAccess, Type, TypeInner, VectorSize,
+    proc::Layouter, valid::ModuleInfo, AddressSpace, ArraySize, Handle, ImageClass, ImageDimension,
+    Module, Scalar, ScalarKind, ShaderStage, StorageAccess, Type, TypeInner, VectorSize,
 };
+
+/// Reflects canonical vertex inputs and fragment outputs from entry-point signatures.
+pub fn reflect_stage_io(
+    module: &Module,
+) -> Result<(Vec<CookStageIo>, Vec<CookStageIo>), CookDiagnostic> {
+    let mut vertex_inputs = Vec::new();
+    let mut fragment_outputs = Vec::new();
+    for entry in &module.entry_points {
+        if entry.stage == ShaderStage::Vertex {
+            for argument in &entry.function.arguments {
+                collect_stage_io(
+                    module,
+                    argument.ty,
+                    argument.binding.as_ref(),
+                    argument.name.as_deref(),
+                    &entry.name,
+                    &mut vertex_inputs,
+                )?;
+            }
+        }
+        if entry.stage == ShaderStage::Fragment {
+            if let Some(result) = entry.function.result.as_ref() {
+                collect_stage_io(
+                    module,
+                    result.ty,
+                    result.binding.as_ref(),
+                    None,
+                    &entry.name,
+                    &mut fragment_outputs,
+                )?;
+            }
+        }
+    }
+    vertex_inputs.sort_by_key(|value| (value.location, value.name.clone()));
+    fragment_outputs.sort_by_key(|value| (value.location, value.name.clone()));
+    Ok((vertex_inputs, fragment_outputs))
+}
+
+fn collect_stage_io(
+    module: &Module,
+    handle: Handle<Type>,
+    binding: Option<&naga::Binding>,
+    name: Option<&str>,
+    entry_name: &str,
+    output: &mut Vec<CookStageIo>,
+) -> Result<(), CookDiagnostic> {
+    if let Some(naga::Binding::Location { location, .. }) = binding {
+        output.push(CookStageIo {
+            location: *location,
+            name: name.unwrap_or(entry_name).to_owned(),
+            type_name: stable_type_name(module, handle).ok_or_else(reflection_error)?,
+        });
+        return Ok(());
+    }
+    if let TypeInner::Struct { members, .. } = &module.types[handle].inner {
+        for member in members {
+            collect_stage_io(
+                module,
+                member.ty,
+                member.binding.as_ref(),
+                member.name.as_deref(),
+                entry_name,
+                output,
+            )?;
+        }
+    }
+    Ok(())
+}
+/// Reflects deterministic WGSL member offsets from Naga's validated layout rules.
+pub fn reflect_buffer_layouts(module: &Module) -> Result<Vec<CookBufferLayout>, CookDiagnostic> {
+    let mut layouter = Layouter::default();
+    layouter
+        .update(module.to_ctx())
+        .map_err(|_| reflection_error())?;
+    let mut layouts = Vec::new();
+    for (_, global) in module.global_variables.iter() {
+        if !matches!(
+            global.space,
+            AddressSpace::Uniform | AddressSpace::Storage { .. }
+        ) {
+            continue;
+        }
+        let Some(resource) = global.binding.as_ref() else {
+            continue;
+        };
+        let name = global.name.clone().ok_or_else(reflection_error)?;
+        let root = layouter[global.ty];
+        let mut fields = Vec::new();
+        reflect_fields(module, &layouter, global.ty, "", 0, &mut fields)?;
+        layouts.push(CookBufferLayout {
+            group: resource.group,
+            binding: resource.binding,
+            name,
+            byte_size: root.size,
+            alignment: root.alignment * 1,
+            fields,
+        });
+    }
+    layouts.sort_by_key(|layout| (layout.group, layout.binding, layout.name.clone()));
+    Ok(layouts)
+}
+
+fn reflect_fields(
+    module: &Module,
+    layouter: &Layouter,
+    handle: Handle<Type>,
+    prefix: &str,
+    base_offset: u32,
+    output: &mut Vec<CookBufferField>,
+) -> Result<(), CookDiagnostic> {
+    if let TypeInner::Struct { members, .. } = &module.types[handle].inner {
+        for member in members {
+            let name = member.name.as_ref().ok_or_else(reflection_error)?;
+            let path = if prefix.is_empty() {
+                name.clone()
+            } else {
+                format!("{prefix}.{name}")
+            };
+            reflect_fields(
+                module,
+                layouter,
+                member.ty,
+                &path,
+                base_offset + member.offset,
+                output,
+            )?;
+        }
+        return Ok(());
+    }
+    let layout = layouter[handle];
+    output.push(CookBufferField {
+        path: prefix.to_owned(),
+        offset: base_offset,
+        size: layout.size,
+        alignment: layout
+            .alignment
+            .to_string()
+            .parse()
+            .map_err(|_| reflection_error())?,
+        type_name: stable_type_name(module, handle).ok_or_else(reflection_error)?,
+    });
+    Ok(())
+}
 
 #[allow(clippy::result_large_err)] // Diagnostics are the stable protocol error value, not a hot path.
 /// Reflects validated WGSL resources into deterministic cooker-owned records.
@@ -257,7 +402,7 @@ fn reflection_error() -> CookDiagnostic {
 
 #[cfg(test)]
 mod tests {
-    use super::reflect_module;
+    use super::{reflect_buffer_layouts, reflect_module, reflect_stage_io};
     use crate::protocol::{CookBinding, CookEntryPoint};
     use naga::{
         front::wgsl,
@@ -370,6 +515,53 @@ mod tests {
         assert_eq!(
             serde_json::to_vec(&first).unwrap(),
             serde_json::to_vec(&second).unwrap()
+        );
+    }
+
+    #[test]
+    fn reflects_uniform_buffer_member_offsets_sizes_and_alignment() {
+        let module = wgsl::parse_str(FIXTURE).unwrap();
+        let layouts = reflect_buffer_layouts(&module).unwrap();
+        let scene = layouts
+            .iter()
+            .find(|layout| layout.name == "scene")
+            .expect("scene uniform layout");
+
+        assert_eq!(scene.byte_size, 80);
+        assert_eq!(scene.alignment, 16);
+        assert_eq!(scene.fields[0].path, "transform");
+        assert_eq!(scene.fields[0].offset, 0);
+        assert_eq!(scene.fields[0].size, 64);
+        assert_eq!(scene.fields[1].path, "material.tint");
+        assert_eq!(scene.fields[1].offset, 64);
+        assert_eq!(scene.fields[1].size, 16);
+    }
+
+    #[test]
+    fn reflects_vertex_inputs_and_fragment_outputs() {
+        let module = wgsl::parse_str(FIXTURE).unwrap();
+        let (vertex_inputs, fragment_outputs) = reflect_stage_io(&module).unwrap();
+        assert_eq!(
+            vertex_inputs
+                .iter()
+                .map(|value| (
+                    value.location,
+                    value.name.as_str(),
+                    value.type_name.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            vec![(0, "position", "vec3<f32>"), (1, "uv", "vec2<f32>"),]
+        );
+        assert_eq!(
+            fragment_outputs
+                .iter()
+                .map(|value| (
+                    value.location,
+                    value.name.as_str(),
+                    value.type_name.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            vec![(0, "fragmentMain", "vec4<f32>"),]
         );
     }
 }

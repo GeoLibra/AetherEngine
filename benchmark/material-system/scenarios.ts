@@ -6,7 +6,7 @@ import {
   createMaterialInstance,
   createMaterialTechniqueRole,
   createPipelineKey,
-  createShaderBindingManifest,
+  createCookedShaderBindingManifest,
   createStandardLitMaterial,
   defineMaterialSchema,
   getMaterialMetrics,
@@ -16,7 +16,7 @@ import {
   selectMaterialTechnique,
   writeMaterialParameters,
   STANDARD_LIT_SHADER_ABI_VERSION,
-  STANDARD_LIT_SHADER_MODULE,
+  STANDARD_LIT_SHADER_ARTIFACT,
   type BindingKeyParts,
   type BufferLayoutManifest,
   type CanonicalKey,
@@ -169,8 +169,8 @@ export function createStandardLitBuiltinCase(instanceCount: number): MaterialSce
           roughness: 0.5
         });
       }
-      const manifest = createShaderBindingManifest(
-        STANDARD_LIT_SHADER_MODULE,
+      const manifest = createCookedShaderBindingManifest(
+        STANDARD_LIT_SHADER_ARTIFACT,
         STANDARD_LIT_SHADER_ABI_VERSION
       );
       const observed = Object.freeze({
