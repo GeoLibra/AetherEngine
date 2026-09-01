@@ -23,46 +23,91 @@ type GraphResult =
 
 export class ShaderGraphCompiler {
   private readonly nodeCache = new Map<string, ShaderExpressionIR>();
+
+  /**
+   * Lowers a high-level `ShaderGraph` into a typed `ShaderModuleIR`.
+   *
+   * Executes in five deterministic pipeline steps:
+   * 1. Cancellation check (pre-flight)
+   * 2. Dependency resolution, cycle detection, and topological sorting (DFS)
+   * 3. Input-output type validation and sub-expression hashing / CSE cache lookup
+   * 4. IR Expression emission and node cache population
+   * 5. Entry point generation and final ShaderModuleIR packaging
+   *
+   * @param graph The source ShaderGraph definition and outputs.
+   * @param signal Optional AbortSignal to cancel long-running graph compilation.
+   * @returns Result containing the lowered ShaderModuleIR or compilation diagnostics.
+   */
   async lower(graph: ShaderGraph, signal?: AbortSignal): Promise<GraphResult> {
-    if (signal?.aborted)
+    // -------------------------------------------------------------------------
+    // Step 1: Pre-flight cancellation check
+    // -------------------------------------------------------------------------
+    if (signal?.aborted) {
       return Object.freeze({ ok: false, cancelled: true, diagnostics: NO_SHADER_DIAGNOSTICS });
+    }
+
     const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
     const order: ShaderGraphNode[] = [];
     const active = new Set<string>();
     const done = new Set<string>();
+
+    // -------------------------------------------------------------------------
+    // Step 2: DFS traversal for cycle detection, missing node check, and topological sort
+    // -------------------------------------------------------------------------
     const visit = (id: string): ShaderDiagnostic | undefined => {
-      if (active.has(id))
+      // 2.1 Cycle detection (node is in current active traversal stack)
+      if (active.has(id)) {
         return graphDiagnostic('GRAPH_CYCLE', `ShaderGraph contains a cycle through "${id}".`);
+      }
+      // 2.2 Already resolved and sorted
       if (done.has(id)) return undefined;
+
       const node = nodes.get(id);
-      if (!node)
+      // 2.3 Dangling reference check
+      if (!node) {
         return graphDiagnostic(
           'GRAPH_MISSING_NODE',
           `ShaderGraph references missing node "${id}".`
         );
+      }
+
       active.add(id);
+      // 2.4 Recursively visit upstream dependency inputs
       for (const dependency of Object.values(node.inputs ?? {})) {
         const error = visit(dependency);
         if (error) return error;
       }
       active.delete(id);
       done.add(id);
+
+      // 2.5 Post-order push guarantees dependencies come before dependents
       order.push(node);
       return undefined;
     };
+
+    // Traverse upstream graph starting from all declared stage outputs
     for (const output of Object.values(graph.outputs)) {
       const error = visit(output);
       if (error) return Object.freeze({ ok: false, diagnostics: Object.freeze([error]) });
     }
+
     let reusedNodes = 0;
     const expressions = new Map<string, ShaderExpressionIR>();
     const nodeHashes = new Map<string, string>();
+
+    // -------------------------------------------------------------------------
+    // Step 3 & 4: Type validation, Common Subexpression Elimination (CSE) cache, and IR emission
+    // -------------------------------------------------------------------------
     for (const node of order) {
-      if (signal?.aborted)
+      // Check cancellation during batch lowering
+      if (signal?.aborted) {
         return Object.freeze({ ok: false, cancelled: true, diagnostics: NO_SHADER_DIAGNOSTICS });
+      }
+
+      // Step 3.1: Validate input/output port type compatibility
       for (const dependency of Object.values(node.inputs ?? {})) {
         const source = nodes.get(dependency)!;
-        if (source.outputType !== node.outputType)
+        if (source.outputType !== node.outputType) {
           return Object.freeze({
             ok: false,
             diagnostics: Object.freeze([
@@ -72,7 +117,10 @@ export class ShaderGraphCompiler {
               )
             ])
           });
+        }
       }
+
+      // Step 3.2: Compute deterministic content hash for node & its dependencies (for CSE)
       const hash = stableHash({
         kind: node.kind,
         outputType: node.outputType,
@@ -82,12 +130,16 @@ export class ShaderGraphCompiler {
         value: node.value
       });
       nodeHashes.set(node.id, hash);
+
+      // Step 3.3: Cache hit - reuse existing expression IR (CSE optimization)
       const cached = this.nodeCache.get(hash);
       if (cached !== undefined) {
         expressions.set(node.id, cached);
         reusedNodes++;
         continue;
       }
+
+      // Step 4: Emit typed ShaderExpressionIR
       const type = node.outputType as ShaderTypeId;
       const expression: ShaderExpressionIR =
         node.kind === 'constant'
@@ -115,9 +167,14 @@ export class ShaderGraphCompiler {
                 type,
                 span: graphSpan()
               });
+
       this.nodeCache.set(hash, expression);
       expressions.set(node.id, expression);
     }
+
+    // -------------------------------------------------------------------------
+    // Step 5: Construct stage entry points and package ShaderModuleIR
+    // -------------------------------------------------------------------------
     const span = graphSpan();
     const ir: ShaderModuleIR = Object.freeze({
       version: 1,
@@ -150,8 +207,20 @@ export class ShaderGraphCompiler {
       sourceMap: Object.freeze({ spans: Object.freeze([span]) }),
       sourceClosureHash: stableHash(graph)
     });
+
     return Object.freeze({ ok: true, revision: graph.revision, ir, reusedNodes });
   }
+
+  /**
+   * Validates whether a compilation result matches the current graph revision.
+   *
+   * Used by callers to discard stale asynchronous compilation results when the
+   * graph has been edited again during compilation.
+   *
+   * @param result The compilation result containing the source revision.
+   * @param currentRevision The active/latest revision of the ShaderGraph.
+   * @returns `true` if the result matches the active revision; otherwise `false`.
+   */
   acceptResult(result: Readonly<{ revision: number }>, currentRevision: number): boolean {
     return result.revision === currentRevision;
   }
@@ -210,11 +279,18 @@ export function classifyShaderGraphChange(
       'parameter-value' | 'texture-binding' | 'sampler-binding' | 'topology' | 'type' | 'variant';
   }>
 ): 'parameter-update' | 'binding-update' | 'recompile' | 'variant-compile' {
-  if (change.kind === 'parameter-value') return 'parameter-update';
-  if (change.kind === 'texture-binding' || change.kind === 'sampler-binding')
-    return 'binding-update';
-  if (change.kind === 'variant') return 'variant-compile';
-  return 'recompile';
+  switch (change.kind) {
+    case 'parameter-value':
+      return 'parameter-update';
+    case 'texture-binding':
+    case 'sampler-binding':
+      return 'binding-update';
+    case 'variant':
+      return 'variant-compile';
+    case 'topology':
+    case 'type':
+      return 'recompile';
+  }
 }
 
 function graphSpan(): SourceSpan {
