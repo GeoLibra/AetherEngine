@@ -1,3 +1,4 @@
+import { isRecord } from '../../core';
 import { defineObjectComponent } from '../../ecs/component';
 import { validateCameraProjection } from './camera';
 import type { CameraRenderSourceView } from './types';
@@ -113,9 +114,6 @@ function uint(value: unknown, label: string): number {
     throw new Error(`Camera ${label} must be an unsigned 32-bit integer.`);
   }
   return value as number;
-}
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 function invalid(message: string) {
   return { ok: false as const, issues: [{ path: [], message }] };

@@ -1,26 +1,5 @@
-/**
- * Determines whether a given value is a non-null, non-array object.
- *
- * @param value - The value to test.
- * @returns True if the value is an object record, false otherwise.
- */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/**
- * Determines whether a given value is a plain JavaScript dictionary object (prototype is Object.prototype or null).
- *
- * @param value - The value to test.
- * @returns True if the value is a plain record object, false otherwise.
- */
-export function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value)) {
-    return false;
-  }
-  const prototype = Object.getPrototypeOf(value) as unknown;
-  return prototype === Object.prototype || prototype === null;
-}
+import { isPlainRecord, isRecord } from '../core';
+export { isPlainRecord, isRecord };
 
 /**
  * Creates a deep clone of a schema-compatible value, preserving arrays, typed arrays,

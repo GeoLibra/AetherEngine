@@ -1,3 +1,4 @@
+import { isRecord } from '../../core';
 import { assertResourceLive, assertResourceOwnedBy } from './resource';
 import type { NullDeviceOwner } from './resource';
 import type {
@@ -17,7 +18,10 @@ import type {
 
 type PipelineStageName = 'Vertex' | 'Fragment' | 'Compute';
 
-export function validateRenderPipelineDescriptor(descriptor: RHIRenderPipelineDescriptor, owner: NullDeviceOwner): void {
+export function validateRenderPipelineDescriptor(
+  descriptor: RHIRenderPipelineDescriptor,
+  owner: NullDeviceOwner
+): void {
   if (descriptor.fragment !== undefined && descriptor.vertex === undefined) {
     throw new Error('Vertex stage must be provided if fragment stage is present.');
   }
@@ -29,7 +33,10 @@ export function validateRenderPipelineDescriptor(descriptor: RHIRenderPipelineDe
   validateMultisampleState(descriptor.multisample);
 }
 
-export function validateComputePipelineDescriptor(descriptor: RHIComputePipelineDescriptor, owner: NullDeviceOwner): void {
+export function validateComputePipelineDescriptor(
+  descriptor: RHIComputePipelineDescriptor,
+  owner: NullDeviceOwner
+): void {
   validatePipelineStage(descriptor.compute, 'Compute', owner);
 }
 
@@ -56,7 +63,10 @@ function validatePipelineStage(
   validateProgrammableConstants(stage.constants, `${name} stage`);
 }
 
-function validateProgrammableConstants(constants: GPUProgrammableStage['constants'], path: string): void {
+function validateProgrammableConstants(
+  constants: GPUProgrammableStage['constants'],
+  path: string
+): void {
   if (constants === undefined) {
     return;
   }
@@ -98,7 +108,11 @@ function validateVertexBufferLayout(buffer: GPUVertexBufferLayout, bufferIndex: 
   });
 }
 
-function validateVertexAttribute(attribute: GPUVertexAttribute, bufferIndex: number, attributeIndex: number): void {
+function validateVertexAttribute(
+  attribute: GPUVertexAttribute,
+  bufferIndex: number,
+  attributeIndex: number
+): void {
   if (!isRecord(attribute)) {
     throw new Error(`Vertex buffer ${bufferIndex} attribute ${attributeIndex} must be an object.`);
   }
@@ -196,8 +210,4 @@ function validatePositiveInteger(value: unknown, path: string): void {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -5,7 +5,7 @@ import {
   validateResourceBudget,
   ZERO_RESOURCE_BUDGET
 } from './budget';
-import { stableHash } from '../core/hash';
+import { stableHash } from '../core';
 import { evaluateCapabilityPredicate, snapshotPredicate } from './predicates';
 import type {
   CandidateDisposition,

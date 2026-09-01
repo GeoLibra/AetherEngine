@@ -1,4 +1,4 @@
-import { fnv1a32Hex } from '../../core/hash';
+import { compareCodeUnits, fnv1a32Hex } from '../../core';
 import type {
   BindingKeyParts,
   BindingResourceKeyParts,
@@ -153,8 +153,4 @@ function hashCanonicalValue(value: string): string {
 
 function stageOrder(stage: 'vertex' | 'fragment'): number {
   return stage === 'vertex' ? 0 : 1;
-}
-
-function compareCodeUnits(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }

@@ -1,3 +1,4 @@
+import { isRecord } from '../../core';
 import { defineObjectComponent } from '../../ecs/component';
 import type { MeshBounds } from '../../geometry';
 import { MaterialAssetType, MeshAssetType, validateAssetHandle } from '../../assets';
@@ -155,10 +156,6 @@ function requireUint(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0)
     throw new Error(`${label} must be a non-negative safe integer.`);
   return value as number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function invalid(message: string) {

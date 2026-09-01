@@ -235,7 +235,7 @@ export type CapabilityPredicate =
 
 ### 2.6 不可变决策快照与 64-bit FNV-1a Hash
 
-引入 [`src/core/hash.ts`](../core/hash.ts)，实现了跨平台完全一致的 **64-bit FNV-1a 规范化哈希算法**：
+引入 [`src/core/utils/hash.ts`](../core/utils/hash.ts)，实现了跨平台完全一致的 **64-bit FNV-1a 规范化哈希算法**：
 
 - 对象键按字典序排序序列化；
 - 最终 Hash 字符串作为 Shader 变体、管线布局、材质缓存和 Composition Plan 的失效与重建键。

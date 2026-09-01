@@ -1,4 +1,4 @@
-import { canonicalStringify, stableHash } from '../../core/hash';
+import { canonicalStringify, stableHash } from '../../core';
 import { parseFluxShader } from '../frontend/parser';
 import { resolveShaderSource } from '../frontend/source-resolver';
 import type { ShaderModuleIR, ShaderSourceRef, ShaderSourceResolver } from '../types';

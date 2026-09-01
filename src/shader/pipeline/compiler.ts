@@ -1,6 +1,6 @@
 import { emitShaderBackend, type ShaderBackendValidator } from '../backends/backend-emitter';
 import { ShaderArtifactCache } from './cache';
-import { canonicalStringify, stableHash } from '../../core/hash';
+import { canonicalStringify, compareCodeUnits, stableHash } from '../../core';
 import { parseFluxShader } from '../frontend/parser';
 import { createShaderBindingManifest } from '../layout/binding-reflection';
 import { resolveShaderSource } from '../frontend/source-resolver';
@@ -270,10 +270,6 @@ function canonicalBindingRequirements(
           compareCodeUnits(left.samplerType, right.samplerType)
       )
   );
-}
-
-function compareCodeUnits(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function variantDiagnostic(uri: string, code: string, message: string): ShaderDiagnostic {

@@ -1,3 +1,4 @@
+import { isRecord } from '../core';
 import { MaterialDiagnosticError } from './diagnostics';
 import type { MaterialSchema, MaterialTechnique } from './types';
 
@@ -89,8 +90,4 @@ function invalidTechnique(schema: MaterialSchema, materialId: string, message: s
     schemaVersion: schema.version,
     message: `Invalid material technique: ${message}`
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../../core';
 import type {
   RenderPhaseKind,
   PreparedDrawPacket,
@@ -78,10 +79,6 @@ function packetComparator(
       left.insertionOrder - right.insertionOrder
     );
   };
-}
-
-function compareCodeUnits(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function skip(

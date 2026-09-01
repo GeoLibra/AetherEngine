@@ -1,3 +1,4 @@
+import { isRecord } from '../../core';
 import type { GPUBindGroupEntry, RHIResource } from '../../rhi/contracts';
 import type { CanonicalBindingLayoutEntry } from '../pipeline/types';
 import type {
@@ -250,10 +251,6 @@ function isRhiBuffer(value: unknown): value is RHIResource & {
   readonly size: number;
 } {
   return isRecord(value) && value.kind === 'buffer' && Number.isSafeInteger(value.size);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function locationKey(location: { readonly group: number; readonly binding: number }): string {

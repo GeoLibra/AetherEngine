@@ -1,3 +1,4 @@
+import { isRecord } from '../../../core';
 import type { WebGPUNativeDeviceRequest } from '../types';
 
 export function lowerBrowserDeviceDescriptor(
@@ -76,10 +77,6 @@ function copyDefined(
     if (value !== undefined) result[key] = Array.isArray(value) ? Object.freeze([...value]) : value;
   }
   return Object.freeze(result);
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null;
 }
 
 function requireNumber(record: Readonly<Record<string, unknown>>, key: string): number {

@@ -1,3 +1,4 @@
+import { isPromiseLike } from '../core';
 import type { ResourceToken } from '../ecs/types';
 import { World } from '../ecs/world';
 import { CommandBufferResource } from '../ecs/command-buffer';
@@ -216,11 +217,7 @@ export class App {
         } catch (error) {
           if (committed) {
             for (const cleanupError of removeRegistrations(committed)) {
-              this.recordLifecycleDiagnostic(
-                'contribution-cleanup',
-                cleanupError,
-                plugin.id
-              );
+              this.recordLifecycleDiagnostic('contribution-cleanup', cleanupError, plugin.id);
             }
           } else {
             this.rollbackTransaction(transaction, plugin.id);
@@ -269,7 +266,8 @@ export class App {
       this.stop('destroy');
     }
     if (this.currentState !== 'failed' && this.currentState !== 'destroyed') {
-      this.stopReason = this.currentState === 'created' ? 'destroyed-before-startup' : this.stopReason;
+      this.stopReason =
+        this.currentState === 'created' ? 'destroyed-before-startup' : this.stopReason;
     }
 
     await this.shutdownBuiltPlugins(this.stopReason);
@@ -356,14 +354,7 @@ export class App {
       const timeRuntime = this.world.getResource(TimeRuntimeResource);
       const timeControl = this.world.getResource(TimeControlResource);
       const timeDiagnostics = this.world.getResource(TimeDiagnosticsResource);
-      if (
-        frameTime &&
-        fixedTime &&
-        timePolicy &&
-        timeRuntime &&
-        timeControl &&
-        timeDiagnostics
-      ) {
+      if (frameTime && fixedTime && timePolicy && timeRuntime && timeControl && timeDiagnostics) {
         timeRuntime.beginFrame(
           timestampSeconds,
           frameTime,
@@ -377,14 +368,7 @@ export class App {
         this.schedules.get(label)?.runSync(this.world, 'frame');
       }
 
-      if (
-        frameTime &&
-        fixedTime &&
-        timePolicy &&
-        timeRuntime &&
-        timeControl &&
-        timeDiagnostics
-      ) {
+      if (frameTime && fixedTime && timePolicy && timeRuntime && timeControl && timeDiagnostics) {
         let substep = 0;
         let accumulatorSubsteps = 0;
         if (consumeSingleStep(timeControl)) {
@@ -415,12 +399,7 @@ export class App {
           }
           this.advanceFixedEvents();
         }
-        timeRuntime.finishFrame(
-          frameTime,
-          timePolicy,
-          timeDiagnostics,
-          accumulatorSubsteps
-        );
+        timeRuntime.finishFrame(frameTime, timePolicy, timeDiagnostics, accumulatorSubsteps);
       }
 
       for (const label of FRAME_AFTER_FIXED_SCHEDULES) {
@@ -550,8 +529,4 @@ export class App {
       cause: error
     });
   }
-}
-
-function isPromiseLike(value: unknown): value is Promise<unknown> {
-  return typeof value === 'object' && value !== null && 'then' in value;
 }

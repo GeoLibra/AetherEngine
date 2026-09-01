@@ -1,3 +1,4 @@
+import { isRecord } from '../core';
 import { MaterialDiagnosticError } from './diagnostics';
 import { getMaterialFieldInternals, getMaterialSchemaInternals, isMaterialValue } from './schema';
 import type {
@@ -232,8 +233,4 @@ function diagnostic(
     field,
     message
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../../core';
 import type { RenderEntityId } from '../world';
 import { preparedKey } from '../world/prepared-assets';
 import type {
@@ -167,10 +168,6 @@ function phaseComparator(phase: RenderPhaseKind): (left: PhaseItem, right: Phase
       left.insertionOrder - right.insertionOrder
     );
   };
-}
-
-function compareCodeUnits(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function validateConstructionContext(context: RenderPhaseConstructionContext): void {

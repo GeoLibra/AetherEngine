@@ -1,3 +1,4 @@
+import { isPromiseLike } from '../core';
 import type {
   AppScope,
   ExtensionContribution,
@@ -41,10 +42,7 @@ export class ServiceRegistry implements ServiceResolver {
     private readonly scopeParents: ReadonlyMap<AppScope, AppScope> = DEFAULT_SCOPE_PARENTS
   ) {}
 
-  provide<T>(
-    token: ServiceToken<T>,
-    registration: ServiceRegistration<T>
-  ): RegistrationHandle {
+  provide<T>(token: ServiceToken<T>, registration: ServiceRegistration<T>): RegistrationHandle {
     const entry = this.createEntry(token, registration);
     const scopedEntries = this.getOrCreateScope(entry.scope);
     if (scopedEntries.has(token as ServiceToken<unknown>)) {
@@ -57,10 +55,7 @@ export class ServiceRegistry implements ServiceResolver {
     return createHandle(() => this.removeExact(entry));
   }
 
-  replace<T>(
-    token: ServiceToken<T>,
-    registration: ServiceRegistration<T>
-  ): RegistrationHandle {
+  replace<T>(token: ServiceToken<T>, registration: ServiceRegistration<T>): RegistrationHandle {
     const replacement = this.createEntry(token, registration);
     const scopedEntries = this.entries.get(replacement.scope);
     if (!scopedEntries) {
@@ -242,9 +237,7 @@ export class ServiceRegistry implements ServiceResolver {
     };
   }
 
-  private getOrCreateScope(
-    scope: AppScope
-  ): Map<ServiceToken<unknown>, ServiceEntry<unknown>> {
+  private getOrCreateScope(scope: AppScope): Map<ServiceToken<unknown>, ServiceEntry<unknown>> {
     const existing = this.entries.get(scope);
     if (existing) {
       return existing;
@@ -375,8 +368,4 @@ function createHandle(remove: () => boolean): RegistrationHandle {
 
 function tokenName(token: ServiceToken<unknown>): string {
   return token.description?.replace(/^aether\.service\./, '') ?? token.toString();
-}
-
-function isPromiseLike(value: void | Promise<void>): value is Promise<void> {
-  return typeof value === 'object' && value !== null && 'then' in value;
 }
