@@ -9,15 +9,17 @@ import type {
   RenderArtifactSectionKind
 } from './types';
 
-const REQUIRED_PRODUCTION_SECTIONS = Object.freeze([
+const REQUIRED_SHADER_LIBRARY_SECTIONS = Object.freeze([
   'manifest',
-  'material-schema',
-  'techniques',
-  'variant-table',
   'reflection',
   'layout-plans',
   'shader-module',
   'dependencies'
+] as const satisfies readonly RenderArtifactSectionKind[]);
+const REQUIRED_MATERIAL_SECTIONS = Object.freeze([
+  'material-schema',
+  'techniques',
+  'variant-table'
 ] as const satisfies readonly RenderArtifactSectionKind[]);
 const NON_SEMANTIC_SECTIONS = new Set<RenderArtifactSectionKind>([
   'source',
@@ -48,20 +50,36 @@ export async function encodeRenderArtifactPackage(
         uncompressedLength: bytes.byteLength,
         hash,
         required: section.required,
+        ...(section.target === undefined ? {} : { target: freezeRecord(section.target) }),
         location: Object.freeze({ storage: 'external' as const, blobId })
       })
     );
     blobs.set(blobId, bytes);
   }
-  const semanticContentHash = await semanticDigest(indexed);
+  const semanticHeader = {
+    artifactKind: input.artifactKind,
+    manifestSchemaVersion: 1,
+    shaderManifestSchemaVersion: 1,
+    shaderModuleSchemaVersion: 1,
+    shaderAbiVersion: input.shaderAbiVersion,
+    ...(input.artifactKind === 'material'
+      ? { materialSchemaVersion: input.materialSchemaVersion }
+      : {}),
+    toolchain: input.toolchain,
+    shaderToolchain: input.shaderToolchain
+  };
+  const semanticContentHash = await semanticDigest(indexed, semanticHeader);
   const envelopeWithoutContainerHash = {
     magic: 'AERENDER' as const,
+    artifactKind: input.artifactKind,
     containerVersion: 1 as const,
     manifestSchemaVersion: 1 as const,
     shaderManifestSchemaVersion: 1 as const,
     shaderModuleSchemaVersion: 1 as const,
     shaderAbiVersion: input.shaderAbiVersion,
-    materialSchemaVersion: input.materialSchemaVersion,
+    ...(input.artifactKind === 'material'
+      ? { materialSchemaVersion: input.materialSchemaVersion }
+      : {}),
     toolchain: input.toolchain,
     shaderToolchain: input.shaderToolchain,
     packageId: `render:${semanticContentHash}`,
@@ -137,9 +155,26 @@ export async function decodeRenderArtifactPackage(
     if (canonicalStringify(payload) !== encodedPayload) {
       throw new Error(`[section-invalid] Section "${entry.id}" payload is not canonical JSON.`);
     }
-    sections.push({ id: entry.id, kind: entry.kind, required: entry.required, payload });
+    sections.push({
+      id: entry.id,
+      kind: entry.kind,
+      required: entry.required,
+      ...(entry.target === undefined ? {} : { target: entry.target }),
+      payload
+    });
   }
-  const semanticContentHash = await semanticDigest(envelope.sections);
+  const semanticContentHash = await semanticDigest(envelope.sections, {
+    artifactKind: envelope.artifactKind,
+    manifestSchemaVersion: envelope.manifestSchemaVersion,
+    shaderManifestSchemaVersion: envelope.shaderManifestSchemaVersion,
+    shaderModuleSchemaVersion: envelope.shaderModuleSchemaVersion,
+    shaderAbiVersion: envelope.shaderAbiVersion,
+    ...(envelope.artifactKind === 'material'
+      ? { materialSchemaVersion: envelope.materialSchemaVersion }
+      : {}),
+    toolchain: envelope.toolchain,
+    shaderToolchain: envelope.shaderToolchain
+  });
   if (
     envelope.semanticContentHash !== semanticContentHash ||
     envelope.packageId !== `render:${semanticContentHash}`
@@ -148,12 +183,15 @@ export async function decodeRenderArtifactPackage(
   }
   validateInput({
     containerVersion: envelope.containerVersion,
+    artifactKind: envelope.artifactKind,
     shaderAbiVersion: envelope.shaderAbiVersion,
-    materialSchemaVersion: envelope.materialSchemaVersion,
     toolchain: envelope.toolchain,
     shaderToolchain: envelope.shaderToolchain,
-    sections
-  });
+    sections,
+    ...(envelope.artifactKind === 'material'
+      ? { materialSchemaVersion: envelope.materialSchemaVersion as number }
+      : {})
+  } as RenderArtifactPackageInput);
   return Object.freeze({
     envelope: freezeRecord(envelope) as unknown as RenderArtifactEnvelope,
     sections: Object.freeze(sections.map((section) => freezeRecord(section)))
@@ -167,6 +205,18 @@ function validateInput(input: RenderArtifactPackageInput): void {
   if (input.shaderToolchain.sourceKind === 'wgsl' && !input.shaderToolchain.nagaVersion?.trim()) {
     throw new Error('[shader-toolchain-invalid] WGSL packages require nagaVersion provenance.');
   }
+  const artifactKind = (input as { readonly artifactKind: unknown }).artifactKind;
+  if (artifactKind !== 'shader-library' && artifactKind !== 'material') {
+    throw new Error(`[artifact-kind-invalid] Unsupported artifact kind "${String(artifactKind)}".`);
+  }
+  if (
+    input.artifactKind === 'material' &&
+    (!Number.isInteger(input.materialSchemaVersion) || input.materialSchemaVersion <= 0)
+  ) {
+    throw new Error(
+      '[material-schema-version-invalid] Material packages require a positive schema version.'
+    );
+  }
   const ids = new Set<string>();
   const kinds = new Set<RenderArtifactSectionKind>();
   for (const section of input.sections) {
@@ -176,7 +226,11 @@ function validateInput(input: RenderArtifactPackageInput): void {
     ids.add(section.id);
     kinds.add(section.kind);
   }
-  for (const kind of REQUIRED_PRODUCTION_SECTIONS) {
+  const requiredSections =
+    input.artifactKind === 'material'
+      ? [...REQUIRED_SHADER_LIBRARY_SECTIONS, ...REQUIRED_MATERIAL_SECTIONS]
+      : REQUIRED_SHADER_LIBRARY_SECTIONS;
+  for (const kind of requiredSections) {
     if (!kinds.has(kind)) {
       throw new Error(`[required-section-missing] Production package requires "${kind}".`);
     }
@@ -194,14 +248,24 @@ async function containerDigest(
   return sha256(concatBytes(parts));
 }
 
-async function semanticDigest(sections: readonly RenderArtifactSectionIndex[]): Promise<string> {
+async function semanticDigest(
+  sections: readonly RenderArtifactSectionIndex[],
+  semanticHeader: unknown
+): Promise<string> {
   return sha256(
     UTF8.encode(
-      canonicalStringify(
-        sections
+      canonicalStringify({
+        header: semanticHeader,
+        sections: sections
           .filter(({ kind }) => !NON_SEMANTIC_SECTIONS.has(kind))
-          .map(({ id, kind, hash }) => ({ id, kind, hash }))
-      )
+          .map(({ id, kind, hash, required, target }) => ({
+            id,
+            kind,
+            hash,
+            required,
+            ...(target === undefined ? {} : { target })
+          }))
+      })
     )
   );
 }

@@ -1,6 +1,12 @@
 export { decodeRenderArtifactPackage, encodeRenderArtifactPackage } from './reference-codec';
+export {
+  decodeCookedShaderArtifactPackage,
+  encodeCookedShaderArtifactPackage
+} from './shader-package';
+export type { CookedShaderPackageOptions } from './shader-package';
 export type {
   DecodedRenderArtifactPackage,
+  RenderArtifactKind,
   RenderArtifactContainerSectionLocation,
   RenderArtifactEnvelope,
   RenderArtifactExternalSectionLocation,
@@ -10,5 +16,6 @@ export type {
   RenderArtifactSectionIndex,
   RenderArtifactSectionKind,
   RenderArtifactSectionLocation,
-  RenderArtifactShaderToolchain
+  RenderArtifactShaderToolchain,
+  RenderArtifactTargetSelector
 } from './types';

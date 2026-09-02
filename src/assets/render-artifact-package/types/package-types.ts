@@ -14,6 +14,9 @@ export type RenderArtifactSectionKind =
   | 'source-map'
   | 'debug-symbols';
 
+/** Declares which semantic closure and required sections a render package publishes. */
+export type RenderArtifactKind = 'shader-library' | 'material';
+
 export interface RenderArtifactShaderToolchain {
   readonly cookerId: string;
   readonly cookerVersion: string;
@@ -27,7 +30,15 @@ export interface RenderArtifactPackageSectionInput {
   readonly id: string;
   readonly kind: RenderArtifactSectionKind;
   readonly required: boolean;
+  readonly target?: RenderArtifactTargetSelector;
   readonly payload: unknown;
+}
+
+/** Selects a cooked module without reading its external blob payload. */
+export interface RenderArtifactTargetSelector {
+  readonly shaderTarget: 'wgsl' | 'glsl300es';
+  readonly entryPoint?: string;
+  readonly stage?: 'vertex' | 'fragment' | 'compute';
 }
 
 export interface RenderArtifactExternalSectionLocation {
@@ -45,14 +56,19 @@ export interface RenderArtifactContainerSectionLocation {
 export type RenderArtifactSectionLocation =
   RenderArtifactExternalSectionLocation | RenderArtifactContainerSectionLocation;
 
-export interface RenderArtifactPackageInput {
+interface RenderArtifactPackageInputBase {
   readonly containerVersion?: number | undefined;
   readonly shaderAbiVersion: number;
-  readonly materialSchemaVersion: number;
   readonly toolchain: Readonly<{ id: string; version: string }>;
   readonly shaderToolchain: RenderArtifactShaderToolchain;
   readonly sections: readonly RenderArtifactPackageSectionInput[];
 }
+
+export type RenderArtifactPackageInput = RenderArtifactPackageInputBase &
+  (
+    | Readonly<{ artifactKind: 'shader-library'; materialSchemaVersion?: never }>
+    | Readonly<{ artifactKind: 'material'; materialSchemaVersion: number }>
+  );
 
 export interface RenderArtifactSectionIndex {
   readonly id: string;
@@ -60,17 +76,19 @@ export interface RenderArtifactSectionIndex {
   readonly uncompressedLength: number;
   readonly hash: string;
   readonly required: boolean;
+  readonly target?: RenderArtifactTargetSelector;
   readonly location: RenderArtifactSectionLocation;
 }
 
 export interface RenderArtifactEnvelope {
   readonly magic: 'AERENDER';
+  readonly artifactKind: RenderArtifactKind;
   readonly containerVersion: 1;
   readonly manifestSchemaVersion: 1;
   readonly shaderManifestSchemaVersion: 1;
   readonly shaderModuleSchemaVersion: 1;
   readonly shaderAbiVersion: number;
-  readonly materialSchemaVersion: number;
+  readonly materialSchemaVersion?: number;
   readonly toolchain: Readonly<{ id: string; version: string }>;
   readonly shaderToolchain: RenderArtifactShaderToolchain;
   readonly packageId: string;
