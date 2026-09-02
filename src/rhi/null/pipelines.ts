@@ -95,7 +95,9 @@ function cloneProgrammableStage<TStage extends GPUProgrammableStage>(stage: TSta
 function cloneVertexState(state: GPUVertexState): GPUVertexState {
   const clone = cloneProgrammableStage(state);
   if (state.buffers !== undefined) {
-    clone.buffers = state.buffers.map((buffer) => (buffer === null ? null : cloneVertexBufferLayout(buffer)));
+    clone.buffers = state.buffers.map((buffer) =>
+      buffer === null ? null : cloneVertexBufferLayout(buffer)
+    );
   }
   return clone;
 }
@@ -117,7 +119,9 @@ function cloneVertexAttribute(attribute: GPUVertexAttribute): GPUVertexAttribute
 
 function cloneFragmentState(state: GPUFragmentState): GPUFragmentState {
   const clone = cloneProgrammableStage(state);
-  clone.targets = state.targets.map((target) => (target === null ? null : cloneColorTargetState(target)));
+  clone.targets = state.targets.map((target) =>
+    target === null ? null : cloneColorTargetState(target)
+  );
   return clone;
 }
 

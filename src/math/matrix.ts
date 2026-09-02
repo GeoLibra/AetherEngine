@@ -50,15 +50,15 @@ export const Mat4 = Object.freeze({
     const wz = w * z;
     return new Float32Array([
       (1 - 2 * (yy + zz)) * scale[0],
-      (2 * (xy + wz)) * scale[0],
-      (2 * (xz - wy)) * scale[0],
+      2 * (xy + wz) * scale[0],
+      2 * (xz - wy) * scale[0],
       0,
-      (2 * (xy - wz)) * scale[1],
+      2 * (xy - wz) * scale[1],
       (1 - 2 * (xx + zz)) * scale[1],
-      (2 * (yz + wx)) * scale[1],
+      2 * (yz + wx) * scale[1],
       0,
-      (2 * (xz + wy)) * scale[2],
-      (2 * (yz - wx)) * scale[2],
+      2 * (xz + wy) * scale[2],
+      2 * (yz - wx) * scale[2],
       (1 - 2 * (xx + yy)) * scale[2],
       0,
       translation[0],
@@ -82,12 +82,9 @@ export const Mat4 = Object.freeze({
       throw new Error('Perspective requires positive aspect and 0 < near < far.');
     }
     const focal = 1 / Math.tan(verticalFov * 0.5);
-    const depthScale =
-      depth.mode === 'standard' ? far / (near - far) : near / (far - near);
+    const depthScale = depth.mode === 'standard' ? far / (near - far) : near / (far - near);
     const depthOffset =
-      depth.mode === 'standard'
-        ? (far * near) / (near - far)
-        : (far * near) / (far - near);
+      depth.mode === 'standard' ? (far * near) / (near - far) : (far * near) / (far - near);
     return new Float32Array([
       focal / aspect,
       0,
@@ -111,11 +108,7 @@ export const Mat4 = Object.freeze({
   transformPoint(matrix: ArrayLike<number>, point: Vec3): Vec3 {
     const transformed = Mat4.transformPointHomogeneous(matrix, [...point, 1]);
     const inverseW = transformed[3] === 0 ? 1 : 1 / transformed[3];
-    return [
-      transformed[0] * inverseW,
-      transformed[1] * inverseW,
-      transformed[2] * inverseW
-    ];
+    return [transformed[0] * inverseW, transformed[1] * inverseW, transformed[2] * inverseW];
   },
 
   transformDirection(matrix: ArrayLike<number>, direction: Vec3): Vec3 {
@@ -125,10 +118,22 @@ export const Mat4 = Object.freeze({
 
   transformPointHomogeneous(matrix: ArrayLike<number>, point: Vec4): Vec4 {
     return [
-      matrix[0]! * point[0] + matrix[4]! * point[1] + matrix[8]! * point[2] + matrix[12]! * point[3],
-      matrix[1]! * point[0] + matrix[5]! * point[1] + matrix[9]! * point[2] + matrix[13]! * point[3],
-      matrix[2]! * point[0] + matrix[6]! * point[1] + matrix[10]! * point[2] + matrix[14]! * point[3],
-      matrix[3]! * point[0] + matrix[7]! * point[1] + matrix[11]! * point[2] + matrix[15]! * point[3]
+      matrix[0]! * point[0] +
+        matrix[4]! * point[1] +
+        matrix[8]! * point[2] +
+        matrix[12]! * point[3],
+      matrix[1]! * point[0] +
+        matrix[5]! * point[1] +
+        matrix[9]! * point[2] +
+        matrix[13]! * point[3],
+      matrix[2]! * point[0] +
+        matrix[6]! * point[1] +
+        matrix[10]! * point[2] +
+        matrix[14]! * point[3],
+      matrix[3]! * point[0] +
+        matrix[7]! * point[1] +
+        matrix[11]! * point[2] +
+        matrix[15]! * point[3]
     ];
   },
 
@@ -143,19 +148,37 @@ export const Mat4 = Object.freeze({
   determinant(matrix: ArrayLike<number>): number {
     const m = matrix;
     return (
-      m[0]! * (m[5]! * (m[10]! * m[15]! - m[14]! * m[11]!) - m[9]! * (m[6]! * m[15]! - m[14]! * m[7]!) + m[13]! * (m[6]! * m[11]! - m[10]! * m[7]!)) -
-      m[4]! * (m[1]! * (m[10]! * m[15]! - m[14]! * m[11]!) - m[9]! * (m[2]! * m[15]! - m[14]! * m[3]!) + m[13]! * (m[2]! * m[11]! - m[10]! * m[3]!)) +
-      m[8]! * (m[1]! * (m[6]! * m[15]! - m[14]! * m[7]!) - m[5]! * (m[2]! * m[15]! - m[14]! * m[3]!) + m[13]! * (m[2]! * m[7]! - m[6]! * m[3]!)) -
-      m[12]! * (m[1]! * (m[6]! * m[11]! - m[10]! * m[7]!) - m[5]! * (m[2]! * m[11]! - m[10]! * m[3]!) + m[9]! * (m[2]! * m[7]! - m[6]! * m[3]!))
+      m[0]! *
+        (m[5]! * (m[10]! * m[15]! - m[14]! * m[11]!) -
+          m[9]! * (m[6]! * m[15]! - m[14]! * m[7]!) +
+          m[13]! * (m[6]! * m[11]! - m[10]! * m[7]!)) -
+      m[4]! *
+        (m[1]! * (m[10]! * m[15]! - m[14]! * m[11]!) -
+          m[9]! * (m[2]! * m[15]! - m[14]! * m[3]!) +
+          m[13]! * (m[2]! * m[11]! - m[10]! * m[3]!)) +
+      m[8]! *
+        (m[1]! * (m[6]! * m[15]! - m[14]! * m[7]!) -
+          m[5]! * (m[2]! * m[15]! - m[14]! * m[3]!) +
+          m[13]! * (m[2]! * m[7]! - m[6]! * m[3]!)) -
+      m[12]! *
+        (m[1]! * (m[6]! * m[11]! - m[10]! * m[7]!) -
+          m[5]! * (m[2]! * m[11]! - m[10]! * m[3]!) +
+          m[9]! * (m[2]! * m[7]! - m[6]! * m[3]!))
     );
   },
 
   normalMatrix(matrix: ArrayLike<number>): Float32Array {
     const inverse = Mat4.invert(matrix);
     return new Float32Array([
-      inverse[0]!, inverse[4]!, inverse[8]!,
-      inverse[1]!, inverse[5]!, inverse[9]!,
-      inverse[2]!, inverse[6]!, inverse[10]!
+      inverse[0]!,
+      inverse[4]!,
+      inverse[8]!,
+      inverse[1]!,
+      inverse[5]!,
+      inverse[9]!,
+      inverse[2]!,
+      inverse[6]!,
+      inverse[10]!
     ]);
   },
 

@@ -28,7 +28,8 @@ describe('App plugin preflight and transactions', () => {
 
   test('rejects duplicate ids and reports plugin dependency cycles before build', async () => {
     const events: string[] = [];
-    const duplicate = () => definePlugin({ id: 'duplicate', build: () => void events.push('build') });
+    const duplicate = () =>
+      definePlugin({ id: 'duplicate', build: () => void events.push('build') });
     const duplicateApp = new App().addPlugins([duplicate(), duplicate()]);
 
     await expect(duplicateApp.startup()).rejects.toThrow('duplicate plugin id "duplicate"');
@@ -102,8 +103,9 @@ describe('App lifecycle', () => {
 
     const destroying = app.destroy();
 
-    expect(() => app.addPlugin(definePlugin({ id: 'too-late', build: () => undefined })))
-      .toThrow('being destroyed');
+    expect(() => app.addPlugin(definePlugin({ id: 'too-late', build: () => undefined }))).toThrow(
+      'being destroyed'
+    );
     await expect(app.startup()).rejects.toThrow('being destroyed');
     await destroying;
   });
@@ -146,10 +148,7 @@ describe('App lifecycle', () => {
         finish: () => void events.push(`finish ${id}`),
         shutdown: () => void events.push(`shutdown ${id}`)
       });
-    const app = new App().addPlugins([
-      makePlugin('renderer', ['core']),
-      makePlugin('core')
-    ]);
+    const app = new App().addPlugins([makePlugin('renderer', ['core']), makePlugin('core')]);
 
     await app.startup();
     await app.destroy();

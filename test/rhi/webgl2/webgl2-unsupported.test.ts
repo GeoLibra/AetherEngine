@@ -14,13 +14,22 @@ class NativeContext {
   readonly precision = {};
   readonly lost = new Promise<WebGL2NativeContextLostInfo>(() => {});
   created = 0;
-  createBuffer(): object { this.created += 1; return {}; }
-  createTexture(): object { this.created += 1; return {}; }
+  createBuffer(): object {
+    this.created += 1;
+    return {};
+  }
+  createTexture(): object {
+    this.created += 1;
+    return {};
+  }
 }
 
 async function createDevice() {
   const native = new NativeContext();
-  const device = await new WebGL2Adapter(native).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+  const device = await new WebGL2Adapter(native).requestDevice({
+    requiredFeatures: [],
+    optionalFeatures: []
+  });
   return { device, native };
 }
 
@@ -48,22 +57,40 @@ describe('WebGL2 typed unsupported boundaries', () => {
     const { device, native } = await createDevice();
     expectUnsupported(
       () => device.createBuffer({ size: 16, usage: 1 << 7 }),
-      'create-storage-buffer', 'storage-buffer'
+      'create-storage-buffer',
+      'storage-buffer'
     );
     expectUnsupported(
       () => device.createTexture({ size: [4, 4], format: 'rgba8unorm', usage: 1 << 3 }),
-      'create-storage-texture', 'storage-texture'
+      'create-storage-texture',
+      'storage-texture'
     );
     expect(native.created).toBe(0);
   });
 
   test('rejects storage layouts at layout creation', async () => {
     const { device } = await createDevice();
-    expectUnsupported(() => device.createBindGroupLayout({
-      entries: [{ binding: 0, visibility: 1, buffer: { type: 'storage' } }]
-    }), 'create-storage-buffer', 'storage-buffer');
-    expectUnsupported(() => device.createBindGroupLayout({
-      entries: [{ binding: 0, visibility: 1, storageTexture: { access: 'write-only', format: 'rgba8unorm' } }]
-    }), 'create-storage-texture', 'storage-texture');
+    expectUnsupported(
+      () =>
+        device.createBindGroupLayout({
+          entries: [{ binding: 0, visibility: 1, buffer: { type: 'storage' } }]
+        }),
+      'create-storage-buffer',
+      'storage-buffer'
+    );
+    expectUnsupported(
+      () =>
+        device.createBindGroupLayout({
+          entries: [
+            {
+              binding: 0,
+              visibility: 1,
+              storageTexture: { access: 'write-only', format: 'rgba8unorm' }
+            }
+          ]
+        }),
+      'create-storage-texture',
+      'storage-texture'
+    );
   });
 });

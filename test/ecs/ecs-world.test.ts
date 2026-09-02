@@ -67,7 +67,10 @@ describe('World entities and components', () => {
       event: 'entity-despawned',
       run: () => events.push('entity-despawned')
     });
-    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .build();
 
     expect(world.state).toBe('created');
     world.start();
@@ -242,7 +245,10 @@ describe('World relationships and queries', () => {
     const world = new World();
     world.registerComponent(Transform);
 
-    const root = world.spawn().insert(Transform, { position: [0, 0, 0] }).build();
+    const root = world
+      .spawn()
+      .insert(Transform, { position: [0, 0, 0] })
+      .build();
     const child = world
       .spawn()
       .insert(Transform, { position: [1, 0, 0] })
@@ -252,9 +258,9 @@ describe('World relationships and queries', () => {
 
     expect(world.getParent(child)).toBe(root);
     expect(world.getChildren(root)).toEqual([child]);
-    expect([...world.query([Transform], { relation: [ChildOf, root] })].map(([entity]) => entity)).toEqual([
-      child
-    ]);
+    expect(
+      [...world.query([Transform], { relation: [ChildOf, root] })].map(([entity]) => entity)
+    ).toEqual([child]);
     expect([...world.query([], { relation: [ChildOf, child] })].map(([entity]) => entity)).toEqual([
       grandchild
     ]);
@@ -278,9 +284,9 @@ describe('World relationships and queries', () => {
     world.addRelation(source, Targets, target);
 
     expect(world.getRelation(source, Targets)).toEqual({ relation: Targets, target });
-    expect([...world.query([], { relation: [Targets, target] })].map(([entity]) => entity)).toEqual([
-      source
-    ]);
+    expect([...world.query([], { relation: [Targets, target] })].map(([entity]) => entity)).toEqual(
+      [source]
+    );
   });
 
   test('keeps ChildOf index synchronized when relations are replaced and entities despawn', () => {
@@ -307,12 +313,15 @@ describe('World relationships and queries', () => {
     world.registerComponent(Transform);
 
     const parent = world.spawn().build();
-    const child = world.spawn().insert(Transform, { position: [1, 0, 0] }).build();
+    const child = world
+      .spawn()
+      .insert(Transform, { position: [1, 0, 0] })
+      .build();
 
     world.addRelation(child, ChildOf, parent);
-    expect([...world.query([Transform], { relation: [ChildOf, parent] })].map(([entity]) => entity)).toEqual([
-      child
-    ]);
+    expect(
+      [...world.query([Transform], { relation: [ChildOf, parent] })].map(([entity]) => entity)
+    ).toEqual([child]);
 
     expect(world.removeRelation(child, ChildOf)).toBe(true);
 
@@ -338,9 +347,14 @@ describe('World change detection', () => {
     const world = new World();
     world.registerComponent(Transform);
 
-    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .build();
 
-    expect([...world.query([Transform], { added: [Transform] })].map(([row]) => row)).toEqual([entity]);
+    expect([...world.query([Transform], { added: [Transform] })].map(([row]) => row)).toEqual([
+      entity
+    ]);
     expect([...world.query([Transform], { changed: [Transform] })].map(([row]) => row)).toEqual([
       entity
     ]);
@@ -362,7 +376,10 @@ describe('World change detection', () => {
   test('tracks vector mutating methods as component changes', () => {
     const world = new World();
     world.registerComponent(Transform);
-    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .build();
 
     world.clearTrackers();
     world.getComponent<TransformView>(entity, Transform)!.position.set([9, 9, 9]);
@@ -382,11 +399,17 @@ describe('World change detection', () => {
   test('keeps existing component views valid after table reallocation', () => {
     const world = new World();
     world.registerComponent(Transform);
-    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .build();
     const beforeGrowth = world.getComponent<TransformView>(entity, Transform);
 
     for (let index = 0; index < 100; index++) {
-      world.spawn().insert(Transform, { position: [0, 0, 0] }).build();
+      world
+        .spawn()
+        .insert(Transform, { position: [0, 0, 0] })
+        .build();
     }
 
     beforeGrowth!.position[0] = 42;
@@ -400,7 +423,12 @@ describe('World change detection', () => {
     const entities: Entity[] = [];
 
     for (let index = 0; index < 80; index++) {
-      entities.push(world.spawn().insert(Transform, { position: [index, 0, 0] }).build());
+      entities.push(
+        world
+          .spawn()
+          .insert(Transform, { position: [index, 0, 0] })
+          .build()
+      );
     }
 
     const [table] = world.findMatchingTables([Transform]);
@@ -418,7 +446,10 @@ describe('World change detection', () => {
     const world = new World();
     world.registerComponent(Transform).registerComponent(Velocity);
     const parent = world.spawn().build();
-    const entity = world.spawn().insert(Transform, { position: [1, 2, 3] }).build();
+    const entity = world
+      .spawn()
+      .insert(Transform, { position: [1, 2, 3] })
+      .build();
     const transform = world.getComponent<TransformView>(entity, Transform);
 
     world.insertComponent(entity, Velocity, { linear: [1, 0, 0] });
@@ -427,8 +458,8 @@ describe('World change detection', () => {
     transform!.position[0] = 77;
 
     expect(world.getComponent<TransformView>(entity, Transform)!.position[0]).toBe(77);
-    expect([...world.query([Transform, Velocity], { relation: [ChildOf, parent] })].map(([row]) => row)).toEqual([
-      entity
-    ]);
+    expect(
+      [...world.query([Transform, Velocity], { relation: [ChildOf, parent] })].map(([row]) => row)
+    ).toEqual([entity]);
   });
 });

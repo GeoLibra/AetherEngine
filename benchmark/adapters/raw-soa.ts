@@ -9,7 +9,9 @@ export const RAW_SOA_SUBJECT: BenchmarkSubject = Object.freeze<BenchmarkSubject>
   version: 'javascript-float32array-soa',
   prepare(scenario, input) {
     if (!['dense-read', 'dense-update', 'selective-query'].includes(scenario.id)) {
-      return unsupported(`raw SoA does not provide ECS ${scenario.id.replaceAll('-', ' ')} semantics`);
+      return unsupported(
+        `raw SoA does not provide ECS ${scenario.id.replaceAll('-', ' ')} semantics`
+      );
     }
     const setupStartedAt = performance.now();
     const x = new Float32Array(input.scale);
@@ -29,7 +31,12 @@ export const RAW_SOA_SUBJECT: BenchmarkSubject = Object.freeze<BenchmarkSubject>
       selected[index] = index < input.matchCount ? 1 : 0;
     }
     const populationMs = performance.now() - populationStartedAt;
-    const mode = scenario.id === 'dense-read' ? 'read' : scenario.id === 'dense-update' ? 'update' : 'selective';
+    const mode =
+      scenario.id === 'dense-read'
+        ? 'read'
+        : scenario.id === 'dense-update'
+          ? 'update'
+          : 'selective';
     const prepared: PreparedBenchmark = {
       expectedChecksum: expectedDenseChecksum(input, mode),
       reset() {

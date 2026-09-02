@@ -1,15 +1,6 @@
 import { performance } from 'node:perf_hooks';
-import {
-  ChildOf,
-  World,
-  type Entity,
-  type QueryState
-} from '../../src';
-import type {
-  BenchmarkChecksum,
-  BenchmarkScenario,
-  ScenarioInput
-} from '../harness/types';
+import { ChildOf, World, type Entity, type QueryState } from '../../src';
+import type { BenchmarkChecksum, BenchmarkScenario, ScenarioInput } from '../harness/types';
 import {
   expectedDenseChecksum,
   expectedPositionChecksum,
@@ -84,7 +75,8 @@ function prepareDense(scenario: BenchmarkScenario, input: ScenarioInput): Prepar
     builder.build();
   }
   const populationMs = performance.now() - populationStartedAt;
-  const mode = scenario.id === 'dense-read' ? 'read' : scenario.id === 'dense-update' ? 'update' : 'selective';
+  const mode =
+    scenario.id === 'dense-read' ? 'read' : scenario.id === 'dense-update' ? 'update' : 'selective';
   const queryStartedAt = performance.now();
   const query = world.createQueryState(
     [BenchmarkPosition, BenchmarkVelocity] as const,
@@ -154,7 +146,10 @@ function prepareQueryCache(input: ScenarioInput): PrepareResult {
       .insert(BenchmarkPosition, initialPosition(input.scale, input.seedOffset))
       .insert(BenchmarkVelocity, initialVelocity(input.scale))
       .build();
-    world.spawn().insert(BenchmarkVelocity, initialVelocity(input.scale + 1)).build();
+    world
+      .spawn()
+      .insert(BenchmarkVelocity, initialVelocity(input.scale + 1))
+      .build();
     let count = 0;
     let value = 0;
     for (const [, position] of query) {
@@ -404,9 +399,7 @@ function supported(
   return { status: 'supported', prepared, preparation };
 }
 
-function sumPositions(
-  query: Iterable<readonly [Entity, BenchmarkVectorView]>
-): BenchmarkChecksum {
+function sumPositions(query: Iterable<readonly [Entity, BenchmarkVectorView]>): BenchmarkChecksum {
   let count = 0;
   let value = 0;
   for (const [, position] of query) {
@@ -418,7 +411,9 @@ function sumPositions(
 
 function queryCounters(
   world: World,
-  query: QueryState<readonly [typeof BenchmarkPosition]> | QueryState<readonly [typeof BenchmarkPosition, typeof BenchmarkVelocity]>
+  query:
+    | QueryState<readonly [typeof BenchmarkPosition]>
+    | QueryState<readonly [typeof BenchmarkPosition, typeof BenchmarkVelocity]>
 ): Readonly<Record<string, number>> {
   const metrics = world.metrics();
   return Object.freeze({

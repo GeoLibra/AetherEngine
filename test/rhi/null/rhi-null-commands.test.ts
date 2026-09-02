@@ -47,16 +47,20 @@ describe('NullDevice command encoding', () => {
 
     encoder.finish({ label: 'commands' });
 
-    expect(() => encoder.beginRenderPass(createRenderTarget(device).createRenderPassDescriptor())).toThrow(
-      'Command encoder "frame" has already finished.'
-    );
+    expect(() =>
+      encoder.beginRenderPass(createRenderTarget(device).createRenderPassDescriptor())
+    ).toThrow('Command encoder "frame" has already finished.');
   });
 
   test('rejects encoder debug groups and disposed resources in invalid states', () => {
     const device = new NullDevice();
     const encoder = device.createCommandEncoder({ label: 'frame' });
     const pass = encoder.beginRenderPass(createRenderTarget(device).createRenderPassDescriptor());
-    const vertex = device.createBuffer({ label: 'disposed-vertex', size: 16, usage: BUFFER_USAGE_VERTEX });
+    const vertex = device.createBuffer({
+      label: 'disposed-vertex',
+      size: 16,
+      usage: BUFFER_USAGE_VERTEX
+    });
 
     expect(() => encoder.pushDebugGroup('bad')).toThrow(
       'Cannot push an encoder debug group while a pass is active.'
@@ -108,7 +112,9 @@ describe('NullDevice command encoding', () => {
       usage: BUFFER_USAGE_VERTEX
     });
     const encoder = secondDevice.createCommandEncoder();
-    const pass = encoder.beginRenderPass(createRenderTarget(secondDevice).createRenderPassDescriptor());
+    const pass = encoder.beginRenderPass(
+      createRenderTarget(secondDevice).createRenderPassDescriptor()
+    );
 
     expect(() => pass.setVertexBuffer(0, foreignBuffer)).toThrow(
       'Resource "foreign-vertices" belongs to a different NullDevice.'
@@ -146,7 +152,9 @@ describe('NullDevice command encoding', () => {
       primitive: { topology: 'triangle-list' }
     });
     const encoder = device.createCommandEncoder();
-    const renderPass = encoder.beginRenderPass(createRenderTarget(device).createRenderPassDescriptor());
+    const renderPass = encoder.beginRenderPass(
+      createRenderTarget(device).createRenderPassDescriptor()
+    );
 
     renderPass.setPipeline(pipeline);
     renderPass.setIndexBuffer(index, 'uint16');
@@ -206,7 +214,10 @@ describe('NullDevice command encoding', () => {
 
     expect(commandBuffer.getCommandStream()).toEqual([
       { kind: 'beginRenderPass', label: 'main-target', colorAttachmentCount: 1 },
-      { kind: 'setRenderPipeline', pipeline: { kind: 'render-pipeline', id: pipeline.id, label: 'opaque-pipeline' } },
+      {
+        kind: 'setRenderPipeline',
+        pipeline: { kind: 'render-pipeline', id: pipeline.id, label: 'opaque-pipeline' }
+      },
       { kind: 'pushDebugGroup', scope: 'render-pass', label: 'opaque' },
       { kind: 'draw', vertexCount: 3, instanceCount: 1, firstVertex: 0, firstInstance: 0 },
       { kind: 'popDebugGroup', scope: 'render-pass' },

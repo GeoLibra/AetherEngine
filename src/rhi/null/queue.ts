@@ -1,5 +1,9 @@
 import { toByteCopy, validateBufferForQueueWrite, validateBufferRange } from './buffer';
-import { normalizeAndValidateExtent, validateImageDataLayout, validateTextureCopyView } from './texture';
+import {
+  normalizeAndValidateExtent,
+  validateImageDataLayout,
+  validateTextureCopyView
+} from './texture';
 import { assertResourceLive, assertResourceOwnedBy } from './resource';
 import type { NullDeviceOwner } from './resource';
 import { NullCommandBuffer } from './command';
@@ -49,7 +53,9 @@ export class NullQueue implements RHIQueue {
         throw new Error('NullQueue only accepts command buffers created by NullDevice.');
       }
       if (seenCommandBuffers.has(commandBuffer)) {
-        throw new Error(`Command buffer "${commandBuffer.label ?? 'command-buffer'}" has already been submitted.`);
+        throw new Error(
+          `Command buffer "${commandBuffer.label ?? 'command-buffer'}" has already been submitted.`
+        );
       }
       seenCommandBuffers.add(commandBuffer);
       commandBuffer.assertReadyForSubmit();

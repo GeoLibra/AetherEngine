@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { JobScheduler, defineJobType, type JobEnvelope, type WorkerExecutor, type WorkerOutcome } from '../../src';
+import {
+  JobScheduler,
+  defineJobType,
+  type JobEnvelope,
+  type WorkerExecutor,
+  type WorkerOutcome
+} from '../../src';
 
 class PendingExecutor implements WorkerExecutor {
   readonly id = 'pending-worker';
@@ -7,22 +13,30 @@ class PendingExecutor implements WorkerExecutor {
   signal: AbortSignal | undefined;
   execute(_envelope: JobEnvelope, _transfer: readonly ArrayBuffer[], signal: AbortSignal) {
     this.signal = signal;
-    return new Promise<WorkerOutcome>((resolve) => { this.complete = resolve; });
+    return new Promise<WorkerOutcome>((resolve) => {
+      this.complete = resolve;
+    });
   }
-  succeed(): void { this.complete({ status: 'completed', output: 1 }); }
+  succeed(): void {
+    this.complete({ status: 'completed', output: 1 });
+  }
   dispose(): void {}
 }
 
 const Job = defineJobType({
   id: 'test.cancellable-job',
   encode: (input: number) => ({ payload: input, inputBytes: 0, decodeBytes: 0, transfer: [] }),
-  decode: (value: unknown) => Number(value), summarize: (input: number) => ({ input })
+  decode: (value: unknown) => Number(value),
+  summarize: (input: number) => ({ input })
 });
 
 describe('job cancellation', () => {
   test('removes the caller AbortSignal listener after completion', async () => {
     const executor = new PendingExecutor();
-    const scheduler = new JobScheduler({ workerFactory: { create: () => executor }, workerCount: 1 });
+    const scheduler = new JobScheduler({
+      workerFactory: { create: () => executor },
+      workerCount: 1
+    });
     const signal = new TrackingAbortSignal();
     scheduler.register(Job);
 
@@ -44,7 +58,10 @@ describe('job cancellation', () => {
 
   test('first terminal state wins active cancellation and completion races', async () => {
     const executor = new PendingExecutor();
-    const scheduler = new JobScheduler({ workerFactory: { create: () => executor }, workerCount: 1 });
+    const scheduler = new JobScheduler({
+      workerFactory: { create: () => executor },
+      workerCount: 1
+    });
     scheduler.register(Job);
     const handle = scheduler.schedule(Job, request(1));
     handle.cancel('cancel first');
@@ -56,7 +73,10 @@ describe('job cancellation', () => {
 
   test('cancel after completion does not replace the completed result', async () => {
     const executor = new PendingExecutor();
-    const scheduler = new JobScheduler({ workerFactory: { create: () => executor }, workerCount: 1 });
+    const scheduler = new JobScheduler({
+      workerFactory: { create: () => executor },
+      workerCount: 1
+    });
     scheduler.register(Job);
     const handle = scheduler.schedule(Job, request(1));
     executor.succeed();
@@ -75,7 +95,9 @@ class TrackingAbortSignal {
   readonly reason: unknown = undefined;
   private listener: EventListenerOrEventListenerObject | undefined;
 
-  get listenerCount(): number { return this.listener === undefined ? 0 : 1; }
+  get listenerCount(): number {
+    return this.listener === undefined ? 0 : 1;
+  }
 
   addEventListener(_type: string, listener: EventListenerOrEventListenerObject): void {
     this.listener = listener;

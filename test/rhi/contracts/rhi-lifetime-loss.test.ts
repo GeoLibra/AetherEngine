@@ -41,9 +41,7 @@ describe('Null RHI lifetime and loss', () => {
     });
     expect(Object.isFrozen(await device.lost)).toBe(true);
     expect(() => texture.createView()).toThrow('Resource "color" belongs to a lost device.');
-    expect(() => device.createBuffer({ size: 4, usage: 1 })).toThrow(
-      'NullDevice is lost.'
-    );
+    expect(() => device.createBuffer({ size: 4, usage: 1 })).toThrow('NullDevice is lost.');
   });
 
   test('never reuses a device generation', () => {

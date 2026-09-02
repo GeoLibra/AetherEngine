@@ -1,10 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import {
-  createExtensionPoint,
-  createServiceToken,
-  serviceFactory,
-  serviceValue
-} from '../../src';
+import { createExtensionPoint, createServiceToken, serviceFactory, serviceValue } from '../../src';
 import { ExtensionRegistry, ServiceRegistry } from '../../src/app/registry';
 
 describe('ServiceRegistry', () => {
@@ -14,9 +9,18 @@ describe('ServiceRegistry', () => {
     const B = createServiceToken<object>('b');
     const registry = new ServiceRegistry();
 
-    registry.provide(FunctionToken, serviceValue(() => 'value'));
-    registry.provide(A, serviceFactory((services) => services.get(B)));
-    registry.provide(B, serviceFactory((services) => services.get(A)));
+    registry.provide(
+      FunctionToken,
+      serviceValue(() => 'value')
+    );
+    registry.provide(
+      A,
+      serviceFactory((services) => services.get(B))
+    );
+    registry.provide(
+      B,
+      serviceFactory((services) => services.get(A))
+    );
 
     expect(registry.get(FunctionToken)()).toBe('value');
     expect(() => registry.get(A)).toThrow('a -> b -> a');
@@ -125,9 +129,9 @@ describe('ExtensionRegistry', () => {
     ]);
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot[0])).toBe(true);
-    expect(() => registry.add(Point, 'plugin.duplicate', { id: 'low', value: 'duplicate' })).toThrow(
-      'duplicate extension contribution "low"'
-    );
+    expect(() =>
+      registry.add(Point, 'plugin.duplicate', { id: 'low', value: 'duplicate' })
+    ).toThrow('duplicate extension contribution "low"');
   });
 
   test('supports exact removal and owner cleanup without mutating old snapshots', () => {

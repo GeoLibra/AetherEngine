@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
-  JobScheduler, defineJobType,
-  type JobEnvelope, type WorkerExecutor, type WorkerFactory, type WorkerOutcome
+  JobScheduler,
+  defineJobType,
+  type JobEnvelope,
+  type WorkerExecutor,
+  type WorkerFactory,
+  type WorkerOutcome
 } from '../../src';
 
 class ControlledExecutor implements WorkerExecutor {
@@ -12,16 +16,23 @@ class ControlledExecutor implements WorkerExecutor {
   execute(envelope: JobEnvelope, transfer: readonly ArrayBuffer[], signal: AbortSignal) {
     structuredClone(envelope, { transfer: [...transfer] });
     this.signal = signal;
-    return new Promise<WorkerOutcome>((resolve) => { this.complete = resolve; });
+    return new Promise<WorkerOutcome>((resolve) => {
+      this.complete = resolve;
+    });
   }
-  succeed(output: unknown): void { this.complete({ status: 'completed', output }); }
+  succeed(output: unknown): void {
+    this.complete({ status: 'completed', output });
+  }
   dispose(): void {}
 }
 
 const TransferJob = defineJobType({
   id: 'test.transfer-job',
   encode: (input: ArrayBuffer) => ({
-    payload: input, inputBytes: input.byteLength, decodeBytes: 8, transfer: [input]
+    payload: input,
+    inputBytes: input.byteLength,
+    decodeBytes: 8,
+    transfer: [input]
   }),
   decode: (value: unknown) => value as { vertices: number },
   summarize: (input: ArrayBuffer) => ({ byteLength: input.byteLength })
@@ -39,7 +50,8 @@ describe('job worker execution', () => {
     expect(bytes.byteLength).toBe(0);
     executor.succeed({ vertices: 3 });
     await expect(handle.result).resolves.toMatchObject({
-      status: 'completed', output: { vertices: 3 },
+      status: 'completed',
+      output: { vertices: 3 },
       metrics: { attempts: 1, inputBytes: 16, transferBytes: 16, copyBytes: 0 }
     });
   });
@@ -48,7 +60,10 @@ describe('job worker execution', () => {
     const SharedJob = defineJobType({
       id: 'test.shared-job',
       encode: (input: SharedArrayBuffer) => ({
-        payload: input, inputBytes: input.byteLength, decodeBytes: 0, transfer: [],
+        payload: input,
+        inputBytes: input.byteLength,
+        decodeBytes: 0,
+        transfer: [],
         usesSharedMemory: true
       }),
       decode: () => true,
@@ -57,13 +72,20 @@ describe('job worker execution', () => {
     const scheduler = new JobScheduler({ capabilities: { sharedMemory: true } });
     scheduler.register(SharedJob);
 
-    await expect(scheduler.schedule(SharedJob, request(new SharedArrayBuffer(4))).result)
-      .resolves.toMatchObject({ status: 'failed', diagnostic: { code: 'job-shared-memory-unsupported' } });
+    await expect(
+      scheduler.schedule(SharedJob, request(new SharedArrayBuffer(4))).result
+    ).resolves.toMatchObject({
+      status: 'failed',
+      diagnostic: { code: 'job-shared-memory-unsupported' }
+    });
 
     const SharedOptInJob = defineJobType({
       id: 'test.shared-opt-in-job',
       encode: (input: SharedArrayBuffer) => ({
-        payload: input, inputBytes: input.byteLength, decodeBytes: 0, transfer: [],
+        payload: input,
+        inputBytes: input.byteLength,
+        decodeBytes: 0,
+        transfer: [],
         usesSharedMemory: true
       }),
       decode: () => true,

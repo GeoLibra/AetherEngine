@@ -127,7 +127,7 @@ fn run_legacy(args: Vec<String>) -> Result<(), String> {
         None => return Err("missing GLSL stage".into()),
     };
     let entry_point = args.next().ok_or("missing entry point")?;
-    let output = emit_glsl(&module, &info, stage, &entry_point)?;
+    let (output, _) = emit_glsl(&module, &info, stage, &entry_point)?;
     print!("{output}");
     Ok(())
 }

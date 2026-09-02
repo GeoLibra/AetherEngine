@@ -25,7 +25,11 @@ export function samplePrepared(
 
   for (let index = 0; index < profile.warmupCount; index++) {
     prepared.reset();
-    assertAndConsume(prepared.runIteration(), prepared.expectedChecksum, `${context}:warmup:${index}`);
+    assertAndConsume(
+      prepared.runIteration(),
+      prepared.expectedChecksum,
+      `${context}:warmup:${index}`
+    );
   }
 
   const samplesMs: number[] = [];

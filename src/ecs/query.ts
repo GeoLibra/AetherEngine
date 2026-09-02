@@ -2,9 +2,9 @@ import type { World } from './world';
 import type { QueryState } from './query-state';
 import type { ComponentType, QueryFilter, QueryItem } from './types';
 
-export class QueryBuilder<TComponents extends readonly ComponentType<object>[]>
-  implements Iterable<QueryItem<TComponents>>
-{
+export class QueryBuilder<TComponents extends readonly ComponentType<object>[]> implements Iterable<
+  QueryItem<TComponents>
+> {
   private filter: QueryFilter = {};
   private state: QueryState<TComponents> | undefined;
 

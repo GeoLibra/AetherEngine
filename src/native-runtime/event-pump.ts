@@ -12,7 +12,9 @@ export class NativeEventPump {
     }
   }
 
-  get size(): number { return this.queue.length; }
+  get size(): number {
+    return this.queue.length;
+  }
 
   enqueue(callback: () => void): boolean {
     if (this.queue.length >= this.capacity) return false;
@@ -26,7 +28,11 @@ export class NativeEventPump {
       const boundary = this.queue.splice(0);
       const errors: unknown[] = [];
       for (const callback of boundary) {
-        try { callback(); } catch (error) { errors.push(error); }
+        try {
+          callback();
+        } catch (error) {
+          errors.push(error);
+        }
       }
       if (errors.length > 0) throw new NativeEventPumpError(errors);
       return boundary.length;

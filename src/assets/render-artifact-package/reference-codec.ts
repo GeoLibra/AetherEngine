@@ -56,11 +56,14 @@ export async function encodeRenderArtifactPackage(
     );
     blobs.set(blobId, bytes);
   }
+  const manifestSchemaVersion = input.manifestSchemaVersion ?? 1;
+  const shaderManifestSchemaVersion = input.shaderManifestSchemaVersion ?? 1;
+  const shaderModuleSchemaVersion = input.shaderModuleSchemaVersion ?? 2;
   const semanticHeader = {
     artifactKind: input.artifactKind,
-    manifestSchemaVersion: 1,
-    shaderManifestSchemaVersion: 1,
-    shaderModuleSchemaVersion: 1,
+    manifestSchemaVersion,
+    shaderManifestSchemaVersion,
+    shaderModuleSchemaVersion,
     shaderAbiVersion: input.shaderAbiVersion,
     ...(input.artifactKind === 'material'
       ? { materialSchemaVersion: input.materialSchemaVersion }
@@ -72,10 +75,10 @@ export async function encodeRenderArtifactPackage(
   const envelopeWithoutContainerHash = {
     magic: 'AERENDER' as const,
     artifactKind: input.artifactKind,
-    containerVersion: 1 as const,
-    manifestSchemaVersion: 1 as const,
-    shaderManifestSchemaVersion: 1 as const,
-    shaderModuleSchemaVersion: 1 as const,
+    containerVersion: (input.containerVersion ?? 1) as 1,
+    manifestSchemaVersion: manifestSchemaVersion as 1,
+    shaderManifestSchemaVersion: shaderManifestSchemaVersion as 1,
+    shaderModuleSchemaVersion: shaderModuleSchemaVersion as 2,
     shaderAbiVersion: input.shaderAbiVersion,
     ...(input.artifactKind === 'material'
       ? { materialSchemaVersion: input.materialSchemaVersion }
@@ -113,6 +116,21 @@ export async function decodeRenderArtifactPackage(
   const envelope = raw.envelope as unknown as RenderArtifactEnvelope;
   if (envelope.magic !== 'AERENDER' || envelope.containerVersion !== 1) {
     throw new Error('[container-version-unsupported] Unsupported render artifact container.');
+  }
+  if (envelope.manifestSchemaVersion !== 1) {
+    throw new Error(
+      `[manifest-schema-version-unsupported] Expected manifestSchemaVersion 1, received ${String(envelope.manifestSchemaVersion)}.`
+    );
+  }
+  if (envelope.shaderManifestSchemaVersion !== 1) {
+    throw new Error(
+      `[shader-manifest-schema-version-unsupported] Expected shaderManifestSchemaVersion 1, received ${String(envelope.shaderManifestSchemaVersion)}.`
+    );
+  }
+  if (envelope.shaderModuleSchemaVersion !== 2) {
+    throw new Error(
+      `[shader-module-schema-version-unsupported] Expected shaderModuleSchemaVersion 2, received ${String(envelope.shaderModuleSchemaVersion)}.`
+    );
   }
   if (!HASH_PATTERN.test(envelope.containerHash)) {
     throw new Error('[container-integrity-failed] Container hash is invalid.');
@@ -183,6 +201,9 @@ export async function decodeRenderArtifactPackage(
   }
   validateInput({
     containerVersion: envelope.containerVersion,
+    manifestSchemaVersion: envelope.manifestSchemaVersion,
+    shaderManifestSchemaVersion: envelope.shaderManifestSchemaVersion,
+    shaderModuleSchemaVersion: envelope.shaderModuleSchemaVersion,
     artifactKind: envelope.artifactKind,
     shaderAbiVersion: envelope.shaderAbiVersion,
     toolchain: envelope.toolchain,
@@ -201,6 +222,21 @@ export async function decodeRenderArtifactPackage(
 function validateInput(input: RenderArtifactPackageInput): void {
   if ((input.containerVersion ?? 1) !== 1) {
     throw new Error('[container-version-unsupported] Only container version 1 is supported.');
+  }
+  if (input.manifestSchemaVersion !== undefined && input.manifestSchemaVersion !== 1) {
+    throw new Error(
+      `[manifest-schema-version-unsupported] Only manifestSchemaVersion 1 is supported.`
+    );
+  }
+  if (input.shaderManifestSchemaVersion !== undefined && input.shaderManifestSchemaVersion !== 1) {
+    throw new Error(
+      `[shader-manifest-schema-version-unsupported] Only shaderManifestSchemaVersion 1 is supported.`
+    );
+  }
+  if (input.shaderModuleSchemaVersion !== undefined && input.shaderModuleSchemaVersion !== 2) {
+    throw new Error(
+      `[shader-module-schema-version-unsupported] Only shaderModuleSchemaVersion 2 is supported.`
+    );
   }
   if (input.shaderToolchain.sourceKind === 'wgsl' && !input.shaderToolchain.nagaVersion?.trim()) {
     throw new Error('[shader-toolchain-invalid] WGSL packages require nagaVersion provenance.');

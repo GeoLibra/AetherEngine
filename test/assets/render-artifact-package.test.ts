@@ -60,6 +60,10 @@ describe('Render Artifact Package canonical JSON reference codec', () => {
     expect(raw.envelope.sections.every((section) => section.offset === undefined)).toBe(true);
     const decoded = await decodeRenderArtifactPackage(first);
     expect(decoded.envelope.magic).toBe('AERENDER');
+    expect(decoded.envelope.containerVersion).toBe(1);
+    expect(decoded.envelope.manifestSchemaVersion).toBe(1);
+    expect(decoded.envelope.shaderManifestSchemaVersion).toBe(1);
+    expect(decoded.envelope.shaderModuleSchemaVersion).toBe(2);
     expect(decoded.envelope.packageId).toBe(`render:${decoded.envelope.semanticContentHash}`);
     expect(decoded.envelope.containerHash).toMatch(/^[a-f0-9]{64}$/);
     expect(decoded.sections.map(({ kind }) => kind)).toEqual([...REQUIRED_SECTIONS].sort());
@@ -91,6 +95,15 @@ describe('Render Artifact Package canonical JSON reference codec', () => {
     await expect(
       encodeRenderArtifactPackage({ ...packageInput(), containerVersion: 2 })
     ).rejects.toThrow(/container-version-unsupported/);
+    await expect(
+      encodeRenderArtifactPackage({ ...packageInput(), manifestSchemaVersion: 99 })
+    ).rejects.toThrow(/manifest-schema-version-unsupported/);
+    await expect(
+      encodeRenderArtifactPackage({ ...packageInput(), shaderManifestSchemaVersion: 99 })
+    ).rejects.toThrow(/shader-manifest-schema-version-unsupported/);
+    await expect(
+      encodeRenderArtifactPackage({ ...packageInput(), shaderModuleSchemaVersion: 1 })
+    ).rejects.toThrow(/shader-module-schema-version-unsupported/);
     await expect(
       encodeRenderArtifactPackage({
         ...packageInput(),

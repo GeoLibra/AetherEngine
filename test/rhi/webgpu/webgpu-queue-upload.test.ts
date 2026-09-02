@@ -32,16 +32,31 @@ class NativeTexture implements WebGPUNativeImportTexturePort {
   readonly dimension = '2d';
   readonly mipLevelCount = 2;
   readonly sampleCount = 1;
-  createView(): WebGPUNativeResourcePort { return {}; }
+  createView(): WebGPUNativeResourcePort {
+    return {};
+  }
 }
 
 class NativeQueue implements WebGPUNativeQueuePort {
-  readonly bufferWrites: Array<{ buffer: WebGPUNativeResourcePort; offset: number; bytes: Uint8Array }> = [];
-  readonly textureWrites: Array<{ destination: Readonly<Record<string, unknown>>; bytes: Uint8Array }> = [];
+  readonly bufferWrites: Array<{
+    buffer: WebGPUNativeResourcePort;
+    offset: number;
+    bytes: Uint8Array;
+  }> = [];
+  readonly textureWrites: Array<{
+    destination: Readonly<Record<string, unknown>>;
+    bytes: Uint8Array;
+  }> = [];
   submit(): void {}
-  onSubmittedWorkDone(): Promise<void> { return Promise.resolve(); }
+  onSubmittedWorkDone(): Promise<void> {
+    return Promise.resolve();
+  }
   writeBuffer(buffer: WebGPUNativeResourcePort, offset: number, data: ArrayBufferView): void {
-    this.bufferWrites.push({ buffer, offset, bytes: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) });
+    this.bufferWrites.push({
+      buffer,
+      offset,
+      bytes: new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+    });
   }
   writeTexture(destination: Readonly<Record<string, unknown>>, data: ArrayBufferView): void {
     this.textureWrites.push({
@@ -57,7 +72,9 @@ class NativeDevice implements WebGPUNativeDevicePort {
   createBuffer(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeBufferPort {
     return new NativeBuffer(descriptor);
   }
-  createTexture(): NativeTexture { return new NativeTexture(); }
+  createTexture(): NativeTexture {
+    return new NativeTexture();
+  }
 }
 
 class NativeAdapter implements WebGPUNativeAdapterPort {
@@ -66,12 +83,17 @@ class NativeAdapter implements WebGPUNativeAdapterPort {
   readonly limits = {};
   readonly formats = new Map();
   readonly device = new NativeDevice();
-  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> { return this.device; }
+  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> {
+    return this.device;
+  }
 }
 
 async function createDevice() {
   const adapter = new NativeAdapter();
-  const device = await new WebGPUAdapter(adapter).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+  const device = await new WebGPUAdapter(adapter).requestDevice({
+    requiredFeatures: [],
+    optionalFeatures: []
+  });
   return { device, native: adapter.device };
 }
 
@@ -92,10 +114,12 @@ describe('WebGPU queue uploads', () => {
       [10, 7, 8]
     ]);
 
-    expect(() => device.queue.writeBufferRanges(buffer, [
-      { offset: 0, data: new Uint8Array([9]) },
-      { offset: 16, data: new Uint8Array([9]) }
-    ])).toThrow('Buffer range 16..17 is outside buffer size 16.');
+    expect(() =>
+      device.queue.writeBufferRanges(buffer, [
+        { offset: 0, data: new Uint8Array([9]) },
+        { offset: 16, data: new Uint8Array([9]) }
+      ])
+    ).toThrow('Buffer range 16..17 is outside buffer size 16.');
     expect(native.queue.bufferWrites).toHaveLength(3);
   });
 
@@ -119,12 +143,14 @@ describe('WebGPU queue uploads', () => {
     expect(native.queue.textureWrites).toHaveLength(1);
     expect(native.queue.textureWrites[0]?.destination).toMatchObject({ mipLevel: 1 });
     expect(native.queue.textureWrites[0]?.destination.texture).not.toBe(texture);
-    expect(() => device.queue.writeTexture(
-      { texture, mipLevel: 1 },
-      new Uint8Array(8 * 8 * 4),
-      { bytesPerRow: 32, rowsPerImage: 8 },
-      [8, 8, 1]
-    )).toThrow('Texture copy range exceeds texture "upload-texture" mip level 1 bounds 4x4x1.');
+    expect(() =>
+      device.queue.writeTexture(
+        { texture, mipLevel: 1 },
+        new Uint8Array(8 * 8 * 4),
+        { bytesPerRow: 32, rowsPerImage: 8 },
+        [8, 8, 1]
+      )
+    ).toThrow('Texture copy range exceeds texture "upload-texture" mip level 1 bounds 4x4x1.');
     expect(native.queue.textureWrites).toHaveLength(1);
   });
 

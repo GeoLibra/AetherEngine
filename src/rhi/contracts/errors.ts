@@ -1,8 +1,4 @@
-import type {
-  DeviceCapabilities,
-  RHICapabilityRequirement,
-  RHIOperation
-} from './capability';
+import type { DeviceCapabilities, RHICapabilityRequirement, RHIOperation } from './capability';
 import type { DeviceRequestDifference } from './adapter';
 
 export class RHIDeviceRequestError extends Error {
@@ -35,7 +31,9 @@ export class WebGPUNativeDeviceRequestError extends Error {
     readonly deviceLabel: string | undefined,
     override readonly cause: unknown
   ) {
-    super(`WebGPU adapter "${adapterName}" failed to create device "${deviceLabel ?? 'unlabeled'}".`);
+    super(
+      `WebGPU adapter "${adapterName}" failed to create device "${deviceLabel ?? 'unlabeled'}".`
+    );
     this.name = 'WebGPUNativeDeviceRequestError';
   }
 }

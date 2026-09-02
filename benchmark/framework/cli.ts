@@ -12,12 +12,15 @@ if (validation.errors.length > 0) {
 
 if (options.command === 'validate') {
   console.log('Benchmark manifest is valid.');
-  console.log(`Registered suites: ${BENCHMARK_MANIFEST.suites.map((suite) => suite.id).join(', ') || 'none'}`);
+  console.log(
+    `Registered suites: ${BENCHMARK_MANIFEST.suites.map((suite) => suite.id).join(', ') || 'none'}`
+  );
   console.log(`Coverage gaps: ${validation.uncoveredDomainIds.join(', ') || 'none'}`);
 } else {
-  const files = options.command === 'changed'
-    ? options.files ?? await collectChangedFiles(options.base)
-    : [];
+  const files =
+    options.command === 'changed'
+      ? (options.files ?? (await collectChangedFiles(options.base)))
+      : [];
   const result = await runBenchmarkPlan(BENCHMARK_MANIFEST, {
     mode: options.command,
     profile: options.profile,
@@ -27,7 +30,9 @@ if (options.command === 'validate') {
   if (result.suiteIds.length === 0) {
     console.log('No benchmark suite matched this change.');
   } else {
-    console.log(`${options.dryRun ? 'Selected' : 'Completed'} benchmark suites: ${result.suiteIds.join(', ')}`);
+    console.log(
+      `${options.dryRun ? 'Selected' : 'Completed'} benchmark suites: ${result.suiteIds.join(', ')}`
+    );
     for (const command of result.commands) {
       console.log(`- ${command.executable} ${command.args.join(' ')}`);
     }

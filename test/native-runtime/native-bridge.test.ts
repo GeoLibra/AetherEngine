@@ -26,16 +26,24 @@ class Threads implements NativeThreadPort {
   readonly jsThread = 'js';
   current = 'native';
   readonly queued: Array<() => void> = [];
-  currentThread(): string { return this.current; }
-  dispatchToJs(operation: () => void): void { this.queued.push(operation); }
+  currentThread(): string {
+    return this.current;
+  }
+  dispatchToJs(operation: () => void): void {
+    this.queued.push(operation);
+  }
   drain(): void {
     this.current = this.jsThread;
     for (const operation of this.queued.splice(0)) operation();
   }
 }
 
-interface EchoRequest { readonly text: string }
-interface EchoResponse { readonly echoed: string }
+interface EchoRequest {
+  readonly text: string;
+}
+interface EchoResponse {
+  readonly echoed: string;
+}
 
 const ECHO: NativeMethodDescriptor<EchoRequest, EchoResponse> = Object.freeze({
   module: 'filesystem',
@@ -43,9 +51,13 @@ const ECHO: NativeMethodDescriptor<EchoRequest, EchoResponse> = Object.freeze({
   version: 2,
   maxRequestBytes: 64,
   validateRequest: (value: unknown): value is EchoRequest =>
-    typeof value === 'object' && value !== null && typeof (value as { text?: unknown }).text === 'string',
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { text?: unknown }).text === 'string',
   validateResponse: (value: unknown): value is EchoResponse =>
-    typeof value === 'object' && value !== null && typeof (value as { echoed?: unknown }).echoed === 'string'
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { echoed?: unknown }).echoed === 'string'
 });
 
 const HANDSHAKE: NativeNegotiatedHandshake = Object.freeze({
@@ -54,7 +66,8 @@ const HANDSHAKE: NativeNegotiatedHandshake = Object.freeze({
   rhiContractVersion: 1,
   modules: Object.freeze([{ name: 'filesystem', version: 2 }]),
   abi: Object.freeze({
-    endianness: 'little', pointerBits: 64,
+    endianness: 'little',
+    pointerBits: 64,
     arrayBuffer: Object.freeze({ transfer: true, mapped: false, shared: false })
   })
 });
@@ -67,15 +80,25 @@ class BridgePort implements NativeBridgePort {
   invoke(request: NativeBridgeRequest, complete: (response: NativeBridgeResponse) => void) {
     this.requests.push(request);
     this.completions.set(request.id, complete);
-    return { cancel: () => { this.cancelled.push(request.id); } };
+    return {
+      cancel: () => {
+        this.cancelled.push(request.id);
+      }
+    };
   }
 
-  complete(response: NativeBridgeResponse): void { this.completions.get(response.id)?.(response); }
+  complete(response: NativeBridgeResponse): void {
+    this.completions.get(response.id)?.(response);
+  }
 }
 
 function setup(methods: readonly NativeMethodDescriptor<unknown, unknown>[] = [ECHO]) {
   const threads = new Threads();
-  const runtime = new NativeRuntimeController({ ownership: 'embedded', threads, runtime: new Runtime() });
+  const runtime = new NativeRuntimeController({
+    ownership: 'embedded',
+    threads,
+    runtime: new Runtime()
+  });
   const port = new BridgePort();
   const bridge = new NativeBridgeDispatcher({ handshake: HANDSHAKE, runtime, port, methods });
   return { bridge, port, runtime, threads };
@@ -84,11 +107,17 @@ function setup(methods: readonly NativeMethodDescriptor<unknown, unknown>[] = [E
 describe('NativeBridgeDispatcher', () => {
   test('validates registered module, method, request schema, and request size', async () => {
     const { bridge } = setup();
-    await expect(bridge.call(ECHO, { text: 42 } as never)).rejects.toMatchObject({ code: 'invalid-request' });
-    await expect(bridge.call(ECHO, { text: 'x'.repeat(100) })).rejects.toMatchObject({ code: 'request-too-large' });
+    await expect(bridge.call(ECHO, { text: 42 } as never)).rejects.toMatchObject({
+      code: 'invalid-request'
+    });
+    await expect(bridge.call(ECHO, { text: 'x'.repeat(100) })).rejects.toMatchObject({
+      code: 'request-too-large'
+    });
 
     const unknown = { ...ECHO, method: 'missing' };
-    await expect(bridge.call(unknown, { text: 'ok' })).rejects.toMatchObject({ code: 'unknown-method' });
+    await expect(bridge.call(unknown, { text: 'ok' })).rejects.toMatchObject({
+      code: 'unknown-method'
+    });
     expect(() => setup([{ ...ECHO, module: 'rhi' }])).toThrow(/reserved/i);
     expect(() => setup([{ ...ECHO, module: 'audio' }])).toThrow(/module/i);
     expect(() => setup([{ ...ECHO, version: 3 }])).toThrow(/version/i);
@@ -108,7 +137,9 @@ describe('NativeBridgeDispatcher', () => {
     port.complete(response);
     response.payload.echoed = 'mutated by native';
     let settled = false;
-    void result.finally(() => { settled = true; });
+    void result.finally(() => {
+      settled = true;
+    });
     await Promise.resolve();
     expect(settled).toBe(false);
     threads.drain();
@@ -171,7 +202,10 @@ describe('NativeEventPump', () => {
     threads.current = threads.jsThread;
     const pump = new NativeEventPump(runtime, 2);
     const calls: number[] = [];
-    pump.enqueue(() => { calls.push(1); pump.enqueue(() => calls.push(3)); });
+    pump.enqueue(() => {
+      calls.push(1);
+      pump.enqueue(() => calls.push(3));
+    });
     pump.enqueue(() => calls.push(2));
 
     expect(pump.enqueue(() => calls.push(99))).toBe(false);

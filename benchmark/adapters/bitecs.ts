@@ -14,11 +14,7 @@ import {
   type QueryResult,
   type World as BitecsWorld
 } from 'bitecs';
-import type {
-  BenchmarkChecksum,
-  BenchmarkScenario,
-  ScenarioInput
-} from '../harness/types';
+import type { BenchmarkChecksum, BenchmarkScenario, ScenarioInput } from '../harness/types';
 import {
   expectedDenseChecksum,
   expectedPositionChecksum,
@@ -237,10 +233,7 @@ function prepareRelations(input: ScenarioInput): PrepareResult {
   );
 }
 
-function expectedForScenario(
-  scenario: BenchmarkScenario,
-  input: ScenarioInput
-): BenchmarkChecksum {
+function expectedForScenario(scenario: BenchmarkScenario, input: ScenarioInput): BenchmarkChecksum {
   switch (scenario.id) {
     case 'dense-read':
       return expectedDenseChecksum(input, 'read');

@@ -1,9 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import {
-  defineObjectComponent,
-  defineTagComponent,
-  World
-} from '../../src';
+import { defineObjectComponent, defineTagComponent, World } from '../../src';
 
 interface MetadataView {
   label: string;
@@ -91,11 +87,7 @@ describe('Schema-driven ECS component storage', () => {
   test('keeps tag components payload-free in archetype signatures', () => {
     const world = new World();
     world.registerComponent(Metadata).registerComponent(Selected);
-    const selected = world
-      .spawn()
-      .insert(Metadata, { label: 'selected' })
-      .insert(Selected)
-      .build();
+    const selected = world.spawn().insert(Metadata, { label: 'selected' }).insert(Selected).build();
     world.spawn().insert(Metadata, { label: 'plain' }).build();
 
     expect(world.hasComponent(selected, Selected)).toBe(true);

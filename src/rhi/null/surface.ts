@@ -74,7 +74,11 @@ export class NullSurface implements RHISurface {
   acquire(): RHISurfaceAcquireResult {
     this.assertNotDisposed();
     if (this.currentState === 'lost') return frozenStatus('lost');
-    if (this.currentState !== 'configured' || this.currentDevice === undefined || this.currentConfiguration === undefined) {
+    if (
+      this.currentState !== 'configured' ||
+      this.currentDevice === undefined ||
+      this.currentConfiguration === undefined
+    ) {
       throw new Error('NullSurface must be configured before acquire.');
     }
     if (this.currentDevice.state !== 'live') return frozenStatus('device-lost');
@@ -148,16 +152,20 @@ class NullSurfaceFrame implements RHISurfaceFrame {
   }
 
   present(): void {
-    if (this.currentState === 'presented') throw new Error('Surface frame has already been presented.');
-    if (this.currentState === 'released') throw new Error('Released surface frame cannot be presented.');
+    if (this.currentState === 'presented')
+      throw new Error('Surface frame has already been presented.');
+    if (this.currentState === 'released')
+      throw new Error('Released surface frame cannot be presented.');
     this.currentState = 'presented';
     this.texture.dispose();
     this.onTerminal();
   }
 
   release(): void {
-    if (this.currentState === 'presented') throw new Error('Presented surface frame cannot be released.');
-    if (this.currentState === 'released') throw new Error('Surface frame has already been released.');
+    if (this.currentState === 'presented')
+      throw new Error('Presented surface frame cannot be released.');
+    if (this.currentState === 'released')
+      throw new Error('Surface frame has already been released.');
     this.abandon();
   }
 

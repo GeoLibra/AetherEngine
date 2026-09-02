@@ -2,7 +2,9 @@ import type { MonotonicClock } from '../core/clock';
 
 export type { MonotonicClock } from '../core/clock';
 
-export interface WorldOptions { readonly clock?: MonotonicClock; }
+export interface WorldOptions {
+  readonly clock?: MonotonicClock;
+}
 
 export interface WorldMetricsSnapshot {
   readonly aliveEntities: number;

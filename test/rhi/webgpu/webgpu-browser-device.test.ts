@@ -1,11 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import {
-  WebGPUAdapter,
-  requestBrowserWebGPUAdapter,
-  type Diagnostic
-} from '../../../src';
+import { WebGPUAdapter, requestBrowserWebGPUAdapter, type Diagnostic } from '../../../src';
 
-interface ListenerEvent { readonly error: { readonly name: string; readonly message: string } }
+interface ListenerEvent {
+  readonly error: { readonly name: string; readonly message: string };
+}
 
 describe('browser WebGPU device port', () => {
   test('lowers one device request and resource descriptors to WebIDL calls', async () => {
@@ -54,7 +52,9 @@ describe('browser WebGPU device port', () => {
   test('forwards loss, error scopes, and uncaptured errors through the existing device', async () => {
     const calls: Array<{ readonly operation: string; readonly value: unknown }> = [];
     let resolveLost!: (value: { reason: string; message: string }) => void;
-    const lost = new Promise<{ reason: string; message: string }>((resolve) => { resolveLost = resolve; });
+    const lost = new Promise<{ reason: string; message: string }>((resolve) => {
+      resolveLost = resolve;
+    });
     const listeners = new Set<(event: ListenerEvent) => void>();
     const nativeDevice = createNativeDevice(calls, lost, listeners);
     const nativeAdapter = createNativeAdapter(nativeDevice, calls);
@@ -63,17 +63,22 @@ describe('browser WebGPU device port', () => {
     const adapter = new WebGPUAdapter(port);
     const device = await adapter.requestDevice({ requiredFeatures: [], optionalFeatures: [] });
     const shader = device.createShaderModule({ code: '@vertex fn main() {}' });
-    await expect(device.createRenderPipelineAsync({ vertex: { module: shader } }))
-      .resolves.toMatchObject({ status: 'success' });
+    await expect(
+      device.createRenderPipelineAsync({ vertex: { module: shader } })
+    ).resolves.toMatchObject({ status: 'success' });
 
-    expect(calls).toEqual(expect.arrayContaining([
-      { operation: 'pushErrorScope', value: 'validation' },
-      { operation: 'popErrorScope', value: undefined }
-    ]));
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        { operation: 'pushErrorScope', value: 'validation' },
+        { operation: 'popErrorScope', value: undefined }
+      ])
+    );
 
-    listeners.forEach((listener) => listener({
-      error: { name: 'GPUValidationError', message: 'bad binding' }
-    }));
+    listeners.forEach((listener) =>
+      listener({
+        error: { name: 'GPUValidationError', message: 'bad binding' }
+      })
+    );
     const diagnostics = device.diagnostics.list() as readonly Diagnostic[];
     expect(diagnostics[0]).toMatchObject({
       code: 'rhi/webgpu-uncaptured-validation',
@@ -81,14 +86,23 @@ describe('browser WebGPU device port', () => {
     });
 
     resolveLost({ reason: 'unknown', message: 'device reset' });
-    await expect(device.lost).resolves.toMatchObject({ reason: 'unknown', message: 'device reset' });
+    await expect(device.lost).resolves.toMatchObject({
+      reason: 'unknown',
+      message: 'device reset'
+    });
   });
 });
 
 function createEnvironment(adapter: object) {
   return {
-    gpu: { async requestAdapter(): Promise<object> { return adapter; } },
-    getCanvasContext(): null { return null; }
+    gpu: {
+      async requestAdapter(): Promise<object> {
+        return adapter;
+      }
+    },
+    getCanvasContext(): null {
+      return null;
+    }
   };
 }
 
@@ -124,11 +138,22 @@ function createNativeDevice(
     },
     createTexture(descriptor: unknown): object {
       calls.push({ operation: 'createTexture', value: descriptor });
-      return { createView(): object { return {}; }, destroy(): void {} };
+      return {
+        createView(): object {
+          return {};
+        },
+        destroy(): void {}
+      };
     },
-    createShaderModule(): object { return {}; },
-    async createRenderPipelineAsync(): Promise<object> { return {}; },
-    pushErrorScope(filter: unknown): void { calls.push({ operation: 'pushErrorScope', value: filter }); },
+    createShaderModule(): object {
+      return {};
+    },
+    async createRenderPipelineAsync(): Promise<object> {
+      return {};
+    },
+    pushErrorScope(filter: unknown): void {
+      calls.push({ operation: 'pushErrorScope', value: filter });
+    },
     async popErrorScope(): Promise<null> {
       calls.push({ operation: 'popErrorScope', value: undefined });
       return null;

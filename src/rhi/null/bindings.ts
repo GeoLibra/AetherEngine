@@ -48,7 +48,9 @@ export class NullBindGroupLayout extends NullResourceBase implements RHIBindGrou
     for (const entry of entries) {
       this.entriesByBinding.set(entry.binding, entry);
     }
-    this.dynamicBindingCount = entries.filter((entry) => entry.buffer?.hasDynamicOffset === true).length;
+    this.dynamicBindingCount = entries.filter(
+      (entry) => entry.buffer?.hasDynamicOffset === true
+    ).length;
   }
 
   getEntry(binding: number): GPUBindGroupLayoutEntry | undefined {
@@ -99,7 +101,10 @@ export class NullBindGroup extends NullResourceBase implements RHIBindGroup {
   }
 }
 
-export function validatePipelineLayout(layout: RHIPipelineLayout | undefined, owner: NullDeviceOwner): void {
+export function validatePipelineLayout(
+  layout: RHIPipelineLayout | undefined,
+  owner: NullDeviceOwner
+): void {
   if (layout === undefined) {
     return;
   }
@@ -175,12 +180,17 @@ function validateBindGroupLayoutDescriptor(descriptor: GPUBindGroupLayoutDescrip
       entry.storageTexture !== undefined
     ].filter(Boolean).length;
     if (resourceKinds !== 1) {
-      throw new Error(`Bind group layout binding ${entry.binding} must declare exactly one resource layout.`);
+      throw new Error(
+        `Bind group layout binding ${entry.binding} must declare exactly one resource layout.`
+      );
     }
   }
 }
 
-function validateBindGroupDescriptor(descriptor: GPUBindGroupDescriptor, owner: NullDeviceOwner): void {
+function validateBindGroupDescriptor(
+  descriptor: GPUBindGroupDescriptor,
+  owner: NullDeviceOwner
+): void {
   assertResourceOwnedBy(descriptor.layout, owner);
   assertResourceLive(descriptor.layout);
 
@@ -283,13 +293,18 @@ function validateBindGroupContentsLive(bindGroup: RHIBindGroup, owner: NullDevic
   }
 }
 
-function validateDynamicOffsetRanges(bindGroup: RHIBindGroup, dynamicOffsets: readonly number[]): void {
-  const dynamicLayoutEntries = bindGroup.layout.descriptor.entries.filter(
-    (entry) => entry.buffer?.hasDynamicOffset === true
-  ).sort((left, right) => left.binding - right.binding);
+function validateDynamicOffsetRanges(
+  bindGroup: RHIBindGroup,
+  dynamicOffsets: readonly number[]
+): void {
+  const dynamicLayoutEntries = bindGroup.layout.descriptor.entries
+    .filter((entry) => entry.buffer?.hasDynamicOffset === true)
+    .sort((left, right) => left.binding - right.binding);
   dynamicLayoutEntries.forEach((layoutEntry, index) => {
     const dynamicOffset = dynamicOffsets[index] ?? 0;
-    const descriptorEntry = bindGroup.descriptor.entries.find((entry) => entry.binding === layoutEntry.binding);
+    const descriptorEntry = bindGroup.descriptor.entries.find(
+      (entry) => entry.binding === layoutEntry.binding
+    );
     if (descriptorEntry === undefined || !isBufferBinding(descriptorEntry.resource)) {
       return;
     }

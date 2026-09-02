@@ -6,13 +6,23 @@ describe('browser WebGPU canvas surface', () => {
     const configurations: unknown[] = [];
     let textureRequests = 0;
     const context = {
-      configure(value: unknown): void { configurations.push(value); },
+      configure(value: unknown): void {
+        configurations.push(value);
+      },
       getCurrentTexture(): object {
         textureRequests += 1;
         return {
-          width: 32, height: 16, depthOrArrayLayers: 1, format: 'bgra8unorm', usage: 16,
-          dimension: '2d', mipLevelCount: 1, sampleCount: 1,
-          createView(): object { return {}; }
+          width: 32,
+          height: 16,
+          depthOrArrayLayers: 1,
+          format: 'bgra8unorm',
+          usage: 16,
+          dimension: '2d',
+          mipLevelCount: 1,
+          sampleCount: 1,
+          createView(): object {
+            return {};
+          }
         };
       },
       unconfigure(): void {}
@@ -20,18 +30,36 @@ describe('browser WebGPU canvas surface', () => {
     const device = {
       lost: new Promise(() => undefined),
       queue: { submit(): void {}, async onSubmittedWorkDone(): Promise<void> {} },
-      addEventListener(): void {}, removeEventListener(): void {}
+      addEventListener(): void {},
+      removeEventListener(): void {}
     };
     const adapter = {
-      info: { description: 'Surface GPU' }, features: new Set<string>(), limits: {},
-      async requestDevice(): Promise<object> { return device; }
+      info: { description: 'Surface GPU' },
+      features: new Set<string>(),
+      limits: {},
+      async requestDevice(): Promise<object> {
+        return device;
+      }
     };
-    const canvas = { getContext(): object { return context; } };
+    const canvas = {
+      getContext(): object {
+        return context;
+      }
+    };
     const session = await createBrowserGraphics({
       canvas,
       environment: {
-        gpu: { getPreferredCanvasFormat(): string { return 'bgra8unorm'; }, async requestAdapter(): Promise<object> { return adapter; } },
-        getCanvasContext(): typeof context { return context; }
+        gpu: {
+          getPreferredCanvasFormat(): string {
+            return 'bgra8unorm';
+          },
+          async requestAdapter(): Promise<object> {
+            return adapter;
+          }
+        },
+        getCanvasContext(): typeof context {
+          return context;
+        }
       },
       device: { requiredFeatures: [], optionalFeatures: [] },
       surface: { width: 32, height: 16 }
@@ -56,9 +84,17 @@ describe('browser WebGPU canvas surface', () => {
       configure(): void {},
       getCurrentTexture(): object {
         return {
-          width: 16, height: 16, depthOrArrayLayers: 1, format: 'bgra8unorm', usage: 16,
-          dimension: '2d', mipLevelCount: 1, sampleCount: 1,
-          createView(): object { return {}; }
+          width: 16,
+          height: 16,
+          depthOrArrayLayers: 1,
+          format: 'bgra8unorm',
+          usage: 16,
+          dimension: '2d',
+          mipLevelCount: 1,
+          sampleCount: 1,
+          createView(): object {
+            return {};
+          }
         };
       },
       unconfigure(): void {}
@@ -66,17 +102,32 @@ describe('browser WebGPU canvas surface', () => {
     const nativeDevice = {
       lost: new Promise(() => undefined),
       queue: { submit(): void {}, async onSubmittedWorkDone(): Promise<void> {} },
-      addEventListener(): void {}, removeEventListener(): void {}
+      addEventListener(): void {},
+      removeEventListener(): void {}
     };
     const adapter = {
-      info: { description: 'Lifetime GPU' }, features: new Set<string>(), limits: {},
-      async requestDevice(): Promise<object> { return nativeDevice; }
+      info: { description: 'Lifetime GPU' },
+      features: new Set<string>(),
+      limits: {},
+      async requestDevice(): Promise<object> {
+        return nativeDevice;
+      }
     };
     const session = await createBrowserGraphics({
-      canvas: { getContext(): object { return context; } },
+      canvas: {
+        getContext(): object {
+          return context;
+        }
+      },
       environment: {
-        gpu: { async requestAdapter(): Promise<object> { return adapter; } },
-        getCanvasContext(): typeof context { return context; }
+        gpu: {
+          async requestAdapter(): Promise<object> {
+            return adapter;
+          }
+        },
+        getCanvasContext(): typeof context {
+          return context;
+        }
       },
       device: { requiredFeatures: [], optionalFeatures: [] },
       surface: { width: 16, height: 16, alphaMode: 'premultiplied' }

@@ -122,14 +122,7 @@ export type GPUFrontFace = 'ccw' | 'cw';
 export type GPUCullMode = 'none' | 'front' | 'back';
 export type GPUIndexFormatWithUndefined = GPUIndexFormat | undefined;
 export type GPUCompareFunction =
-  | 'never'
-  | 'less'
-  | 'equal'
-  | 'less-equal'
-  | 'greater'
-  | 'not-equal'
-  | 'greater-equal'
-  | 'always';
+  'never' | 'less' | 'equal' | 'less-equal' | 'greater' | 'not-equal' | 'greater-equal' | 'always';
 export type GPUBlendFactor = string;
 export type GPUBlendOperation = 'add' | 'subtract' | 'reverse-subtract' | 'min' | 'max';
 export type GPUColorWriteFlags = number;
