@@ -25,7 +25,7 @@ main {
 }
 
 .demo-shell {
-  width: min(100%, 72rem);
+  width: min(100%, calc(72rem + 34px));
   display: flex;
   flex-direction: column;
   gap: 1rem;

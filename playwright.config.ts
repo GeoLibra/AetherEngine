@@ -52,7 +52,8 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
-        baseURL: 'http://127.0.0.1:4174'
+        baseURL: 'http://127.0.0.1:4174',
+        launchOptions: { args: browserGraphicsArgs('webgl2', process.platform) }
       }
     },
     {

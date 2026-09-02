@@ -229,8 +229,9 @@ export async function mountAetherScene(
                 throw new Error('Rotating scene requires the frame-time resource.');
               }
               const angle = forcedRotation ?? frameTime.elapsed * 0.8;
-              for (const [, worldTransform] of world.query([WorldTransform, RotatingTag])) {
+              for (const [entity, worldTransform] of world.query([WorldTransform, RotatingTag])) {
                 rotateWorldTransform(worldTransform, angle);
+                world.markComponentChanged(entity, WorldTransform);
               }
 
               // Update directional light source parameters via immutable insertComponent
