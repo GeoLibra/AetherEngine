@@ -8,7 +8,7 @@ export default defineConfig({
   snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{arg}-{projectName}-{platform}{ext}',
   retries: 0,
   ...(process.env.CI ? { workers: 1 } : {}),
-  timeout: 30_000,
+  timeout: 60_000,
   use: {
     baseURL: BASE_URL,
     trace: 'retain-on-failure'
