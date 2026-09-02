@@ -52,8 +52,11 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
+        deviceScaleFactor: 1,
         baseURL: 'http://127.0.0.1:4174',
-        launchOptions: { args: browserGraphicsArgs('webgl2', process.platform) }
+        launchOptions: {
+          args: browserGraphicsArgs('webgl2', process.platform)
+        }
       }
     },
     {
@@ -62,8 +65,11 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
+        deviceScaleFactor: 1,
         baseURL: 'http://127.0.0.1:4174',
-        launchOptions: { args: browserGraphicsArgs('webgpu', process.platform) }
+        launchOptions: {
+          args: browserGraphicsArgs('webgpu', process.platform)
+        }
       }
     }
   ],
