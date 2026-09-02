@@ -18,6 +18,7 @@ const REQUIRED_SECTIONS = [
 
 function packageInput(): RenderArtifactPackageInput {
   return {
+    artifactKind: 'material',
     shaderAbiVersion: 2,
     materialSchemaVersion: 1,
     toolchain: { id: 'aether-render-cooker', version: '1.0.0' },
@@ -98,6 +99,34 @@ describe('Render Artifact Package canonical JSON reference codec', () => {
     ).rejects.toThrow(/required-section-missing.*reflection/);
   });
 
+  test('allows a shader-library without material-only sections', async () => {
+    const input = packageInput();
+    const bundle = await encodeRenderArtifactPackage({
+      artifactKind: 'shader-library',
+      containerVersion: input.containerVersion,
+      shaderAbiVersion: input.shaderAbiVersion,
+      toolchain: input.toolchain,
+      shaderToolchain: input.shaderToolchain,
+      sections: input.sections.filter(
+        ({ kind }) =>
+          kind !== 'material-schema' && kind !== 'techniques' && kind !== 'variant-table'
+      )
+    });
+
+    const decoded = await decodeRenderArtifactPackage(bundle);
+    expect(decoded.envelope.artifactKind).toBe('shader-library');
+  });
+
+  test('keeps material-only sections required for material packages', async () => {
+    const input = packageInput();
+    await expect(
+      encodeRenderArtifactPackage({
+        ...input,
+        sections: input.sections.filter(({ kind }) => kind !== 'techniques')
+      })
+    ).rejects.toThrow(/required-section-missing.*techniques/);
+  });
+
   test('requires Naga provenance for WGSL packages', async () => {
     const input = packageInput();
     await expect(
@@ -106,5 +135,17 @@ describe('Render Artifact Package canonical JSON reference codec', () => {
         shaderToolchain: { ...input.shaderToolchain, nagaVersion: undefined }
       })
     ).rejects.toThrow(/shader-toolchain-invalid.*nagaVersion/);
+  });
+
+  test('includes package profile and ABI metadata in semantic identity', async () => {
+    const first = await decodeRenderArtifactPackage(
+      await encodeRenderArtifactPackage(packageInput())
+    );
+    const second = await decodeRenderArtifactPackage(
+      await encodeRenderArtifactPackage({ ...packageInput(), shaderAbiVersion: 3 })
+    );
+
+    expect(second.envelope.semanticContentHash).not.toBe(first.envelope.semanticContentHash);
+    expect(second.envelope.packageId).not.toBe(first.envelope.packageId);
   });
 });

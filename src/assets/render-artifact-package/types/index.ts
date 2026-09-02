@@ -1,5 +1,6 @@
 export type {
   DecodedRenderArtifactPackage,
+  RenderArtifactKind,
   RenderArtifactEnvelope,
   RenderArtifactContainerSectionLocation,
   RenderArtifactExternalSectionLocation,
@@ -9,5 +10,6 @@ export type {
   RenderArtifactSectionIndex,
   RenderArtifactSectionKind,
   RenderArtifactSectionLocation,
-  RenderArtifactShaderToolchain
+  RenderArtifactShaderToolchain,
+  RenderArtifactTargetSelector
 } from './package-types';
