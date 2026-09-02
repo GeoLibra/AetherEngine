@@ -3,13 +3,30 @@ import { WorkerPool } from './worker-pool';
 import { CommitQueue } from './commit-queue';
 import { JobMetricsCollector } from './metrics';
 import type {
-  BudgetClassLimits, CommitBudget, CommitDrainResult, EncodedJobInput,
-  JobBudgetClass, JobClock, JobCommitEntry, JobDiagnostic, JobHandle, JobRequest,
-  JobResult, JobSchedulerMetrics, JobSchedulerOptions, JobType, WorkerExecutor,
-  WorkerOutcome, JobSchedulerState
+  BudgetClassLimits,
+  CommitBudget,
+  CommitDrainResult,
+  EncodedJobInput,
+  JobBudgetClass,
+  JobClock,
+  JobCommitEntry,
+  JobDiagnostic,
+  JobHandle,
+  JobRequest,
+  JobResult,
+  JobSchedulerMetrics,
+  JobSchedulerOptions,
+  JobType,
+  WorkerExecutor,
+  WorkerOutcome,
+  JobSchedulerState
 } from './types';
 
-interface BudgetUsage { jobs: number; inputBytes: number; decodeBytes: number; }
+interface BudgetUsage {
+  jobs: number;
+  inputBytes: number;
+  decodeBytes: number;
+}
 interface JobRecord extends QueuedJobOrder {
   readonly id: number;
   readonly type: JobType<unknown, unknown>;
@@ -59,9 +76,13 @@ export class JobScheduler {
     this.commits = new CommitQueue(this.clock);
   }
 
-  get queuedCount(): number { return this.queue.length; }
+  get queuedCount(): number {
+    return this.queue.length;
+  }
 
-  get state(): JobSchedulerState { return this.currentState; }
+  get state(): JobSchedulerState {
+    return this.currentState;
+  }
 
   metrics(): JobSchedulerMetrics {
     const activeJobs = [...this.records.values()].filter(
@@ -110,8 +131,9 @@ export class JobScheduler {
     const id = this.nextId++;
     const summary = type.summarize(request.input);
     let encoded: EncodedJobInput;
-    try { encoded = type.encode(request.input); }
-    catch {
+    try {
+      encoded = type.encode(request.input);
+    } catch {
       this.metricValues.recordFailure(type.id, 'job-encode-failed');
       return failedHandle(
         id,
@@ -122,30 +144,51 @@ export class JobScheduler {
       this.metricValues.recordFailure(type.id, 'job-shared-memory-unsupported');
       return failedHandle(
         id,
-        diagnostic('job-shared-memory-unsupported', type.id, summary, 'Shared memory is not enabled.')
+        diagnostic(
+          'job-shared-memory-unsupported',
+          type.id,
+          summary,
+          'Shared memory is not enabled.'
+        )
       );
     }
     const limits = this.budgets[request.budgetClass] ?? UNLIMITED;
     const usage = this.getUsage(request.budgetClass);
-    if (usage.jobs + 1 > limits.maxInFlightJobs ||
-        usage.inputBytes + encoded.inputBytes > limits.maxInputBytes ||
-        usage.decodeBytes + encoded.decodeBytes > limits.maxDecodeBytes) {
+    if (
+      usage.jobs + 1 > limits.maxInFlightJobs ||
+      usage.inputBytes + encoded.inputBytes > limits.maxInputBytes ||
+      usage.decodeBytes + encoded.decodeBytes > limits.maxDecodeBytes
+    ) {
       this.metricValues.recordFailure(type.id, 'job-budget-exceeded');
-      return failedHandle(id, diagnostic('job-budget-exceeded', type.id, summary, 'Job budget exceeded.'));
+      return failedHandle(
+        id,
+        diagnostic('job-budget-exceeded', type.id, summary, 'Job budget exceeded.')
+      );
     }
 
     let resolve!: (result: JobResult<O>) => void;
-    const result = new Promise<JobResult<O>>((complete) => { resolve = complete; });
+    const result = new Promise<JobResult<O>>((complete) => {
+      resolve = complete;
+    });
     const record: JobRecord = {
-      id, type: type as JobType<unknown, unknown>, encoded,
+      id,
+      type: type as JobType<unknown, unknown>,
+      encoded,
       transferBytes: encoded.transfer.reduce((sum, buffer) => sum + buffer.byteLength, 0),
       summary,
       resolve: resolve as (result: JobResult<unknown>) => void,
-      controller: new AbortController(), state: 'queued', attempt: 0, terminal: false,
-      budgetClass: request.budgetClass, priority: request.priority,
-      submittedAt: this.clock.now(), sequence: this.nextSequence++,
+      controller: new AbortController(),
+      state: 'queued',
+      attempt: 0,
+      terminal: false,
+      budgetClass: request.budgetClass,
+      priority: request.priority,
+      submittedAt: this.clock.now(),
+      sequence: this.nextSequence++,
       ...(request.deadlineMs === undefined ? {} : { deadlineMs: request.deadlineMs }),
-      ...(request.screenSpaceError === undefined ? {} : { screenSpaceError: request.screenSpaceError })
+      ...(request.screenSpaceError === undefined
+        ? {}
+        : { screenSpaceError: request.screenSpaceError })
     };
     this.queue.push(record);
     this.records.set(record.id, record);
@@ -195,7 +238,12 @@ export class JobScheduler {
     let outcome: WorkerOutcome;
     try {
       outcome = await worker.execute(
-        { id: record.id, type: record.type.id, payload: record.encoded.payload, attempt: record.attempt },
+        {
+          id: record.id,
+          type: record.type.id,
+          payload: record.encoded.payload,
+          attempt: record.attempt
+        },
         record.encoded.transfer,
         record.controller.signal
       );
@@ -207,24 +255,30 @@ export class JobScheduler {
       if (outcome.status === 'completed') {
         try {
           const output = record.type.decode(outcome.output);
-          this.finish(record, Object.freeze({
-            status: 'completed', output,
-            metrics: Object.freeze({
-              queueLatencyMs: (record.startedAt ?? record.submittedAt) - record.submittedAt,
-              executionTimeMs: this.clock.now() - (record.startedAt ?? this.clock.now()),
-              attempts: record.attempt,
-              inputBytes: record.encoded.inputBytes,
-              transferBytes: record.transferBytes,
-              copyBytes: Math.max(0, record.encoded.inputBytes - record.transferBytes)
+          this.finish(
+            record,
+            Object.freeze({
+              status: 'completed',
+              output,
+              metrics: Object.freeze({
+                queueLatencyMs: (record.startedAt ?? record.submittedAt) - record.submittedAt,
+                executionTimeMs: this.clock.now() - (record.startedAt ?? this.clock.now()),
+                attempts: record.attempt,
+                inputBytes: record.encoded.inputBytes,
+                transferBytes: record.transferBytes,
+                copyBytes: Math.max(0, record.encoded.inputBytes - record.transferBytes)
+              })
             })
-          }));
+          );
           this.metricValues.completed++;
           this.metricValues.recordSuccess(record.type.id);
           this.metricValues.executionTimeMs +=
             this.clock.now() - (record.startedAt ?? this.clock.now());
           this.metricValues.transferBytes += record.transferBytes;
-          this.metricValues.copyBytes +=
-            Math.max(0, record.encoded.inputBytes - record.transferBytes);
+          this.metricValues.copyBytes += Math.max(
+            0,
+            record.encoded.inputBytes - record.transferBytes
+          );
         } catch {
           this.fail(record, 'job-decode-failed', 'Worker output validation failed.', worker.id);
         }
@@ -262,9 +316,20 @@ export class JobScheduler {
 
   private fail(record: JobRecord, code: string, message: string, workerId?: string): void {
     this.metricValues.recordFailure(record.type.id, code);
-    this.finish(record, Object.freeze({
-      status: 'failed', diagnostic: diagnostic(code, record.type.id, record.summary, message, record.attempt, workerId)
-    }));
+    this.finish(
+      record,
+      Object.freeze({
+        status: 'failed',
+        diagnostic: diagnostic(
+          code,
+          record.type.id,
+          record.summary,
+          message,
+          record.attempt,
+          workerId
+        )
+      })
+    );
   }
 
   private finish(record: JobRecord, result: JobResult<unknown>): void {
@@ -278,14 +343,16 @@ export class JobScheduler {
     }
     this.records.delete(record.id);
     this.addUsage(record.budgetClass, record.encoded, -1);
-    this.metricValues.inFlightBytes -=
-      record.encoded.inputBytes + record.encoded.decodeBytes;
+    this.metricValues.inFlightBytes -= record.encoded.inputBytes + record.encoded.decodeBytes;
     record.resolve(result);
   }
 
   private getUsage(budgetClass: JobBudgetClass): BudgetUsage {
     let usage = this.usage.get(budgetClass);
-    if (!usage) { usage = { jobs: 0, inputBytes: 0, decodeBytes: 0 }; this.usage.set(budgetClass, usage); }
+    if (!usage) {
+      usage = { jobs: 0, inputBytes: 0, decodeBytes: 0 };
+      this.usage.set(budgetClass, usage);
+    }
     return usage;
   }
 
@@ -303,9 +370,7 @@ export class JobScheduler {
   }
 }
 
-function validateBudgets(
-  budgets: Partial<Record<JobBudgetClass, BudgetClassLimits>>
-): void {
+function validateBudgets(budgets: Partial<Record<JobBudgetClass, BudgetClassLimits>>): void {
   for (const limits of Object.values(budgets)) {
     if (!limits) continue;
     assertNonNegativeSafeInteger(limits.maxInFlightJobs, 'maxInFlightJobs');
@@ -327,15 +392,29 @@ function assertFinite(value: number, label: string): void {
 }
 
 function failedHandle<O>(id: number, value: JobDiagnostic): JobHandle<O> {
-  return Object.freeze({ id, result: Promise.resolve(Object.freeze({ status: 'failed', diagnostic: value })), cancel: () => undefined });
+  return Object.freeze({
+    id,
+    result: Promise.resolve(Object.freeze({ status: 'failed', diagnostic: value })),
+    cancel: () => undefined
+  });
 }
 
 function diagnostic(
-  code: string, jobType: string, inputSummary: Readonly<Record<string, unknown>>,
-  message: string, attempt = 0, workerId?: string
+  code: string,
+  jobType: string,
+  inputSummary: Readonly<Record<string, unknown>>,
+  message: string,
+  attempt = 0,
+  workerId?: string
 ): JobDiagnostic {
   return Object.freeze({
-    code, severity: 'error', message, subsystem: 'jobs', jobType, inputSummary, attempt,
+    code,
+    severity: 'error',
+    message,
+    subsystem: 'jobs',
+    jobType,
+    inputSummary,
+    attempt,
     ...(workerId === undefined ? {} : { workerId })
   });
 }

@@ -58,7 +58,8 @@ export function createBrowserWebGL2RenderPort(
       glCall(gl, cullMode === 'none' ? 'disable' : 'enable', [constant(gl, 'CULL_FACE')]);
       if (cullMode !== 'none')
         glCall(gl, 'cullFace', [constant(gl, cullMode === 'front' ? 'FRONT' : 'BACK')]);
-      glCall(gl, 'frontFace', [constant(gl, state.frontFace === 'cw' ? 'CW' : 'CCW')]);
+      // Naga vertex shaders invert gl_Position.y for OpenGL, which inverts NDC winding order.
+      glCall(gl, 'frontFace', [constant(gl, state.frontFace === 'cw' ? 'CCW' : 'CW')]);
     },
     setDepthStencilState(state): void {
       const enabled = state.enabled === true;

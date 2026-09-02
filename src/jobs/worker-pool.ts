@@ -1,6 +1,9 @@
 import type { WorkerExecutor, WorkerFactory } from './types';
 
-interface WorkerSlot { executor: WorkerExecutor; busy: boolean; }
+interface WorkerSlot {
+  executor: WorkerExecutor;
+  busy: boolean;
+}
 
 export class WorkerPool {
   private readonly slots: WorkerSlot[];
@@ -17,7 +20,8 @@ export class WorkerPool {
       throw new Error('Job workerFactory is required when workerCount is positive.');
     }
     this.slots = Array.from({ length: count }, (_value, index) => ({
-      executor: factory!.create(index), busy: false
+      executor: factory!.create(index),
+      busy: false
     }));
   }
 
@@ -49,7 +53,9 @@ export class WorkerPool {
     this.retiredDisposals.push(
       Promise.resolve()
         .then(() => executor.dispose())
-        .catch((error: unknown) => { this.retiredDisposalErrors.push(error); })
+        .catch((error: unknown) => {
+          this.retiredDisposalErrors.push(error);
+        })
     );
     this.slots[index] = { executor: this.factory.create(index), busy: false };
   }

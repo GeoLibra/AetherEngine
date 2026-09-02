@@ -26,10 +26,21 @@ export const RAW_AOS_SUBJECT: BenchmarkSubject = Object.freeze<BenchmarkSubject>
     for (let index = 0; index < input.scale; index++) {
       const position = initialPosition(index, input.seedOffset);
       const velocity = initialVelocity(index);
-      rows[index] = { x: position.x, y: position.y, vx: velocity.x, vy: velocity.y, selected: index < input.matchCount };
+      rows[index] = {
+        x: position.x,
+        y: position.y,
+        vx: velocity.x,
+        vy: velocity.y,
+        selected: index < input.matchCount
+      };
     }
     const populationMs = performance.now() - populationStartedAt;
-    const mode = scenario.id === 'dense-read' ? 'read' : scenario.id === 'dense-update' ? 'update' : 'selective';
+    const mode =
+      scenario.id === 'dense-read'
+        ? 'read'
+        : scenario.id === 'dense-update'
+          ? 'update'
+          : 'selective';
     const prepared: PreparedBenchmark = {
       expectedChecksum: expectedDenseChecksum(input, mode),
       reset() {

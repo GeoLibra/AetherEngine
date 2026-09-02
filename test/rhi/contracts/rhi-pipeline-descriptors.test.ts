@@ -6,8 +6,14 @@ const SHADER_STAGE_VERTEX = 1;
 describe('RHI pipeline descriptors', () => {
   test('stores immutable expanded render pipeline descriptor snapshots', () => {
     const device = new NullDevice();
-    const vertexModule = device.createShaderModule({ label: 'vertex-module', code: '@vertex fn main() {}' });
-    const fragmentModule = device.createShaderModule({ label: 'fragment-module', code: '@fragment fn main() {}' });
+    const vertexModule = device.createShaderModule({
+      label: 'vertex-module',
+      code: '@vertex fn main() {}'
+    });
+    const fragmentModule = device.createShaderModule({
+      label: 'fragment-module',
+      code: '@fragment fn main() {}'
+    });
     const constants = { exposure: 1 };
     const vertexBuffers = [
       {
@@ -21,7 +27,11 @@ describe('RHI pipeline descriptors', () => {
         format: 'rgba8unorm',
         writeMask: 0xf,
         blend: {
-          color: { operation: 'add' as const, srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+          color: {
+            operation: 'add' as const,
+            srcFactor: 'src-alpha',
+            dstFactor: 'one-minus-src-alpha'
+          },
           alpha: { operation: 'add' as const, srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }
         }
       }
@@ -76,7 +86,10 @@ describe('RHI pipeline descriptors', () => {
 
   test('stores immutable expanded compute pipeline descriptor snapshots', () => {
     const device = new NullDevice();
-    const computeModule = device.createShaderModule({ label: 'compute-module', code: '@compute fn main() {}' });
+    const computeModule = device.createShaderModule({
+      label: 'compute-module',
+      code: '@compute fn main() {}'
+    });
     const constants = { workgroupSize: 64 };
 
     const pipeline = device.createComputePipeline({
@@ -112,8 +125,14 @@ describe('RHI pipeline descriptors', () => {
   test('rejects foreign and disposed shader modules in pipeline stages', () => {
     const firstDevice = new NullDevice();
     const secondDevice = new NullDevice();
-    const foreignModule = firstDevice.createShaderModule({ label: 'foreign-module', code: '@vertex fn main() {}' });
-    const localModule = secondDevice.createShaderModule({ label: 'disposed-module', code: '@vertex fn main() {}' });
+    const foreignModule = firstDevice.createShaderModule({
+      label: 'foreign-module',
+      code: '@vertex fn main() {}'
+    });
+    const localModule = secondDevice.createShaderModule({
+      label: 'disposed-module',
+      code: '@vertex fn main() {}'
+    });
 
     expect(() =>
       secondDevice.createRenderPipeline({
@@ -132,7 +151,10 @@ describe('RHI pipeline descriptors', () => {
 
   test('rejects incomplete stage descriptors from untyped callers', () => {
     const device = new NullDevice();
-    const fragmentModule = device.createShaderModule({ label: 'fragment-only', code: '@fragment fn main() {}' });
+    const fragmentModule = device.createShaderModule({
+      label: 'fragment-only',
+      code: '@fragment fn main() {}'
+    });
 
     expect(() =>
       device.createRenderPipeline({
@@ -162,9 +184,18 @@ describe('RHI pipeline descriptors', () => {
 
   test('rejects invalid pipeline descriptor values from untyped callers', () => {
     const device = new NullDevice();
-    const vertexModule = device.createShaderModule({ label: 'validation-vertex', code: '@vertex fn main() {}' });
-    const fragmentModule = device.createShaderModule({ label: 'validation-fragment', code: '@fragment fn main() {}' });
-    const computeModule = device.createShaderModule({ label: 'validation-compute', code: '@compute fn main() {}' });
+    const vertexModule = device.createShaderModule({
+      label: 'validation-vertex',
+      code: '@vertex fn main() {}'
+    });
+    const fragmentModule = device.createShaderModule({
+      label: 'validation-fragment',
+      code: '@fragment fn main() {}'
+    });
+    const computeModule = device.createShaderModule({
+      label: 'validation-compute',
+      code: '@compute fn main() {}'
+    });
 
     const invalidDescriptors: Array<{ create: () => void; message: string }> = [
       {
@@ -187,7 +218,9 @@ describe('RHI pipeline descriptors', () => {
       },
       {
         create: () => {
-          device.createComputePipeline({ compute: { module: computeModule, constants: { bad: Number.NaN } } });
+          device.createComputePipeline({
+            compute: { module: computeModule, constants: { bad: Number.NaN } }
+          });
         },
         message: 'Compute stage constant "bad" must be a finite number.'
       },
@@ -199,7 +232,9 @@ describe('RHI pipeline descriptors', () => {
       },
       {
         create: () => {
-          device.createRenderPipeline({ vertex: { module: vertexModule, constants: { bad: Number.POSITIVE_INFINITY } } });
+          device.createRenderPipeline({
+            vertex: { module: vertexModule, constants: { bad: Number.POSITIVE_INFINITY } }
+          });
         },
         message: 'Vertex stage constant "bad" must be a finite number.'
       },
@@ -224,7 +259,9 @@ describe('RHI pipeline descriptors', () => {
           device.createRenderPipeline({
             vertex: {
               module: vertexModule,
-              buffers: [{ arrayStride: 4, attributes: [{ format: '', offset: 0, shaderLocation: 0 }] }]
+              buffers: [
+                { arrayStride: 4, attributes: [{ format: '', offset: 0, shaderLocation: 0 }] }
+              ]
             }
           });
         },
@@ -235,7 +272,12 @@ describe('RHI pipeline descriptors', () => {
           device.createRenderPipeline({
             vertex: {
               module: vertexModule,
-              buffers: [{ arrayStride: 4, attributes: [{ format: 'float32', offset: -1, shaderLocation: 0 }] }]
+              buffers: [
+                {
+                  arrayStride: 4,
+                  attributes: [{ format: 'float32', offset: -1, shaderLocation: 0 }]
+                }
+              ]
             }
           });
         },
@@ -246,7 +288,12 @@ describe('RHI pipeline descriptors', () => {
           device.createRenderPipeline({
             vertex: {
               module: vertexModule,
-              buffers: [{ arrayStride: 4, attributes: [{ format: 'float32', offset: 0, shaderLocation: 1.5 }] }]
+              buffers: [
+                {
+                  arrayStride: 4,
+                  attributes: [{ format: 'float32', offset: 0, shaderLocation: 1.5 }]
+                }
+              ]
             }
           });
         },
@@ -265,7 +312,11 @@ describe('RHI pipeline descriptors', () => {
         create: () => {
           device.createRenderPipeline({
             vertex: { module: vertexModule },
-            fragment: { module: fragmentModule, constants: { bad: Number.NEGATIVE_INFINITY }, targets: [{ format: '' }] }
+            fragment: {
+              module: fragmentModule,
+              constants: { bad: Number.NEGATIVE_INFINITY },
+              targets: [{ format: '' }]
+            }
           });
         },
         message: 'Fragment stage constant "bad" must be a finite number.'
@@ -355,8 +406,14 @@ describe('RHI pipeline descriptors', () => {
 
   test('preserves null entries in vertex buffers and fragment targets', () => {
     const device = new NullDevice();
-    const vertexModule = device.createShaderModule({ label: 'nullable-vertex', code: '@vertex fn main() {}' });
-    const fragmentModule = device.createShaderModule({ label: 'nullable-fragment', code: '@fragment fn main() {}' });
+    const vertexModule = device.createShaderModule({
+      label: 'nullable-vertex',
+      code: '@vertex fn main() {}'
+    });
+    const fragmentModule = device.createShaderModule({
+      label: 'nullable-fragment',
+      code: '@fragment fn main() {}'
+    });
 
     const pipeline = device.createRenderPipeline({
       vertex: {

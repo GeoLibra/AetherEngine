@@ -105,9 +105,7 @@ describe('World observers', () => {
       }
     });
 
-    expect(() => world.insertComponent(entity, Flag, { value: 1 })).toThrow(
-      'observer rejected'
-    );
+    expect(() => world.insertComponent(entity, Flag, { value: 1 })).toThrow('observer rejected');
     expect(world.hasComponent(entity, Flag)).toBe(false);
     expect(world.getResource(CommandBufferResource)?.length).toBe(0);
   });
@@ -125,9 +123,7 @@ describe('World observers', () => {
       }
     });
 
-    expect(() => world.insertComponent(entity, Flag, { value: 1 })).toThrow(
-      'observer dispatch'
-    );
+    expect(() => world.insertComponent(entity, Flag, { value: 1 })).toThrow('observer dispatch');
     expect(world.hasComponent(entity, Flag)).toBe(false);
   });
 

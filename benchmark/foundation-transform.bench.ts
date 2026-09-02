@@ -1,12 +1,5 @@
 import { bench, expect } from 'vitest';
-import {
-  ChildOf,
-  Mat4,
-  TransformRuntime,
-  World,
-  WorldTransform,
-  type Entity
-} from '../src';
+import { ChildOf, Mat4, TransformRuntime, World, WorldTransform, type Entity } from '../src';
 
 bench(
   'propagates a 10K deep Transform hierarchy iteratively',

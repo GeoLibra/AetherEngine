@@ -208,9 +208,9 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
   };
 
   const validArtifact: CookedShaderRuntimeArtifact = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     shaderManifestSchemaVersion: 1,
-    shaderModuleSchemaVersion: 1,
+    shaderModuleSchemaVersion: 2,
     sourceKind: 'wgsl',
     toolchain: {
       cookerId: 'aether-native-wgsl-cooker',
@@ -261,11 +261,61 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
     modules: {
       wgsl: '@vertex\nfn vertexMain() {}\n@fragment\nfn fragmentMain() {}',
       glslEs300: {
-        'vertex:vertexMain': '#version 300 es\nvoid main() {}',
-        'fragment:fragmentMain': '#version 300 es\nvoid main() {}'
+        'vertex:vertexMain': {
+          source: '#version 300 es\nvoid main() {}',
+          bindings: [
+            {
+              kind: 'uniform-buffer',
+              name: 'SceneUniforms_block_0Vertex',
+              resource: { group: 0, binding: 0 }
+            }
+          ]
+        },
+        'fragment:fragmentMain': {
+          source: '#version 300 es\nvoid main() {}',
+          bindings: []
+        }
       }
     }
   };
+
+  test('decodes frozen GLSL program bindings from schema version 2 module records', () => {
+    const decoded = decodeCookedShaderRuntimeArtifact({
+      ...validArtifact,
+      schemaVersion: 2,
+      shaderModuleSchemaVersion: 2,
+      modules: {
+        wgsl: validArtifact.modules.wgsl,
+        glslEs300: {
+          'vertex:vertexMain': {
+            source: '#version 300 es\nvoid main() {}',
+            bindings: [
+              {
+                kind: 'uniform-buffer',
+                name: 'SceneUniforms_block_0Vertex',
+                resource: { group: 0, binding: 0 }
+              }
+            ]
+          },
+          'fragment:fragmentMain': {
+            source: '#version 300 es\nvoid main() {}',
+            bindings: []
+          }
+        }
+      }
+    });
+
+    const vertexModule = decoded.modules.glslEs300['vertex:vertexMain'];
+    expect(vertexModule?.bindings).toEqual([
+      {
+        kind: 'uniform-buffer',
+        name: 'SceneUniforms_block_0Vertex',
+        resource: { group: 0, binding: 0 }
+      }
+    ]);
+    expect(Object.isFrozen(vertexModule)).toBe(true);
+    expect(Object.isFrozen(vertexModule?.bindings[0])).toBe(true);
+  });
 
   test('decodes and validates a compliant cooked runtime artifact', () => {
     const decoded = decodeCookedShaderRuntimeArtifact(validArtifact);
@@ -297,7 +347,7 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
         modules: {
           wgsl: validArtifact.modules.wgsl,
           glslEs300: {
-            'vertex:vertexMain': '#version 300 es\nvoid main() {}'
+            'vertex:vertexMain': validArtifact.modules.glslEs300['vertex:vertexMain']
             // missing fragment:fragmentMain
           }
         }
@@ -394,7 +444,10 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
           ...validArtifact.modules,
           glslEs300: {
             ...validArtifact.modules.glslEs300,
-            'vertex:unknownEntry': '#version 300 es\nvoid main() {}'
+            'vertex:unknownEntry': {
+              source: '#version 300 es\nvoid main() {}',
+              bindings: []
+            }
           }
         }
       })
@@ -475,5 +528,59 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
     expect(() => decodeCookedShaderRuntimeArtifact(missingLayouts)).toThrow(
       /bufferLayouts must be an array/i
     );
+  });
+
+  test('accepts combined-sampler GLSL program bindings with null or omitted sampler', () => {
+    const textureBinding = {
+      group: 0,
+      binding: 1,
+      name: 'uTexture',
+      kind: 'texture' as const,
+      addressSpace: 'handle' as const,
+      access: 'read' as const,
+      typeName: 'texture_2d<f32>'
+    };
+    const artifactWithCombinedSamplers = {
+      ...validArtifact,
+      bindings: [validBinding, textureBinding],
+      entryPoints: [
+        {
+          name: 'vertexMain',
+          stage: 'vertex' as const,
+          bindings: [validBinding]
+        },
+        {
+          name: 'fragmentMain',
+          stage: 'fragment' as const,
+          bindings: [textureBinding]
+        }
+      ],
+      modules: {
+        wgsl: validArtifact.modules.wgsl,
+        glslEs300: {
+          'vertex:vertexMain': validArtifact.modules.glslEs300['vertex:vertexMain'],
+          'fragment:fragmentMain': {
+            source: '#version 300 es\nvoid main() {}',
+            bindings: [
+              {
+                kind: 'combined-sampler',
+                name: 'uTexture_sampler_null',
+                texture: { group: 0, binding: 1 },
+                sampler: null
+              }
+            ]
+          }
+        }
+      }
+    };
+
+    const decoded = decodeCookedShaderRuntimeArtifact(artifactWithCombinedSamplers);
+    const fragmentBindings = decoded.modules.glslEs300['fragment:fragmentMain']?.bindings;
+    expect(fragmentBindings).toBeDefined();
+    expect(fragmentBindings![0]).toEqual({
+      kind: 'combined-sampler',
+      name: 'uTexture_sampler_null',
+      texture: { group: 0, binding: 1 }
+    });
   });
 });

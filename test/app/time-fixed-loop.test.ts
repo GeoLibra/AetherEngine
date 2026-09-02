@@ -40,21 +40,19 @@ class TimestampRunner implements Runner {
 describe('Time and fixed schedules', () => {
   test('uses runner timestamps to advance variable and fixed time', async () => {
     const fixedTicks: number[] = [];
-    const app = new App()
-      .addPlugin(createTimePlugin({ fixedStep: 0.02 }))
-      .addPlugin(
-        definePlugin({
-          id: 'test.fixed-observer',
-          build(builder) {
-            builder.addSystem('FixedUpdate', {
-              id: 'record-fixed-tick',
-              run(world) {
-                fixedTicks.push(world.getResource(FixedTimeResource)?.tick ?? -1);
-              }
-            });
-          }
-        })
-      );
+    const app = new App().addPlugin(createTimePlugin({ fixedStep: 0.02 })).addPlugin(
+      definePlugin({
+        id: 'test.fixed-observer',
+        build(builder) {
+          builder.addSystem('FixedUpdate', {
+            id: 'record-fixed-tick',
+            run(world) {
+              fixedTicks.push(world.getResource(FixedTimeResource)?.tick ?? -1);
+            }
+          });
+        }
+      })
+    );
 
     await app.run(new TimestampRunner([0, 0.01, 0.03]));
 
@@ -108,19 +106,17 @@ describe('Time and fixed schedules', () => {
 
   test('pause freezes simulation time while variable schedules continue', async () => {
     let updates = 0;
-    const app = new App()
-      .addPlugin(createTimePlugin({ fixedStep: 0.02 }))
-      .addPlugin(
-        definePlugin({
-          id: 'test.variable-observer',
-          build(builder) {
-            builder.addSystem('Update', {
-              id: 'record-variable-update',
-              run: () => void updates++
-            });
-          }
-        })
-      );
+    const app = new App().addPlugin(createTimePlugin({ fixedStep: 0.02 })).addPlugin(
+      definePlugin({
+        id: 'test.variable-observer',
+        build(builder) {
+          builder.addSystem('Update', {
+            id: 'record-variable-update',
+            run: () => void updates++
+          });
+        }
+      })
+    );
     await app.startup();
     app.getResource(TimeControlResource)?.pause();
 
@@ -164,25 +160,23 @@ describe('Time and fixed schedules', () => {
       'Render',
       'PostRender'
     ] as const;
-    const app = new App()
-      .addPlugin(createTimePlugin({ fixedStep: 0.02 }))
-      .addPlugin(
-        definePlugin({
-          id: 'test.schedule-order',
-          build(builder) {
-            for (const schedule of schedules) {
-              builder.addSystem(schedule, {
-                id: `record-${schedule}`,
-                run(world) {
-                  if (world.getResource(FrameTimeResource)?.frame === 2) {
-                    order.push(schedule);
-                  }
+    const app = new App().addPlugin(createTimePlugin({ fixedStep: 0.02 })).addPlugin(
+      definePlugin({
+        id: 'test.schedule-order',
+        build(builder) {
+          for (const schedule of schedules) {
+            builder.addSystem(schedule, {
+              id: `record-${schedule}`,
+              run(world) {
+                if (world.getResource(FrameTimeResource)?.frame === 2) {
+                  order.push(schedule);
                 }
-              });
-            }
+              }
+            });
           }
-        })
-      );
+        }
+      })
+    );
 
     await app.run(new TimestampRunner([0, 0.02]));
 
@@ -261,22 +255,20 @@ describe('Time and fixed schedules', () => {
   test('non-monotonic timestamps fail the frame and still release frame services', async () => {
     const FrameLease = createServiceToken<object>('time-test-frame-lease');
     let disposals = 0;
-    const app = new App()
-      .addPlugin(createTimePlugin())
-      .addPlugin(
-        definePlugin({
-          id: 'test.frame-cleanup',
-          build(builder) {
-            builder.provideService(
-              FrameLease,
-              serviceFactory(() => ({}), {
-                lifecycle: 'frame',
-                dispose: () => void disposals++
-              })
-            );
-          }
-        })
-      );
+    const app = new App().addPlugin(createTimePlugin()).addPlugin(
+      definePlugin({
+        id: 'test.frame-cleanup',
+        build(builder) {
+          builder.provideService(
+            FrameLease,
+            serviceFactory(() => ({}), {
+              lifecycle: 'frame',
+              dispose: () => void disposals++
+            })
+          );
+        }
+      })
+    );
     await app.startup();
     const runner: Runner = {
       async run(context) {

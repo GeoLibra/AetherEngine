@@ -2,7 +2,10 @@ import { describe, expect, test } from 'vitest';
 
 import { WebGL2Adapter, type WebGL2NativeContextLostInfo } from '../../../src';
 
-interface NativeObject { readonly id: number; readonly kind: 'buffer' | 'texture' | 'sampler' }
+interface NativeObject {
+  readonly id: number;
+  readonly kind: 'buffer' | 'texture' | 'sampler';
+}
 
 class ResourceContext {
   readonly info = { name: 'Resource WebGL2' };
@@ -11,7 +14,10 @@ class ResourceContext {
   readonly formats = new Map();
   readonly precision = {};
   readonly lost = new Promise<WebGL2NativeContextLostInfo>(() => {});
-  readonly created: Array<{ kind: NativeObject['kind']; descriptor: Readonly<Record<string, unknown>> }> = [];
+  readonly created: Array<{
+    kind: NativeObject['kind'];
+    descriptor: Readonly<Record<string, unknown>>;
+  }> = [];
   readonly deleted: NativeObject[] = [];
   private nextId = 1;
 
@@ -24,18 +30,30 @@ class ResourceContext {
   createSampler(descriptor: Readonly<Record<string, unknown>>): NativeObject {
     return this.create('sampler', descriptor);
   }
-  deleteBuffer(handle: NativeObject): void { this.deleted.push(handle); }
-  deleteTexture(handle: NativeObject): void { this.deleted.push(handle); }
-  deleteSampler(handle: NativeObject): void { this.deleted.push(handle); }
+  deleteBuffer(handle: NativeObject): void {
+    this.deleted.push(handle);
+  }
+  deleteTexture(handle: NativeObject): void {
+    this.deleted.push(handle);
+  }
+  deleteSampler(handle: NativeObject): void {
+    this.deleted.push(handle);
+  }
 
-  private create(kind: NativeObject['kind'], descriptor: Readonly<Record<string, unknown>>): NativeObject {
+  private create(
+    kind: NativeObject['kind'],
+    descriptor: Readonly<Record<string, unknown>>
+  ): NativeObject {
     this.created.push({ kind, descriptor });
     return { id: this.nextId++, kind };
   }
 }
 
 async function createDevice(native = new ResourceContext()) {
-  const device = await new WebGL2Adapter(native).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+  const device = await new WebGL2Adapter(native).requestDevice({
+    requiredFeatures: [],
+    optionalFeatures: []
+  });
   return { device, native };
 }
 
@@ -51,7 +69,8 @@ describe('WebGL2 resources', () => {
       usage: 2
     };
     const samplerDescriptor: { label: string; magFilter: 'linear' | 'nearest' } = {
-      label: 'linear', magFilter: 'linear'
+      label: 'linear',
+      magFilter: 'linear'
     };
 
     const buffer = device.createBuffer(bufferDescriptor);
@@ -64,7 +83,9 @@ describe('WebGL2 resources', () => {
 
     expect(buffer.descriptor).toMatchObject({ size: 32, usage: 1 });
     expect(texture.descriptor).toMatchObject({
-      size: { width: 8, height: 4, depthOrArrayLayers: 1 }, format: 'rgba8unorm', usage: 2
+      size: { width: 8, height: 4, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 2
     });
     expect(view.texture).toBe(texture);
     expect([view.width, view.height]).toEqual([2, 1]);
@@ -101,9 +122,14 @@ describe('WebGL2 resources', () => {
     expect(() => buffer.getMappedRange()).toThrow(
       'WebGL2 buffer "mapped" does not expose a mapped range.'
     );
-    expect(() => device.createBuffer({
-      label: 'mapped-at-creation', size: 16, usage: 1, mappedAtCreation: true
-    })).toThrow('WebGL2 buffer "mapped-at-creation" does not support mappedAtCreation.');
+    expect(() =>
+      device.createBuffer({
+        label: 'mapped-at-creation',
+        size: 16,
+        usage: 1,
+        mappedAtCreation: true
+      })
+    ).toThrow('WebGL2 buffer "mapped-at-creation" does not support mappedAtCreation.');
     expect(native.created).toHaveLength(1);
   });
 

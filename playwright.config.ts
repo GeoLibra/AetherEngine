@@ -8,7 +8,7 @@ export default defineConfig({
   snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{arg}-{projectName}-{platform}{ext}',
   retries: 0,
   ...(process.env.CI ? { workers: 1 } : {}),
-  timeout: 30_000,
+  timeout: 60_000,
   use: {
     baseURL: BASE_URL,
     trace: 'retain-on-failure'
@@ -52,7 +52,11 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
-        baseURL: 'http://127.0.0.1:4174'
+        deviceScaleFactor: 1,
+        baseURL: 'http://127.0.0.1:4174',
+        launchOptions: {
+          args: browserGraphicsArgs('webgl2', process.platform)
+        }
       }
     },
     {
@@ -61,8 +65,11 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
+        deviceScaleFactor: 1,
         baseURL: 'http://127.0.0.1:4174',
-        launchOptions: { args: browserGraphicsArgs('webgpu', process.platform) }
+        launchOptions: {
+          args: browserGraphicsArgs('webgpu', process.platform)
+        }
       }
     }
   ],

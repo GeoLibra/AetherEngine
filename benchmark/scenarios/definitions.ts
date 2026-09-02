@@ -1,8 +1,4 @@
-import type {
-  BenchmarkChecksum,
-  BenchmarkScenario,
-  ScenarioInput
-} from '../harness/types';
+import type { BenchmarkChecksum, BenchmarkScenario, ScenarioInput } from '../harness/types';
 
 const DEFAULT_SCALES = Object.freeze({
   smoke: Object.freeze([100]),
@@ -18,11 +14,27 @@ const STRUCTURAL_SCALES = Object.freeze({
 
 export const SCENARIOS: readonly BenchmarkScenario[] = Object.freeze([
   scenario('dense-read', 'Read Position and Velocity for every matching entity.', DEFAULT_SCALES),
-  scenario('dense-update', 'Update Position from Velocity for every matching entity.', DEFAULT_SCALES),
+  scenario(
+    'dense-update',
+    'Update Position from Velocity for every matching entity.',
+    DEFAULT_SCALES
+  ),
   scenario('selective-query', 'Update 100%, 10%, and 1% matching entities.', DEFAULT_SCALES),
-  scenario('query-cache', 'Reuse a query and refresh it after new archetypes appear.', STRUCTURAL_SCALES),
-  scenario('entity-lifecycle', 'Spawn, despawn, and reuse a fixed entity batch.', STRUCTURAL_SCALES),
-  scenario('component-migration', 'Round-trip entities between two component signatures.', STRUCTURAL_SCALES),
+  scenario(
+    'query-cache',
+    'Reuse a query and refresh it after new archetypes appear.',
+    STRUCTURAL_SCALES
+  ),
+  scenario(
+    'entity-lifecycle',
+    'Spawn, despawn, and reuse a fixed entity batch.',
+    STRUCTURAL_SCALES
+  ),
+  scenario(
+    'component-migration',
+    'Round-trip entities between two component signatures.',
+    STRUCTURAL_SCALES
+  ),
   scenario('change-filter', 'Consume native change filters at 100%, 10%, and 1%.', DEFAULT_SCALES),
   scenario('relations', 'Query and traverse deep and wide relation shapes.', STRUCTURAL_SCALES)
 ]);
@@ -37,7 +49,8 @@ export function createScenarioInputs(
     scenarioDefinition.id === 'selective-query' || scenarioDefinition.id === 'change-filter'
       ? [1, 0.1, 0.01]
       : [1];
-  const shapes = scenarioDefinition.id === 'relations' ? (['deep', 'wide'] as const) : (['default'] as const);
+  const shapes =
+    scenarioDefinition.id === 'relations' ? (['deep', 'wide'] as const) : (['default'] as const);
 
   return Object.freeze(
     shapes.flatMap((shape) =>

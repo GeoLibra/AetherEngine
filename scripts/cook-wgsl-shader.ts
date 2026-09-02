@@ -18,6 +18,7 @@ interface CookCliArgs {
   readonly sourceUri: string;
   readonly metadataPath?: string | undefined;
   readonly outputPath?: string | undefined;
+  readonly diagnoseLayout?: boolean | undefined;
 }
 
 function parseCliArgs(argv: readonly string[]): CookCliArgs {
@@ -25,6 +26,7 @@ function parseCliArgs(argv: readonly string[]): CookCliArgs {
   let sourceUri = '';
   let metadataPath: string | undefined;
   let outputPath: string | undefined;
+  let diagnoseLayout = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -36,6 +38,8 @@ function parseCliArgs(argv: readonly string[]): CookCliArgs {
       if (i + 1 < argv.length) {
         outputPath = argv[++i]!;
       }
+    } else if (arg === '--diagnose-layout' || arg === '--layout-diagnostics') {
+      diagnoseLayout = true;
     } else if (arg === '--input' && i + 1 < argv.length) {
       inputPath = argv[++i]!;
     } else if (!arg.startsWith('-') && !inputPath) {
@@ -45,7 +49,7 @@ function parseCliArgs(argv: readonly string[]): CookCliArgs {
 
   if (!inputPath) {
     throw new Error(
-      'Missing required input shader file.\nUsage: vite-node --script scripts/cook-wgsl-shader.ts -- <file.wgsl> [--source-uri <uri>] [--metadata <meta>] [--output <file>]'
+      'Missing required input shader file.\nUsage: vite-node --script scripts/cook-wgsl-shader.ts -- <file.wgsl> [--source-uri <uri>] [--metadata <meta>] [--output <file>] [--diagnose-layout]'
     );
   }
 
@@ -67,7 +71,8 @@ function parseCliArgs(argv: readonly string[]): CookCliArgs {
     inputPath: resolvedInput,
     sourceUri: resolvedUri,
     metadataPath: metadataPath ? resolve(process.cwd(), metadataPath) : undefined,
-    outputPath: outputPath ? resolve(process.cwd(), outputPath) : undefined
+    outputPath: outputPath ? resolve(process.cwd(), outputPath) : undefined,
+    diagnoseLayout
   };
 }
 
@@ -79,11 +84,16 @@ export async function main(): Promise<void> {
     uri: args.sourceUri
   });
 
-  const artifact = await cookAuthoredShader({
-    source,
-    sourcePath: args.inputPath,
-    ...(args.metadataPath !== undefined ? { metadataPath: args.metadataPath } : {})
-  });
+  const artifact = await cookAuthoredShader(
+    {
+      source,
+      sourcePath: args.inputPath,
+      ...(args.metadataPath !== undefined ? { metadataPath: args.metadataPath } : {})
+    },
+    {
+      diagnoseLayout: args.diagnoseLayout
+    }
+  );
 
   const json = JSON.stringify(artifact, null, 2);
 

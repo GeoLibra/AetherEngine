@@ -1,7 +1,4 @@
-import type {
-  BenchmarkProfile,
-  BenchmarkProfileName
-} from './harness/types';
+import type { BenchmarkProfile, BenchmarkProfileName } from './harness/types';
 
 const PROFILES: Readonly<Record<BenchmarkProfileName, BenchmarkProfile>> = Object.freeze({
   smoke: Object.freeze({ name: 'smoke', warmupCount: 1, sampleCount: 3, rounds: 1 }),

@@ -106,9 +106,9 @@ describe('RHI binding layer resources', () => {
       usage: BUFFER_USAGE_UNIFORM
     });
 
-    expect(() =>
-      secondDevice.createPipelineLayout({ bindGroupLayouts: [foreignLayout] })
-    ).toThrow('Resource "foreign-layout" belongs to a different NullDevice.');
+    expect(() => secondDevice.createPipelineLayout({ bindGroupLayouts: [foreignLayout] })).toThrow(
+      'Resource "foreign-layout" belongs to a different NullDevice.'
+    );
 
     expect(() =>
       secondDevice.createBindGroup({

@@ -30,10 +30,12 @@ describe('browser WebGPU environment', () => {
     const environment = getBrowserWebGPUEnvironment({ navigator: { gpu } });
 
     expect(environment.gpu).toBe(gpu);
-    expect(environment.getCanvasContext({
-      getContext(contextId: string): unknown {
-        return contextId === 'webgpu' ? canvasContext : null;
-      }
-    })).toBe(canvasContext);
+    expect(
+      environment.getCanvasContext({
+        getContext(contextId: string): unknown {
+          return contextId === 'webgpu' ? canvasContext : null;
+        }
+      })
+    ).toBe(canvasContext);
   });
 });

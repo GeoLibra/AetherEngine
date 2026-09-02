@@ -35,8 +35,8 @@ export function evaluateCookTorranceDirect(input: CookTorranceDirectInput): Vec3
   const normal = Vec3Math.normalize(input.normal, 'PBR normal');
   const view = Vec3Math.normalize(input.viewDirection, 'PBR viewDirection');
   const light = Vec3Math.normalize(input.lightDirection, 'PBR lightDirection');
-  const normalDotLight = Math.max(Vec3Math.dot(normal, light), 0);
-  const normalDotView = Math.max(Vec3Math.dot(normal, view), 0);
+  const normalDotLight = Math.max(Vec3Math.dot(normal, light), 0); // n · l
+  const normalDotView = Math.max(Vec3Math.dot(normal, view), 0); // n · v
   if (normalDotLight === 0 || normalDotView === 0) return BLACK;
   const half = Vec3Math.normalize(Vec3Math.add(view, light), 'PBR viewDirection + lightDirection');
   const normalDotHalf = Math.max(Vec3Math.dot(normal, half), 0);

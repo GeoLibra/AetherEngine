@@ -17,9 +17,9 @@ const sampleBinding = Object.freeze({
 });
 
 const sampleArtifact: CookedShaderRuntimeArtifact = Object.freeze({
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   shaderManifestSchemaVersion: 1 as const,
-  shaderModuleSchemaVersion: 1 as const,
+  shaderModuleSchemaVersion: 2 as const,
   sourceKind: 'wgsl' as const,
   toolchain: Object.freeze({
     cookerId: 'aether-native-wgsl-cooker',
@@ -72,8 +72,20 @@ const sampleArtifact: CookedShaderRuntimeArtifact = Object.freeze({
   modules: Object.freeze({
     wgsl: '@vertex\nfn vertexMain() {}\n@fragment\nfn fragmentMain() {}\n@compute\nfn computeMain() {}',
     glslEs300: Object.freeze({
-      'vertex:vertexMain': '#version 300 es\nvoid main() /* vs */ {}',
-      'fragment:fragmentMain': '#version 300 es\nvoid main() /* fs */ {}'
+      'vertex:vertexMain': Object.freeze({
+        source: '#version 300 es\nvoid main() /* vs */ {}',
+        bindings: Object.freeze([
+          Object.freeze({
+            kind: 'uniform-buffer' as const,
+            name: 'CameraUniforms_block_0Vertex',
+            resource: Object.freeze({ group: 0, binding: 0 })
+          })
+        ])
+      }),
+      'fragment:fragmentMain': Object.freeze({
+        source: '#version 300 es\nvoid main() /* fs */ {}',
+        bindings: Object.freeze([])
+      })
     })
   })
 });

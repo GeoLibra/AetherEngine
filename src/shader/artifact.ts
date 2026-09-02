@@ -5,11 +5,14 @@
 import { assertValidCanonicalShaderSourceUri } from './authoring';
 import type {
   CookedShaderBinding,
+  CookedShaderBindingReference,
   CookedShaderBufferField,
   CookedShaderBufferLayout,
   CookedShaderStageIo,
   CookedShaderEntryPoint,
   CookedShaderModules,
+  CookedGlslEs300Module,
+  CookedGlslProgramBinding,
   CookedShaderRuntimeArtifact,
   CookedShaderSourceInfo,
   CookedShaderToolchainInfo,
@@ -57,17 +60,17 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
 
   const raw = value as Record<string, unknown>;
 
-  if (raw.schemaVersion !== 1) {
-    throw new Error(`Invalid schemaVersion ${String(raw.schemaVersion)}. Expected 1.`);
+  if (raw.schemaVersion !== 2) {
+    throw new Error(`Invalid schemaVersion ${String(raw.schemaVersion)}. Expected 2.`);
   }
   if (raw.shaderManifestSchemaVersion !== 1) {
     throw new Error(
       `Invalid shaderManifestSchemaVersion ${String(raw.shaderManifestSchemaVersion)}. Expected 1.`
     );
   }
-  if (raw.shaderModuleSchemaVersion !== 1) {
+  if (raw.shaderModuleSchemaVersion !== 2) {
     throw new Error(
-      `Invalid shaderModuleSchemaVersion ${String(raw.shaderModuleSchemaVersion)}. Expected 1.`
+      `Invalid shaderModuleSchemaVersion ${String(raw.shaderModuleSchemaVersion)}. Expected 2.`
     );
   }
 
@@ -420,11 +423,11 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
       ? (modulesRaw.glslEs300 as Record<string, unknown>)
       : {};
 
-  const frozenGlsl: Record<string, string> = {};
-  for (const [key, code] of Object.entries(glslEs300Raw)) {
-    if (typeof code !== 'string' || !code.trim()) {
+  const frozenGlsl: Record<string, CookedGlslEs300Module> = {};
+  for (const [key, moduleValue] of Object.entries(glslEs300Raw)) {
+    if (!moduleValue || typeof moduleValue !== 'object' || Array.isArray(moduleValue)) {
       throw new Error(
-        `[artifact-module-invalid] GLSL ES 300 module for key "${key}" must be a non-empty string.`
+        `[artifact-module-invalid] GLSL ES 300 module for key "${key}" must be an object.`
       );
     }
     if (!GLSL_KEY_PATTERN.test(key)) {
@@ -439,7 +442,24 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
         `[artifact-module-invalid] Unexpected GLSL ES 300 module key "${key}" does not match declared entry point "${keyEntry}".`
       );
     }
-    frozenGlsl[key] = code;
+    const moduleRaw = moduleValue as Record<string, unknown>;
+    const source = typeof moduleRaw.source === 'string' ? moduleRaw.source : '';
+    if (!source.trim()) {
+      throw new Error(
+        `[artifact-module-invalid] GLSL ES 300 module source for key "${key}" must be non-empty.`
+      );
+    }
+    const entryPoint = frozenEntryPoints.find(
+      (entry) => entry.name === keyEntry && entry.stage === keyStage
+    );
+    if (!entryPoint) {
+      throw new Error(`[artifact-module-invalid] Missing entry point for GLSL module "${key}".`);
+    }
+    if (!Array.isArray(moduleRaw.bindings)) {
+      throw new Error(`[artifact-module-invalid] GLSL module "${key}" bindings must be an array.`);
+    }
+    const programBindings = decodeGlslProgramBindings(moduleRaw.bindings, entryPoint.bindings, key);
+    frozenGlsl[key] = Object.freeze({ source, bindings: programBindings });
   }
 
   // Verify that every vertex / fragment entry point has a corresponding GLSL ES 300 module
@@ -460,9 +480,9 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
   });
 
   return Object.freeze({
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     shaderManifestSchemaVersion: 1 as const,
-    shaderModuleSchemaVersion: 1 as const,
+    shaderModuleSchemaVersion: 2 as const,
     sourceKind,
     toolchain: frozenToolchain,
     source: frozenSource,
@@ -473,6 +493,114 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
     fragmentOutputs: frozenFragmentOutputs,
     modules: frozenModules
   });
+}
+
+function decodeGlslProgramBindings(
+  values: readonly unknown[],
+  activeBindings: readonly CookedShaderBinding[],
+  moduleKey: string
+): readonly CookedGlslProgramBinding[] {
+  const activeByCoordinate = new Map(
+    activeBindings.map((binding) => [`${binding.group}:${binding.binding}`, binding])
+  );
+  const generatedNames = new Set<string>();
+  const mappedCoordinates = new Set<string>();
+  const decoded = values.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(
+        `[artifact-module-binding-invalid] Binding in "${moduleKey}" must be an object.`
+      );
+    }
+    const raw = value as Record<string, unknown>;
+    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    if (!name || generatedNames.has(name)) {
+      throw new Error(
+        `[artifact-module-binding-invalid] GLSL module "${moduleKey}" has an empty or duplicate generated binding name.`
+      );
+    }
+    generatedNames.add(name);
+    if (raw.kind === 'uniform-buffer') {
+      const resource = decodeBindingReference(raw.resource, moduleKey);
+      const canonical = activeByCoordinate.get(bindingReferenceKey(resource));
+      if (canonical?.kind !== 'uniform-buffer') {
+        throw new Error(
+          `[artifact-module-binding-invalid] Uniform block "${name}" does not reference an active canonical uniform buffer.`
+        );
+      }
+      mappedCoordinates.add(bindingReferenceKey(resource));
+      return Object.freeze({ kind: 'uniform-buffer' as const, name, resource });
+    }
+    if (raw.kind === 'combined-sampler') {
+      const texture = decodeBindingReference(raw.texture, moduleKey);
+      const canonicalTexture = activeByCoordinate.get(bindingReferenceKey(texture));
+      if (canonicalTexture?.kind !== 'texture') {
+        throw new Error(
+          `[artifact-module-binding-invalid] Combined sampler "${name}" does not reference an active canonical texture.`
+        );
+      }
+      mappedCoordinates.add(bindingReferenceKey(texture));
+      const sampler =
+        raw.sampler === undefined || raw.sampler === null
+          ? undefined
+          : decodeBindingReference(raw.sampler, moduleKey);
+      if (sampler) {
+        const canonicalSampler = activeByCoordinate.get(bindingReferenceKey(sampler));
+        if (
+          canonicalSampler?.kind !== 'sampler' &&
+          canonicalSampler?.kind !== 'comparison-sampler'
+        ) {
+          throw new Error(
+            `[artifact-module-binding-invalid] Combined sampler "${name}" does not reference an active canonical sampler.`
+          );
+        }
+        mappedCoordinates.add(bindingReferenceKey(sampler));
+      }
+      return Object.freeze({
+        kind: 'combined-sampler' as const,
+        name,
+        texture,
+        ...(sampler === undefined ? {} : { sampler })
+      });
+    }
+    throw new Error(
+      `[artifact-module-binding-invalid] Unsupported GLSL program binding kind "${String(raw.kind)}".`
+    );
+  });
+  for (const binding of activeBindings) {
+    if (
+      (binding.kind === 'uniform-buffer' ||
+        binding.kind === 'texture' ||
+        binding.kind === 'sampler' ||
+        binding.kind === 'comparison-sampler') &&
+      !mappedCoordinates.has(`${binding.group}:${binding.binding}`)
+    ) {
+      throw new Error(
+        `[artifact-module-binding-invalid] GLSL module "${moduleKey}" is missing backend metadata for active binding "${binding.name}".`
+      );
+    }
+  }
+  return Object.freeze(decoded);
+}
+
+function decodeBindingReference(value: unknown, moduleKey: string): CookedShaderBindingReference {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(
+      `[artifact-module-binding-invalid] GLSL module "${moduleKey}" binding reference must be an object.`
+    );
+  }
+  const raw = value as Record<string, unknown>;
+  const group = typeof raw.group === 'number' ? raw.group : -1;
+  const binding = typeof raw.binding === 'number' ? raw.binding : -1;
+  if (!Number.isInteger(group) || group < 0 || !Number.isInteger(binding) || binding < 0) {
+    throw new Error(
+      `[artifact-module-binding-invalid] GLSL module "${moduleKey}" binding reference must use non-negative integer coordinates.`
+    );
+  }
+  return Object.freeze({ group, binding });
+}
+
+function bindingReferenceKey(reference: CookedShaderBindingReference): string {
+  return `${reference.group}:${reference.binding}`;
 }
 
 function isPowerOfTwo(value: number): boolean {

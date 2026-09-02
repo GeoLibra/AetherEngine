@@ -1,10 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import {
-  App,
-  EventChannel,
-  HeadlessRunner,
-  definePlugin
-} from '../../src';
+import { App, EventChannel, HeadlessRunner, definePlugin } from '../../src';
 
 describe('EventChannel', () => {
   test('retains events until every independent reader consumes them', () => {

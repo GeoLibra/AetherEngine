@@ -13,7 +13,9 @@ describe('RHI buffer-texture copy contract', () => {
     const upload = device.createBuffer({ label: 'upload', size: 1024, usage: BUFFER_COPY_SRC });
     const readback = device.createBuffer({ label: 'readback', size: 1024, usage: BUFFER_COPY_DST });
     const texture = device.createTexture({
-      label: 'pixels', size: [4, 2], format: 'rgba8unorm',
+      label: 'pixels',
+      size: [4, 2],
+      format: 'rgba8unorm',
       usage: TEXTURE_COPY_SRC | TEXTURE_COPY_DST
     });
     const encoder = device.createCommandEncoder();
@@ -37,7 +39,8 @@ describe('RHI buffer-texture copy contract', () => {
       copyTextureToBuffer: 1
     });
     expect(commands.getCommandStream().map(({ kind }) => kind)).toEqual([
-      'copyBufferToTexture', 'copyTextureToBuffer'
+      'copyBufferToTexture',
+      'copyTextureToBuffer'
     ]);
   });
 
@@ -46,31 +49,36 @@ describe('RHI buffer-texture copy contract', () => {
     const wrongUsage = device.createBuffer({ label: 'wrong', size: 1024, usage: BUFFER_COPY_DST });
     const small = device.createBuffer({ label: 'small', size: 256, usage: BUFFER_COPY_SRC });
     const texture = device.createTexture({
-      label: 'pixels', size: [4, 2], format: 'rgba8unorm', usage: TEXTURE_COPY_DST
+      label: 'pixels',
+      size: [4, 2],
+      format: 'rgba8unorm',
+      usage: TEXTURE_COPY_DST
     });
     const encoder = device.createCommandEncoder();
 
-    expect(() => encoder.copyBufferToTexture(
-      { buffer: small, bytesPerRow: 16 }, { texture }, [4, 2]
-    )).toThrow('bytesPerRow 16 must be a multiple of 256');
-    expect(() => encoder.copyBufferToTexture(
-      { buffer: wrongUsage, bytesPerRow: 256 }, { texture }, [4, 2]
-    )).toThrow('Buffer "wrong" requires COPY_SRC usage');
-    expect(() => encoder.copyBufferToTexture(
-      { buffer: small, bytesPerRow: 256 }, { texture }, [4, 2]
-    )).toThrow('requires buffer range 0..272 outside buffer size 256');
+    expect(() =>
+      encoder.copyBufferToTexture({ buffer: small, bytesPerRow: 16 }, { texture }, [4, 2])
+    ).toThrow('bytesPerRow 16 must be a multiple of 256');
+    expect(() =>
+      encoder.copyBufferToTexture({ buffer: wrongUsage, bytesPerRow: 256 }, { texture }, [4, 2])
+    ).toThrow('Buffer "wrong" requires COPY_SRC usage');
+    expect(() =>
+      encoder.copyBufferToTexture({ buffer: small, bytesPerRow: 256 }, { texture }, [4, 2])
+    ).toThrow('requires buffer range 0..272 outside buffer size 256');
   });
 
   test('validates compressed texture block boundaries', () => {
     const device = new NullDevice();
     const buffer = device.createBuffer({ size: 1024, usage: BUFFER_COPY_SRC });
     const texture = device.createTexture({
-      size: [8, 8], format: 'bc1-rgba-unorm', usage: TEXTURE_COPY_DST
+      size: [8, 8],
+      format: 'bc1-rgba-unorm',
+      usage: TEXTURE_COPY_DST
     });
     const encoder = device.createCommandEncoder();
 
-    expect(() => encoder.copyBufferToTexture(
-      { buffer, bytesPerRow: 256 }, { texture, origin: [2, 0] }, [4, 4]
-    )).toThrow('Texture copy origin must align to 4x4 format blocks.');
+    expect(() =>
+      encoder.copyBufferToTexture({ buffer, bytesPerRow: 256 }, { texture, origin: [2, 0] }, [4, 4])
+    ).toThrow('Texture copy origin must align to 4x4 format blocks.');
   });
 });

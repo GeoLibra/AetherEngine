@@ -32,18 +32,8 @@ describe('ArchetypeCatalog', () => {
     const catalog = new ArchetypeCatalog();
     const empty = catalog.getOrCreate([], []);
 
-    const first = catalog.transition(
-      empty,
-      'add:component:test.catalog-position',
-      [Position],
-      []
-    );
-    const second = catalog.transition(
-      empty,
-      'add:component:test.catalog-position',
-      [Position],
-      []
-    );
+    const first = catalog.transition(empty, 'add:component:test.catalog-position', [Position], []);
+    const second = catalog.transition(empty, 'add:component:test.catalog-position', [Position], []);
 
     expect(first).toBe(second);
     expect(first.id).toBeGreaterThan(empty.id);

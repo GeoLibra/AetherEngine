@@ -1,9 +1,4 @@
-import type {
-  CommitBudget,
-  CommitDrainResult,
-  JobClock,
-  JobCommitEntry
-} from './types';
+import type { CommitBudget, CommitDrainResult, JobClock, JobCommitEntry } from './types';
 
 interface StoredCommit {
   readonly entry: JobCommitEntry<unknown>;

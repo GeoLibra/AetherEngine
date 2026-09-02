@@ -10,6 +10,12 @@ import type {
 import { NativeWgslCooker } from './native-wgsl-cooker';
 import { loadWgslMetadata } from './metadata-loader';
 
+import {
+  diagnoseShaderArtifactLayouts,
+  formatStructLayoutDiagnostic,
+  type StructLayoutDiagnosis
+} from './struct-packing-linter';
+
 /**
  * Request payload for cooking an authored shader.
  */
@@ -35,6 +41,16 @@ export interface CookAuthoredShaderOptions {
   readonly cooker?: NativeWgslCooker | undefined;
   readonly fluxCooker?: FluxShaderCookerAdapter | undefined;
   readonly signal?: AbortSignal | undefined;
+  /**
+   * Explicit opt-in flag to run factual struct layout diagnostics on reflected buffer layouts.
+   * When true, emits neutral layout diagnostics indicating alignment gaps and padding.
+   */
+  readonly diagnoseLayout?: boolean | undefined;
+  /**
+   * Optional callback to receive layout diagnostics. When provided, diagnostics are passed
+   * to this handler instead of being logged to console.info.
+   */
+  readonly onLayoutDiagnostic?: ((diagnostic: StructLayoutDiagnosis) => void) | undefined;
 }
 
 /**
@@ -82,6 +98,17 @@ export async function cookAuthoredShader(
             throw new Error(
               `Metadata entry point "${metaEp.name}" declares stage "${metaEp.stage}", but native reflection found "${reflectedStage}".`
             );
+          }
+        }
+      }
+
+      if (options.diagnoseLayout === true) {
+        const structDiagnoses = diagnoseShaderArtifactLayouts(artifact);
+        for (const diagnosis of structDiagnoses) {
+          if (options.onLayoutDiagnostic) {
+            options.onLayoutDiagnostic(diagnosis);
+          } else {
+            console.info(formatStructLayoutDiagnostic(diagnosis, source.uri));
           }
         }
       }

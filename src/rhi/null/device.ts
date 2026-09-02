@@ -1,8 +1,17 @@
-import { NullBindGroup, NullBindGroupLayout, NullPipelineLayout, NullShaderModule, validatePipelineLayout } from './bindings';
+import {
+  NullBindGroup,
+  NullBindGroupLayout,
+  NullPipelineLayout,
+  NullShaderModule,
+  validatePipelineLayout
+} from './bindings';
 import { NullBuffer } from './buffer';
 import { NullCommandEncoder } from './command';
 import { NullComputePipeline, NullRenderPipeline } from './pipelines';
-import { validateComputePipelineDescriptor, validateRenderPipelineDescriptor } from './pipeline-validation';
+import {
+  validateComputePipelineDescriptor,
+  validateRenderPipelineDescriptor
+} from './pipeline-validation';
 import { NullQueue } from './queue';
 import type { NullSubmissionMode } from './queue';
 import { NullSampler, NullTexture } from './texture';
@@ -23,7 +32,7 @@ import type {
   RHISampler,
   RHIShaderModule,
   RHITexture,
-  RenderTargetDescriptor,
+  RenderTargetDescriptor
 } from '../contracts';
 import { createNullConformanceCapabilities } from '../core/capabilities';
 import type { DeviceCapabilities } from '../contracts/capability';
@@ -69,12 +78,18 @@ export class NullDevice implements RHIDevice {
       state: 'live'
     };
     this.queue = new NullQueue(this.owner, options.submissionMode);
-    this.lost = new Promise((resolve) => { this.resolveLost = resolve; });
+    this.lost = new Promise((resolve) => {
+      this.resolveLost = resolve;
+    });
   }
 
-  get state(): RHIDeviceState { return this.currentState; }
+  get state(): RHIDeviceState {
+    return this.currentState;
+  }
 
-  getExtension<T>(_token: RHIExtensionToken<T>): T | undefined { return undefined; }
+  getExtension<T>(_token: RHIExtensionToken<T>): T | undefined {
+    return undefined;
+  }
 
   loseForTesting(reason: DeviceLostInfo['reason'], message: string): void {
     if (this.currentState !== 'live') return;
@@ -90,11 +105,13 @@ export class NullDevice implements RHIDevice {
       this.currentState = 'destroyed';
       this.owner.state = 'destroyed';
       this.queue.handleDeviceLoss();
-      this.resolveLost(Object.freeze({
-        reason: 'destroyed',
-        message: 'NullDevice was destroyed.',
-        generation: this.generation
-      }));
+      this.resolveLost(
+        Object.freeze({
+          reason: 'destroyed',
+          message: 'NullDevice was destroyed.',
+          generation: this.generation
+        })
+      );
       return;
     }
     this.currentState = 'destroyed';

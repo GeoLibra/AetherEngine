@@ -8,9 +8,9 @@ import type { CookedShaderRuntimeArtifact } from '../../src/shader/types';
 import type { NativeWgslCooker } from '../../tools/shader-cooker/native-wgsl-cooker';
 
 const sampleArtifact: CookedShaderRuntimeArtifact = Object.freeze({
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   shaderManifestSchemaVersion: 1 as const,
-  shaderModuleSchemaVersion: 1 as const,
+  shaderModuleSchemaVersion: 2 as const,
   sourceKind: 'wgsl' as const,
   toolchain: Object.freeze({
     cookerId: 'aether-native-wgsl-cooker',
@@ -41,8 +41,14 @@ const sampleArtifact: CookedShaderRuntimeArtifact = Object.freeze({
   modules: Object.freeze({
     wgsl: '@vertex fn vertexMain() {}\n@fragment fn fragmentMain() {}',
     glslEs300: Object.freeze({
-      'vertex:vertexMain': '#version 300 es\nvoid main() {}',
-      'fragment:fragmentMain': '#version 300 es\nvoid main() {}'
+      'vertex:vertexMain': Object.freeze({
+        source: '#version 300 es\nvoid main() {}',
+        bindings: Object.freeze([])
+      }),
+      'fragment:fragmentMain': Object.freeze({
+        source: '#version 300 es\nvoid main() {}',
+        bindings: Object.freeze([])
+      })
     })
   })
 });
@@ -127,7 +133,10 @@ describe('nativeWgslPlugin for Vite', () => {
       modules: {
         wgsl: sampleArtifact.modules.wgsl,
         glslEs300: {
-          'vertex:otherVertex': '#version 300 es\nvoid main() {}'
+          'vertex:otherVertex': {
+            source: '#version 300 es\nvoid main() {}',
+            bindings: []
+          }
         }
       }
     };

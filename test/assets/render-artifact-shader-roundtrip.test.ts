@@ -25,6 +25,7 @@ describe('cooked shader Render Artifact package bridge', () => {
     const decodedPackage = await decodeRenderArtifactPackage(bundle);
 
     expect(decodedPackage.envelope.artifactKind).toBe('shader-library');
+    expect(decodedPackage.envelope.shaderModuleSchemaVersion).toBe(2);
     expect(decodedPackage.envelope.materialSchemaVersion).toBeUndefined();
     expect(decodedPackage.sections.filter(({ kind }) => kind === 'shader-module').length).toBe(3);
     expect(
@@ -34,6 +35,23 @@ describe('cooked shader Render Artifact package bridge', () => {
       shaderTarget: 'glsl300es',
       stage: 'vertex',
       entryPoint: 'standardLitVertex'
+    });
+    expect(
+      decodedPackage.sections.find(({ id }) => id === 'module:glsl300es:vertex:standardLitVertex')
+        ?.payload
+    ).toMatchObject({
+      bindings: [
+        {
+          kind: 'uniform-buffer',
+          name: 'ObjectData_block_0Vertex',
+          resource: { group: 0, binding: 0 }
+        },
+        {
+          kind: 'uniform-buffer',
+          name: 'ViewData_block_1Vertex',
+          resource: { group: 1, binding: 0 }
+        }
+      ]
     });
     await expect(decodeCookedShaderArtifactPackage(bundle)).resolves.toEqual(
       STANDARD_LIT_SHADER_ARTIFACT

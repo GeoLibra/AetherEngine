@@ -46,7 +46,7 @@ describe('browser WebGL2 native operations', () => {
         ['scissor', 3, 50, 25, 35],
         ['enable', gl.CULL_FACE],
         ['cullFace', gl.BACK],
-        ['frontFace', gl.CCW],
+        ['frontFace', gl.CW],
         ['enable', gl.DEPTH_TEST],
         ['depthMask', true],
         ['depthFunc', gl.LEQUAL],

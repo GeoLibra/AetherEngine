@@ -8,11 +8,7 @@ import {
   type Entity,
   type World
 } from 'koota';
-import type {
-  BenchmarkChecksum,
-  BenchmarkScenario,
-  ScenarioInput
-} from '../harness/types';
+import type { BenchmarkChecksum, BenchmarkScenario, ScenarioInput } from '../harness/types';
 import {
   expectedDenseChecksum,
   expectedPositionChecksum,
@@ -70,7 +66,9 @@ function prepareComponents(scenario: BenchmarkScenario, input: ScenarioInput): P
     const setupMs = definitionSetupMs + performance.now() - setupStartedAt;
     const populationStartedAt = performance.now();
     for (let index = 0; index < input.scale; index++) {
-      entities.push(spawn(index, scenario.id !== 'query-cache' && scenario.id !== 'component-migration'));
+      entities.push(
+        spawn(index, scenario.id !== 'query-cache' && scenario.id !== 'component-migration')
+      );
     }
     if (scenario.id === 'change-filter') world.query(changedQuery);
     if (recordPreparation) {
@@ -218,10 +216,7 @@ function prepareRelations(input: ScenarioInput): PrepareResult {
   );
 }
 
-function expectedForScenario(
-  scenario: BenchmarkScenario,
-  input: ScenarioInput
-): BenchmarkChecksum {
+function expectedForScenario(scenario: BenchmarkScenario, input: ScenarioInput): BenchmarkChecksum {
   switch (scenario.id) {
     case 'dense-read':
       return expectedDenseChecksum(input, 'read');

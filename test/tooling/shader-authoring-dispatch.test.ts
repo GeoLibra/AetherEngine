@@ -6,9 +6,9 @@ import type { CookedShaderRuntimeArtifact, WgslShaderMetadata } from '../../src/
 import type { NativeWgslCooker } from '../../tools/shader-cooker/native-wgsl-cooker';
 
 const sampleValidArtifact: CookedShaderRuntimeArtifact = Object.freeze({
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   shaderManifestSchemaVersion: 1 as const,
-  shaderModuleSchemaVersion: 1 as const,
+  shaderModuleSchemaVersion: 2 as const,
   sourceKind: 'wgsl' as const,
   toolchain: Object.freeze({
     cookerId: 'aether-native-wgsl-cooker',
@@ -39,8 +39,14 @@ const sampleValidArtifact: CookedShaderRuntimeArtifact = Object.freeze({
   modules: Object.freeze({
     wgsl: '@vertex\nfn vertexMain() {}\n@fragment\nfn fragmentMain() {}',
     glslEs300: Object.freeze({
-      'vertex:vertexMain': '#version 300 es\nvoid main() {}',
-      'fragment:fragmentMain': '#version 300 es\nvoid main() {}'
+      'vertex:vertexMain': Object.freeze({
+        source: '#version 300 es\nvoid main() {}',
+        bindings: Object.freeze([])
+      }),
+      'fragment:fragmentMain': Object.freeze({
+        source: '#version 300 es\nvoid main() {}',
+        bindings: Object.freeze([])
+      })
     })
   })
 });
@@ -188,5 +194,89 @@ describe('cookAuthoredShader dispatch', () => {
         sourcePath: '/workspace/graph.json'
       })
     ).rejects.toThrow(/shader-graph authoring is not yet supported for cooking/i);
+  });
+
+  test('does not run layout diagnostics by default during normal WGSL cooking', async () => {
+    const artifactWithGaps: CookedShaderRuntimeArtifact = {
+      ...sampleValidArtifact,
+      bufferLayouts: [
+        {
+          group: 0,
+          binding: 0,
+          name: 'PaddedData',
+          byteSize: 32,
+          alignment: 16,
+          fields: [
+            { path: 'a', offset: 0, size: 4, alignment: 4, typeName: 'f32' },
+            { path: 'b', offset: 16, size: 16, alignment: 16, typeName: 'vec4<f32>' }
+          ]
+        }
+      ]
+    };
+
+    const mockCooker = {
+      cook: vi.fn().mockResolvedValue(artifactWithGaps)
+    } as unknown as NativeWgslCooker;
+
+    const source = defineShaderAuthoringSource({ uri: 'asset://shaders/test.wgsl' });
+    const diagnosticCallback = vi.fn();
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    await cookAuthoredShader(
+      {
+        source,
+        sourcePath: '/workspace/shaders/test.wgsl'
+      },
+      {
+        cooker: mockCooker,
+        onLayoutDiagnostic: diagnosticCallback
+      }
+    );
+
+    expect(diagnosticCallback).not.toHaveBeenCalled();
+    expect(infoSpy).not.toHaveBeenCalled();
+    infoSpy.mockRestore();
+  });
+
+  test('runs layout diagnostics and passes to onLayoutDiagnostic when diagnoseLayout is true', async () => {
+    const artifactWithGaps: CookedShaderRuntimeArtifact = {
+      ...sampleValidArtifact,
+      bufferLayouts: [
+        {
+          group: 0,
+          binding: 0,
+          name: 'PaddedData',
+          byteSize: 32,
+          alignment: 16,
+          fields: [
+            { path: 'a', offset: 0, size: 4, alignment: 4, typeName: 'f32' },
+            { path: 'b', offset: 16, size: 16, alignment: 16, typeName: 'vec4<f32>' }
+          ]
+        }
+      ]
+    };
+
+    const mockCooker = {
+      cook: vi.fn().mockResolvedValue(artifactWithGaps)
+    } as unknown as NativeWgslCooker;
+
+    const source = defineShaderAuthoringSource({ uri: 'asset://shaders/test.wgsl' });
+    const diagnosticCallback = vi.fn();
+
+    await cookAuthoredShader(
+      {
+        source,
+        sourcePath: '/workspace/shaders/test.wgsl'
+      },
+      {
+        cooker: mockCooker,
+        diagnoseLayout: true,
+        onLayoutDiagnostic: diagnosticCallback
+      }
+    );
+
+    expect(diagnosticCallback).toHaveBeenCalledTimes(1);
+    expect(diagnosticCallback.mock.calls[0]?.[0]?.structName).toBe('PaddedData');
+    expect(diagnosticCallback.mock.calls[0]?.[0]?.paddingBytes).toBe(12);
   });
 });

@@ -2,9 +2,9 @@
 import { decodeCookedShaderRuntimeArtifact } from '../artifact';
 
 export const STANDARD_LIT_SHADER_GENERATED_ARTIFACT = decodeCookedShaderRuntimeArtifact({
-  schemaVersion: 1,
+  schemaVersion: 2,
   shaderManifestSchemaVersion: 1,
-  shaderModuleSchemaVersion: 1,
+  shaderModuleSchemaVersion: 2,
   sourceKind: 'wgsl',
   toolchain: {
     cookerId: 'aether-native-wgsl-cooker',
@@ -13,8 +13,8 @@ export const STANDARD_LIT_SHADER_GENERATED_ARTIFACT = decodeCookedShaderRuntimeA
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit.wgsl',
-    contentHash: '85770617d085e2cac3907d6872546e564769510a62a33df26ce6ce09ecafc310',
-    byteLength: 4262
+    contentHash: '4741b0daa2763555b172e6f93d8cd98ee97b99c18c0c17bbd6f1e2b1c6f01bbb',
+    byteLength: 8831
   },
   entryPoints: [
     {
@@ -194,6 +194,20 @@ export const STANDARD_LIT_SHADER_GENERATED_ARTIFACT = decodeCookedShaderRuntimeA
           size: 4,
           alignment: 4,
           typeName: 'f32'
+        },
+        {
+          path: 'padding0',
+          offset: 24,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
+        },
+        {
+          path: 'padding1',
+          offset: 28,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
         }
       ]
     },
@@ -224,6 +238,13 @@ export const STANDARD_LIT_SHADER_GENERATED_ARTIFACT = decodeCookedShaderRuntimeA
           size: 12,
           alignment: 16,
           typeName: 'vec3<f32>'
+        },
+        {
+          path: 'padding',
+          offset: 28,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
         }
       ]
     }
@@ -248,12 +269,515 @@ export const STANDARD_LIT_SHADER_GENERATED_ARTIFACT = decodeCookedShaderRuntimeA
     }
   ],
   modules: {
-    wgsl: 'struct ObjectData {\n  world: mat4x4<f32>,\n  normalWorld: mat4x4<f32>,\n};\n\nstruct ViewData {\n  viewProjection: mat4x4<f32>,\n  cameraPosition: vec3<f32>,\n  padding: f32,\n};\n\nstruct MaterialData {\n  baseColor: vec4<f32>,\n  metallic: f32,\n  roughness: f32,\n};\n\nstruct DirectionalLightData {\n  direction: vec3<f32>,\n  // Retained physical intent; baseline LDR shading uses normalized color until HDR exposure lands.\n  illuminance: f32,\n  color: vec3<f32>,\n};\n\nstruct StandardLitVertexOutput {\n  @builtin(position) position: vec4<f32>,\n  @location(0) normal: vec3<f32>,\n  @location(1) worldPosition: vec3<f32>,\n};\n\nstruct StandardLitFragmentInput {\n  @location(0) normal: vec3<f32>,\n  @location(1) worldPosition: vec3<f32>,\n};\n\n@group(0) @binding(0) var<uniform> objectData: ObjectData;\n@group(1) @binding(0) var<uniform> viewData: ViewData;\n@group(2) @binding(0) var<uniform> materialData: MaterialData;\n@group(3) @binding(0) var<uniform> lightData: DirectionalLightData;\n\nfn fifthPower(value: f32) -> f32 {\n  let squared = value * value;\n  return squared * squared * value;\n}\n\nfn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {\n  let alpha = roughness * roughness;\n  let alphaSquared = alpha * alpha;\n  let normalDotHalf = max(dot(normal, halfDirection), 0.0);\n  let denominator = normalDotHalf * normalDotHalf * (alphaSquared - 1.0) + 1.0;\n  return alphaSquared / max(3.14159265359 * denominator * denominator, 0.000001);\n}\n\nfn geometrySchlickGgx(normalDotDirection: f32, roughness: f32) -> f32 {\n  let shifted = roughness + 1.0;\n  let k = shifted * shifted / 8.0;\n  return normalDotDirection / max(normalDotDirection * (1.0 - k) + k, 0.000001);\n}\n\nfn geometrySmith(\n  normal: vec3<f32>,\n  viewDirection: vec3<f32>,\n  lightDirection: vec3<f32>,\n  roughness: f32\n) -> f32 {\n  let normalDotView = max(dot(normal, viewDirection), 0.0);\n  let normalDotLight = max(dot(normal, lightDirection), 0.0);\n  return geometrySchlickGgx(normalDotView, roughness) *\n    geometrySchlickGgx(normalDotLight, roughness);\n}\n\nfn fresnelSchlick(cosine: f32, f0: vec3<f32>) -> vec3<f32> {\n  return f0 + (vec3<f32>(1.0) - f0) * fifthPower(1.0 - cosine);\n}\n\nfn cookTorranceDirect(\n  normal: vec3<f32>,\n  viewDirection: vec3<f32>,\n  lightDirection: vec3<f32>,\n  baseColor: vec3<f32>,\n  metallic: f32,\n  roughness: f32,\n  radiance: vec3<f32>\n) -> vec3<f32> {\n  let normalDotLight = max(dot(normal, lightDirection), 0.0);\n  let normalDotView = max(dot(normal, viewDirection), 0.0);\n  if (normalDotLight <= 0.0 || normalDotView <= 0.0) {\n    return vec3<f32>(0.0);\n  }\n  let halfDirection = normalize(viewDirection + lightDirection);\n  let clampedRoughness = max(roughness, 0.045);\n  let distribution = distributionGgx(normal, halfDirection, clampedRoughness);\n  let geometry = geometrySmith(normal, viewDirection, lightDirection, clampedRoughness);\n  let f0 = vec3<f32>(0.04) * (1.0 - metallic) + baseColor * metallic;\n  let fresnel = fresnelSchlick(max(dot(viewDirection, halfDirection), 0.0), f0);\n  let diffuseWeight = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic);\n  let diffuse = diffuseWeight * baseColor / 3.14159265359;\n  let specular = distribution * geometry * fresnel /\n    max(4.0 * normalDotView * normalDotLight, 0.000001);\n  return (diffuse + specular) * radiance * normalDotLight;\n}\n\n@vertex\nfn standardLitVertex(\n  @location(0) position: vec3<f32>,\n  @location(1) normal: vec3<f32>\n) -> StandardLitVertexOutput {\n  let worldPosition = objectData.world * vec4<f32>(position, 1.0);\n  let worldNormal = normalize((objectData.normalWorld * vec4<f32>(normal, 0.0)).xyz);\n  return StandardLitVertexOutput(\n    viewData.viewProjection * worldPosition,\n    worldNormal,\n    worldPosition.xyz\n  );\n}\n\n@fragment\nfn standardLitFragment(\n  fragmentInput: StandardLitFragmentInput\n) -> @location(0) vec4<f32> {\n  let normal = normalize(fragmentInput.normal);\n  let lightDirection = -normalize(lightData.direction);\n  let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);\n  let lit = cookTorranceDirect(\n    normal,\n    viewDirection,\n    lightDirection,\n    materialData.baseColor.rgb,\n    materialData.metallic,\n    materialData.roughness,\n    lightData.color\n  );\n  return vec4<f32>(lit, materialData.baseColor.a);\n}\n',
+    wgsl: `// ============================================================================
+// AetherEngine Standard PBR Shader (Metallic-Roughness Workflow)
+// Cook-Torrance microfacet specular BRDF + Lambertian diffuse direct lighting.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Uniform Buffer Data Structures (UBO)
+// ----------------------------------------------------------------------------
+
+/// Per-draw object transform matrices in world space.
+struct ObjectData {
+  world: mat4x4<f32>,
+  normalWorld: mat4x4<f32>,
+};
+
+/// Per-view camera matrices and world-space position (16-byte aligned).
+struct ViewData {
+  viewProjection: mat4x4<f32>, // 64 bytes
+  cameraPosition: vec3<f32>,   // 12 bytes, alignment 16
+  padding: f32,                // 4 bytes
+};
+
+/// Per-material PBR surface parameters.
+/// - baseColor: Linear sRGB color with alpha.
+/// - metallic: Normalized [0.0 = dielectric, 1.0 = pure metal].
+/// - roughness: Normalized perceptual roughness [0.0 = mirror smooth, 1.0 = completely rough].
+/// - padding0, padding1: Explicit tail padding to complete 32-byte alignment.
+struct MaterialData {
+  baseColor: vec4<f32>,
+  metallic: f32,
+  roughness: f32,
+  padding0: f32,
+  padding1: f32,
+};
+
+/// Directional light source parameters.
+/// - direction: Normalized direction vector pointing from surface to light (or light heading).
+/// - illuminance: Reserved for HDR physically-based lighting; intentionally unused by current LDR baseline.
+/// - color: Linear light color (rgb).
+/// - padding: Explicit tail padding to complete 32-byte alignment.
+struct DirectionalLightData {
+  direction: vec3<f32>,
+  // Reserved for HDR physically-based lighting; intentionally unused by current LDR baseline.
+  illuminance: f32,
+  color: vec3<f32>,
+  padding: f32,
+};
+
+// ----------------------------------------------------------------------------
+// Stage Input / Output Interfaces
+// ----------------------------------------------------------------------------
+
+/// Output from vertex shader passed to the rasterizer and fragment shader.
+struct StandardLitVertexOutput {
+  @builtin(position) position: vec4<f32>,
+  @location(0) normal: vec3<f32>,
+  @location(1) worldPosition: vec3<f32>,
+};
+
+/// Interpolated fragment input in world coordinate space.
+struct StandardLitFragmentInput {
+  @location(0) normal: vec3<f32>,
+  @location(1) worldPosition: vec3<f32>,
+};
+
+// ----------------------------------------------------------------------------
+// Resource Bindings (Organized by Update Frequency)
+// ----------------------------------------------------------------------------
+
+@group(0) @binding(0) var<uniform> objectData: ObjectData;               // Group 0: Per-draw
+@group(1) @binding(0) var<uniform> viewData: ViewData;                   // Group 1: Per-view / Per-frame
+@group(2) @binding(0) var<uniform> materialData: MaterialData;           // Group 2: Per-material
+@group(3) @binding(0) var<uniform> lightData: DirectionalLightData;       // Group 3: Per-scene / Per-light
+
+// ----------------------------------------------------------------------------
+// PBR Mathematical Helpers & Cook-Torrance BRDF Implementation
+// ----------------------------------------------------------------------------
+
+/// Computes (value)^5 using multiplication squaring: (x^2)^2 * x.
+/// Used in the Fresnel-Schlick approximation.
+fn fifthPower(value: f32) -> f32 {
+  let squared = value * value;
+  return squared * squared * value;
+}
+
+/// Normal Distribution Function (NDF / D-term): GGX / Trowbridge-Reitz.
+/// Calculates the probability density of microfacets aligning with the half-vector H.
+/// Uses alpha = roughness^2 following Disney's perceptual roughness mapping.
+fn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {
+  let alpha = roughness * roughness;
+  let alphaSquared = alpha * alpha;
+  let normalDotHalf = max(dot(normal, halfDirection), 0.0);
+  let denominator = normalDotHalf * normalDotHalf * (alphaSquared - 1.0) + 1.0;
+  return alphaSquared / max(3.14159265359 * denominator * denominator, 0.000001);
+}
+
+/// Geometric Shadowing / Masking Sub-term: Schlick-GGX for direct lighting.
+/// Direct lighting remapping: k = (roughness + 1)^2 / 8.
+fn geometrySchlickGgxDirect(normalDotDirection: f32, roughness: f32) -> f32 {
+  let shifted = roughness + 1.0;
+  let k = shifted * shifted / 8.0;
+  return normalDotDirection / max(normalDotDirection * (1.0 - k) + k, 0.000001);
+}
+
+/// Geometric Shadowing Function (G-term): Smith's method.
+/// Accounts for microfacets shadowing light incoming rays and masking outgoing view rays:
+/// G(N, V, L) = G1(N . V) * G1(N . L)
+fn geometrySmith(
+  normal: vec3<f32>,
+  viewDirection: vec3<f32>,
+  lightDirection: vec3<f32>,
+  roughness: f32
+) -> f32 {
+  let normalDotView = max(dot(normal, viewDirection), 0.0);
+  let normalDotLight = max(dot(normal, lightDirection), 0.0);
+  return geometrySchlickGgxDirect(normalDotView, roughness) *
+    geometrySchlickGgxDirect(normalDotLight, roughness);
+}
+
+/// Fresnel Equation (F-term): Fresnel-Schlick approximation.
+/// Computes the ratio of reflected vs refracted light at normal incidence F0:
+/// F(cosTheta) = F0 + (1 - F0) * (1 - cosTheta)^5
+fn fresnelSchlick(cosine: f32, f0: vec3<f32>) -> vec3<f32> {
+  let cosTheta = clamp(cosine, 0.0, 1.0);
+  return f0 + (vec3<f32>(1.0) - f0) * fifthPower(1.0 - cosTheta);
+}
+
+/// Evaluates direct Cook-Torrance microfacet BRDF + Lambertian diffuse:
+/// Out = (k_d * f_diffuse + f_specular) * Radiance * (N . L)
+fn cookTorranceDirect(
+  normal: vec3<f32>,
+  viewDirection: vec3<f32>,
+  lightDirection: vec3<f32>,
+  baseColor: vec3<f32>,
+  metallic: f32,
+  roughness: f32,
+  radiance: vec3<f32>
+) -> vec3<f32> {
+  let normalDotLight = max(dot(normal, lightDirection), 0.0);
+  let normalDotView = max(dot(normal, viewDirection), 0.0);
+  if (normalDotLight <= 0.0 || normalDotView <= 0.0) {
+    return vec3<f32>(0.0);
+  }
+
+  let halfDirection = normalize(viewDirection + lightDirection);
+
+  // Clamp metallic and roughness to prevent non-physical energy amplification and numerical instability
+  let clampedMetallic = clamp(metallic, 0.0, 1.0);
+  let clampedRoughness = clamp(roughness, 0.045, 1.0);
+
+  // Evaluate D (distribution), G (geometry shadowing), and F (Fresnel) terms
+  let distribution = distributionGgx(normal, halfDirection, clampedRoughness);
+  let geometry = geometrySmith(normal, viewDirection, lightDirection, clampedRoughness);
+
+  // Dielectric surfaces have ~0.04 base specular reflectance; conductors use baseColor
+  let f0 = vec3<f32>(0.04) * (1.0 - clampedMetallic) + baseColor * clampedMetallic;
+  let fresnel = fresnelSchlick(max(dot(viewDirection, halfDirection), 0.0), f0);
+
+  // Energy conservation: diffuse fraction kd = (1 - ks) * (1 - metallic)
+  let diffuseWeight = (vec3<f32>(1.0) - fresnel) * (1.0 - clampedMetallic);
+  let diffuse = diffuseWeight * baseColor / 3.14159265359;
+
+  // Cook-Torrance specular term: (D * G * F) / (4 * (N.V) * (N.L))
+  let specular = distribution * geometry * fresnel /
+    max(4.0 * normalDotView * normalDotLight, 0.000001);
+
+  return (diffuse + specular) * radiance * normalDotLight;
+}
+
+// ----------------------------------------------------------------------------
+// Vertex Shader Stage
+// ----------------------------------------------------------------------------
+
+@vertex
+fn standardLitVertex(
+  @location(0) position: vec3<f32>,
+  @location(1) normal: vec3<f32>
+) -> StandardLitVertexOutput {
+  // Transform vertex position to world space
+  let worldPosition = objectData.world * vec4<f32>(position, 1.0);
+
+  // Transform normal vector to world space via normal matrix
+  let worldNormal = normalize((objectData.normalWorld * vec4<f32>(normal, 0.0)).xyz);
+
+  return StandardLitVertexOutput(
+    viewData.viewProjection * worldPosition, // Projected clip position
+    worldNormal,                             // World normal for fragment shading
+    worldPosition.xyz                        // World position for view direction calculation
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Fragment Shader Stage
+// ----------------------------------------------------------------------------
+
+@fragment
+fn standardLitFragment(
+  fragmentInput: StandardLitFragmentInput
+) -> @location(0) vec4<f32> {
+  let normal = normalize(fragmentInput.normal);
+  let lightDirection = -normalize(lightData.direction);
+  let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
+
+  let lit = cookTorranceDirect(
+    normal,
+    viewDirection,
+    lightDirection,
+    materialData.baseColor.rgb,
+    materialData.metallic,
+    materialData.roughness,
+    lightData.color
+  );
+
+  return vec4<f32>(lit, materialData.baseColor.a);
+}
+`,
     glslEs300: {
-      'fragment:standardLitFragment':
-        '#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct ObjectData {\n    mat4x4 world;\n    mat4x4 normalWorld;\n};\nstruct ViewData {\n    mat4x4 viewProjection;\n    vec3 cameraPosition;\n    float padding;\n};\nstruct MaterialData {\n    vec4 baseColor;\n    float metallic;\n    float roughness;\n};\nstruct DirectionalLightData {\n    vec3 direction;\n    float illuminance;\n    vec3 color;\n};\nstruct StandardLitVertexOutput {\n    vec4 position;\n    vec3 normal;\n    vec3 worldPosition;\n};\nstruct StandardLitFragmentInput {\n    vec3 normal;\n    vec3 worldPosition;\n};\nlayout(std140) uniform ViewData_block_0Fragment { ViewData _group_1_binding_0_fs; };\n\nlayout(std140) uniform MaterialData_block_1Fragment { MaterialData _group_2_binding_0_fs; };\n\nlayout(std140) uniform DirectionalLightData_block_2Fragment { DirectionalLightData _group_3_binding_0_fs; };\n\nsmooth in vec3 _vs2fs_location0;\nsmooth in vec3 _vs2fs_location1;\nlayout(location = 0) out vec4 _fs2p_location0;\n\nfloat fifthPower(float value) {\n    float squared = (value * value);\n    return ((squared * squared) * value);\n}\n\nfloat distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {\n    float alpha = (roughness * roughness);\n    float alphaSquared = (alpha * alpha);\n    float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);\n    float denominator = (((normalDotHalf * normalDotHalf) * (alphaSquared - 1.0)) + 1.0);\n    return (alphaSquared / max(((3.1415927 * denominator) * denominator), 1e-6));\n}\n\nfloat geometrySchlickGgx(float normalDotDirection, float roughness_1) {\n    float shifted = (roughness_1 + 1.0);\n    float k = ((shifted * shifted) / 8.0);\n    return (normalDotDirection / max(((normalDotDirection * (1.0 - k)) + k), 1e-6));\n}\n\nfloat geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_2) {\n    float normalDotView = max(dot(normal_2, viewDirection), 0.0);\n    float normalDotLight = max(dot(normal_2, lightDirection), 0.0);\n    float _e10 = geometrySchlickGgx(normalDotView, roughness_2);\n    float _e11 = geometrySchlickGgx(normalDotLight, roughness_2);\n    return (_e10 * _e11);\n}\n\nvec3 fresnelSchlick(float cosine, vec3 f0_) {\n    float _e7 = fifthPower((1.0 - cosine));\n    return (f0_ + ((vec3(1.0) - f0_) * _e7));\n}\n\nvec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_3, vec3 radiance) {\n    bool local = false;\n    float normalDotLight_1 = max(dot(normal_3, lightDirection_1), 0.0);\n    float normalDotView_1 = max(dot(normal_3, viewDirection_1), 0.0);\n    if (!((normalDotLight_1 <= 0.0))) {\n        local = (normalDotView_1 <= 0.0);\n    } else {\n        local = true;\n    }\n    bool _e21 = local;\n    if (_e21) {\n        return vec3(0.0);\n    }\n    vec3 halfDirection_1 = normalize((viewDirection_1 + lightDirection_1));\n    float clampedRoughness = max(roughness_3, 0.045);\n    float _e28 = distributionGgx(normal_3, halfDirection_1, clampedRoughness);\n    float _e29 = geometrySmith(normal_3, viewDirection_1, lightDirection_1, clampedRoughness);\n    vec3 f0_1 = ((vec3(0.04) * (1.0 - metallic)) + (baseColor * metallic));\n    vec3 _e40 = fresnelSchlick(max(dot(viewDirection_1, halfDirection_1), 0.0), f0_1);\n    vec3 diffuseWeight = ((vec3(1.0) - _e40) * (1.0 - metallic));\n    vec3 diffuse = ((diffuseWeight * baseColor) / vec3(3.1415927));\n    vec3 specular = (((_e28 * _e29) * _e40) / vec3(max(((4.0 * normalDotView_1) * normalDotLight_1), 1e-6)));\n    return (((diffuse + specular) * radiance) * normalDotLight_1);\n}\n\nvoid main() {\n    StandardLitFragmentInput fragmentInput = StandardLitFragmentInput(_vs2fs_location0, _vs2fs_location1);\n    vec3 normal_4 = normalize(fragmentInput.normal);\n    vec3 _e5 = _group_3_binding_0_fs.direction;\n    vec3 lightDirection_2 = -(normalize(_e5));\n    vec3 _e10 = _group_1_binding_0_fs.cameraPosition;\n    vec3 viewDirection_2 = normalize((_e10 - fragmentInput.worldPosition));\n    vec4 _e16 = _group_2_binding_0_fs.baseColor;\n    float _e20 = _group_2_binding_0_fs.metallic;\n    float _e23 = _group_2_binding_0_fs.roughness;\n    vec3 _e26 = _group_3_binding_0_fs.color;\n    vec3 _e27 = cookTorranceDirect(normal_4, viewDirection_2, lightDirection_2, _e16.xyz, _e20, _e23, _e26);\n    float _e31 = _group_2_binding_0_fs.baseColor.w;\n    _fs2p_location0 = vec4(_e27, _e31);\n    return;\n}\n\n',
-      'vertex:standardLitVertex':
-        '#version 300 es\n\nprecision highp float;\nprecision highp int;\n\nstruct ObjectData {\n    mat4x4 world;\n    mat4x4 normalWorld;\n};\nstruct ViewData {\n    mat4x4 viewProjection;\n    vec3 cameraPosition;\n    float padding;\n};\nstruct MaterialData {\n    vec4 baseColor;\n    float metallic;\n    float roughness;\n};\nstruct DirectionalLightData {\n    vec3 direction;\n    float illuminance;\n    vec3 color;\n};\nstruct StandardLitVertexOutput {\n    vec4 position;\n    vec3 normal;\n    vec3 worldPosition;\n};\nstruct StandardLitFragmentInput {\n    vec3 normal;\n    vec3 worldPosition;\n};\nlayout(std140) uniform ObjectData_block_0Vertex { ObjectData _group_0_binding_0_vs; };\n\nlayout(std140) uniform ViewData_block_1Vertex { ViewData _group_1_binding_0_vs; };\n\nlayout(location = 0) in vec3 _p2vs_location0;\nlayout(location = 1) in vec3 _p2vs_location1;\nsmooth out vec3 _vs2fs_location0;\nsmooth out vec3 _vs2fs_location1;\n\nfloat fifthPower(float value) {\n    float squared = (value * value);\n    return ((squared * squared) * value);\n}\n\nfloat distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {\n    float alpha = (roughness * roughness);\n    float alphaSquared = (alpha * alpha);\n    float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);\n    float denominator = (((normalDotHalf * normalDotHalf) * (alphaSquared - 1.0)) + 1.0);\n    return (alphaSquared / max(((3.1415927 * denominator) * denominator), 1e-6));\n}\n\nfloat geometrySchlickGgx(float normalDotDirection, float roughness_1) {\n    float shifted = (roughness_1 + 1.0);\n    float k = ((shifted * shifted) / 8.0);\n    return (normalDotDirection / max(((normalDotDirection * (1.0 - k)) + k), 1e-6));\n}\n\nfloat geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_2) {\n    float normalDotView = max(dot(normal_2, viewDirection), 0.0);\n    float normalDotLight = max(dot(normal_2, lightDirection), 0.0);\n    float _e10 = geometrySchlickGgx(normalDotView, roughness_2);\n    float _e11 = geometrySchlickGgx(normalDotLight, roughness_2);\n    return (_e10 * _e11);\n}\n\nvec3 fresnelSchlick(float cosine, vec3 f0_) {\n    float _e7 = fifthPower((1.0 - cosine));\n    return (f0_ + ((vec3(1.0) - f0_) * _e7));\n}\n\nvec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_3, vec3 radiance) {\n    bool local = false;\n    float normalDotLight_1 = max(dot(normal_3, lightDirection_1), 0.0);\n    float normalDotView_1 = max(dot(normal_3, viewDirection_1), 0.0);\n    if (!((normalDotLight_1 <= 0.0))) {\n        local = (normalDotView_1 <= 0.0);\n    } else {\n        local = true;\n    }\n    bool _e21 = local;\n    if (_e21) {\n        return vec3(0.0);\n    }\n    vec3 halfDirection_1 = normalize((viewDirection_1 + lightDirection_1));\n    float clampedRoughness = max(roughness_3, 0.045);\n    float _e28 = distributionGgx(normal_3, halfDirection_1, clampedRoughness);\n    float _e29 = geometrySmith(normal_3, viewDirection_1, lightDirection_1, clampedRoughness);\n    vec3 f0_1 = ((vec3(0.04) * (1.0 - metallic)) + (baseColor * metallic));\n    vec3 _e40 = fresnelSchlick(max(dot(viewDirection_1, halfDirection_1), 0.0), f0_1);\n    vec3 diffuseWeight = ((vec3(1.0) - _e40) * (1.0 - metallic));\n    vec3 diffuse = ((diffuseWeight * baseColor) / vec3(3.1415927));\n    vec3 specular = (((_e28 * _e29) * _e40) / vec3(max(((4.0 * normalDotView_1) * normalDotLight_1), 1e-6)));\n    return (((diffuse + specular) * radiance) * normalDotLight_1);\n}\n\nvoid main() {\n    vec3 position = _p2vs_location0;\n    vec3 normal = _p2vs_location1;\n    mat4x4 _e4 = _group_0_binding_0_vs.world;\n    vec4 worldPosition = (_e4 * vec4(position, 1.0));\n    mat4x4 _e10 = _group_0_binding_0_vs.normalWorld;\n    vec3 worldNormal = normalize((_e10 * vec4(normal, 0.0)).xyz);\n    mat4x4 _e18 = _group_1_binding_0_vs.viewProjection;\n    StandardLitVertexOutput _tmp_return = StandardLitVertexOutput((_e18 * worldPosition), worldNormal, worldPosition.xyz);\n    gl_Position = _tmp_return.position;\n    _vs2fs_location0 = _tmp_return.normal;\n    _vs2fs_location1 = _tmp_return.worldPosition;\n    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);\n    return;\n}\n\n'
+      'fragment:standardLitFragment': {
+        source: `#version 300 es
+
+precision highp float;
+precision highp int;
+
+struct ObjectData {
+    mat4x4 world;
+    mat4x4 normalWorld;
+};
+struct ViewData {
+    mat4x4 viewProjection;
+    vec3 cameraPosition;
+    float padding;
+};
+struct MaterialData {
+    vec4 baseColor;
+    float metallic;
+    float roughness;
+    float padding0_;
+    float padding1_;
+};
+struct DirectionalLightData {
+    vec3 direction;
+    float illuminance;
+    vec3 color;
+    float padding;
+};
+struct StandardLitVertexOutput {
+    vec4 position;
+    vec3 normal;
+    vec3 worldPosition;
+};
+struct StandardLitFragmentInput {
+    vec3 normal;
+    vec3 worldPosition;
+};
+layout(std140) uniform ViewData_block_0Fragment { ViewData _group_1_binding_0_fs; };
+
+layout(std140) uniform MaterialData_block_1Fragment { MaterialData _group_2_binding_0_fs; };
+
+layout(std140) uniform DirectionalLightData_block_2Fragment { DirectionalLightData _group_3_binding_0_fs; };
+
+smooth in vec3 _vs2fs_location0;
+smooth in vec3 _vs2fs_location1;
+layout(location = 0) out vec4 _fs2p_location0;
+
+float fifthPower(float value) {
+    float squared = (value * value);
+    return ((squared * squared) * value);
+}
+
+float distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {
+    float alpha = (roughness * roughness);
+    float alphaSquared = (alpha * alpha);
+    float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);
+    float denominator = (((normalDotHalf * normalDotHalf) * (alphaSquared - 1.0)) + 1.0);
+    return (alphaSquared / max(((3.1415927 * denominator) * denominator), 1e-6));
+}
+
+float geometrySchlickGgxDirect(float normalDotDirection, float roughness_1) {
+    float shifted = (roughness_1 + 1.0);
+    float k = ((shifted * shifted) / 8.0);
+    return (normalDotDirection / max(((normalDotDirection * (1.0 - k)) + k), 1e-6));
+}
+
+float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_2) {
+    float normalDotView = max(dot(normal_2, viewDirection), 0.0);
+    float normalDotLight = max(dot(normal_2, lightDirection), 0.0);
+    float _e10 = geometrySchlickGgxDirect(normalDotView, roughness_2);
+    float _e11 = geometrySchlickGgxDirect(normalDotLight, roughness_2);
+    return (_e10 * _e11);
+}
+
+vec3 fresnelSchlick(float cosine, vec3 f0_) {
+    float cosTheta = clamp(cosine, 0.0, 1.0);
+    float _e10 = fifthPower((1.0 - cosTheta));
+    return (f0_ + ((vec3(1.0) - f0_) * _e10));
+}
+
+vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_3, vec3 radiance) {
+    bool local = false;
+    float normalDotLight_1 = max(dot(normal_3, lightDirection_1), 0.0);
+    float normalDotView_1 = max(dot(normal_3, viewDirection_1), 0.0);
+    if (!((normalDotLight_1 <= 0.0))) {
+        local = (normalDotView_1 <= 0.0);
+    } else {
+        local = true;
+    }
+    bool _e21 = local;
+    if (_e21) {
+        return vec3(0.0);
+    }
+    vec3 halfDirection_1 = normalize((viewDirection_1 + lightDirection_1));
+    float clampedMetallic = clamp(metallic, 0.0, 1.0);
+    float clampedRoughness = clamp(roughness_3, 0.045, 1.0);
+    float _e32 = distributionGgx(normal_3, halfDirection_1, clampedRoughness);
+    float _e33 = geometrySmith(normal_3, viewDirection_1, lightDirection_1, clampedRoughness);
+    vec3 f0_1 = ((vec3(0.04) * (1.0 - clampedMetallic)) + (baseColor * clampedMetallic));
+    vec3 _e44 = fresnelSchlick(max(dot(viewDirection_1, halfDirection_1), 0.0), f0_1);
+    vec3 diffuseWeight = ((vec3(1.0) - _e44) * (1.0 - clampedMetallic));
+    vec3 diffuse = ((diffuseWeight * baseColor) / vec3(3.1415927));
+    vec3 specular = (((_e32 * _e33) * _e44) / vec3(max(((4.0 * normalDotView_1) * normalDotLight_1), 1e-6)));
+    return (((diffuse + specular) * radiance) * normalDotLight_1);
+}
+
+void main() {
+    StandardLitFragmentInput fragmentInput = StandardLitFragmentInput(_vs2fs_location0, _vs2fs_location1);
+    vec3 normal_4 = normalize(fragmentInput.normal);
+    vec3 _e5 = _group_3_binding_0_fs.direction;
+    vec3 lightDirection_2 = -(normalize(_e5));
+    vec3 _e10 = _group_1_binding_0_fs.cameraPosition;
+    vec3 viewDirection_2 = normalize((_e10 - fragmentInput.worldPosition));
+    vec4 _e16 = _group_2_binding_0_fs.baseColor;
+    float _e20 = _group_2_binding_0_fs.metallic;
+    float _e23 = _group_2_binding_0_fs.roughness;
+    vec3 _e26 = _group_3_binding_0_fs.color;
+    vec3 _e27 = cookTorranceDirect(normal_4, viewDirection_2, lightDirection_2, _e16.xyz, _e20, _e23, _e26);
+    float _e31 = _group_2_binding_0_fs.baseColor.w;
+    _fs2p_location0 = vec4(_e27, _e31);
+    return;
+}
+
+`,
+        bindings: [
+          {
+            kind: 'uniform-buffer',
+            name: 'DirectionalLightData_block_2Fragment',
+            resource: {
+              group: 3,
+              binding: 0
+            }
+          },
+          {
+            kind: 'uniform-buffer',
+            name: 'MaterialData_block_1Fragment',
+            resource: {
+              group: 2,
+              binding: 0
+            }
+          },
+          {
+            kind: 'uniform-buffer',
+            name: 'ViewData_block_0Fragment',
+            resource: {
+              group: 1,
+              binding: 0
+            }
+          }
+        ]
+      },
+      'vertex:standardLitVertex': {
+        source: `#version 300 es
+
+precision highp float;
+precision highp int;
+
+struct ObjectData {
+    mat4x4 world;
+    mat4x4 normalWorld;
+};
+struct ViewData {
+    mat4x4 viewProjection;
+    vec3 cameraPosition;
+    float padding;
+};
+struct MaterialData {
+    vec4 baseColor;
+    float metallic;
+    float roughness;
+    float padding0_;
+    float padding1_;
+};
+struct DirectionalLightData {
+    vec3 direction;
+    float illuminance;
+    vec3 color;
+    float padding;
+};
+struct StandardLitVertexOutput {
+    vec4 position;
+    vec3 normal;
+    vec3 worldPosition;
+};
+struct StandardLitFragmentInput {
+    vec3 normal;
+    vec3 worldPosition;
+};
+layout(std140) uniform ObjectData_block_0Vertex { ObjectData _group_0_binding_0_vs; };
+
+layout(std140) uniform ViewData_block_1Vertex { ViewData _group_1_binding_0_vs; };
+
+layout(location = 0) in vec3 _p2vs_location0;
+layout(location = 1) in vec3 _p2vs_location1;
+smooth out vec3 _vs2fs_location0;
+smooth out vec3 _vs2fs_location1;
+
+float fifthPower(float value) {
+    float squared = (value * value);
+    return ((squared * squared) * value);
+}
+
+float distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {
+    float alpha = (roughness * roughness);
+    float alphaSquared = (alpha * alpha);
+    float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);
+    float denominator = (((normalDotHalf * normalDotHalf) * (alphaSquared - 1.0)) + 1.0);
+    return (alphaSquared / max(((3.1415927 * denominator) * denominator), 1e-6));
+}
+
+float geometrySchlickGgxDirect(float normalDotDirection, float roughness_1) {
+    float shifted = (roughness_1 + 1.0);
+    float k = ((shifted * shifted) / 8.0);
+    return (normalDotDirection / max(((normalDotDirection * (1.0 - k)) + k), 1e-6));
+}
+
+float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_2) {
+    float normalDotView = max(dot(normal_2, viewDirection), 0.0);
+    float normalDotLight = max(dot(normal_2, lightDirection), 0.0);
+    float _e10 = geometrySchlickGgxDirect(normalDotView, roughness_2);
+    float _e11 = geometrySchlickGgxDirect(normalDotLight, roughness_2);
+    return (_e10 * _e11);
+}
+
+vec3 fresnelSchlick(float cosine, vec3 f0_) {
+    float cosTheta = clamp(cosine, 0.0, 1.0);
+    float _e10 = fifthPower((1.0 - cosTheta));
+    return (f0_ + ((vec3(1.0) - f0_) * _e10));
+}
+
+vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_3, vec3 radiance) {
+    bool local = false;
+    float normalDotLight_1 = max(dot(normal_3, lightDirection_1), 0.0);
+    float normalDotView_1 = max(dot(normal_3, viewDirection_1), 0.0);
+    if (!((normalDotLight_1 <= 0.0))) {
+        local = (normalDotView_1 <= 0.0);
+    } else {
+        local = true;
+    }
+    bool _e21 = local;
+    if (_e21) {
+        return vec3(0.0);
+    }
+    vec3 halfDirection_1 = normalize((viewDirection_1 + lightDirection_1));
+    float clampedMetallic = clamp(metallic, 0.0, 1.0);
+    float clampedRoughness = clamp(roughness_3, 0.045, 1.0);
+    float _e32 = distributionGgx(normal_3, halfDirection_1, clampedRoughness);
+    float _e33 = geometrySmith(normal_3, viewDirection_1, lightDirection_1, clampedRoughness);
+    vec3 f0_1 = ((vec3(0.04) * (1.0 - clampedMetallic)) + (baseColor * clampedMetallic));
+    vec3 _e44 = fresnelSchlick(max(dot(viewDirection_1, halfDirection_1), 0.0), f0_1);
+    vec3 diffuseWeight = ((vec3(1.0) - _e44) * (1.0 - clampedMetallic));
+    vec3 diffuse = ((diffuseWeight * baseColor) / vec3(3.1415927));
+    vec3 specular = (((_e32 * _e33) * _e44) / vec3(max(((4.0 * normalDotView_1) * normalDotLight_1), 1e-6)));
+    return (((diffuse + specular) * radiance) * normalDotLight_1);
+}
+
+void main() {
+    vec3 position = _p2vs_location0;
+    vec3 normal = _p2vs_location1;
+    mat4x4 _e4 = _group_0_binding_0_vs.world;
+    vec4 worldPosition = (_e4 * vec4(position, 1.0));
+    mat4x4 _e10 = _group_0_binding_0_vs.normalWorld;
+    vec3 worldNormal = normalize((_e10 * vec4(normal, 0.0)).xyz);
+    mat4x4 _e18 = _group_1_binding_0_vs.viewProjection;
+    StandardLitVertexOutput _tmp_return = StandardLitVertexOutput((_e18 * worldPosition), worldNormal, worldPosition.xyz);
+    gl_Position = _tmp_return.position;
+    _vs2fs_location0 = _tmp_return.normal;
+    _vs2fs_location1 = _tmp_return.worldPosition;
+    gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
+    return;
+}
+
+`,
+        bindings: [
+          {
+            kind: 'uniform-buffer',
+            name: 'ObjectData_block_0Vertex',
+            resource: {
+              group: 0,
+              binding: 0
+            }
+          },
+          {
+            kind: 'uniform-buffer',
+            name: 'ViewData_block_1Vertex',
+            resource: {
+              group: 1,
+              binding: 0
+            }
+          }
+        ]
+      }
     }
   }
 });

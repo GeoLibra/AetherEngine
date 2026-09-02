@@ -15,11 +15,7 @@ export class NullRenderTarget extends NullResourceBase implements RHIRenderTarge
   readonly kind = 'render-target';
   readonly descriptor: Readonly<RenderTargetDescriptor>;
 
-  constructor(
-    id: number,
-    owner: NullDeviceOwner,
-    descriptor: RenderTargetDescriptor
-  ) {
+  constructor(id: number, owner: NullDeviceOwner, descriptor: RenderTargetDescriptor) {
     super(id, owner, descriptor.label);
     validateRenderTargetDescriptor(descriptor, owner);
     this.descriptor = cloneRenderTargetDescriptor(descriptor);
@@ -31,10 +27,12 @@ export class NullRenderTarget extends NullResourceBase implements RHIRenderTarge
     const colorAttachments = this.descriptor.colorAttachments.map(
       (attachment): RHIRenderPassColorAttachment => {
         assertResourceLive(attachment.texture);
-        const view = attachment.view ?? attachment.texture.createView({
-          baseMipLevel: attachment.mipLevel ?? 0,
-          baseArrayLayer: attachment.arrayLayer ?? 0
-        });
+        const view =
+          attachment.view ??
+          attachment.texture.createView({
+            baseMipLevel: attachment.mipLevel ?? 0,
+            baseArrayLayer: attachment.arrayLayer ?? 0
+          });
         assertResourceLive(view);
         const passAttachment: RHIRenderPassColorAttachment = {
           view,
@@ -92,7 +90,10 @@ function createDepthStencilAttachment(
   return passAttachment;
 }
 
-function validateRenderTargetDescriptor(descriptor: RenderTargetDescriptor, owner: NullDeviceOwner): void {
+function validateRenderTargetDescriptor(
+  descriptor: RenderTargetDescriptor,
+  owner: NullDeviceOwner
+): void {
   assertPositiveInteger(descriptor.width, 'Render target width');
   assertPositiveInteger(descriptor.height, 'Render target height');
 
@@ -112,20 +113,32 @@ function validateRenderTargetDescriptor(descriptor: RenderTargetDescriptor, owne
     }
     if (attachment.view !== undefined) {
       assertResourceOwnedBy(attachment.view, owner);
-      assertAttachmentViewMatches(attachment.view, attachment.texture, attachment.format, descriptor, `Color attachment ${index}`);
+      assertAttachmentViewMatches(
+        attachment.view,
+        attachment.texture,
+        attachment.format,
+        descriptor,
+        `Color attachment ${index}`
+      );
     }
     if (attachment.resolveTarget !== undefined) {
       assertResourceOwnedBy(attachment.resolveTarget, owner);
       assertResourceLive(attachment.resolveTarget);
       if ((descriptor.sampleCount ?? 1) <= 1) {
-        throw new Error(`Color attachment ${index} resolve target requires sampleCount greater than 1.`);
+        throw new Error(
+          `Color attachment ${index} resolve target requires sampleCount greater than 1.`
+        );
       }
       if (attachment.resolveTarget.format !== attachment.format) {
         throw new Error(
           `Color attachment ${index} resolve target format "${attachment.resolveTarget.format}" does not match attachment format "${attachment.format}".`
         );
       }
-      assertTextureViewMatchesTarget(attachment.resolveTarget, descriptor, `Color attachment ${index} resolve target`);
+      assertTextureViewMatchesTarget(
+        attachment.resolveTarget,
+        descriptor,
+        `Color attachment ${index} resolve target`
+      );
     }
   });
 
@@ -142,7 +155,9 @@ function validateRenderTargetDescriptor(descriptor: RenderTargetDescriptor, owne
       descriptor,
       'Depth-stencil attachment'
     );
-    if (descriptor.depthStencilAttachment.format !== descriptor.depthStencilAttachment.texture.format) {
+    if (
+      descriptor.depthStencilAttachment.format !== descriptor.depthStencilAttachment.texture.format
+    ) {
       throw new Error(
         `Depth-stencil attachment format "${descriptor.depthStencilAttachment.format}" does not match texture format "${descriptor.depthStencilAttachment.texture.format}".`
       );
@@ -198,7 +213,9 @@ function assertAttachmentViewMatches(
     throw new Error(`${name} view does not belong to the attachment texture.`);
   }
   if (view.format !== format) {
-    throw new Error(`${name} view format "${view.format}" does not match attachment format "${format}".`);
+    throw new Error(
+      `${name} view format "${view.format}" does not match attachment format "${format}".`
+    );
   }
   assertTextureViewMatchesTarget(view, descriptor, `${name} view`);
 }

@@ -223,18 +223,17 @@ describe('SchemaRegistry', () => {
     const registry = new SchemaRegistry();
     registry.register(schema);
 
-    expect(registry.getView('test.schema-views', 1, 'serialization')?.fields.map((f) => f.id)).toEqual([
-      'saved',
-      'replicated'
-    ]);
+    expect(
+      registry.getView('test.schema-views', 1, 'serialization')?.fields.map((f) => f.id)
+    ).toEqual(['saved', 'replicated']);
     expect(registry.getView('test.schema-views', 1, 'editor')?.fields.map((f) => f.id)).toEqual([
       'saved',
       'runtime',
       'replicated'
     ]);
-    expect(registry.getView('test.schema-views', 1, 'replication')?.fields.map((f) => f.id)).toEqual([
-      'replicated'
-    ]);
+    expect(
+      registry.getView('test.schema-views', 1, 'replication')?.fields.map((f) => f.id)
+    ).toEqual(['replicated']);
   });
 
   test('migrates through a continuous version chain without mutating source data', () => {
@@ -322,5 +321,4 @@ describe('SchemaRegistry', () => {
     expect(opaque.kind).toBe('opaque');
     expect(registry.encodePayload(opaque)).toEqual(unknownSource);
   });
-
 });

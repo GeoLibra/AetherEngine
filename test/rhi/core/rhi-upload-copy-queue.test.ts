@@ -47,9 +47,7 @@ describe('RHI queue uploads', () => {
 
     await buffer.mapAsync(0);
 
-    expect(Array.from(new Uint8Array(buffer.getMappedRange()))).toEqual([
-      0, 0, 0, 0, 0, 0, 0, 0
-    ]);
+    expect(Array.from(new Uint8Array(buffer.getMappedRange()))).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
   });
 
   test('rejects invalid buffer upload resources and mapped buffers', async () => {
@@ -205,7 +203,11 @@ describe('RHI copy command encoding', () => {
           aspect: 'all'
         },
         destination: {
-          texture: { kind: 'texture', id: destinationTexture.id, label: 'copy-destination-texture' },
+          texture: {
+            kind: 'texture',
+            id: destinationTexture.id,
+            label: 'copy-destination-texture'
+          },
           mipLevel: 0,
           origin: { x: 2, y: 2, z: 0 },
           aspect: 'all'
@@ -218,7 +220,11 @@ describe('RHI copy command encoding', () => {
   test('rejects buffer copies while a pass is active or a buffer is mapped', async () => {
     const device = new NullDevice();
     const source = device.createBuffer({ label: 'source', size: 16, usage: BUFFER_USAGE_COPY_SRC });
-    const destination = device.createBuffer({ label: 'destination', size: 16, usage: BUFFER_USAGE_COPY_DST });
+    const destination = device.createBuffer({
+      label: 'destination',
+      size: 16,
+      usage: BUFFER_USAGE_COPY_DST
+    });
     const encoder = device.createCommandEncoder();
     const target = device.createTexture({
       label: 'color',

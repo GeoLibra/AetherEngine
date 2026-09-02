@@ -96,7 +96,7 @@ export function loadCookedShaderModule(
         target: 'glsl300es' as const,
         entry: entryPoint.name,
         stage: entryPoint.stage,
-        source: glslSource,
+        source: glslSource.source,
         bindings: entryPoint.bindings,
         sourceUri: validatedArtifact.source.sourceUri,
         contentHash: validatedArtifact.source.contentHash

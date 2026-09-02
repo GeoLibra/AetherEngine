@@ -30,11 +30,15 @@ function deferred<T>(): Deferred<T> {
 
 class NativeResource implements WebGPUNativeResourcePort {
   destroyed = 0;
-  destroy(): void { this.destroyed += 1; }
+  destroy(): void {
+    this.destroyed += 1;
+  }
 }
 
 class NativeTexture extends NativeResource implements WebGPUNativeTexturePort {
-  createView(): WebGPUNativeResourcePort { return new NativeResource(); }
+  createView(): WebGPUNativeResourcePort {
+    return new NativeResource();
+  }
 }
 
 class EmptyRenderPass implements WebGPUNativeRenderPassPort {
@@ -66,11 +70,17 @@ class NativeEncoder implements WebGPUNativeCommandEncoderPort {
   readonly commandBuffer = new NativeResource();
   pushDebugGroup(): void {}
   popDebugGroup(): void {}
-  beginRenderPass(): WebGPUNativeRenderPassPort { return new EmptyRenderPass(); }
-  beginComputePass(): WebGPUNativeComputePassPort { return new EmptyComputePass(); }
+  beginRenderPass(): WebGPUNativeRenderPassPort {
+    return new EmptyRenderPass();
+  }
+  beginComputePass(): WebGPUNativeComputePassPort {
+    return new EmptyComputePass();
+  }
   copyBufferToBuffer(): void {}
   copyTextureToTexture(): void {}
-  finish(): WebGPUNativeResourcePort { return this.commandBuffer; }
+  finish(): WebGPUNativeResourcePort {
+    return this.commandBuffer;
+  }
 }
 
 class NativeQueue {
@@ -87,8 +97,12 @@ class NativeQueue {
     return completion.promise;
   }
 
-  complete(index: number): void { this.completion(index).resolve(undefined); }
-  fail(index: number, error: unknown): void { this.completion(index).reject(error); }
+  complete(index: number): void {
+    this.completion(index).resolve(undefined);
+  }
+  fail(index: number, error: unknown): void {
+    this.completion(index).reject(error);
+  }
 
   private completion(index: number): Deferred<void> {
     const completion = this.completions[index];
@@ -120,7 +134,9 @@ class NativeDevice implements WebGPUNativeDevicePort {
     this.encoders.push(encoder);
     return encoder;
   }
-  lose(info: WebGPUNativeDeviceLostInfo): void { this.loss.resolve(info); }
+  lose(info: WebGPUNativeDeviceLostInfo): void {
+    this.loss.resolve(info);
+  }
 }
 
 class NativeAdapter implements WebGPUNativeAdapterPort {
@@ -129,12 +145,17 @@ class NativeAdapter implements WebGPUNativeAdapterPort {
   readonly limits = {};
   readonly formats = new Map();
   readonly device = new NativeDevice();
-  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> { return this.device; }
+  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> {
+    return this.device;
+  }
 }
 
 async function createDevice() {
   const adapter = new NativeAdapter();
-  const device = await new WebGPUAdapter(adapter).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+  const device = await new WebGPUAdapter(adapter).requestDevice({
+    requiredFeatures: [],
+    optionalFeatures: []
+  });
   return { device, native: adapter.device };
 }
 
@@ -154,10 +175,9 @@ describe('WebGPU submission epochs', () => {
 
     const submission = device.queue.submit([first.commands, second.commands]);
 
-    expect(native.queue.submissions).toEqual([[
-      native.encoders[0]?.commandBuffer,
-      native.encoders[1]?.commandBuffer
-    ]]);
+    expect(native.queue.submissions).toEqual([
+      [native.encoders[0]?.commandBuffer, native.encoders[1]?.commandBuffer]
+    ]);
     expect(device.fastPathMetrics().nativeQueueSubmits).toBe(1);
     expect(submission.status).toBe('pending');
     expect(device.queue.metrics()).toEqual({
@@ -228,7 +248,11 @@ describe('WebGPU submission epochs', () => {
     const { device, native } = await createDevice();
     const { source, destination, commands } = recordCopy(device);
     const sourceTexture = device.createTexture({ size: [4, 4], format: 'rgba8unorm', usage: 1 });
-    const destinationTexture = device.createTexture({ size: [4, 4], format: 'rgba8unorm', usage: 1 });
+    const destinationTexture = device.createTexture({
+      size: [4, 4],
+      format: 'rgba8unorm',
+      usage: 1
+    });
     const textureEncoder = device.createCommandEncoder();
     textureEncoder.copyTextureToTexture(
       { texture: sourceTexture },

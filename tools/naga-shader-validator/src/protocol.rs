@@ -122,7 +122,39 @@ pub struct CookStageIo {
 #[serde(rename_all = "camelCase")]
 pub struct CookBackendModules {
     pub wgsl: String,
-    pub glsl_es300: BTreeMap<String, String>,
+    pub glsl_es300: BTreeMap<String, CookGlslModule>,
+}
+
+/// One generated GLSL program and its cook-owned program symbol mappings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CookGlslModule {
+    pub source: String,
+    pub bindings: Vec<CookGlslProgramBinding>,
+}
+
+/// Canonical logical resource coordinates referenced by backend program metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CookBindingReference {
+    pub group: u32,
+    pub binding: u32,
+}
+
+/// Naga-generated GLSL program symbols mapped back to canonical WGSL resources.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum CookGlslProgramBinding {
+    UniformBuffer {
+        name: String,
+        resource: CookBindingReference,
+    },
+    CombinedSampler {
+        name: String,
+        texture: CookBindingReference,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sampler: Option<CookBindingReference>,
+    },
 }
 
 #[cfg(test)]
@@ -169,7 +201,7 @@ mod tests {
 
         let json = serde_json::to_string(&result).unwrap();
 
-        assert!(json.contains("\"schemaVersion\":1"));
+        assert!(json.contains("\"schemaVersion\":2"));
         assert!(json.contains("\"sourceKind\":\"wgsl\""));
         assert!(json.contains("\"nagaVersion\":\"30.0.0\""));
         assert!(!json.contains("shaderIr"));
@@ -191,7 +223,7 @@ mod tests {
 
         let json = serde_json::to_value(&diagnostic).unwrap();
 
-        assert_eq!(json["schemaVersion"], 1);
+        assert_eq!(json["schemaVersion"], 2);
         assert_eq!(json["severity"], "error");
         assert_eq!(json["code"], "WGSL_PARSE");
         assert_eq!(json["message"], "expected expression");
@@ -199,5 +231,33 @@ mod tests {
         assert_eq!(json["line"], 3);
         assert_eq!(json["column"], 7);
         assert_eq!(json["backendStage"], "parse");
+    }
+
+    #[test]
+    fn combined_sampler_omits_none_sampler_in_serialization() {
+        let binding_without_sampler = CookGlslProgramBinding::CombinedSampler {
+            name: "uTexture".to_owned(),
+            texture: CookBindingReference {
+                group: 0,
+                binding: 0,
+            },
+            sampler: None,
+        };
+        let json = serde_json::to_string(&binding_without_sampler).unwrap();
+        assert!(!json.contains("\"sampler\":"));
+
+        let binding_with_sampler = CookGlslProgramBinding::CombinedSampler {
+            name: "uTextureSampler".to_owned(),
+            texture: CookBindingReference {
+                group: 0,
+                binding: 0,
+            },
+            sampler: Some(CookBindingReference {
+                group: 0,
+                binding: 1,
+            }),
+        };
+        let json_with = serde_json::to_string(&binding_with_sampler).unwrap();
+        assert!(json_with.contains("\"sampler\":{\"group\":0,\"binding\":1}"));
     }
 }

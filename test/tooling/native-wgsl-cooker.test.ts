@@ -5,9 +5,9 @@ import {
 } from '../../tools/shader-cooker/native-wgsl-cooker';
 
 const sampleValidArtifact = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   shaderManifestSchemaVersion: 1,
-  shaderModuleSchemaVersion: 1,
+  shaderModuleSchemaVersion: 2,
   sourceKind: 'wgsl',
   toolchain: {
     cookerId: 'aether-native-wgsl-cooker',
@@ -38,8 +38,8 @@ const sampleValidArtifact = {
   modules: {
     wgsl: '@vertex\nfn vertexMain() {}\n@fragment\nfn fragmentMain() {}',
     glslEs300: {
-      'vertex:vertexMain': '#version 300 es\nvoid main() {}',
-      'fragment:fragmentMain': '#version 300 es\nvoid main() {}'
+      'vertex:vertexMain': { source: '#version 300 es\nvoid main() {}', bindings: [] },
+      'fragment:fragmentMain': { source: '#version 300 es\nvoid main() {}', bindings: [] }
     }
   }
 };

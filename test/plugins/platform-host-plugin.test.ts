@@ -78,11 +78,7 @@ describe('Host App integration', () => {
   });
 
   test('keeps concrete Host choice out of default plugin groups', () => {
-    expect(new MinimalPlugins().plugins().map((plugin) => plugin.id)).not.toContain(
-      'aether.host'
-    );
-    expect(new DefaultPlugins().plugins().map((plugin) => plugin.id)).not.toContain(
-      'aether.host'
-    );
+    expect(new MinimalPlugins().plugins().map((plugin) => plugin.id)).not.toContain('aether.host');
+    expect(new DefaultPlugins().plugins().map((plugin) => plugin.id)).not.toContain('aether.host');
   });
 });

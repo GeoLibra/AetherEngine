@@ -108,4 +108,9 @@ export type {
 } from './command';
 export type { RHIDevice, RHIQueue } from './device';
 export type { RHIExtensionToken } from './extension';
-export type { RHIQueueMetrics, RHISubmission, RHISubmissionStatus, SubmissionResult } from './submission';
+export type {
+  RHIQueueMetrics,
+  RHISubmission,
+  RHISubmissionStatus,
+  SubmissionResult
+} from './submission';

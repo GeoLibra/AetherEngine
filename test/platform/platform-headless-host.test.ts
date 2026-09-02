@@ -33,9 +33,7 @@ describe('HeadlessHost', () => {
       })
     );
 
-    const exit = await app.run(
-      host.createRunner({ kind: 'headless', frames: 2, frameDelta: 0.5 })
-    );
+    const exit = await app.run(host.createRunner({ kind: 'headless', frames: 2, frameDelta: 0.5 }));
 
     expect(exit).toEqual({ reason: 'completed', frames: 2 });
     expect(observedSizes).toEqual([

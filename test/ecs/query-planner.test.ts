@@ -31,7 +31,9 @@ const Label = defineObjectComponent<LabelView>({
     }
   ],
   validate(input) {
-    return typeof input === 'object' && input !== null && 'value' in input &&
+    return typeof input === 'object' &&
+      input !== null &&
+      'value' in input &&
       typeof input.value === 'string'
       ? { ok: true, value: input as LabelView }
       : { ok: false, issues: [{ path: [], message: 'Invalid label.' }] };
