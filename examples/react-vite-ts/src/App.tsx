@@ -72,7 +72,14 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
 
   return (
     <main>
-      <Leva collapsed={false} oneLineLabels titleBar={{ title: 'Aether CSM Controls' }} />
+      <Leva
+        hidden={
+          typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('e2e')
+        }
+        collapsed={false}
+        oneLineLabels
+        titleBar={{ title: 'Aether CSM Controls' }}
+      />
       <section className="demo-shell" aria-label="Aether Engine rendering example">
         <canvas ref={canvas} aria-label="Standard-lit three-dimensional box" />
         <p className={`status status-${status.kind}`} role="status" aria-live="polite">

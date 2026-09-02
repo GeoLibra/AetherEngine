@@ -123,10 +123,13 @@ export async function mountAetherScene(
   const meshHandle = createAssetHandle(MeshAssetType, 'example.mesh.box');
   const materialHandle = createAssetHandle(MaterialAssetType, 'example.material.standard-lit');
   let forcedRotation = options.animate === false ? 0 : undefined;
-  let castsShadow = true;
+  const includeGround = options.ground !== false;
+  let castsShadow = includeGround;
   let shadowDistance = 25;
   let lightDirection: Vec3 = INITIAL_LIGHT_DIRECTION;
-  const includeGround = options.ground !== false;
+  const boxTranslation: readonly [number, number, number] = includeGround
+    ? [0, 0.2, -2.5]
+    : [0, 0, -2];
 
   const app = new App()
     .addPlugin(TimePlugin)
@@ -176,7 +179,7 @@ export async function mountAetherScene(
               // Caster Box entity
               world
                 .spawn()
-                .insert(WorldTransform, transform([0, 0.2, -2.5]))
+                .insert(WorldTransform, transform(boxTranslation))
                 .insert(RotatingTag, {})
                 .insert(MeshRenderSource, {
                   mesh: { handle: meshHandle, payloadVersion: 1 },
@@ -213,7 +216,7 @@ export async function mountAetherScene(
                   illuminanceLux: 12_000,
                   enabled: true,
                   layerMask: 1,
-                  castsShadow: true
+                  castsShadow
                 })
                 .build();
             }
@@ -230,7 +233,7 @@ export async function mountAetherScene(
               }
               const angle = forcedRotation ?? frameTime.elapsed * 0.8;
               for (const [entity, worldTransform] of world.query([WorldTransform, RotatingTag])) {
-                rotateWorldTransform(worldTransform, angle);
+                rotateWorldTransform(worldTransform, angle, boxTranslation);
                 world.markComponentChanged(entity, WorldTransform);
               }
 
@@ -395,10 +398,14 @@ function calculateFrustumCornersWorld(
   ];
 }
 
-function rotateWorldTransform(worldTransform: WorldTransformView, angleRadians: number): void {
+function rotateWorldTransform(
+  worldTransform: WorldTransformView,
+  angleRadians: number,
+  translation: readonly [number, number, number] = [0, 0, -2]
+): void {
   worldTransform.previousMatrix.set(worldTransform.matrix);
   const matrix = Mat4.fromTRS(
-    [0, 0.2, -2.5],
+    translation,
     Quat.fromEulerYXZ([angleRadians * 0.55, angleRadians, 0]),
     [1, 1, 1]
   );
