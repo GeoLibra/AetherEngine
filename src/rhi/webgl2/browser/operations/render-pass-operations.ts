@@ -122,9 +122,9 @@ export function createBrowserWebGL2RenderPassOperations(
       glCall(gl, 'drawBuffers', [[constant(gl, 'BACK')]]);
       glCall(gl, 'blitFramebuffer', [
         0,
-        0,
-        width,
         height,
+        width,
+        0,
         0,
         0,
         width,

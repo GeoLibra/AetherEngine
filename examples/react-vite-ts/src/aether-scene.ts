@@ -112,7 +112,8 @@ export async function mountAetherScene(
     canvas,
     preference: options.preference ?? ['webgpu', 'webgl2'],
     device: { requiredFeatures: [], optionalFeatures: [], label: 'Aether React example' },
-    surface: { ...size, alphaMode: 'opaque' }
+    surface: { ...size, alphaMode: 'opaque' },
+    webgl2ClipControl: false
   });
   const mesh = createBoxMeshData();
   const material = createStandardLitMaterial({

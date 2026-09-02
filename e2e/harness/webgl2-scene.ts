@@ -182,7 +182,7 @@ function instrumentGL(gl: WebGL2RenderingContext): WebGL2PresentProbe {
       configurable: true,
       value: (...args: unknown[]) => {
         if (name === 'blitFramebuffer') {
-          gl.readPixels(320, 180, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, beforePresentPixel);
+          gl.readPixels(320, 179, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, beforePresentPixel);
         }
         const result = Reflect.apply(original, gl, args);
         if (name === 'blitFramebuffer') {
@@ -289,7 +289,7 @@ const TRANSLATOR: WebGL2ShaderTranslationPort = {
 const TRIANGLE_VERTEX = `
 out vec3 v_color;
 void main() {
-  vec2 p[3] = vec2[3](vec2(-0.9,-0.75), vec2(0.0,0.9), vec2(0.9,-0.75));
+  vec2 p[3] = vec2[3](vec2(-0.9,0.75), vec2(0.0,-0.9), vec2(0.9,0.75));
   vec3 c[3] = vec3[3](vec3(1.0,0.15,0.12), vec3(0.1,1.0,0.35), vec3(0.1,0.35,1.0));
   gl_Position = vec4(p[gl_VertexID], 0.85, 1.0); v_color = c[gl_VertexID];
 }`;
@@ -299,9 +299,9 @@ const CUBE_VERTEX = `
 out vec3 v_color;
 layout(std140) uniform Aether_0_0 { vec4 tint; };
 void main() {
-  vec2 p[4] = vec2[4](vec2(-0.48,-0.48),vec2(0.48,-0.48),vec2(-0.48,0.48),vec2(0.48,0.48));
+  vec2 p[4] = vec2[4](vec2(-0.48,0.48),vec2(0.48,0.48),vec2(-0.48,-0.48),vec2(0.48,-0.48));
   vec2 q = p[gl_VertexID]; gl_Position = vec4(q, 0.35, 1.0);
-  v_color = vec3(q * 0.5 + 0.5, 0.9) * tint.rgb;
+  v_color = vec3(vec2(q.x, -q.y) * 0.5 + 0.5, 0.9) * tint.rgb;
 }`;
 const CUBE_FRAGMENT = `precision highp float; in vec3 v_color; out vec4 out_color;
 uniform sampler2D aether_t0_1_s0_2;
