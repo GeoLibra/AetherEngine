@@ -1,0 +1,91 @@
+import type { ShaderSourceKind } from '../../../shader/types';
+
+export type RenderArtifactSectionKind =
+  | 'manifest'
+  | 'material-schema'
+  | 'techniques'
+  | 'variant-table'
+  | 'reflection'
+  | 'layout-plans'
+  | 'typed-ir'
+  | 'source'
+  | 'shader-module'
+  | 'dependencies'
+  | 'source-map'
+  | 'debug-symbols';
+
+export interface RenderArtifactShaderToolchain {
+  readonly cookerId: string;
+  readonly cookerVersion: string;
+  readonly sourceKind: ShaderSourceKind;
+  readonly sourceLanguageVersion: string;
+  readonly nagaVersion?: string | undefined;
+  readonly metadataSchemaVersion: number;
+}
+
+export interface RenderArtifactPackageSectionInput {
+  readonly id: string;
+  readonly kind: RenderArtifactSectionKind;
+  readonly required: boolean;
+  readonly payload: unknown;
+}
+
+export interface RenderArtifactExternalSectionLocation {
+  readonly storage: 'external';
+  readonly blobId: string;
+}
+
+export interface RenderArtifactContainerSectionLocation {
+  readonly storage: 'container';
+  readonly offset: number;
+  readonly compressedLength: number;
+  readonly codec: 'identity' | 'zstd';
+}
+
+export type RenderArtifactSectionLocation =
+  RenderArtifactExternalSectionLocation | RenderArtifactContainerSectionLocation;
+
+export interface RenderArtifactPackageInput {
+  readonly containerVersion?: number | undefined;
+  readonly shaderAbiVersion: number;
+  readonly materialSchemaVersion: number;
+  readonly toolchain: Readonly<{ id: string; version: string }>;
+  readonly shaderToolchain: RenderArtifactShaderToolchain;
+  readonly sections: readonly RenderArtifactPackageSectionInput[];
+}
+
+export interface RenderArtifactSectionIndex {
+  readonly id: string;
+  readonly kind: RenderArtifactSectionKind;
+  readonly uncompressedLength: number;
+  readonly hash: string;
+  readonly required: boolean;
+  readonly location: RenderArtifactSectionLocation;
+}
+
+export interface RenderArtifactEnvelope {
+  readonly magic: 'AERENDER';
+  readonly containerVersion: 1;
+  readonly manifestSchemaVersion: 1;
+  readonly shaderManifestSchemaVersion: 1;
+  readonly shaderModuleSchemaVersion: 1;
+  readonly shaderAbiVersion: number;
+  readonly materialSchemaVersion: number;
+  readonly toolchain: Readonly<{ id: string; version: string }>;
+  readonly shaderToolchain: RenderArtifactShaderToolchain;
+  readonly packageId: string;
+  readonly semanticContentHash: string;
+  readonly containerHash: string;
+  readonly sections: readonly RenderArtifactSectionIndex[];
+}
+
+export interface DecodedRenderArtifactPackage {
+  readonly envelope: RenderArtifactEnvelope;
+  readonly sections: readonly Readonly<RenderArtifactPackageSectionInput>[];
+}
+
+/** Canonical reference envelope plus owned copies of independently addressable section bytes. */
+export interface RenderArtifactReferenceBundle {
+  readonly manifest: string;
+  readonly blobs: ReadonlyMap<string, Uint8Array>;
+}
