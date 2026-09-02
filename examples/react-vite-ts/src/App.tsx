@@ -74,15 +74,10 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
     <main>
       <Leva collapsed={false} oneLineLabels titleBar={{ title: 'Aether CSM Controls' }} />
       <section className="demo-shell" aria-label="Aether Engine rendering example">
-        <header className="demo-header">
-          <div className="title-group">
-            <h1>Aether Engine PBR & CSM Shadow Demo</h1>
-            <span className={`status-badge status-${status.kind}`}>{status.message}</span>
-          </div>
-        </header>
-        <div className="canvas-wrapper">
-          <canvas ref={canvas} aria-label="Standard-lit three-dimensional box with CSM shadow" />
-        </div>
+        <canvas ref={canvas} aria-label="Standard-lit three-dimensional box" />
+        <p className={`status status-${status.kind}`} role="status" aria-live="polite">
+          {status.message}
+        </p>
       </section>
     </main>
   );
