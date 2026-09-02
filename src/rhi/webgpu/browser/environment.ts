@@ -17,7 +17,7 @@ export function getBrowserWebGPUEnvironment(
     gpu,
     getCanvasContext(canvas: BrowserWebGPUCanvas): BrowserGPUCanvasContext | null {
       const context = canvas.getContext('webgpu');
-      return context === null ? null : context as BrowserGPUCanvasContext;
+      return context === null ? null : (context as BrowserGPUCanvasContext);
     }
   });
 }

@@ -6,24 +6,51 @@ describe('browser WebGPU command and queue ports', () => {
     const trace: string[] = [];
     const nativeCommandBuffer = {};
     const nativeRenderPass = {
-      setPipeline(): void { trace.push('pass.setPipeline'); },
-      draw(): void { trace.push('pass.draw'); },
-      end(): void { trace.push('pass.end'); },
-      pushDebugGroup(): void {}, popDebugGroup(): void {}, setBindGroup(): void {},
-      setVertexBuffer(): void {}, setIndexBuffer(): void {}, setViewport(): void {},
-      setScissorRect(): void {}, drawIndexed(): void {}, drawIndirect(): void {}
+      setPipeline(): void {
+        trace.push('pass.setPipeline');
+      },
+      draw(): void {
+        trace.push('pass.draw');
+      },
+      end(): void {
+        trace.push('pass.end');
+      },
+      pushDebugGroup(): void {},
+      popDebugGroup(): void {},
+      setBindGroup(): void {},
+      setVertexBuffer(): void {},
+      setIndexBuffer(): void {},
+      setViewport(): void {},
+      setScissorRect(): void {},
+      drawIndexed(): void {},
+      drawIndirect(): void {}
     };
     const nativeEncoder = {
-      beginRenderPass(): object { trace.push('encoder.beginRenderPass'); return nativeRenderPass; },
-      finish(): object { trace.push('encoder.finish'); return nativeCommandBuffer; },
-      pushDebugGroup(): void {}, popDebugGroup(): void {}, copyBufferToBuffer(): void {},
-      copyTextureToTexture(): void {}, copyBufferToTexture(): void {}, copyTextureToBuffer(): void {},
-      beginComputePass(): object { throw new Error('not used'); }
+      beginRenderPass(): object {
+        trace.push('encoder.beginRenderPass');
+        return nativeRenderPass;
+      },
+      finish(): object {
+        trace.push('encoder.finish');
+        return nativeCommandBuffer;
+      },
+      pushDebugGroup(): void {},
+      popDebugGroup(): void {},
+      copyBufferToBuffer(): void {},
+      copyTextureToTexture(): void {},
+      copyBufferToTexture(): void {},
+      copyTextureToBuffer(): void {},
+      beginComputePass(): object {
+        throw new Error('not used');
+      }
     };
     let encoderCount = 0;
     const submissions: readonly object[][] = [];
     const nativeDevice = createNativeDevice({
-      createCommandEncoder(): object { encoderCount += 1; return nativeEncoder; },
+      createCommandEncoder(): object {
+        encoderCount += 1;
+        return nativeEncoder;
+      },
       queue: {
         submit(commandBuffers: readonly object[]): void {
           (submissions as object[][]).push([...commandBuffers]);
@@ -48,7 +75,11 @@ describe('browser WebGPU command and queue ports', () => {
     await expect(submission.done).resolves.toEqual({ status: 'completed' });
     expect(encoderCount).toBe(1);
     expect(trace).toEqual([
-      'encoder.beginRenderPass', 'pass.setPipeline', 'pass.draw', 'pass.end', 'encoder.finish'
+      'encoder.beginRenderPass',
+      'pass.setPipeline',
+      'pass.draw',
+      'pass.end',
+      'encoder.finish'
     ]);
     expect(submissions).toEqual([[nativeCommandBuffer]]);
   });
@@ -71,32 +102,70 @@ async function createDevice(nativeDevice: object) {
     info: { description: 'Command GPU' },
     features: new Set<string>(),
     limits: { maxBufferSize: 4096 },
-    async requestDevice(): Promise<object> { return nativeDevice; }
+    async requestDevice(): Promise<object> {
+      return nativeDevice;
+    }
   };
-  const port = await requestBrowserWebGPUAdapter({
-    gpu: { async requestAdapter(): Promise<object> { return nativeAdapter; } },
-    getCanvasContext(): null { return null; }
-  }, {});
+  const port = await requestBrowserWebGPUAdapter(
+    {
+      gpu: {
+        async requestAdapter(): Promise<object> {
+          return nativeAdapter;
+        }
+      },
+      getCanvasContext(): null {
+        return null;
+      }
+    },
+    {}
+  );
   if (port === null) throw new Error('Expected adapter.');
   return new WebGPUAdapter(port).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
 }
 
 function createNativeDevice(overrides: Readonly<Record<string, unknown>> = {}): object {
-  const queue = overrides.queue ?? { submit(): void {}, async onSubmittedWorkDone(): Promise<void> {} };
+  const queue = overrides.queue ?? {
+    submit(): void {},
+    async onSubmittedWorkDone(): Promise<void> {}
+  };
   return {
     lost: new Promise(() => undefined),
     queue,
-    createBuffer(): object { return { size: 16, usage: 1, destroy(): void {} }; },
-    createTexture(): object { return { createView(): object { return {}; }, destroy(): void {} }; },
-    createShaderModule(): object { return {}; },
-    createRenderPipeline(): object { return {}; },
-    createCommandEncoder: overrides.createCommandEncoder ?? (() => ({
-      pushDebugGroup(): void {}, popDebugGroup(): void {},
-      beginRenderPass(): object { throw new Error('not used'); },
-      beginComputePass(): object { throw new Error('not used'); },
-      copyBufferToBuffer(): void {}, copyTextureToTexture(): void {},
-      finish(): object { return {}; }
-    })),
-    addEventListener(): void {}, removeEventListener(): void {}
+    createBuffer(): object {
+      return { size: 16, usage: 1, destroy(): void {} };
+    },
+    createTexture(): object {
+      return {
+        createView(): object {
+          return {};
+        },
+        destroy(): void {}
+      };
+    },
+    createShaderModule(): object {
+      return {};
+    },
+    createRenderPipeline(): object {
+      return {};
+    },
+    createCommandEncoder:
+      overrides.createCommandEncoder ??
+      (() => ({
+        pushDebugGroup(): void {},
+        popDebugGroup(): void {},
+        beginRenderPass(): object {
+          throw new Error('not used');
+        },
+        beginComputePass(): object {
+          throw new Error('not used');
+        },
+        copyBufferToBuffer(): void {},
+        copyTextureToTexture(): void {},
+        finish(): object {
+          return {};
+        }
+      })),
+    addEventListener(): void {},
+    removeEventListener(): void {}
   };
 }

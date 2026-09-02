@@ -15,12 +15,7 @@ export const Quat = Object.freeze({
       throw new Error('Cannot normalize a near-zero quaternion.');
     }
     const inverse = 1 / length;
-    return [
-      value[0] * inverse,
-      value[1] * inverse,
-      value[2] * inverse,
-      value[3] * inverse
-    ];
+    return [value[0] * inverse, value[1] * inverse, value[2] * inverse, value[3] * inverse];
   },
 
   fromAxisAngle(axis: Vec3, radians: number): Quaternion {
@@ -30,12 +25,7 @@ export const Quat = Object.freeze({
     }
     const half = radians * 0.5;
     const scale = Math.sin(half) / length;
-    return Quat.normalize([
-      axis[0] * scale,
-      axis[1] * scale,
-      axis[2] * scale,
-      Math.cos(half)
-    ]);
+    return Quat.normalize([axis[0] * scale, axis[1] * scale, axis[2] * scale, Math.cos(half)]);
   },
 
   fromEulerYXZ(euler: EulerYXZ): Quaternion {
@@ -71,11 +61,7 @@ export const Quat = Object.freeze({
     const singular = cosX <= SINGULAR_COSINE_EPSILON;
     const canonical: EulerYXZ = singular
       ? [x, wrapPi(Math.atan2(-matrix.m31, matrix.m11)), 0]
-      : [
-          x,
-          wrapPi(Math.atan2(matrix.m13, matrix.m33)),
-          wrapPi(Math.atan2(matrix.m21, matrix.m22))
-        ];
+      : [x, wrapPi(Math.atan2(matrix.m13, matrix.m33)), wrapPi(Math.atan2(matrix.m21, matrix.m22))];
     return nearestTo === undefined
       ? canonical
       : nearestEquivalentEuler(canonical, nearestTo, singular);
@@ -98,8 +84,7 @@ export const Quat = Object.freeze({
     }
     const from = Quat.normalize(start);
     let to = Quat.normalize(end);
-    let cosine =
-      from[0] * to[0] + from[1] * to[1] + from[2] * to[2] + from[3] * to[3];
+    let cosine = from[0] * to[0] + from[1] * to[1] + from[2] * to[2] + from[3] * to[3];
     if (cosine < 0) {
       cosine = -cosine;
       to = [-to[0], -to[1], -to[2], -to[3]];
@@ -148,7 +133,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
 }
 
 function wrapPi(value: number): number {
-  const wrapped = ((value + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
+  const wrapped = ((((value + Math.PI) % TWO_PI) + TWO_PI) % TWO_PI) - Math.PI;
   return wrapped === -Math.PI ? Math.PI : wrapped;
 }
 
@@ -160,8 +145,7 @@ function nearestEquivalentEuler(
   if (singular) {
     return nearestSingularEuler(canonical, reference);
   }
-  const alternateX =
-    canonical[0] >= 0 ? Math.PI - canonical[0] : -Math.PI - canonical[0];
+  const alternateX = canonical[0] >= 0 ? Math.PI - canonical[0] : -Math.PI - canonical[0];
   const candidates: readonly EulerYXZ[] = [
     canonical,
     [alternateX, canonical[1] + Math.PI, canonical[2] + Math.PI]
@@ -187,11 +171,7 @@ function nearestSingularEuler(canonical: EulerYXZ, reference: EulerYXZ): EulerYX
     ];
   }
   const sum = unwrapNear(invariant, reference[1] + reference[2]);
-  return [
-    x,
-    (reference[1] - reference[2] + sum) * 0.5,
-    (-reference[1] + reference[2] + sum) * 0.5
-  ];
+  return [x, (reference[1] - reference[2] + sum) * 0.5, (-reference[1] + reference[2] + sum) * 0.5];
 }
 
 function unwrapEulerNear(value: EulerYXZ, reference: EulerYXZ): EulerYXZ {

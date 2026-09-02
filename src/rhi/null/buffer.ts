@@ -1,6 +1,12 @@
 import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
 import type { NullDeviceOwner } from './resource';
-import type { GPUBufferDescriptor, GPUBufferUsageFlags, GPUMapModeFlags, RHIBuffer, RHIUploadData } from '../contracts';
+import type {
+  GPUBufferDescriptor,
+  GPUBufferUsageFlags,
+  GPUMapModeFlags,
+  RHIBuffer,
+  RHIUploadData
+} from '../contracts';
 
 export class NullBuffer extends NullResourceBase implements RHIBuffer {
   readonly kind = 'buffer';
@@ -39,7 +45,10 @@ export class NullBuffer extends NullResourceBase implements RHIBuffer {
     return Promise.resolve();
   }
 
-  getMappedRange(offset = this.mappedOffset, size = this.mappedSize - (offset - this.mappedOffset)): ArrayBuffer {
+  getMappedRange(
+    offset = this.mappedOffset,
+    size = this.mappedSize - (offset - this.mappedOffset)
+  ): ArrayBuffer {
     this.ensureLive();
     if (this.mappedRange === undefined) {
       throw new Error(`Buffer "${this.label ?? this.id}" is not mapped.`);
@@ -96,8 +105,16 @@ export class NullBuffer extends NullResourceBase implements RHIBuffer {
 }
 
 export function validateBufferRange(offset: number, size: number, bufferSize: number): void {
-  if (!Number.isInteger(offset) || !Number.isInteger(size) || offset < 0 || size < 0 || offset + size > bufferSize) {
-    throw new Error(`Buffer range ${offset}..${offset + size} is outside buffer size ${bufferSize}.`);
+  if (
+    !Number.isInteger(offset) ||
+    !Number.isInteger(size) ||
+    offset < 0 ||
+    size < 0 ||
+    offset + size > bufferSize
+  ) {
+    throw new Error(
+      `Buffer range ${offset}..${offset + size} is outside buffer size ${bufferSize}.`
+    );
   }
 }
 

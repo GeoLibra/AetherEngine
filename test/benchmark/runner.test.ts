@@ -68,8 +68,14 @@ describe('benchmark reporting and CLI', () => {
       seed: 42,
       createdAt: '2026-07-15T00:00:00.000Z',
       environment: {
-        node: 'v1', v8: 'v1', platform: 'darwin' as const, release: 'x',
-        architecture: 'arm64', cpu: 'test', logicalCpuCount: 1, totalMemoryBytes: 1
+        node: 'v1',
+        v8: 'v1',
+        platform: 'darwin' as const,
+        release: 'x',
+        architecture: 'arm64',
+        cpu: 'test',
+        logicalCpuCount: 1,
+        totalMemoryBytes: 1
       },
       repository: { commit: 'abc', dirty: false },
       results: []
@@ -83,13 +89,22 @@ describe('benchmark reporting and CLI', () => {
   });
 
   test('parses filters without accepting unknown flags', () => {
-    expect(parseCliOptions(['--profile', 'standard', '--scenario', 'dense-update', '--subject', 'aether-public']))
-      .toEqual({ profile: 'standard', scenario: 'dense-update', subject: 'aether-public' });
+    expect(
+      parseCliOptions([
+        '--profile',
+        'standard',
+        '--scenario',
+        'dense-update',
+        '--subject',
+        'aether-public'
+      ])
+    ).toEqual({ profile: 'standard', scenario: 'dense-update', subject: 'aether-public' });
     expect(() => parseCliOptions(['--fast'])).toThrow('Unknown benchmark option');
   });
 });
 
 test('surfaces child process failures with exit details', async () => {
-  await expect(runCommand(process.execPath, ['-e', 'process.stderr.write("boom"); process.exit(7)']))
-    .rejects.toThrow('exit code 7');
+  await expect(
+    runCommand(process.execPath, ['-e', 'process.stderr.write("boom"); process.exit(7)'])
+  ).rejects.toThrow('exit code 7');
 });

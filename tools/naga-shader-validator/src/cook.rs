@@ -3,8 +3,8 @@ use crate::{
         error as cook_error, parse_error, BACKEND_EMISSION_FAILED, WGSL_VALIDATION_FAILED,
     },
     protocol::{
-        CookBackendModules, CookDiagnostic, CookRequest, CookResult, CookSourceProvenance,
-        CookToolchain,
+        CookBackendModules, CookBindingReference, CookDiagnostic, CookGlslModule,
+        CookGlslProgramBinding, CookRequest, CookResult, CookSourceProvenance, CookToolchain,
     },
     reflection::{reflect_buffer_layouts, reflect_module, reflect_stage_io},
     version::{
@@ -43,7 +43,7 @@ pub fn emit_glsl(
     info: &ModuleInfo,
     stage: ShaderStage,
     entry_point: &str,
-) -> Result<String, String> {
+) -> Result<(String, glsl::ReflectionInfo), String> {
     let mut output = String::new();
     let options = glsl::Options {
         version: glsl::Version::new_gles(300),
@@ -54,7 +54,7 @@ pub fn emit_glsl(
         entry_point: entry_point.to_owned(),
         multiview: None,
     };
-    glsl::Writer::new(
+    let reflection = glsl::Writer::new(
         &mut output,
         module,
         info,
@@ -65,7 +65,7 @@ pub fn emit_glsl(
     .map_err(|error| format!("GLSL writer creation failed: {error}"))?
     .write()
     .map_err(|error| format!("GLSL emission failed: {error}"))?;
-    Ok(output)
+    Ok((output, reflection))
 }
 
 #[allow(clippy::result_large_err)]
@@ -116,7 +116,7 @@ pub fn cook(request: CookRequest) -> Result<CookResult, CookDiagnostic> {
             "fragment"
         };
         let key = format!("{stage_name}:{}", entry.name);
-        let output = emit_glsl(&module, &info, stage, &entry.name).map_err(|_| {
+        let (source, reflection) = emit_glsl(&module, &info, stage, &entry.name).map_err(|_| {
             let mut diagnostic = cook_error(
                 BACKEND_EMISSION_FAILED,
                 "failed to emit GLSL ES 300 backend module",
@@ -125,7 +125,50 @@ pub fn cook(request: CookRequest) -> Result<CookResult, CookDiagnostic> {
             diagnostic.backend_stage = Some(key.clone());
             diagnostic
         })?;
-        glsl_es300.insert(key, output);
+        let mut bindings = Vec::new();
+        for (handle, name) in reflection.uniforms {
+            let Some(resource) = module.global_variables[handle].binding.as_ref() else {
+                continue;
+            };
+            bindings.push(CookGlslProgramBinding::UniformBuffer {
+                name,
+                resource: CookBindingReference {
+                    group: resource.group,
+                    binding: resource.binding,
+                },
+            });
+        }
+        for (name, mapping) in reflection.texture_mapping {
+            let texture = module.global_variables[mapping.texture]
+                .binding
+                .as_ref()
+                .ok_or_else(|| {
+                    let mut diagnostic = cook_error(
+                        BACKEND_EMISSION_FAILED,
+                        "GLSL texture mapping has no canonical resource binding",
+                        &request.source_uri,
+                    );
+                    diagnostic.backend_stage = Some(key.clone());
+                    diagnostic
+                })?;
+            let sampler = mapping
+                .sampler
+                .and_then(|handle| module.global_variables[handle].binding.as_ref())
+                .map(|resource| CookBindingReference {
+                    group: resource.group,
+                    binding: resource.binding,
+                });
+            bindings.push(CookGlslProgramBinding::CombinedSampler {
+                name,
+                texture: CookBindingReference {
+                    group: texture.group,
+                    binding: texture.binding,
+                },
+                sampler,
+            });
+        }
+        bindings.sort_by(|left, right| program_binding_name(left).cmp(program_binding_name(right)));
+        glsl_es300.insert(key, CookGlslModule { source, bindings });
     }
 
     let normalized_bytes = request.source.as_bytes();
@@ -155,4 +198,11 @@ pub fn cook(request: CookRequest) -> Result<CookResult, CookDiagnostic> {
             glsl_es300,
         },
     })
+}
+
+fn program_binding_name(binding: &CookGlslProgramBinding) -> &str {
+    match binding {
+        CookGlslProgramBinding::UniformBuffer { name, .. }
+        | CookGlslProgramBinding::CombinedSampler { name, .. } => name,
+    }
 }

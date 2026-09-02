@@ -7,6 +7,7 @@ import {
   STANDARD_LIT_WEBGL2_TRANSLATOR,
   createCookedShaderBindingManifest
 } from '../../src';
+import { createStandardLitWebGL2Translator } from '../../src/shader/builtins/standard-lit';
 
 describe('standard-lit built-in shader', () => {
   test('publishes a native-cooked WGSL artifact', () => {
@@ -65,19 +66,39 @@ describe('standard-lit built-in shader', () => {
         { path: 'padding', offset: 76 }
       ]
     });
+    expect(manifest.buffers.find(({ name }) => name === 'materialData')).toMatchObject({
+      byteSize: 32,
+      fields: [
+        { path: 'baseColor', offset: 0 },
+        { path: 'metallic', offset: 16 },
+        { path: 'roughness', offset: 20 },
+        { path: 'padding0', offset: 24 },
+        { path: 'padding1', offset: 28 }
+      ]
+    });
+    expect(manifest.buffers.find(({ name }) => name === 'lightData')).toMatchObject({
+      byteSize: 32,
+      fields: [
+        { path: 'direction', offset: 0 },
+        { path: 'illuminance', offset: 12 },
+        { path: 'color', offset: 16 },
+        { path: 'padding', offset: 28 }
+      ]
+    });
   });
 
   test('contains the authored GGX, Smith, and Schlick PBR terms', () => {
     const wgsl = STANDARD_LIT_SHADER_ARTIFACT.modules.wgsl;
     const fragment = STANDARD_LIT_SHADER_ARTIFACT.modules.glslEs300['fragment:standardLitFragment'];
     expect(wgsl).toContain('fn distributionGgx');
+    expect(wgsl).toContain('fn geometrySchlickGgxDirect');
     expect(wgsl).toContain('fn geometrySmith');
     expect(wgsl).toContain('fn fresnelSchlick');
     expect(wgsl).toContain('materialData.metallic');
     expect(wgsl).toContain('materialData.roughness');
     expect(wgsl).toContain('objectData.normalWorld');
-    expect(fragment).toContain('_group_2_binding_0_fs.metallic');
-    expect(fragment).not.toMatch(/@vertex|@fragment|\bfn\b/);
+    expect(fragment?.source).toContain('_group_2_binding_0_fs.metallic');
+    expect(fragment?.source).not.toMatch(/@vertex|@fragment|\bfn\b/);
   });
 
   test('uses Naga GLSL block names and applies clip conversion exactly once', () => {
@@ -93,6 +114,39 @@ describe('standard-lit built-in shader', () => {
     expect(translated.source).not.toMatch(/^#version/m);
     expect(translated.source.match(/gl_Position\.yz =/g)).toHaveLength(1);
     expect(translated.source).not.toContain('gl_Position.z = 2.0 * gl_Position.z - gl_Position.w;');
+    expect(translated.programBindings).toEqual([
+      { kind: 'uniform-buffer', name: 'ObjectData_block_0Vertex', slot: 0 },
+      { kind: 'uniform-buffer', name: 'ViewData_block_1Vertex', slot: 1 }
+    ]);
+  });
+
+  test('uses cooked binding metadata without inspecting GLSL declarations', () => {
+    const vertexModule =
+      STANDARD_LIT_SHADER_ARTIFACT.modules.glslEs300['vertex:standardLitVertex']!;
+    const translator = createStandardLitWebGL2Translator({
+      ...STANDARD_LIT_SHADER_ARTIFACT,
+      modules: {
+        ...STANDARD_LIT_SHADER_ARTIFACT.modules,
+        glslEs300: {
+          ...STANDARD_LIT_SHADER_ARTIFACT.modules.glslEs300,
+          'vertex:standardLitVertex': {
+            ...vertexModule,
+            source: '#version 300 es\nvoid main() {}'
+          }
+        }
+      }
+    });
+
+    const translated = translator.translate({
+      wgsl: STANDARD_LIT_SHADER_MODULE,
+      stage: 'vertex',
+      entryPoint: 'standardLitVertex',
+      constants: {},
+      capabilities: [],
+      approvedExtensions: [],
+      clipDepthMode: 'vertex-remap'
+    });
+
     expect(translated.programBindings).toEqual([
       { kind: 'uniform-buffer', name: 'ObjectData_block_0Vertex', slot: 0 },
       { kind: 'uniform-buffer', name: 'ViewData_block_1Vertex', slot: 1 }

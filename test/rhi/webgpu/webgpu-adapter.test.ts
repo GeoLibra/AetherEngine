@@ -17,16 +17,19 @@ class TestNativeAdapter implements WebGPUNativeAdapterPort {
   readonly features = new Set<string>(['timestamp-query']);
   readonly limits = Object.freeze({ maxBufferSize: 8192, maxBindGroups: 4 });
   readonly formats = new Map([
-    ['bgra8unorm', Object.freeze({
-      sample: true,
-      filter: true,
-      render: true,
-      blend: true,
-      storage: false,
-      copySrc: true,
-      copyDst: true,
-      sampleCounts: Object.freeze([1, 4])
-    })]
+    [
+      'bgra8unorm',
+      Object.freeze({
+        sample: true,
+        filter: true,
+        render: true,
+        blend: true,
+        storage: false,
+        copySrc: true,
+        copyDst: true,
+        sampleCounts: Object.freeze([1, 4])
+      })
+    ]
   ]);
   readonly requests: WebGPUNativeDeviceRequest[] = [];
   failure: unknown;
@@ -61,14 +64,20 @@ describe('WebGPUAdapter', () => {
     });
     expect(adapter.capabilities.features.get('compute')).toEqual({ status: 'native' });
     expect(adapter.capabilities.features.get('timestamp-query')).toEqual({ status: 'native' });
-    expect(adapter.capabilities.queues.map((queue) => queue.role)).toEqual(['graphics', 'compute', 'transfer']);
+    expect(adapter.capabilities.queues.map((queue) => queue.role)).toEqual([
+      'graphics',
+      'compute',
+      'transfer'
+    ]);
     expect(Object.isFrozen(adapter.capabilities)).toBe(true);
     expect('set' in adapter.capabilities.features).toBe(false);
-    expect(native.requests).toEqual([{
-      label: 'main-webgpu',
-      requiredFeatures: ['timestamp-query'],
-      requiredLimits: { maxBufferSize: 4096 }
-    }]);
+    expect(native.requests).toEqual([
+      {
+        label: 'main-webgpu',
+        requiredFeatures: ['timestamp-query'],
+        requiredLimits: { maxBufferSize: 4096 }
+      }
+    ]);
     expect(Object.isFrozen(native.requests[0])).toBe(true);
     expect(device.capabilities.features.get('timestamp-query')).toEqual({ status: 'native' });
   });

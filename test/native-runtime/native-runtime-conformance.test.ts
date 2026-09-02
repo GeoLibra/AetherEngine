@@ -25,12 +25,18 @@ class Runtime implements JsRuntimePort {
 
 class Threads implements NativeThreadPort {
   readonly jsThread = 'js';
-  currentThread(): string { return this.jsThread; }
-  dispatchToJs(operation: () => void): void { operation(); }
+  currentThread(): string {
+    return this.jsThread;
+  }
+  dispatchToJs(operation: () => void): void {
+    operation();
+  }
 }
 
 class Frames implements NativeFramePort {
-  request(): number { return 1; }
+  request(): number {
+    return 1;
+  }
   cancel(): void {}
 }
 
@@ -56,7 +62,9 @@ class ConformancePlatform implements NativePlatformPort {
     };
   }
   pollEvents(): void {}
-  destroy(): void { this.destroys += 1; }
+  destroy(): void {
+    this.destroys += 1;
+  }
 }
 
 const surface = (): SurfaceTarget => Object.freeze({ id: Symbol('native'), kind: 'native-window' });
@@ -68,7 +76,9 @@ describe('native runtime structural conformance', () => {
     const sensors = createNativeSensorService({
       subscribe: () => {
         sensorListeners += 1;
-        return () => { sensorListeners -= 1; };
+        return () => {
+          sensorListeners -= 1;
+        };
       }
     });
 
@@ -83,7 +93,9 @@ describe('native runtime structural conformance', () => {
 
       const platform = new ConformancePlatform();
       const runtime = new NativeRuntimeController({
-        ownership: 'embedded', threads: new Threads(), runtime: new Runtime()
+        ownership: 'embedded',
+        threads: new Threads(),
+        runtime: new Runtime()
       });
       const host = new NativeHost(platform, runtime);
       await host.createWindow({ logicalSize: [16, 16], surfaceTarget: surface() });
@@ -99,7 +111,9 @@ describe('native runtime structural conformance', () => {
 
   test('keeps lifecycle and cancellation cleanup single-terminal across resume boundaries', () => {
     const lifecycle = new NativeLifecycleCoordinator({
-      simulation: 'pause', render: 'pause', audio: 'pause'
+      simulation: 'pause',
+      render: 'pause',
+      audio: 'pause'
     });
     const events: string[] = [];
     const unsubscribe = lifecycle.subscribe((event) => events.push(event.kind));
@@ -113,7 +127,9 @@ describe('native runtime structural conformance', () => {
 
     const cancellation = new NativeCancellationSource();
     let cancellations = 0;
-    cancellation.token.subscribe(() => { cancellations += 1; });
+    cancellation.token.subscribe(() => {
+      cancellations += 1;
+    });
     expect(cancellation.cancel()).toBe(true);
     expect(cancellation.cancel()).toBe(false);
     expect(cancellations).toBe(1);

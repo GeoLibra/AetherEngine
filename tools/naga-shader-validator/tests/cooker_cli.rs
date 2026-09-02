@@ -20,6 +20,10 @@ fn multi_entry_fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("corpus/multi-entry.wgsl")
 }
 
+fn bound_resources_fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("corpus/bound-resources.wgsl")
+}
+
 fn successful_cook(path: &Path, source_uri: &str) -> std::process::Output {
     let output = run(&["cook", path.to_str().unwrap(), "--source-uri", source_uri]);
     assert!(
@@ -64,9 +68,9 @@ fn valid_cook_request_returns_complete_versioned_artifact() {
 
     assert!(output.status.success());
     let result: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(result["schemaVersion"], 1);
+    assert_eq!(result["schemaVersion"], 2);
     assert_eq!(result["shaderManifestSchemaVersion"], 1);
-    assert_eq!(result["shaderModuleSchemaVersion"], 1);
+    assert_eq!(result["shaderModuleSchemaVersion"], 2);
     assert_eq!(result["sourceKind"], "wgsl");
     assert_eq!(result["toolchain"]["cookerId"], "aether-native-wgsl-cooker");
     assert_eq!(result["toolchain"]["cookerVersion"], "0.0.0");
@@ -101,10 +105,39 @@ fn multi_entry_cook_preserves_normalized_wgsl_and_emits_sorted_graphics_modules(
     );
     assert!(!modules.contains_key("compute:computeMain"));
     for module in modules.values() {
-        let module = module.as_str().unwrap();
+        let module = module["source"].as_str().unwrap();
         assert!(module.starts_with("#version 300 es"));
         assert!(module.contains("void main()"));
     }
+}
+
+#[test]
+fn cooked_glsl_modules_include_naga_program_binding_metadata() {
+    let output = successful_cook(
+        &bound_resources_fixture(),
+        "asset://shader/bound-resources.wgsl",
+    );
+    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert_eq!(result["schemaVersion"], 2);
+    assert_eq!(result["shaderModuleSchemaVersion"], 2);
+    assert_eq!(
+        result["modules"]["glslEs300"]["vertex:vertexMain"]["bindings"],
+        serde_json::json!([{
+            "kind": "uniform-buffer",
+            "name": "SceneUniforms_block_0Vertex",
+            "resource": { "group": 0, "binding": 0 }
+        }])
+    );
+    assert_eq!(
+        result["modules"]["glslEs300"]["fragment:fragmentMain"]["bindings"],
+        serde_json::json!([{
+            "kind": "combined-sampler",
+            "name": "_group_1_binding_0_fs",
+            "texture": { "group": 1, "binding": 0 },
+            "sampler": { "group": 1, "binding": 1 }
+        }])
+    );
 }
 
 #[test]

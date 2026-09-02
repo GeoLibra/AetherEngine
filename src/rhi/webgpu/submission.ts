@@ -12,7 +12,9 @@ export class WebGPUSubmission implements RHISubmission {
     });
   }
 
-  get status(): RHISubmissionStatus { return this.currentStatus; }
+  get status(): RHISubmissionStatus {
+    return this.currentStatus;
+  }
 
   settle(status: Exclude<RHISubmissionStatus, 'pending'>, error?: unknown): void {
     if (this.currentStatus !== 'pending') return;

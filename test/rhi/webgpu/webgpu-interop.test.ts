@@ -21,14 +21,21 @@ interface Deferred<T> {
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
   return { promise, resolve };
 }
 
 class NativeBuffer implements WebGPUNativeResourcePort {
   destroyed = 0;
-  constructor(readonly size: number, readonly usage: number) {}
-  destroy(): void { this.destroyed += 1; }
+  constructor(
+    readonly size: number,
+    readonly usage: number
+  ) {}
+  destroy(): void {
+    this.destroyed += 1;
+  }
 }
 
 class NativeTexture implements WebGPUNativeTexturePort {
@@ -43,8 +50,12 @@ class NativeTexture implements WebGPUNativeTexturePort {
     readonly mipLevelCount = 1,
     readonly sampleCount = 1
   ) {}
-  createView(): WebGPUNativeResourcePort { return {}; }
-  destroy(): void { this.destroyed += 1; }
+  createView(): WebGPUNativeResourcePort {
+    return {};
+  }
+  destroy(): void {
+    this.destroyed += 1;
+  }
 }
 
 class EmptyRenderPass implements WebGPUNativeRenderPassPort {
@@ -75,11 +86,17 @@ class EmptyComputePass implements WebGPUNativeComputePassPort {
 class NativeEncoder implements WebGPUNativeCommandEncoderPort {
   pushDebugGroup(): void {}
   popDebugGroup(): void {}
-  beginRenderPass(): WebGPUNativeRenderPassPort { return new EmptyRenderPass(); }
-  beginComputePass(): WebGPUNativeComputePassPort { return new EmptyComputePass(); }
+  beginRenderPass(): WebGPUNativeRenderPassPort {
+    return new EmptyRenderPass();
+  }
+  beginComputePass(): WebGPUNativeComputePassPort {
+    return new EmptyComputePass();
+  }
   copyBufferToBuffer(): void {}
   copyTextureToTexture(): void {}
-  finish(): WebGPUNativeResourcePort { return {}; }
+  finish(): WebGPUNativeResourcePort {
+    return {};
+  }
 }
 
 class NativeQueue {
@@ -110,7 +127,9 @@ class NativeDevice implements WebGPUNativeDevicePort {
     this.encoders.push(encoder);
     return encoder;
   }
-  lose(info: WebGPUNativeDeviceLostInfo): void { this.loss.resolve(info); }
+  lose(info: WebGPUNativeDeviceLostInfo): void {
+    this.loss.resolve(info);
+  }
 }
 
 class NativeAdapter implements WebGPUNativeAdapterPort {
@@ -119,7 +138,9 @@ class NativeAdapter implements WebGPUNativeAdapterPort {
   readonly limits = {};
   readonly formats = new Map();
   readonly device = new NativeDevice();
-  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> { return this.device; }
+  async requestDevice(_request: WebGPUNativeDeviceRequest): Promise<WebGPUNativeDevicePort> {
+    return this.device;
+  }
 }
 
 async function createDevice() {
@@ -160,13 +181,20 @@ describe('WebGPU controlled native interop', () => {
     const borrowedTextureNative = new NativeTexture(8, 4, 1, 'rgba8unorm', 16);
     const adoptedTextureNative = new NativeTexture(16, 8, 1, 'rgba8unorm', 16);
 
-    const borrowedBuffer = scope.importBorrowed('buffer', borrowedBufferNative, { size: 64, usage: 8 });
+    const borrowedBuffer = scope.importBorrowed('buffer', borrowedBufferNative, {
+      size: 64,
+      usage: 8
+    });
     const adoptedBuffer = scope.adopt('buffer', adoptedBufferNative, { size: 128, usage: 8 });
     const borrowedTexture = scope.importBorrowed('texture', borrowedTextureNative, {
-      size: [8, 4], format: 'rgba8unorm', usage: 16
+      size: [8, 4],
+      format: 'rgba8unorm',
+      usage: 16
     });
     const adoptedTexture = scope.adopt('texture', adoptedTextureNative, {
-      size: [16, 8], format: 'rgba8unorm', usage: 16
+      size: [16, 8],
+      format: 'rgba8unorm',
+      usage: 16
     });
 
     expect(scope.unwrapResource('buffer', borrowedBuffer)).toBe(borrowedBufferNative);
@@ -196,14 +224,22 @@ describe('WebGPU controlled native interop', () => {
     expect(() => first.importBorrowed('buffer', native, { size: 64, usage: 4 })).toThrow(
       'Native buffer usage 8 does not match descriptor usage 4.'
     );
-    expect(() => first.importBorrowed('buffer', native, {
-      size: 64, usage: 8, mappedAtCreation: true
-    })).toThrow('Imported buffer descriptor cannot set mappedAtCreation.');
+    expect(() =>
+      first.importBorrowed('buffer', native, {
+        size: 64,
+        usage: 8,
+        mappedAtCreation: true
+      })
+    ).toThrow('Imported buffer descriptor cannot set mappedAtCreation.');
 
     const multisampled = new NativeTexture(8, 8, 1, 'rgba8unorm', 16, '2d', 1, 4);
-    expect(() => first.importBorrowed('texture', multisampled, {
-      size: [8, 8], format: 'rgba8unorm', usage: 16
-    })).toThrow('Native texture sample count 4 does not match descriptor sample count 1.');
+    expect(() =>
+      first.importBorrowed('texture', multisampled, {
+        size: [8, 8],
+        format: 'rgba8unorm',
+        usage: 16
+      })
+    ).toThrow('Native texture sample count 4 does not match descriptor sample count 1.');
 
     first.importBorrowed('buffer', native, { size: 64, usage: 8 });
     expect(() => second.adopt('buffer', native, { size: 64, usage: 8 })).toThrow(
@@ -254,13 +290,18 @@ describe('WebGPU controlled native interop', () => {
     );
     native.queue.complete(0);
     await submission.done;
-    expect(() => second.importBorrowed('buffer', importedNative, { size: 64, usage: 8 })).not.toThrow();
+    expect(() =>
+      second.importBorrowed('buffer', importedNative, { size: 64, usage: 8 })
+    ).not.toThrow();
   });
 
   test('invalidates scopes and imported handles when the device generation is lost', async () => {
     const { native, interop } = await createDevice();
     const scope = interop.createScope('loss-owner');
-    const imported = scope.importBorrowed('buffer', new NativeBuffer(64, 8), { size: 64, usage: 8 });
+    const imported = scope.importBorrowed('buffer', new NativeBuffer(64, 8), {
+      size: 64,
+      usage: 8
+    });
 
     native.lose({ reason: 'context-lost', message: 'GPU reset' });
     await native.lost;
@@ -283,6 +324,8 @@ describe('WebGPU controlled native interop', () => {
     expect(scope.unwrapEncoder(encoder)).toBe(first.native.encoders[0]);
     expect(() => scope.unwrapEncoder(foreign)).toThrow('belongs to a different WebGPUDevice.');
     encoder.finish();
-    expect(() => scope.unwrapEncoder(encoder)).toThrow('WebGPU command encoder has already finished.');
+    expect(() => scope.unwrapEncoder(encoder)).toThrow(
+      'WebGPU command encoder has already finished.'
+    );
   });
 });

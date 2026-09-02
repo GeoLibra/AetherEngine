@@ -3,11 +3,7 @@ import type { GPUTextureFormat } from './webgpu';
 export type RHIBackend = 'webgpu' | 'webgl2' | 'native' | 'null';
 
 export type RHIFeature =
-  | 'compute'
-  | 'storage-buffer'
-  | 'storage-texture'
-  | 'indirect-draw'
-  | 'timestamp-query';
+  'compute' | 'storage-buffer' | 'storage-texture' | 'indirect-draw' | 'timestamp-query';
 
 export type SupportStatus = 'native' | 'emulated' | 'unsupported';
 

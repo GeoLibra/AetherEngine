@@ -54,6 +54,8 @@ export function assertResourceOwnedBy(resource: RHIResource, owner: NullDeviceOw
     throw new Error(`Resource "${label}" was not created by NullDevice.`);
   }
   if (resource.owner !== owner) {
-    throw new Error(`Resource "${resource.label ?? resource.kind}" belongs to a different NullDevice.`);
+    throw new Error(
+      `Resource "${resource.label ?? resource.kind}" belongs to a different NullDevice.`
+    );
   }
 }

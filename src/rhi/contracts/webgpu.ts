@@ -10,12 +10,9 @@ export type GPUTextureFormat = string;
 export type GPUTextureAspect = 'all' | 'stencil-only' | 'depth-only';
 export type GPUIndexFormat = 'uint16' | 'uint32';
 export type GPUPrimitiveTopology =
-  | 'point-list'
-  | 'line-list'
-  | 'line-strip'
-  | 'triangle-list'
-  | 'triangle-strip';
-export type GPUColor = readonly [number, number, number, number] | { r: number; g: number; b: number; a: number };
+  'point-list' | 'line-list' | 'line-strip' | 'triangle-list' | 'triangle-strip';
+export type GPUColor =
+  readonly [number, number, number, number] | { r: number; g: number; b: number; a: number };
 export type GPUExtent3D =
   | number
   | readonly [GPUIntegerCoordinate, GPUIntegerCoordinate?, GPUIntegerCoordinate?]
@@ -75,7 +72,15 @@ export interface GPUSamplerDescriptor {
   mipmapFilter?: 'nearest' | 'linear';
   lodMinClamp?: number;
   lodMaxClamp?: number;
-  compare?: 'never' | 'less' | 'equal' | 'less-equal' | 'greater' | 'not-equal' | 'greater-equal' | 'always';
+  compare?:
+    | 'never'
+    | 'less'
+    | 'equal'
+    | 'less-equal'
+    | 'greater'
+    | 'not-equal'
+    | 'greater-equal'
+    | 'always';
   maxAnisotropy?: number;
 }
 

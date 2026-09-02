@@ -15,31 +15,54 @@ class Handle implements WebGPUNativeResourcePort {}
 
 class Encoder implements WebGPUNativeCommandEncoderPort {
   readonly calls: string[] = [];
-  pushDebugGroup(): void { this.calls.push('push'); }
-  popDebugGroup(): void { this.calls.push('pop'); }
-  beginRenderPass(): never { throw new Error('unused'); }
-  beginComputePass(): never { throw new Error('unused'); }
-  copyBufferToBuffer(): void { this.calls.push('copy'); }
-  copyTextureToTexture(): void { this.calls.push('copy-texture'); }
-  finish(): WebGPUNativeResourcePort { this.calls.push('finish'); return new Handle(); }
+  pushDebugGroup(): void {
+    this.calls.push('push');
+  }
+  popDebugGroup(): void {
+    this.calls.push('pop');
+  }
+  beginRenderPass(): never {
+    throw new Error('unused');
+  }
+  beginComputePass(): never {
+    throw new Error('unused');
+  }
+  copyBufferToBuffer(): void {
+    this.calls.push('copy');
+  }
+  copyTextureToTexture(): void {
+    this.calls.push('copy-texture');
+  }
+  finish(): WebGPUNativeResourcePort {
+    this.calls.push('finish');
+    return new Handle();
+  }
 }
 
 class DevicePort implements WebGPUNativeDevicePort {
   private resolveLost!: (info: WebGPUNativeDeviceLostInfo) => void;
-  readonly lost = new Promise<WebGPUNativeDeviceLostInfo>((resolve) => { this.resolveLost = resolve; });
+  readonly lost = new Promise<WebGPUNativeDeviceLostInfo>((resolve) => {
+    this.resolveLost = resolve;
+  });
   readonly encoders: Encoder[] = [];
   submits = 0;
   readonly queue = {
-    submit: () => { this.submits += 1; },
+    submit: () => {
+      this.submits += 1;
+    },
     onSubmittedWorkDone: async () => undefined
   };
-  createBuffer(): WebGPUNativeResourcePort { return new Handle(); }
+  createBuffer(): WebGPUNativeResourcePort {
+    return new Handle();
+  }
   createCommandEncoder(): WebGPUNativeCommandEncoderPort {
     const encoder = new Encoder();
     this.encoders.push(encoder);
     return encoder;
   }
-  lose(info: WebGPUNativeDeviceLostInfo): void { this.resolveLost(info); }
+  lose(info: WebGPUNativeDeviceLostInfo): void {
+    this.resolveLost(info);
+  }
 }
 
 class DawnPort implements NativeDawnAdapterPort {
@@ -65,21 +88,29 @@ describe('NativeDawnAdapter', () => {
     const port = new DawnPort();
     const adapter = new NativeDawnAdapter(port);
     const device = await adapter.requestDevice({
-      requiredFeatures: ['compute'], optionalFeatures: ['timestamp-query'],
-      requiredLimits: { maxBufferSize: 4096 }, label: 'native-main'
+      requiredFeatures: ['compute'],
+      optionalFeatures: ['timestamp-query'],
+      requiredLimits: { maxBufferSize: 4096 },
+      label: 'native-main'
     });
 
     expect(adapter.info).toEqual({
-      name: 'Test Dawn', backend: 'native', vendor: 'Aether', architecture: 'fake'
+      name: 'Test Dawn',
+      backend: 'native',
+      vendor: 'Aether',
+      architecture: 'fake'
     });
     expect(adapter.facts).toEqual({ dawnVersion: '1.2.3', nativeBackend: 'metal' });
     expect(Object.isFrozen(adapter.facts)).toBe(true);
     expect(adapter.capabilities.backend).toBe('native');
     expect(device.capabilities.backend).toBe('native');
-    expect(port.requests).toEqual([{
-      label: 'native-main', requiredFeatures: ['timestamp-query'],
-      requiredLimits: { maxBufferSize: 4096 }
-    }]);
+    expect(port.requests).toEqual([
+      {
+        label: 'native-main',
+        requiredFeatures: ['timestamp-query'],
+        requiredLimits: { maxBufferSize: 4096 }
+      }
+    ]);
   });
 
   test('reports missing Dawn capabilities before native device creation', async () => {
@@ -87,15 +118,18 @@ describe('NativeDawnAdapter', () => {
     port.features.delete('timestamp-query');
     const adapter = new NativeDawnAdapter(port);
     const result = adapter.requestDevice({
-      requiredFeatures: ['timestamp-query'], optionalFeatures: [],
+      requiredFeatures: ['timestamp-query'],
+      optionalFeatures: [],
       requiredLimits: { maxBufferSize: 9000 }
     });
 
     await expect(result).rejects.toBeInstanceOf(RHIDeviceRequestError);
-    await expect(result).rejects.toMatchObject({ missing: [
-      { kind: 'feature', feature: 'timestamp-query' },
-      { kind: 'limit', limit: 'maxBufferSize', minimum: 9000, actual: 8192 }
-    ] });
+    await expect(result).rejects.toMatchObject({
+      missing: [
+        { kind: 'feature', feature: 'timestamp-query' },
+        { kind: 'limit', limit: 'maxBufferSize', minimum: 9000, actual: 8192 }
+      ]
+    });
     expect(port.requests).toEqual([]);
   });
 
@@ -117,7 +151,9 @@ describe('NativeDawnAdapter', () => {
     expect(second.generation).toBeGreaterThan(first.generation);
     port.devices[0]!.lose({ reason: 'context-lost', message: 'simulated' });
     await expect(first.lost).resolves.toMatchObject({
-      reason: 'context-lost', message: 'simulated', generation: first.generation
+      reason: 'context-lost',
+      message: 'simulated',
+      generation: first.generation
     });
     expect(first.state).toBe('lost');
   });

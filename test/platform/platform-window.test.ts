@@ -79,8 +79,6 @@ describe('PlatformWindow', () => {
     expect(window.state).toBe('closed');
     expect(window.renderable).toBe(false);
     expect(window.commitFrameBoundary()).toBe(false);
-    expect(() => window.queueMetrics({ visible: true })).toThrow(
-      'Cannot update closed window 1.'
-    );
+    expect(() => window.queueMetrics({ visible: true })).toThrow('Cannot update closed window 1.');
   });
 });

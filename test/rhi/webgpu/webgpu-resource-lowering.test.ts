@@ -14,13 +14,20 @@ class NativeResource implements WebGPUNativeResourcePort {
   mappedRangeRequests = 0;
   unmaps = 0;
   mapResult: Promise<void> = Promise.resolve();
-  destroy(): void { this.destroyed += 1; }
-  mapAsync(): Promise<void> { this.mapRequests += 1; return this.mapResult; }
+  destroy(): void {
+    this.destroyed += 1;
+  }
+  mapAsync(): Promise<void> {
+    this.mapRequests += 1;
+    return this.mapResult;
+  }
   getMappedRange(_offset: number, size: number): ArrayBuffer {
     this.mappedRangeRequests += 1;
     return new ArrayBuffer(size);
   }
-  unmap(): void { this.unmaps += 1; }
+  unmap(): void {
+    this.unmaps += 1;
+  }
 }
 
 class NativeTexture extends NativeResource implements WebGPUNativeTexturePort {
@@ -91,7 +98,10 @@ class NativeAdapter implements WebGPUNativeAdapterPort {
 }
 
 async function createDevice(adapter = new NativeAdapter()) {
-  const device = await new WebGPUAdapter(adapter).requestDevice({ requiredFeatures: [], optionalFeatures: [] });
+  const device = await new WebGPUAdapter(adapter).requestDevice({
+    requiredFeatures: [],
+    optionalFeatures: []
+  });
   const native = adapter.devices[0];
   if (native === undefined) throw new Error('Expected native device.');
   return { device, native };
@@ -115,8 +125,17 @@ describe('WebGPU resource lowering', () => {
     device.createSampler({ label: 'linear', magFilter: 'linear' });
     device.createShaderModule({ label: 'shader', code: '@vertex fn main() {}' });
 
-    expect(native.calls.map((call) => call.operation)).toEqual(['buffer', 'texture', 'sampler', 'shader']);
-    expect(native.calls[1]?.descriptor.size).toEqual({ width: 8, height: 4, depthOrArrayLayers: 1 });
+    expect(native.calls.map((call) => call.operation)).toEqual([
+      'buffer',
+      'texture',
+      'sampler',
+      'shader'
+    ]);
+    expect(native.calls[1]?.descriptor.size).toEqual({
+      width: 8,
+      height: 4,
+      depthOrArrayLayers: 1
+    });
     expect(Object.isFrozen(native.calls[1]?.descriptor)).toBe(true);
     expect(texture.width).toBe(8);
     expect(view.texture).toBe(texture);
@@ -128,7 +147,9 @@ describe('WebGPU resource lowering', () => {
   test('lowers RHI handle-bearing binding and pipeline descriptors', async () => {
     const { device, native } = await createDevice();
     const buffer = device.createBuffer({ size: 64, usage: 1 });
-    const layout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: 1, buffer: {} }] });
+    const layout = device.createBindGroupLayout({
+      entries: [{ binding: 0, visibility: 1, buffer: {} }]
+    });
     const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [layout] });
     device.createBindGroup({ layout, entries: [{ binding: 0, resource: { buffer } }] });
     const shader = device.createShaderModule({ code: '@vertex fn main() {}' });
@@ -141,7 +162,12 @@ describe('WebGPU resource lowering', () => {
     primitive.topology = 'line-list';
 
     expect(native.calls.map((call) => call.operation)).toEqual([
-      'buffer', 'bind-group-layout', 'pipeline-layout', 'bind-group', 'shader', 'render-pipeline'
+      'buffer',
+      'bind-group-layout',
+      'pipeline-layout',
+      'bind-group',
+      'shader',
+      'render-pipeline'
     ]);
     expect(native.calls[3]?.descriptor.entries).not.toEqual([{ binding: 0, resource: { buffer } }]);
     expect(pipeline.topology).toBe('triangle-list');
@@ -165,7 +191,9 @@ describe('WebGPU resource lowering', () => {
     const buffer = device.createBuffer({ label: 'mapped', size: 64, usage: 1 });
     const nativeBuffer = native.resources[0]!;
     let resolveMap!: () => void;
-    nativeBuffer.mapResult = new Promise<void>((resolve) => { resolveMap = resolve; });
+    nativeBuffer.mapResult = new Promise<void>((resolve) => {
+      resolveMap = resolve;
+    });
 
     expect(() => buffer.getMappedRange()).toThrow('is not mapped');
     const mapping = buffer.mapAsync(1, 4, 8);

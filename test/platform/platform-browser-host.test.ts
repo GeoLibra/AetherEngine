@@ -32,8 +32,7 @@ class TestAnimationFrames implements AnimationFrameHost {
 
   fire(timestampMilliseconds: number): boolean {
     const entry = this.callbacks.entries().next().value as
-      | [number, (timestamp: number) => void]
-      | undefined;
+      [number, (timestamp: number) => void] | undefined;
     if (entry === undefined) {
       return false;
     }
@@ -188,13 +187,21 @@ describe('BrowserHost', () => {
       clock: { now: () => 0 },
       animationFrames: new TestAnimationFrames(),
       createWindow: () => ({
-        onMetrics: () => () => { metricUnsubscribes += 1; },
-        onClose: () => { throw new Error('close listener failed'); },
-        close: () => { closeRequests += 1; }
+        onMetrics: () => () => {
+          metricUnsubscribes += 1;
+        },
+        onClose: () => {
+          throw new Error('close listener failed');
+        },
+        close: () => {
+          closeRequests += 1;
+        }
       })
     });
 
-    await expect(host.createWindow({ logicalSize: [1, 1] })).rejects.toThrow('close listener failed');
+    await expect(host.createWindow({ logicalSize: [1, 1] })).rejects.toThrow(
+      'close listener failed'
+    );
     expect(metricUnsubscribes).toBe(1);
     expect(closeRequests).toBe(1);
     expect(host.windows()).toEqual([]);

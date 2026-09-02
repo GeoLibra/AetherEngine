@@ -118,8 +118,20 @@ export type RHICommandRecord =
     }
   | { kind: 'setRenderPipeline'; pipeline: RHIResourceRef }
   | { kind: 'setComputePipeline'; pipeline: RHIResourceRef }
-  | { kind: 'setIndexBuffer'; buffer: RHIResourceRef; indexFormat: GPUIndexFormat; offset: number; size?: number }
-  | { kind: 'setVertexBuffer'; slot: number; buffer: RHIResourceRef; offset: number; size?: number };
+  | {
+      kind: 'setIndexBuffer';
+      buffer: RHIResourceRef;
+      indexFormat: GPUIndexFormat;
+      offset: number;
+      size?: number;
+    }
+  | {
+      kind: 'setVertexBuffer';
+      slot: number;
+      buffer: RHIResourceRef;
+      offset: number;
+      size?: number;
+    };
 
 export interface RHIResourceRef {
   kind: RHIResourceKind;
@@ -177,8 +189,16 @@ export interface RHICommandEncoder {
     destination: GPUImageCopyTexture,
     copySize: GPUExtent3D
   ): void;
-  copyBufferToTexture(source: GPUImageCopyBuffer, destination: GPUImageCopyTexture, copySize: GPUExtent3D): void;
-  copyTextureToBuffer(source: GPUImageCopyTexture, destination: GPUImageCopyBuffer, copySize: GPUExtent3D): void;
+  copyBufferToTexture(
+    source: GPUImageCopyBuffer,
+    destination: GPUImageCopyTexture,
+    copySize: GPUExtent3D
+  ): void;
+  copyTextureToBuffer(
+    source: GPUImageCopyTexture,
+    destination: GPUImageCopyBuffer,
+    copySize: GPUExtent3D
+  ): void;
   finish(descriptor?: GPUCommandBufferDescriptor): RHICommandBuffer;
   getStats(): RHICommandStats;
 }
@@ -189,10 +209,27 @@ export interface RHIRenderPassEncoder {
   setPipeline(pipeline: RHIRenderPipeline): void;
   setBindGroup(index: number, bindGroup: RHIBindGroup, dynamicOffsets?: readonly number[]): void;
   setVertexBuffer(slot: number, buffer: RHIBuffer, offset?: number, size?: number): void;
-  setIndexBuffer(buffer: RHIBuffer, indexFormat: GPUIndexFormat, offset?: number, size?: number): void;
-  setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void;
+  setIndexBuffer(
+    buffer: RHIBuffer,
+    indexFormat: GPUIndexFormat,
+    offset?: number,
+    size?: number
+  ): void;
+  setViewport(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    minDepth: number,
+    maxDepth: number
+  ): void;
   setScissorRect(x: number, y: number, width: number, height: number): void;
-  draw(vertexCount: number, instanceCount?: number, firstVertex?: number, firstInstance?: number): void;
+  draw(
+    vertexCount: number,
+    instanceCount?: number,
+    firstVertex?: number,
+    firstInstance?: number
+  ): void;
   drawIndexed(
     indexCount: number,
     instanceCount?: number,

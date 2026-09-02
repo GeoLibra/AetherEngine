@@ -4,7 +4,9 @@ import { JobScheduler, defineJobType } from '../../src';
 const BytesJob = defineJobType({
   id: 'test.jobs-budget-bytes',
   encode: (input: ArrayBuffer) => ({
-    payload: input, inputBytes: input.byteLength, decodeBytes: input.byteLength * 2,
+    payload: input,
+    inputBytes: input.byteLength,
+    decodeBytes: input.byteLength * 2,
     transfer: [input]
   }),
   decode: (value: unknown) => value as number,
@@ -13,14 +15,25 @@ const BytesJob = defineJobType({
 
 describe('JobScheduler budgets', () => {
   test('rejects invalid budget configuration synchronously', () => {
-    expect(() => new JobScheduler({ budgets: { interactive: {
-      maxInFlightJobs: -1, maxInputBytes: 8, maxDecodeBytes: 16
-    } } })).toThrow('maxInFlightJobs');
+    expect(
+      () =>
+        new JobScheduler({
+          budgets: {
+            interactive: {
+              maxInFlightJobs: -1,
+              maxInputBytes: 8,
+              maxDecodeBytes: 16
+            }
+          }
+        })
+    ).toThrow('maxInFlightJobs');
   });
 
   test('requires registration and rejects duplicate job type ids', () => {
     const scheduler = new JobScheduler();
-    expect(() => scheduler.schedule(BytesJob, request(new ArrayBuffer(1)))).toThrow('not registered');
+    expect(() => scheduler.schedule(BytesJob, request(new ArrayBuffer(1)))).toThrow(
+      'not registered'
+    );
     scheduler.register(BytesJob);
     expect(() => scheduler.register(BytesJob)).toThrow('already registered');
   });

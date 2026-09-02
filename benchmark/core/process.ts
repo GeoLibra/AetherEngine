@@ -12,8 +12,12 @@ export function runCommand(command: string, args: readonly string[]): Promise<Co
     let stderr = '';
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk: string) => { stdout += chunk; });
-    child.stderr.on('data', (chunk: string) => { stderr += chunk; });
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk;
+    });
     child.once('error', reject);
     child.once('close', (code, signal) => {
       if (code !== 0) {

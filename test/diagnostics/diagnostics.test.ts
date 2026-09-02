@@ -58,14 +58,14 @@ describe('DiagnosticStore', () => {
       })
     );
 
-    await expect(app.run(new HeadlessRunner({ frames: 1 }))).rejects.toThrow(
-      'runtime failure'
-    );
+    await expect(app.run(new HeadlessRunner({ frames: 1 }))).rejects.toThrow('runtime failure');
 
-    expect(app.getResource(DiagnosticStoreResource)?.list({ code: 'APP_RUNTIME_FAILED' }))
-      .toHaveLength(1);
     expect(
-      app.getResource(DiagnosticStoreResource)?.list()[0]?.cause
-    ).toEqual({ name: 'Error', message: 'runtime failure' });
+      app.getResource(DiagnosticStoreResource)?.list({ code: 'APP_RUNTIME_FAILED' })
+    ).toHaveLength(1);
+    expect(app.getResource(DiagnosticStoreResource)?.list()[0]?.cause).toEqual({
+      name: 'Error',
+      message: 'runtime failure'
+    });
   });
 });

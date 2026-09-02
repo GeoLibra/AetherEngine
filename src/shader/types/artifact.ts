@@ -73,6 +73,32 @@ export interface CookedShaderStageIo {
   readonly typeName: string;
 }
 
+/** Canonical logical resource coordinates referenced by backend program metadata. */
+export interface CookedShaderBindingReference {
+  readonly group: number;
+  readonly binding: number;
+}
+
+/** Generated GLSL program symbol mapped back to one or more canonical shader resources. */
+export type CookedGlslProgramBinding =
+  | Readonly<{
+      kind: 'uniform-buffer';
+      name: string;
+      resource: CookedShaderBindingReference;
+    }>
+  | Readonly<{
+      kind: 'combined-sampler';
+      name: string;
+      texture: CookedShaderBindingReference;
+      sampler?: CookedShaderBindingReference | undefined;
+    }>;
+
+/** One validated GLSL ES 3.00 module and its generated program symbols. */
+export interface CookedGlslEs300Module {
+  readonly source: string;
+  readonly bindings: readonly CookedGlslProgramBinding[];
+}
+
 /**
  * Reflected entry point record in a cooked shader artifact.
  */
@@ -87,7 +113,7 @@ export interface CookedShaderEntryPoint {
  */
 export interface CookedShaderModules {
   readonly wgsl: string;
-  readonly glslEs300: Readonly<Record<string, string>>;
+  readonly glslEs300: Readonly<Record<string, CookedGlslEs300Module>>;
 }
 
 /**
@@ -95,9 +121,9 @@ export interface CookedShaderModules {
  * Free of compiler, parser, AST, Naga IR, or local file paths.
  */
 export interface CookedShaderRuntimeArtifact {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly shaderManifestSchemaVersion: 1;
-  readonly shaderModuleSchemaVersion: 1;
+  readonly shaderModuleSchemaVersion: 2;
   readonly sourceKind: ShaderSourceKind;
   readonly toolchain: CookedShaderToolchainInfo;
   readonly source: CookedShaderSourceInfo;

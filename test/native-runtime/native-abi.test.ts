@@ -10,29 +10,38 @@ import {
 } from '../../src';
 
 const policy: NativeTargetPolicy = {
-  approvedTargets: [{
-    platform: 'macos', runtime: 'jsc', ownership: 'dedicated',
-    bridge: 'engine-adapter', jitEnabled: false
-  }]
+  approvedTargets: [
+    {
+      platform: 'macos',
+      runtime: 'jsc',
+      ownership: 'dedicated',
+      bridge: 'engine-adapter',
+      jitEnabled: false
+    }
+  ]
 };
 
 function manifest(): NativeBuildManifest {
-  return validateNativeBuildManifest({
-    buildId: 'build-a',
-    engineAbiVersion: 2,
-    rhiContractVersion: 4,
-    target: policy.approvedTargets[0]!,
-    modules: [
-      { name: 'filesystem', version: 2, required: true },
-      { name: 'audio', version: 3, required: true },
-      { name: 'sensors', version: 2, required: false }
-    ],
-    abi: {
-      endianness: 'little', pointerBits: 64,
-      arrayBuffer: { transfer: true, mapped: true, shared: false }
+  return validateNativeBuildManifest(
+    {
+      buildId: 'build-a',
+      engineAbiVersion: 2,
+      rhiContractVersion: 4,
+      target: policy.approvedTargets[0]!,
+      modules: [
+        { name: 'filesystem', version: 2, required: true },
+        { name: 'audio', version: 3, required: true },
+        { name: 'sensors', version: 2, required: false }
+      ],
+      abi: {
+        endianness: 'little',
+        pointerBits: 64,
+        arrayBuffer: { transfer: true, mapped: true, shared: false }
+      },
+      sourceFiles: ['src/native/main.cpp']
     },
-    sourceFiles: ['src/native/main.cpp']
-  }, policy);
+    policy
+  );
 }
 
 function handshake(overrides: Partial<NativeHandshake> = {}): NativeHandshake {
@@ -46,7 +55,8 @@ function handshake(overrides: Partial<NativeHandshake> = {}): NativeHandshake {
       { name: 'sensors', version: 2 }
     ],
     abi: {
-      endianness: 'little', pointerBits: 64,
+      endianness: 'little',
+      pointerBits: 64,
       arrayBuffer: { transfer: true, mapped: true, shared: true }
     },
     ...overrides
@@ -77,7 +87,8 @@ describe('Native ABI handshake', () => {
       rhiContractVersion: 3,
       modules: [{ name: 'audio', version: 1 }],
       abi: {
-        endianness: 'big', pointerBits: 32,
+        endianness: 'big',
+        pointerBits: 32,
         arrayBuffer: { transfer: false, mapped: false, shared: false }
       }
     });
@@ -106,31 +117,42 @@ describe('Native ABI handshake', () => {
   });
 
   test('omits unavailable or outdated optional modules without failing startup', () => {
-    const missing = negotiateNativeHandshake(manifest(), handshake({
-      modules: [
-        { name: 'filesystem', version: 2 },
-        { name: 'audio', version: 3 }
-      ]
-    }));
-    const outdated = negotiateNativeHandshake(manifest(), handshake({
-      modules: [
-        { name: 'filesystem', version: 2 },
-        { name: 'audio', version: 3 },
-        { name: 'sensors', version: 1 }
-      ]
-    }));
+    const missing = negotiateNativeHandshake(
+      manifest(),
+      handshake({
+        modules: [
+          { name: 'filesystem', version: 2 },
+          { name: 'audio', version: 3 }
+        ]
+      })
+    );
+    const outdated = negotiateNativeHandshake(
+      manifest(),
+      handshake({
+        modules: [
+          { name: 'filesystem', version: 2 },
+          { name: 'audio', version: 3 },
+          { name: 'sensors', version: 1 }
+        ]
+      })
+    );
 
     expect(missing.modules.map(({ name }) => name)).toEqual(['filesystem', 'audio']);
     expect(outdated.modules.map(({ name }) => name)).toEqual(['filesystem', 'audio']);
   });
 
   test('rejects duplicate actual module facts before negotiation', () => {
-    expect(() => negotiateNativeHandshake(manifest(), handshake({
-      modules: [
-        { name: 'filesystem', version: 2 },
-        { name: 'filesystem', version: 3 },
-        { name: 'audio', version: 3 }
-      ]
-    }))).toThrow('duplicate module "filesystem"');
+    expect(() =>
+      negotiateNativeHandshake(
+        manifest(),
+        handshake({
+          modules: [
+            { name: 'filesystem', version: 2 },
+            { name: 'filesystem', version: 3 },
+            { name: 'audio', version: 3 }
+          ]
+        })
+      )
+    ).toThrow('duplicate module "filesystem"');
   });
 });

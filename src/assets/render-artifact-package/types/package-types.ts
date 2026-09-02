@@ -56,8 +56,11 @@ export interface RenderArtifactContainerSectionLocation {
 export type RenderArtifactSectionLocation =
   RenderArtifactExternalSectionLocation | RenderArtifactContainerSectionLocation;
 
-interface RenderArtifactPackageInputBase {
+export interface RenderArtifactPackageInputBase {
   readonly containerVersion?: number | undefined;
+  readonly manifestSchemaVersion?: number | undefined;
+  readonly shaderManifestSchemaVersion?: number | undefined;
+  readonly shaderModuleSchemaVersion?: number | undefined;
   readonly shaderAbiVersion: number;
   readonly toolchain: Readonly<{ id: string; version: string }>;
   readonly shaderToolchain: RenderArtifactShaderToolchain;
@@ -86,7 +89,7 @@ export interface RenderArtifactEnvelope {
   readonly containerVersion: 1;
   readonly manifestSchemaVersion: 1;
   readonly shaderManifestSchemaVersion: 1;
-  readonly shaderModuleSchemaVersion: 1;
+  readonly shaderModuleSchemaVersion: 2;
   readonly shaderAbiVersion: number;
   readonly materialSchemaVersion?: number;
   readonly toolchain: Readonly<{ id: string; version: string }>;

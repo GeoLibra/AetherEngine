@@ -123,7 +123,9 @@ describe('NullSurface', () => {
 
     first.dispose();
     expect(first.state).toBe('disposed');
-    expect(() => first.configure(device, CONFIGURATION, 2)).toThrow('NullSurface has been disposed.');
+    expect(() => first.configure(device, CONFIGURATION, 2)).toThrow(
+      'NullSurface has been disposed.'
+    );
     expect(() => first.acquire()).toThrow('NullSurface has been disposed.');
   });
 });

@@ -3,6 +3,12 @@ import { decodeCookedShaderRuntimeArtifact } from '../../shader/artifact';
 import type { CookedShaderRuntimeArtifact } from '../../shader/types';
 import { decodeRenderArtifactPackage, encodeRenderArtifactPackage } from './reference-codec';
 import type { RenderArtifactPackageSectionInput, RenderArtifactReferenceBundle } from './types';
+import type { DecodedRenderArtifactPackage } from './types';
+
+export interface DecodedCookedShaderPackage {
+  readonly package: DecodedRenderArtifactPackage;
+  readonly artifact: CookedShaderRuntimeArtifact;
+}
 
 /** Build identity required to wrap a cooked shader artifact in a render package. */
 export interface CookedShaderPackageOptions {
@@ -50,12 +56,12 @@ export async function encodeCookedShaderArtifactPackage(
       { shaderTarget: 'wgsl' }
     )
   ];
-  for (const [key, source] of Object.entries(validated.modules.glslEs300)) {
+  for (const [key, module] of Object.entries(validated.modules.glslEs300)) {
     sections.push(
       requiredSection(
         `module:glsl300es:${key}`,
         'shader-module',
-        { source },
+        { source: module.source, bindings: module.bindings },
         {
           shaderTarget: 'glsl300es',
           stage: key.startsWith('vertex:') ? 'vertex' : 'fragment',
@@ -67,6 +73,8 @@ export async function encodeCookedShaderArtifactPackage(
   return encodeRenderArtifactPackage({
     artifactKind: 'shader-library',
     shaderAbiVersion: options.shaderAbiVersion,
+    shaderManifestSchemaVersion: validated.shaderManifestSchemaVersion,
+    shaderModuleSchemaVersion: validated.shaderModuleSchemaVersion,
     toolchain: options.packageToolchain,
     shaderToolchain: {
       cookerId: validated.toolchain.cookerId,
@@ -88,6 +96,13 @@ export async function encodeCookedShaderArtifactPackage(
 export async function decodeCookedShaderArtifactPackage(
   bundle: RenderArtifactReferenceBundle
 ): Promise<CookedShaderRuntimeArtifact> {
+  return (await decodeCookedShaderPackage(bundle)).artifact;
+}
+
+/** Decodes one package once and publishes both its package metadata and shader artifact. */
+export async function decodeCookedShaderPackage(
+  bundle: RenderArtifactReferenceBundle
+): Promise<DecodedCookedShaderPackage> {
   const decoded = await decodeRenderArtifactPackage(bundle);
   if (decoded.envelope.artifactKind !== 'shader-library') {
     throw new Error('[shader-package-kind-invalid] Expected a shader-library package.');
@@ -107,7 +122,7 @@ export async function decodeCookedShaderArtifactPackage(
     );
   }
 
-  return decodeCookedShaderRuntimeArtifact({
+  const artifact = decodeCookedShaderRuntimeArtifact({
     schemaVersion: manifest.schemaVersion,
     shaderManifestSchemaVersion: manifest.shaderManifestSchemaVersion,
     shaderModuleSchemaVersion: manifest.shaderModuleSchemaVersion,
@@ -121,6 +136,7 @@ export async function decodeCookedShaderArtifactPackage(
     fragmentOutputs: reflection.fragmentOutputs,
     modules
   });
+  return Object.freeze({ package: decoded, artifact });
 }
 
 function requiredSection(
@@ -146,9 +162,9 @@ function sectionPayload(
 
 function decodeModules(
   sections: readonly Readonly<RenderArtifactPackageSectionInput>[]
-): Readonly<{ wgsl: string; glslEs300: Readonly<Record<string, string>> }> {
+): CookedShaderRuntimeArtifact['modules'] {
   let wgsl: string | undefined;
-  const glslEs300: Record<string, string> = {};
+  const glslEs300: Record<string, CookedShaderRuntimeArtifact['modules']['glslEs300'][string]> = {};
   for (const section of sections.filter(({ kind }) => kind === 'shader-module')) {
     if (!isRecord(section.payload)) {
       throw new Error(`[shader-package-module-invalid] Module section "${section.id}" is invalid.`);
@@ -175,7 +191,16 @@ function decodeModules(
       if (Object.hasOwn(glslEs300, key)) {
         throw new Error(`[shader-package-module-duplicate] Duplicate GLSL module "${key}".`);
       }
-      glslEs300[key] = source;
+      if (!Array.isArray(section.payload.bindings)) {
+        throw new Error(
+          `[shader-package-module-invalid] GLSL module section "${section.id}" has no backend binding metadata.`
+        );
+      }
+      glslEs300[key] = {
+        source,
+        bindings: section.payload
+          .bindings as CookedShaderRuntimeArtifact['modules']['glslEs300'][string]['bindings']
+      };
       continue;
     }
     throw new Error(

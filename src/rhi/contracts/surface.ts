@@ -27,12 +27,7 @@ export type RHISurfaceAcquireResult =
   | { readonly status: 'success'; readonly frame: RHISurfaceFrame }
   | {
       readonly status:
-        | 'outdated'
-        | 'timeout'
-        | 'lost'
-        | 'out-of-memory'
-        | 'zero-extent'
-        | 'device-lost';
+        'outdated' | 'timeout' | 'lost' | 'out-of-memory' | 'zero-extent' | 'device-lost';
     };
 
 export interface RHISurface {

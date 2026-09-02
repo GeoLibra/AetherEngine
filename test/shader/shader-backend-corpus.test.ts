@@ -63,9 +63,9 @@ nativeCorpus(`native WGSL cooker corpus (${installExpectation} when skipped)`, (
     expect(result.stderr).toBe('');
     const artifact = JSON.parse(result.stdout);
     expect(artifact).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       shaderManifestSchemaVersion: 1,
-      shaderModuleSchemaVersion: 1,
+      shaderModuleSchemaVersion: 2,
       sourceKind: 'wgsl',
       toolchain: {
         cookerId: 'aether-native-wgsl-cooker',
@@ -90,9 +90,12 @@ nativeCorpus(`native WGSL cooker corpus (${installExpectation} when skipped)`, (
       'fragment:fragmentMain',
       'vertex:vertexMain'
     ]);
-    for (const glsl of Object.values<string>(artifact.modules.glslEs300)) {
-      expect(glsl).toMatch(/^#version 300 es/);
-      expect(glsl).toContain('void main()');
+    for (const glsl of Object.values<{ source: string; bindings: readonly unknown[] }>(
+      artifact.modules.glslEs300
+    )) {
+      expect(glsl.source).toMatch(/^#version 300 es/);
+      expect(glsl.source).toContain('void main()');
+      expect(Array.isArray(glsl.bindings)).toBe(true);
     }
   });
 
@@ -104,7 +107,7 @@ nativeCorpus(`native WGSL cooker corpus (${installExpectation} when skipped)`, (
     expect(result.stdout).toBe('');
     expect(result.stderr).not.toContain(process.cwd());
     expect(JSON.parse(result.stderr)).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       severity: 'error',
       code: 'wgsl-parse-failed',
       sourceUri,

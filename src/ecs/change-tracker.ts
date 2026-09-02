@@ -144,9 +144,7 @@ export class ChangeTracker {
   ): readonly RemovedComponent<TView>[] {
     return Object.freeze(
       this.removed
-        .filter(
-          (entry) => entry.componentId === component.id && isTickInWindow(entry.tick, window)
-        )
+        .filter((entry) => entry.componentId === component.id && isTickInWindow(entry.tick, window))
         .map((entry) => Object.freeze({ entity: entry.entity, component, tick: entry.tick }))
     );
   }
@@ -194,10 +192,7 @@ export class ChangeTracker {
 }
 
 export function isTickInWindow(tick: number, window: ChangeWindow): boolean {
-  const span = Math.min(
-    (window.untilInclusive - window.sinceExclusive) >>> 0,
-    MAX_CHANGE_AGE
-  );
+  const span = Math.min((window.untilInclusive - window.sinceExclusive) >>> 0, MAX_CHANGE_AGE);
   const distance = (tick - window.sinceExclusive) >>> 0;
   return distance > 0 && distance <= span;
 }
@@ -208,13 +203,10 @@ function clampSince(since: number, until: number): number {
 }
 
 function isEarlierTick(candidate: number, current: number, until: number): boolean {
-  return ((until - candidate) >>> 0) > ((until - current) >>> 0);
+  return (until - candidate) >>> 0 > (until - current) >>> 0;
 }
 
-function getEntityTicks(
-  map: Map<string, Map<Entity, number>>,
-  key: string
-): Map<Entity, number> {
+function getEntityTicks(map: Map<string, Map<Entity, number>>, key: string): Map<Entity, number> {
   let ticks = map.get(key);
   if (!ticks) {
     ticks = new Map<Entity, number>();

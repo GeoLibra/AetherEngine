@@ -47,7 +47,8 @@ export function compareQueuedJobs(
 }
 
 function effectiveScore(job: QueuedJobOrder, now: number, policy: QueuePolicy): number {
-  const classRank = job.budgetClass === 'interactive' ? 200 : job.budgetClass === 'streaming' ? 100 : 0;
+  const classRank =
+    job.budgetClass === 'interactive' ? 200 : job.budgetClass === 'streaming' ? 100 : 0;
   const age = Math.max(0, now - job.submittedAt);
   const aging = Math.min(
     policy.maxAgingBoost,

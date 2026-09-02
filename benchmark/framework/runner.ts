@@ -29,7 +29,9 @@ export function renderSuiteCommand(
 ): RenderedBenchmarkCommand {
   return Object.freeze({
     executable: suite.command.executable,
-    args: Object.freeze(suite.command.args.map((argument) => argument === '{profile}' ? profile : argument))
+    args: Object.freeze(
+      suite.command.args.map((argument) => (argument === '{profile}' ? profile : argument))
+    )
   });
 }
 
@@ -42,13 +44,12 @@ export async function runBenchmarkPlan(
   const route = routeChangedFiles(manifest, options.files);
   if (options.mode === 'changed' && route.missingDomainIds.length > 0) {
     throw new Error(
-      `Performance benchmark coverage is missing for changed domain(s): ${route.missingDomainIds.join(', ')}. `
-      + 'Add a semantic suite to benchmark/framework/manifest.ts before completing this change.'
+      `Performance benchmark coverage is missing for changed domain(s): ${route.missingDomainIds.join(', ')}. ` +
+        'Add a semantic suite to benchmark/framework/manifest.ts before completing this change.'
     );
   }
-  const selectedIds = options.mode === 'all'
-    ? manifest.suites.map((suite) => suite.id)
-    : route.suiteIds;
+  const selectedIds =
+    options.mode === 'all' ? manifest.suites.map((suite) => suite.id) : route.suiteIds;
   const selected = manifest.suites.filter((suite) => selectedIds.includes(suite.id));
   const commands = selected.map((suite) => renderSuiteCommand(suite, options.profile));
   const outputs: CommandResult[] = [];
