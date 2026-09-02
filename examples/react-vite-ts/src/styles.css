@@ -25,7 +25,8 @@ main {
 }
 
 .demo-shell {
-  width: min(100%, 72rem);
+  width: 1152px;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -75,9 +76,11 @@ main {
 
 canvas {
   display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
+  width: 1152px;
+  height: 648px;
+  max-width: 100%;
   border: 1px solid #26334d;
   border-radius: 1rem;
   background: #0d1422;
+  box-sizing: border-box;
 }
