@@ -9,6 +9,14 @@ import {
   meshFixtureReferenceOracle,
   validateMeshFixture
 } from './asset-pipeline/mesh-validation';
+import {
+  createCookDependencyChainFixture,
+  invalidateCookDependencyChain
+} from './asset-pipeline/cook-dependency-invalidation';
+import {
+  createCookGarbageCollectionFixture,
+  planCookGarbageCollectionFixture
+} from './asset-pipeline/cook-garbage-collection';
 
 const profile = process.env.AETHER_BENCH_PROFILE ?? 'smoke';
 const sizes =
@@ -48,5 +56,28 @@ for (const vertexCount of meshSizes) {
   const expected = meshFixtureReferenceOracle(vertexCount);
   bench(`validates and isolates ${vertexCount} canonical mesh vertices`, () => {
     expect(validateMeshFixture(fixture)).toBe(expected);
+  });
+}
+
+const cookNodeCounts =
+  profile === 'nightly' ? [10_000] : profile === 'standard' ? [10_000] : [1_000];
+for (const nodeCount of cookNodeCounts) {
+  const fixture = createCookDependencyChainFixture(nodeCount);
+  const changedIndex = Math.floor(nodeCount / 2);
+  const expectedCount = nodeCount - changedIndex;
+  bench(`invalidates ${expectedCount} of ${nodeCount} cook dependency nodes`, () => {
+    const result = invalidateCookDependencyChain(fixture, changedIndex);
+    expect(result.visitedNodes).toBe(expectedCount);
+    expect(result.invalidated[0]).toBe(`asset://node/${changedIndex}`);
+    expect(result.invalidated.at(-1)).toBe(`asset://node/${nodeCount - 1}`);
+  });
+}
+
+for (const objectCount of cookNodeCounts) {
+  const fixture = createCookGarbageCollectionFixture(objectCount);
+  bench(`plans collection for ${objectCount} cook objects`, () => {
+    const result = planCookGarbageCollectionFixture(fixture);
+    expect(result.deleteHashes.length).toBe(Math.floor(objectCount / 2));
+    expect(result.deleteBytes).toBe(Math.floor(objectCount / 2) * 64);
   });
 }

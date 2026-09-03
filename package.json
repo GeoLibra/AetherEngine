@@ -39,6 +39,7 @@
     "@playwright/test": "^1.61.1",
     "@types/node": "^26.0.1",
     "bitecs": "0.4.0",
+    "fake-indexeddb": "^6.2.5",
     "koota": "0.6.6",
     "prettier": "^3.6.2",
     "typescript": "^5.5.4",

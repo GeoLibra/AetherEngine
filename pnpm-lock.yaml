@@ -17,6 +17,9 @@ importers:
       bitecs:
         specifier: 0.4.0
         version: 0.4.0
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
       koota:
         specifier: 0.6.6
         version: 0.6.6(@types/react@19.2.18)(react@19.2.8)
@@ -836,6 +839,10 @@ packages:
   extend-shallow@3.0.2:
     resolution: {integrity: sha512-BwY5b5Ql4+qZoefgMj2NUmx+tehVTH/Kf4k1ZEtOHNFcm2wSxMRo992l6X3TIgni2eZVTZ85xMOjF31fwZAj6Q==}
     engines: {node: '>=0.10.0'}
+
+  fake-indexeddb@6.2.5:
+    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+    engines: {node: '>=18'}
 
   file-selector@0.5.0:
     resolution: {integrity: sha512-s8KNnmIDTBoD0p9uJ9uD0XY38SCeBOtj0UMXyQSLg1Ypfrfj8+dAvwsLjYQkQ2GjhVtp2HrnF5cJzMhBjfD8HA==}
@@ -1815,6 +1822,8 @@ snapshots:
     dependencies:
       assign-symbols: 1.0.0
       is-extendable: 1.0.1
+
+  fake-indexeddb@6.2.5: {}
 
   file-selector@0.5.0:
     dependencies:

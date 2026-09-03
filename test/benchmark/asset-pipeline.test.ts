@@ -9,6 +9,14 @@ import {
   meshFixtureReferenceOracle,
   validateMeshFixture
 } from '../../benchmark/asset-pipeline/mesh-validation';
+import {
+  createCookDependencyChainFixture,
+  invalidateCookDependencyChain
+} from '../../benchmark/asset-pipeline/cook-dependency-invalidation';
+import {
+  createCookGarbageCollectionFixture,
+  planCookGarbageCollectionFixture
+} from '../../benchmark/asset-pipeline/cook-garbage-collection';
 
 describe('asset pipeline benchmark semantic oracle', () => {
   test('bucketed scheduler matches the full-sort reference with merged consumers and budgets', () => {
@@ -51,5 +59,22 @@ describe('asset pipeline benchmark semantic oracle', () => {
 
   test('validates canonical mesh fixtures with a stable bounds oracle', () => {
     expect(validateMeshFixture(createMeshValidationFixture(6))).toBe(meshFixtureReferenceOracle(6));
+  });
+
+  test('invalidates a cook chain in dependency order with a deterministic structural oracle', () => {
+    const fixture = createCookDependencyChainFixture(5);
+
+    expect(invalidateCookDependencyChain(fixture, 2)).toEqual({
+      invalidated: ['asset://node/2', 'asset://node/3', 'asset://node/4'],
+      visitedNodes: 3
+    });
+  });
+
+  test('retains the published half of the deterministic cook object fixture', () => {
+    const result = planCookGarbageCollectionFixture(createCookGarbageCollectionFixture(6));
+
+    expect(result.deleteHashes).toEqual(['hash-00000001', 'hash-00000003', 'hash-00000005']);
+    expect(result.deleteBytes).toBe(192);
+    expect(result.retainedObjects).toBe(3);
   });
 });
