@@ -75,6 +75,12 @@ export interface VFSMount {
   readonly policy: VFSReadPolicy;
 }
 
+/** Most-specific registered mount and provider-relative path selected for a URI. */
+export interface ResolvedVFSMount {
+  readonly mount: VFSMount;
+  readonly path: NormalizedMountPath;
+}
+
 /** Caller-owned full-read request validated before provider dispatch. */
 export interface VFSReadRequest {
   readonly uri: string;

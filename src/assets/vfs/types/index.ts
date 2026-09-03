@@ -1,6 +1,7 @@
 export type {
   CanonicalVFSUri,
   NormalizedMountPath,
+  ResolvedVFSMount,
   VFSMount,
   VFSFailureKind,
   VFSProvider,
