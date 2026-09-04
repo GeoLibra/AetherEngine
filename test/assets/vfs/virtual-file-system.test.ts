@@ -151,4 +151,34 @@ describe('VirtualFileSystem', () => {
     result.bytes[0] = 99;
     expect(bytes[0]).toBe(1);
   });
+
+  test('retains prototype getters on request class instances', async () => {
+    const fixture = setup(['success']);
+
+    class GetterIntegrityRequest {
+      readonly uri = uri;
+      get expectedIntegrity(): string {
+        return '0'.repeat(64);
+      }
+    }
+    expect((await fixture.vfs.read(new GetterIntegrityRequest())).kind).toBe('integrity');
+
+    class GetterLengthRequest {
+      readonly uri = uri;
+      get expectedLength(): number {
+        return 999;
+      }
+    }
+    expect((await fixture.vfs.read(new GetterLengthRequest())).kind).toBe('integrity');
+
+    const controller = new AbortController();
+    controller.abort();
+    class GetterSignalRequest {
+      readonly uri = uri;
+      get signal(): AbortSignal {
+        return controller.signal;
+      }
+    }
+    expect((await fixture.vfs.read(new GetterSignalRequest())).kind).toBe('aborted');
+  });
 });

@@ -31,7 +31,14 @@ export class VirtualFileSystem {
     let uri: CanonicalVFSUri;
     try {
       // Snapshot all caller-owned metadata before the first asynchronous boundary.
-      request = Object.freeze({ ...input });
+      request = Object.freeze({
+        uri: input.uri,
+        ...(input.expectedLength === undefined ? {} : { expectedLength: input.expectedLength }),
+        ...(input.expectedIntegrity === undefined
+          ? {}
+          : { expectedIntegrity: input.expectedIntegrity }),
+        ...(input.signal === undefined ? {} : { signal: input.signal })
+      });
       uri = normalizeVFSUri(request.uri);
       if (
         request.expectedLength !== undefined &&

@@ -4,7 +4,8 @@ import {
   normalizeVFSUri,
   toNormalizedMountPath,
   type NormalizedMountPath,
-  type CanonicalVFSUri
+  type CanonicalVFSUri,
+  type MemoryVFSProviderEntry
 } from '../../../src/assets/vfs';
 
 const UTF8 = new TextEncoder();
@@ -105,5 +106,38 @@ describe('MemoryVFSProvider', () => {
     });
     expect(provider.delete(path)).toBe(true);
     expect((await provider.read(path, {})).kind).toBe('not-found');
+  });
+
+  test('retains prototype getters on entry class instances', async () => {
+    const provider = new MemoryVFSProvider('memory');
+    const path = toNormalizedMountPath(['getter-item.txt']);
+
+    class GetterEntry implements MemoryVFSProviderEntry {
+      readonly bytes = UTF8.encode('hello');
+      get resolvedUri(): CanonicalVFSUri {
+        return normalizeVFSUri('asset://getter-item.txt');
+      }
+      get revision(): string {
+        return 'rev-getter';
+      }
+      get mime(): string {
+        return 'text/plain';
+      }
+      get integrity(): string {
+        return '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824';
+      }
+    }
+
+    provider.put(path, new GetterEntry());
+    const result = await provider.read(path, {});
+    expect(result).toMatchObject({
+      kind: 'success',
+      resolvedUri: 'asset://getter-item.txt',
+      revision: 'rev-getter',
+      mime: 'text/plain',
+      integrity: '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+      contentLength: 5,
+      providerId: 'memory'
+    });
   });
 });
