@@ -1,5 +1,6 @@
 export type {
   CanonicalVFSUri,
+  VFSBoundaryFailure,
   NormalizedMountPath,
   ResolvedVFSMount,
   VFSMount,
@@ -7,6 +8,7 @@ export type {
   VFSProvider,
   VFSProviderCapabilities,
   VFSProviderId,
+  VFSProviderReadFailure,
   VFSProviderReadResult,
   VFSReadFailure,
   VFSReadOptions,
@@ -16,3 +18,4 @@ export type {
   VFSReadSuccess,
   VFSScheme
 } from './vfs-types';
+export type { MemoryVFSProviderEntry } from './memory-vfs-provider-types';

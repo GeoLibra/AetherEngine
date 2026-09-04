@@ -18,7 +18,18 @@ export async function validateVFSReadSuccess(
   request: VFSReadRequest,
   result: VFSReadSuccess
 ): Promise<VFSReadSuccess | VFSReadFailure> {
-  const bytes = result.bytes.slice();
+  // Explicit construction also copies Uint8Array subclasses whose slice may return a view.
+  const bytes = new Uint8Array(result.bytes);
+  result = {
+    kind: 'success',
+    bytes,
+    resolvedUri: result.resolvedUri,
+    revision: result.revision,
+    contentLength: result.contentLength,
+    providerId: result.providerId,
+    ...(result.mime === undefined ? {} : { mime: result.mime }),
+    ...(result.integrity === undefined ? {} : { integrity: result.integrity })
+  };
   if (
     result.contentLength !== bytes.byteLength ||
     (request.expectedLength !== undefined && request.expectedLength !== bytes.byteLength)

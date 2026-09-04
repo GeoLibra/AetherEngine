@@ -49,8 +49,15 @@ export interface VFSReadFailure {
   readonly providerId?: VFSProviderId;
 }
 
+/** Expected provider-local failure before trusted URI provenance is attached. */
+export interface VFSProviderReadFailure {
+  readonly kind: VFSFailureKind;
+  readonly code: string;
+  readonly message: string;
+}
+
 /** Complete outcome returned by a VFS provider. */
-export type VFSProviderReadResult = VFSReadSuccess | VFSReadFailure;
+export type VFSProviderReadResult = VFSReadSuccess | VFSProviderReadFailure;
 
 /** Read-only byte provider mounted below a canonical VFS root. */
 export interface VFSProvider {
@@ -90,4 +97,18 @@ export interface VFSReadRequest {
 }
 
 /** Complete outcome returned from the VFS public read boundary. */
-export type VFSReadResult = VFSReadSuccess | VFSReadFailure;
+export type VFSReadResult = VFSReadSuccess | VFSReadFailure | VFSBoundaryFailure;
+
+/** Request rejection before provider selection; invalid input has no canonical URI. */
+export type VFSBoundaryFailure =
+  | Readonly<{
+      kind: 'invalid-request';
+      code: 'vfs-invalid-request';
+      message: string;
+    }>
+  | Readonly<{
+      kind: 'mount-not-found';
+      code: 'vfs-mount-not-found';
+      message: string;
+      requestedUri: CanonicalVFSUri;
+    }>;

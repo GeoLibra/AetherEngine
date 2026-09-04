@@ -10,6 +10,19 @@ const HELLO_SHA256 = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e7304336293
 const UTF8 = new TextEncoder();
 
 describe('VFS integrity validation', () => {
+  test('snapshots metadata before asynchronous hashing and omits private fields', async () => {
+    const mutable = { ...success(UTF8.encode('hello'), 5, HELLO_SHA256), privatePath: '/secret' };
+    const pending = validateVFSReadSuccess(
+      normalizeVFSUri('asset://hello.txt'),
+      { uri: 'asset://hello.txt' },
+      mutable
+    );
+    mutable.revision = 'changed';
+    mutable.contentLength = 99;
+    const result = await pending;
+    expect(result).toMatchObject({ kind: 'success', revision: 'revision-1', contentLength: 5 });
+    expect(result).not.toHaveProperty('privatePath');
+  });
   test('accepts canonical and prefixed SHA-256 expectations', () => {
     expect(validateExpectedIntegrity(HELLO_SHA256)).toBe(HELLO_SHA256);
     expect(validateExpectedIntegrity(`sha256:${HELLO_SHA256}`)).toBe(HELLO_SHA256);

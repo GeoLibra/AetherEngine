@@ -11,10 +11,18 @@ interface ReviewedNestedMutableExposure extends NestedMutableExposure {
 
 /**
  * Every exception needs an exact freeze call, property path, runtime kind, and a review rationale.
- * This list is intentionally empty: published nested mutable built-ins have enforcing facades or
- * detached accessors, while private typed arrays never appear as fields of a frozen publication.
+ * VFS returns caller-owned detached bytes with frozen metadata, not immutable byte storage.
+ * Its ownership and native Buffer isolation are covered by the focused VFS contract tests.
  */
-const NESTED_MUTABLE_ALLOWLIST: readonly ReviewedNestedMutableExposure[] = Object.freeze([]);
+const NESTED_MUTABLE_ALLOWLIST: readonly ReviewedNestedMutableExposure[] = Object.freeze([
+  {
+    location: 'assets/vfs/integrity.ts:62:10',
+    propertyPath: 'bytes',
+    kind: 'Uint8Array',
+    rationale:
+      'The public full-read contract transfers a detached byte copy to the caller; only metadata is immutable.'
+  }
+]);
 
 function nestedMutableExposures(sourceText: string): readonly NestedMutableExposure[] {
   return analyzeFreezeSource(sourceText).flatMap((call) => call.nestedMutableBuiltIns);

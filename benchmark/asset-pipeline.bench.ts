@@ -1,5 +1,10 @@
 import { bench, expect } from 'vitest';
 import {
+  createVFSReadFixture,
+  copyVFSReadReference,
+  vfsByteChecksum
+} from './asset-pipeline/vfs-read';
+import {
   createAssetRequestFixture,
   scheduleAssetRequestsBucketed,
   scheduleAssetRequestsReference
@@ -19,6 +24,26 @@ import {
 } from './asset-pipeline/cook-garbage-collection';
 
 const profile = process.env.AETHER_BENCH_PROFILE ?? 'smoke';
+const vfsByteLength = profile === 'nightly' ? 1_048_576 : profile === 'standard' ? 65_536 : 1_024;
+for (const mountCount of [1, 16, 128]) {
+  const fixture = createVFSReadFixture(mountCount, vfsByteLength);
+  const expectedChecksum = vfsByteChecksum(fixture.bytes);
+  bench(`raw owned copy ${vfsByteLength} bytes (${mountCount} mount comparator)`, () => {
+    const result = copyVFSReadReference(fixture.bytes);
+    expect(vfsByteChecksum(result)).toBe(expectedChecksum);
+    expect(result.buffer).not.toBe(fixture.bytes.buffer);
+  });
+  bench(`VFS full read ${vfsByteLength} bytes across ${mountCount} mounts`, async () => {
+    const before = fixture.dispatches();
+    const result = await fixture.vfs.read({ uri: fixture.uri, expectedLength: vfsByteLength });
+    if (result.kind !== 'success') throw new Error('VFS benchmark read failed.');
+    expect(result.providerId).toBe(fixture.providerId);
+    expect(result.contentLength).toBe(vfsByteLength);
+    expect(vfsByteChecksum(result.bytes)).toBe(expectedChecksum);
+    expect(fixture.dispatches() - before).toBe(1);
+    result.bytes[0] = 255;
+  });
+}
 const sizes =
   profile === 'nightly' ? [10_000, 100_000] : profile === 'standard' ? [10_000] : [1_000];
 
