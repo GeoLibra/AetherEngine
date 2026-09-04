@@ -140,4 +140,57 @@ describe('MemoryVFSProvider', () => {
       providerId: 'memory'
     });
   });
+
+  test('reads entry getters exactly once during insertion and retains stateful fields', async () => {
+    const provider = new MemoryVFSProvider('memory');
+    const path = toNormalizedMountPath(['single-read.txt']);
+    let mimeCalls = 0;
+    let integrityCalls = 0;
+    let revisionCalls = 0;
+    let uriCalls = 0;
+    let bytesCalls = 0;
+
+    const entry = {
+      get bytes(): Uint8Array {
+        bytesCalls++;
+        return UTF8.encode('hello');
+      },
+      get resolvedUri(): CanonicalVFSUri {
+        uriCalls++;
+        return normalizeVFSUri('asset://single-read.txt');
+      },
+      get revision(): string {
+        revisionCalls++;
+        return 'rev-single';
+      },
+      get mime(): string | undefined {
+        mimeCalls++;
+        return mimeCalls === 1 ? 'text/plain' : undefined;
+      },
+      get integrity(): string | undefined {
+        integrityCalls++;
+        return integrityCalls === 1
+          ? '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'
+          : undefined;
+      }
+    };
+
+    provider.put(path, entry as unknown as MemoryVFSProviderEntry);
+    expect(bytesCalls).toBe(1);
+    expect(uriCalls).toBe(1);
+    expect(revisionCalls).toBe(1);
+    expect(mimeCalls).toBe(1);
+    expect(integrityCalls).toBe(1);
+
+    const result = await provider.read(path, {});
+    expect(result).toMatchObject({
+      kind: 'success',
+      resolvedUri: 'asset://single-read.txt',
+      revision: 'rev-single',
+      mime: 'text/plain',
+      integrity: '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+      contentLength: 5,
+      providerId: 'memory'
+    });
+  });
 });

@@ -30,14 +30,18 @@ export class VirtualFileSystem {
     let request: VFSReadRequest;
     let uri: CanonicalVFSUri;
     try {
+      // Read each caller property exactly once before constructing the frozen snapshot.
+      const uriInput = input.uri;
+      const expectedLength = input.expectedLength;
+      const expectedIntegrity = input.expectedIntegrity;
+      const signal = input.signal;
+
       // Snapshot all caller-owned metadata before the first asynchronous boundary.
       request = Object.freeze({
-        uri: input.uri,
-        ...(input.expectedLength === undefined ? {} : { expectedLength: input.expectedLength }),
-        ...(input.expectedIntegrity === undefined
-          ? {}
-          : { expectedIntegrity: input.expectedIntegrity }),
-        ...(input.signal === undefined ? {} : { signal: input.signal })
+        uri: uriInput,
+        ...(expectedLength === undefined ? {} : { expectedLength }),
+        ...(expectedIntegrity === undefined ? {} : { expectedIntegrity }),
+        ...(signal === undefined ? {} : { signal })
       });
       uri = normalizeVFSUri(request.uri);
       if (

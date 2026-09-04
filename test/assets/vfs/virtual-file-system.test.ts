@@ -8,7 +8,8 @@ import {
   defineVFSProviderId,
   type VFSProvider,
   type VFSProviderReadResult,
-  type VFSReadPolicy
+  type VFSReadPolicy,
+  type VFSReadRequest
 } from '../../../src/assets/vfs';
 
 const uri = normalizeVFSUri('asset://folder/item');
@@ -180,5 +181,39 @@ describe('VirtualFileSystem', () => {
       }
     }
     expect((await fixture.vfs.read(new GetterSignalRequest())).kind).toBe('aborted');
+  });
+
+  test('reads request getters exactly once and retains stateful constraints', async () => {
+    const fixture = setup(['success']);
+    let integrityCalls = 0;
+    let lengthCalls = 0;
+    let signalCalls = 0;
+    let uriCalls = 0;
+
+    const mutableRequest = {
+      get uri(): string {
+        uriCalls++;
+        return uri;
+      },
+      get expectedIntegrity(): string | undefined {
+        integrityCalls++;
+        return integrityCalls === 1 ? '0'.repeat(64) : undefined;
+      },
+      get expectedLength(): number | undefined {
+        lengthCalls++;
+        return lengthCalls === 1 ? 999 : undefined;
+      },
+      get signal(): AbortSignal | undefined {
+        signalCalls++;
+        return undefined;
+      }
+    };
+
+    const result = await fixture.vfs.read(mutableRequest as unknown as VFSReadRequest);
+    expect(result.kind).toBe('integrity');
+    expect(integrityCalls).toBe(1);
+    expect(lengthCalls).toBe(1);
+    expect(signalCalls).toBe(1);
+    expect(uriCalls).toBe(1);
   });
 });

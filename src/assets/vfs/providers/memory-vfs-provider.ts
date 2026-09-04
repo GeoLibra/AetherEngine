@@ -35,12 +35,19 @@ export class MemoryVFSProvider implements VFSProvider {
   /** Inserts or replaces one provider-relative path after taking byte ownership. */
   put(path: NormalizedMountPath, entry: MemoryVFSProviderEntry): void {
     validatePath(path);
+    // Read each caller property exactly once before constructing the snapshot.
+    const rawBytes = entry.bytes;
+    const resolvedUri = entry.resolvedUri;
+    const revision = entry.revision;
+    const mime = entry.mime;
+    const integrity = entry.integrity;
+
     const snapshot: MemoryVFSProviderEntry = {
-      bytes: new Uint8Array(entry.bytes),
-      resolvedUri: entry.resolvedUri,
-      revision: entry.revision,
-      ...(entry.mime === undefined ? {} : { mime: entry.mime }),
-      ...(entry.integrity === undefined ? {} : { integrity: entry.integrity })
+      bytes: new Uint8Array(rawBytes),
+      resolvedUri,
+      revision,
+      ...(mime === undefined ? {} : { mime }),
+      ...(integrity === undefined ? {} : { integrity })
     };
     if (!snapshot.revision) throw new Error('Memory VFS entry revision must be non-empty.');
     if (normalizeVFSUri(snapshot.resolvedUri) !== snapshot.resolvedUri) {
