@@ -100,6 +100,13 @@ export async function runShaderGraphScenario(
   }
 
   // Deterministic structural correctness assertions
+  if (
+    !coldResult.wgsl.includes(
+      `vec4f(${graph.outputs.fragment}, ${graph.outputs.fragment}, ${graph.outputs.fragment}, 1.0)`
+    )
+  ) {
+    throw new Error('Arithmetic graph WGSL does not adapt scalar f32 to vec4f in fragment return.');
+  }
   if (!sliceResult.wgsl.includes('@location(0) pos: vec3f')) {
     throw new Error('Vertical slice WGSL missing @location(0) pos: vec3f attribute.');
   }

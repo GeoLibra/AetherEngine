@@ -24,63 +24,18 @@ describe('ShaderGraph minimal vertical slice', () => {
   const minimalSliceGraph: ShaderGraph = {
     revision: 1,
     nodes: [
-      {
-        id: 'position',
-        kind: 'vertexAttribute',
-        outputType: 'vec3f',
-        location: 0
-      },
-      {
-        id: 'tint',
-        kind: 'parameter',
-        outputType: 'vec4f',
-        group: 0,
-        binding: 0
-      },
-      {
-        id: 'baseTexture',
-        kind: 'parameter',
-        outputType: 'texture_2d<f32>',
-        group: 1,
-        binding: 0
-      },
-      {
-        id: 'baseSampler',
-        kind: 'parameter',
-        outputType: 'sampler',
-        group: 1,
-        binding: 1
-      },
-      {
-        id: 'uv',
-        kind: 'constant',
-        outputType: 'vec2f',
-        value: [0.5, 0.5]
-      },
+      { id: 'position', kind: 'vertexAttribute', outputType: 'vec3f', location: 0 },
+      { id: 'tint', kind: 'parameter', outputType: 'vec4f', group: 0, binding: 0 },
+      { id: 'baseTexture', kind: 'parameter', outputType: 'texture_2d<f32>', group: 1, binding: 0 },
+      { id: 'baseSampler', kind: 'parameter', outputType: 'sampler', group: 1, binding: 1 },
+      { id: 'uv', kind: 'constant', outputType: 'vec2f', value: [0.5, 0.5] },
       {
         id: 'sampledColor',
         kind: 'textureSample',
-        inputs: {
-          texture: 'baseTexture',
-          sampler: 'baseSampler',
-          uv: 'uv'
-        }
+        inputs: { texture: 'baseTexture', sampler: 'baseSampler', uv: 'uv' }
       },
-      {
-        id: 'finalColor',
-        kind: 'multiply',
-        inputs: {
-          left: 'sampledColor',
-          right: 'tint'
-        }
-      },
-      {
-        id: 'outColor',
-        kind: 'fragmentOutput',
-        inputs: {
-          color: 'finalColor'
-        }
-      }
+      { id: 'finalColor', kind: 'multiply', inputs: { left: 'sampledColor', right: 'tint' } },
+      { id: 'outColor', kind: 'fragmentOutput', inputs: { color: 'finalColor' } }
     ],
     outputs: {
       vertex: 'position',
@@ -302,6 +257,99 @@ describe('ShaderGraph minimal vertical slice', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.diagnostics[0]?.code).toBe('GRAPH_STAGE_MISMATCH');
+    }
+  });
+
+  test('adapts scalar f32 fragment output to vec4f and cooks with Native Naga', async () => {
+    const scalarGraph: ShaderGraph = {
+      revision: 1,
+      nodes: [{ id: 'val', kind: 'constant', outputType: 'f32', value: 0.75 }],
+      outputs: { fragment: 'val' }
+    };
+    const result = lowerVerticalSliceGraph(scalarGraph);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.wgsl).toContain('vec4f(val, val, val, 1.0)');
+
+    const scalarWgslPath = join(fixtureDir, 'scalar.wgsl');
+    const scalarMetaPath = join(fixtureDir, 'scalar.wgsl.meta.json');
+    writeFileSync(scalarWgslPath, result.wgsl, 'utf8');
+    writeFileSync(scalarMetaPath, result.metadataJson, 'utf8');
+    try {
+      const cooker = new NativeWgslCooker();
+      const artifact = await cooker.cook({
+        sourcePath: scalarWgslPath,
+        sourceUri: 'asset://fixtures/shader-graph/scalar.wgsl',
+        metadataPath: scalarMetaPath
+      });
+      expect(artifact.modules.wgsl).toBe(result.wgsl);
+    } finally {
+      if (existsSync(scalarWgslPath)) unlinkSync(scalarWgslPath);
+      if (existsSync(scalarMetaPath)) unlinkSync(scalarMetaPath);
+    }
+  });
+
+  test('lowers compute graph and cooks with Native Naga without graphics scaffolding', async () => {
+    const computeGraph: ShaderGraph = {
+      revision: 1,
+      nodes: [
+        { id: 'c1', kind: 'constant', outputType: 'f32', value: 1.0 },
+        { id: 'c2', kind: 'constant', outputType: 'f32', value: 2.0 },
+        { id: 'res', kind: 'add', inputs: { left: 'c1', right: 'c2' } }
+      ],
+      outputs: { compute: 'res' }
+    };
+    const result = lowerVerticalSliceGraph(computeGraph);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.wgsl).toContain('@compute');
+    expect(result.wgsl).not.toContain('@vertex');
+    expect(result.wgsl).not.toContain('@fragment');
+
+    const meta = JSON.parse(result.metadataJson);
+    expect(meta.entryPoints).toEqual([{ name: 'computeMain', stage: 'compute' }]);
+
+    const computeWgslPath = join(fixtureDir, 'compute.wgsl');
+    const computeMetaPath = join(fixtureDir, 'compute.wgsl.meta.json');
+    writeFileSync(computeWgslPath, result.wgsl, 'utf8');
+    writeFileSync(computeMetaPath, result.metadataJson, 'utf8');
+    try {
+      const cooker = new NativeWgslCooker();
+      const artifact = await cooker.cook({
+        sourcePath: computeWgslPath,
+        sourceUri: 'asset://fixtures/shader-graph/compute.wgsl',
+        metadataPath: computeMetaPath
+      });
+      expect(artifact.modules.wgsl).toBe(result.wgsl);
+    } finally {
+      if (existsSync(computeWgslPath)) unlinkSync(computeWgslPath);
+      if (existsSync(computeMetaPath)) unlinkSync(computeMetaPath);
+    }
+  });
+
+  test('rejects connection referencing non-existent output portId', () => {
+    const graph: ShaderGraph = {
+      revision: 1,
+      nodes: [
+        { id: 'c1', kind: 'constant', outputType: 'f32', value: 1.0 },
+        {
+          id: 'sum',
+          kind: 'add',
+          inputs: {
+            left: { nodeId: 'c1', portId: 'nonExistentPort' },
+            right: { nodeId: 'c1', portId: 'out' }
+          }
+        }
+      ],
+      outputs: { fragment: 'sum' }
+    };
+    const result = lowerVerticalSliceGraph(graph);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.diagnostics[0]?.code).toBe('GRAPH_INVALID_PORT');
+      expect(result.diagnostics[0]?.message).toContain('nonExistentPort');
     }
   });
 });

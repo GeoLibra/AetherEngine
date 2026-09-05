@@ -129,6 +129,7 @@ export interface TypedGraphIR {
   }[];
   readonly vertexStatements: readonly string[];
   readonly fragmentStatements: readonly string[];
+  readonly computeStatements: readonly string[];
   readonly vertexReturnExpr: string;
   readonly vertexReturnType: ShaderDataType;
   readonly fragmentReturnExpr: string;
@@ -190,5 +191,7 @@ export type ShaderGraphResult =
 export interface CachedNodeExpression {
   readonly outputType: ShaderDataType;
   readonly op: string;
+  readonly statement?: string;
+  readonly nodeId?: string;
   readonly literal?: string;
 }

@@ -28,10 +28,16 @@ import type {
   ShaderGraphNode,
   ShaderGraphResult,
   ShaderNodeDefinition,
+  ShaderPortDefinition,
   ShaderStage,
   TypedGraphIR
 } from './types';
-import { formatWgslLiteral, graphDiagnostic, isValidWgslIdentifier } from './validation';
+import {
+  diagnoseSignatureFailure,
+  formatWgslLiteral,
+  graphDiagnostic,
+  validateGraphNodes
+} from './validation';
 
 const NO_DIAGNOSTICS: readonly ShaderDiagnostic[] = Object.freeze([]);
 const NO_VERTEX_INPUTS: readonly {
@@ -63,75 +69,32 @@ const NO_SAMPLERS: readonly {
 }[] = Object.freeze([]);
 const NO_STATEMENTS: readonly string[] = Object.freeze([]);
 
+const ARITHMETIC_OPS: Readonly<Record<string, string>> = Object.freeze({
+  add: '+',
+  subtract: '-',
+  sub: '-',
+  multiply: '*',
+  mul: '*',
+  divide: '/',
+  div: '/'
+});
+
 function getArithmeticOp(kind: string): string {
-  switch (kind) {
-    case 'add':
-      return '+';
-    case 'subtract':
-    case 'sub':
-      return '-';
-    case 'multiply':
-    case 'mul':
-      return '*';
-    case 'divide':
-    case 'div':
-      return '/';
-    default:
-      return '+';
-  }
+  return ARITHMETIC_OPS[kind] ?? '+';
 }
 
-function diagnoseSignatureFailure(
-  node: ShaderGraphNode,
-  definition: ShaderNodeDefinition,
-  providedInputs: Readonly<Record<string, ShaderDataType>>,
-  usedStages: ReadonlySet<ShaderStage>
-): ShaderDiagnostic {
-  // Check if failure is due to stage mismatch
-  const allSigStages = new Set(definition.signatures.map((s) => s.stage));
-  if (!allSigStages.has('all')) {
-    for (const stage of usedStages) {
-      if (!allSigStages.has(stage)) {
-        return graphDiagnostic(
-          'GRAPH_STAGE_MISMATCH',
-          `Node "${node.id}" of kind "${node.kind}" is not valid in "${stage}" stage.`
-        );
-      }
-    }
+function pushStatementToStages(
+  stmt: string,
+  usedStages: ReadonlySet<ShaderStage>,
+  vertexStatements: string[],
+  fragmentStatements: string[],
+  computeStatements: string[]
+): void {
+  if (usedStages.has('vertex')) vertexStatements.push(stmt);
+  if (usedStages.has('compute')) computeStatements.push(stmt);
+  if (usedStages.has('fragment') || (!usedStages.has('vertex') && !usedStages.has('compute'))) {
+    fragmentStatements.push(stmt);
   }
-
-  // Check port names
-  const allPortIds = new Set(definition.signatures.flatMap((s) => s.inputs.map((p) => p.id)));
-  for (const inputKey of Object.keys(providedInputs)) {
-    if (!allPortIds.has(inputKey)) {
-      return graphDiagnostic(
-        'GRAPH_INVALID_PORT',
-        `Node "${node.id}" received unexpected input port "${inputKey}".`
-      );
-    }
-  }
-
-  // Check missing ports
-  for (const sig of definition.signatures) {
-    if (sig.inputs.length > 0 && Object.keys(providedInputs).length < sig.inputs.length) {
-      for (const requiredPort of sig.inputs) {
-        if (!(requiredPort.id in providedInputs)) {
-          return graphDiagnostic(
-            'GRAPH_MISSING_PORT',
-            `Node "${node.id}" of kind "${node.kind}" is missing required input port "${requiredPort.id}".`
-          );
-        }
-      }
-    }
-  }
-
-  // Check port types
-  return graphDiagnostic(
-    'GRAPH_TYPE_MISMATCH',
-    `Node "${node.id}" received incompatible port types: ${Object.entries(providedInputs)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join(', ')}.`
-  );
 }
 
 /**
@@ -145,74 +108,9 @@ export function lowerGraphToIR(
     return Object.freeze({ ok: false, diagnostics: NO_DIAGNOSTICS, cancelled: true });
   }
 
-  const seenIds = new Set<string>();
-  for (const node of graph.nodes) {
-    if (seenIds.has(node.id)) {
-      return Object.freeze({
-        ok: false,
-        diagnostics: Object.freeze([
-          graphDiagnostic(
-            'GRAPH_DUPLICATE_NODE_ID',
-            `ShaderGraph contains duplicate node ID "${node.id}".`
-          )
-        ])
-      });
-    }
-    if (!isValidWgslIdentifier(node.id)) {
-      return Object.freeze({
-        ok: false,
-        diagnostics: Object.freeze([
-          graphDiagnostic(
-            'GRAPH_INVALID_IDENTIFIER',
-            `Node ID "${node.id}" is not a valid WGSL identifier.`
-          )
-        ])
-      });
-    }
-    const def = getShaderNodeDefinition(node.kind);
-    if (!def) {
-      return Object.freeze({
-        ok: false,
-        diagnostics: Object.freeze([
-          graphDiagnostic(
-            'GRAPH_UNKNOWN_NODE_TYPE',
-            `Unknown node type "${node.kind}" on node "${node.id}".`
-          )
-        ])
-      });
-    }
-
-    const inputKeys = Object.keys(node.inputs ?? {});
-    if (def.signatures.length > 0) {
-      const anySigInputs = def.signatures[0]!.inputs;
-      if (anySigInputs.length === 0 && inputKeys.length > 0) {
-        return Object.freeze({
-          ok: false,
-          diagnostics: Object.freeze([
-            graphDiagnostic(
-              'GRAPH_INVALID_PORT',
-              `Node "${node.id}" of kind "${node.kind}" must not have inputs.`
-            )
-          ])
-        });
-      }
-      const allPortIds = new Set(def.signatures.flatMap((s) => s.inputs.map((p) => p.id)));
-      for (const inputKey of inputKeys) {
-        if (!allPortIds.has(inputKey)) {
-          return Object.freeze({
-            ok: false,
-            diagnostics: Object.freeze([
-              graphDiagnostic(
-                'GRAPH_INVALID_PORT',
-                `Node "${node.id}" received unexpected input port "${inputKey}".`
-              )
-            ])
-          });
-        }
-      }
-    }
-
-    seenIds.add(node.id);
+  const initialDiag = validateGraphNodes(graph.nodes);
+  if (initialDiag) {
+    return Object.freeze({ ok: false, diagnostics: Object.freeze([initialDiag]) });
   }
 
   const vertexAttrNodes = graph.nodes.filter((n) => n.kind === 'vertexAttribute');
@@ -235,6 +133,7 @@ export function lowerGraphToIR(
   const stageUsage = propagateStageUsage(graph.nodes, graph.outputs);
   const { order } = topoResult;
   const nodeTypes = new Map<string, ShaderDataType>();
+  const nodeOutputPorts = new Map<string, readonly ShaderPortDefinition[]>();
   const nodeHashes = new Map<string, string>();
   let reusedNodes = 0;
 
@@ -246,6 +145,7 @@ export function lowerGraphToIR(
 
   const vertexStatements: string[] = [];
   const fragmentStatements: string[] = [];
+  const computeStatements: string[] = [];
 
   for (const node of order) {
     if (options?.signal?.aborted) {
@@ -270,7 +170,25 @@ export function lowerGraphToIR(
           ])
         });
       }
-      providedInputs[portId] = sourceType;
+
+      let resolvedPortType = sourceType;
+      if (typeof conn !== 'string' && conn.portId !== undefined) {
+        const sourceOutputs = nodeOutputPorts.get(sourceId) ?? [];
+        const matchedPort = sourceOutputs.find((p) => p.id === conn.portId);
+        if (!matchedPort) {
+          return Object.freeze({
+            ok: false,
+            diagnostics: Object.freeze([
+              graphDiagnostic(
+                'GRAPH_INVALID_PORT',
+                `Node "${node.id}" references non-existent output port "${conn.portId}" on node "${sourceId}".`
+              )
+            ])
+          });
+        }
+        resolvedPortType = matchedPort.type;
+      }
+      providedInputs[portId] = resolvedPortType;
     }
 
     const matchedSig = findMatchingSignature(
@@ -287,6 +205,8 @@ export function lowerGraphToIR(
         ])
       });
     }
+
+    nodeOutputPorts.set(node.id, matchedSig.outputs);
 
     const resolvedOutputType: ShaderDataType =
       matchedSig.outputs.length > 0
@@ -330,24 +250,35 @@ export function lowerGraphToIR(
     });
     nodeHashes.set(node.id, nodeHash);
 
+    let cachedStatement: string | undefined;
     if (options?.nodeCache) {
       const cached = options.nodeCache.get(nodeHash);
       if (cached !== undefined) {
         reusedNodes++;
-      } else {
-        const cachedEntry: CachedNodeExpression = Object.freeze({
-          outputType: resolvedOutputType,
-          op: node.kind,
-          ...(literal !== undefined ? { literal } : {})
-        });
-        options.nodeCache.set(nodeHash, cachedEntry);
+        if (cached.nodeId === node.id && cached.statement) {
+          cachedStatement = cached.statement;
+        } else if (cached.literal !== undefined) {
+          literal = cached.literal;
+        }
       }
     }
 
     if (node.kind === 'vertexAttribute') {
       const loc = node.location ?? vertexInputs.length;
       vertexInputs.push({ location: loc, name: node.id, type: resolvedOutputType });
-      vertexStatements.push(`let ${node.id}: ${resolvedOutputType} = input.${node.id};`);
+      const stmt = cachedStatement ?? `let ${node.id}: ${resolvedOutputType} = input.${node.id};`;
+      if (options?.nodeCache && cachedStatement === undefined) {
+        options.nodeCache.set(
+          nodeHash,
+          Object.freeze({
+            outputType: resolvedOutputType,
+            op: node.kind,
+            nodeId: node.id,
+            statement: stmt
+          })
+        );
+      }
+      vertexStatements.push(stmt);
       continue;
     }
 
@@ -358,50 +289,95 @@ export function lowerGraphToIR(
         samplers.push({ group: node.group ?? 1, binding: node.binding ?? 1, name: node.id });
       } else {
         uniformFields.push({ name: node.id, type: resolvedOutputType });
-        const stmt = `let ${node.id}: ${resolvedOutputType} = materialParams.${node.id};`;
-        if (usedStages.has('vertex')) vertexStatements.push(stmt);
-        if (usedStages.has('fragment') || usedStages.size === 0) fragmentStatements.push(stmt);
+        const stmt =
+          cachedStatement ?? `let ${node.id}: ${resolvedOutputType} = materialParams.${node.id};`;
+        if (options?.nodeCache && cachedStatement === undefined) {
+          options.nodeCache.set(
+            nodeHash,
+            Object.freeze({
+              outputType: resolvedOutputType,
+              op: node.kind,
+              nodeId: node.id,
+              statement: stmt
+            })
+          );
+        }
+        pushStatementToStages(
+          stmt,
+          usedStages,
+          vertexStatements,
+          fragmentStatements,
+          computeStatements
+        );
       }
-      continue;
-    }
-
-    if (node.kind === 'constant') {
-      const stmt = `let ${node.id}: ${resolvedOutputType} = ${literal};`;
-      if (usedStages.has('vertex')) vertexStatements.push(stmt);
-      if (usedStages.has('fragment') || usedStages.size === 0) fragmentStatements.push(stmt);
       continue;
     }
 
     if (node.kind === 'fragmentOutput') {
       const colorId = resolveConnectionNodeId(node.inputs?.color ?? '');
       fragmentOutputs.push({ location: 0, name: node.id, type: 'vec4f' });
-      fragmentStatements.push(`let ${node.id}: vec4f = ${colorId};`);
+      const stmt = cachedStatement ?? `let ${node.id}: vec4f = ${colorId};`;
+      if (options?.nodeCache && cachedStatement === undefined) {
+        options.nodeCache.set(
+          nodeHash,
+          Object.freeze({
+            outputType: resolvedOutputType,
+            op: node.kind,
+            nodeId: node.id,
+            statement: stmt
+          })
+        );
+      }
+      fragmentStatements.push(stmt);
       continue;
     }
 
-    if (node.kind === 'textureSample') {
+    // Pure computation nodes: constant, textureSample, vec4f_from_vec3f, arithmetic
+    let stmt: string;
+    if (cachedStatement !== undefined) {
+      stmt = cachedStatement;
+    } else if (node.kind === 'constant') {
+      stmt = `let ${node.id}: ${resolvedOutputType} = ${literal};`;
+    } else if (node.kind === 'textureSample') {
       const tex = resolveConnectionNodeId(node.inputs?.texture ?? '');
       const smp = resolveConnectionNodeId(node.inputs?.sampler ?? '');
       const uv = resolveConnectionNodeId(node.inputs?.uv ?? '');
-      fragmentStatements.push(`let ${node.id}: vec4f = textureSample(${tex}, ${smp}, ${uv});`);
-      continue;
-    }
-
-    if (node.kind === 'vec4f_from_vec3f') {
+      stmt = `let ${node.id}: vec4f = textureSample(${tex}, ${smp}, ${uv});`;
+    } else if (node.kind === 'vec4f_from_vec3f') {
       const rgb = resolveConnectionNodeId(node.inputs?.rgb ?? '');
       const alpha = resolveConnectionNodeId(node.inputs?.alpha ?? '');
-      const stmt = `let ${node.id}: vec4f = vec4f(${rgb}, ${alpha});`;
-      if (usedStages.has('vertex')) vertexStatements.push(stmt);
-      if (usedStages.has('fragment') || usedStages.size === 0) fragmentStatements.push(stmt);
-      continue;
+      stmt = `let ${node.id}: vec4f = vec4f(${rgb}, ${alpha});`;
+    } else {
+      const leftId = resolveConnectionNodeId(node.inputs?.left ?? '');
+      const rightId = resolveConnectionNodeId(node.inputs?.right ?? '');
+      const op = getArithmeticOp(node.kind);
+      stmt = `let ${node.id}: ${resolvedOutputType} = ${leftId} ${op} ${rightId};`;
     }
 
-    const leftId = resolveConnectionNodeId(node.inputs?.left ?? '');
-    const rightId = resolveConnectionNodeId(node.inputs?.right ?? '');
-    const op = getArithmeticOp(node.kind);
-    const stmt = `let ${node.id}: ${resolvedOutputType} = ${leftId} ${op} ${rightId};`;
-    if (usedStages.has('vertex')) vertexStatements.push(stmt);
-    if (usedStages.has('fragment') || usedStages.size === 0) fragmentStatements.push(stmt);
+    if (options?.nodeCache && cachedStatement === undefined) {
+      options.nodeCache.set(
+        nodeHash,
+        Object.freeze({
+          outputType: resolvedOutputType,
+          op: node.kind,
+          nodeId: node.id,
+          statement: stmt,
+          ...(literal !== undefined ? { literal } : {})
+        })
+      );
+    }
+
+    if (node.kind === 'textureSample') {
+      fragmentStatements.push(stmt);
+    } else {
+      pushStatementToStages(
+        stmt,
+        usedStages,
+        vertexStatements,
+        fragmentStatements,
+        computeStatements
+      );
+    }
   }
 
   let vertexReturnExpr = '';
@@ -443,6 +419,8 @@ export function lowerGraphToIR(
     vertexStatements: vertexStatements.length > 0 ? Object.freeze(vertexStatements) : NO_STATEMENTS,
     fragmentStatements:
       fragmentStatements.length > 0 ? Object.freeze(fragmentStatements) : NO_STATEMENTS,
+    computeStatements:
+      computeStatements.length > 0 ? Object.freeze(computeStatements) : NO_STATEMENTS,
     vertexReturnExpr,
     vertexReturnType,
     fragmentReturnExpr,
@@ -450,13 +428,20 @@ export function lowerGraphToIR(
   });
 
   const wgsl = emitWgslFromIR(ir);
+  const hasCompute = Boolean(graph.outputs.compute);
+  const hasGraphics = Boolean(graph.outputs.vertex || graph.outputs.fragment || !hasCompute);
+  const entryPoints: { name: string; stage: string }[] = [];
+  if (hasGraphics) {
+    entryPoints.push({ name: 'vertexMain', stage: 'vertex' });
+    entryPoints.push({ name: 'fragmentMain', stage: 'fragment' });
+  }
+  if (hasCompute) {
+    entryPoints.push({ name: 'computeMain', stage: 'compute' });
+  }
   const metadataJson = JSON.stringify(
     {
       schemaVersion: 1,
-      entryPoints: [
-        { name: 'vertexMain', stage: 'vertex' },
-        { name: 'fragmentMain', stage: 'fragment' }
-      ]
+      entryPoints
     },
     null,
     2

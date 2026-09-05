@@ -3,6 +3,7 @@
  */
 
 import type { TypedGraphIR } from './types';
+import { formatReturnExpression } from './validation';
 
 /**
  * Pure function lowering TypedGraphIR into standard WGSL shader source code.
@@ -27,56 +28,74 @@ export function emitWgslFromIR(ir: TypedGraphIR): string {
     sections.push(`@group(${s.group}) @binding(${s.binding}) var ${s.name}: sampler;`);
   }
 
-  // Vertex IO
-  const vInputFields =
-    ir.vertexInputs.length > 0
-      ? ir.vertexInputs.map((i) => `  @location(${i.location}) ${i.name}: ${i.type},`).join('\n')
-      : '  @location(0) position: vec3f,';
-  sections.push(`struct VertexInput {\n${vInputFields}\n};`);
+  const hasCompute = Boolean(ir.computeStatements && ir.computeStatements.length > 0);
+  const hasGraphics =
+    ir.vertexInputs.length > 0 ||
+    Boolean(ir.vertexReturnExpr) ||
+    Boolean(ir.fragmentReturnExpr) ||
+    ir.fragmentOutputs.length > 0 ||
+    !hasCompute;
 
-  sections.push(
-    `struct VertexOutput {\n  @builtin(position) position: vec4f,\n  @location(0) uv: vec2f,\n};`
-  );
+  if (hasGraphics) {
+    // Vertex IO
+    const vInputFields =
+      ir.vertexInputs.length > 0
+        ? ir.vertexInputs.map((i) => `  @location(${i.location}) ${i.name}: ${i.type},`).join('\n')
+        : '  @location(0) position: vec3f,';
+    sections.push(`struct VertexInput {\n${vInputFields}\n};`);
 
-  // Determine vertex position expression
-  let posExpr: string;
-  if (ir.vertexReturnExpr) {
-    switch (ir.vertexReturnType) {
-      case 'vec4f':
-        posExpr = ir.vertexReturnExpr;
-        break;
-      case 'vec3f':
-        posExpr = `vec4f(${ir.vertexReturnExpr}, 1.0)`;
-        break;
-      case 'vec2f':
-        posExpr = `vec4f(${ir.vertexReturnExpr}, 0.0, 1.0)`;
-        break;
-      default:
-        posExpr = `vec4f(${ir.vertexReturnExpr}, 0.0, 0.0, 1.0)`;
-        break;
+    sections.push(
+      `struct VertexOutput {\n  @builtin(position) position: vec4f,\n  @location(0) uv: vec2f,\n};`
+    );
+
+    // Determine vertex position expression
+    let posExpr: string;
+    if (ir.vertexReturnExpr) {
+      switch (ir.vertexReturnType) {
+        case 'vec4f':
+          posExpr = ir.vertexReturnExpr;
+          break;
+        case 'vec3f':
+          posExpr = `vec4f(${ir.vertexReturnExpr}, 1.0)`;
+          break;
+        case 'vec2f':
+          posExpr = `vec4f(${ir.vertexReturnExpr}, 0.0, 1.0)`;
+          break;
+        default:
+          posExpr = `vec4f(${ir.vertexReturnExpr}, 0.0, 0.0, 1.0)`;
+          break;
+      }
+    } else {
+      posExpr = 'vec4f(0.0, 0.0, 0.0, 1.0)';
     }
-  } else {
-    posExpr = 'vec4f(0.0, 0.0, 0.0, 1.0)';
+
+    // Vertex Main
+    const vBody =
+      ir.vertexStatements.length > 0
+        ? ir.vertexStatements.map((s) => `  ${s}`).join('\n') + '\n'
+        : '';
+    sections.push(
+      `@vertex\nfn vertexMain(input: VertexInput) -> VertexOutput {\n  var output: VertexOutput;\n${vBody}  output.position = ${posExpr};\n  output.uv = vec2f(0.5, 0.5);\n  return output;\n}`
+    );
+
+    // Fragment Main
+    const fBody =
+      ir.fragmentStatements.length > 0
+        ? ir.fragmentStatements.map((s) => `  ${s}`).join('\n') + '\n'
+        : '';
+    const fReturnExpr = ir.fragmentReturnExpr
+      ? formatReturnExpression(ir.fragmentReturnExpr, ir.fragmentReturnType, 'fragment')
+      : 'vec4f(0.0, 0.0, 0.0, 1.0)';
+    sections.push(
+      `@fragment\nfn fragmentMain(stageInput: VertexOutput) -> @location(0) vec4f {\n${fBody}  return ${fReturnExpr};\n}`
+    );
   }
 
-  // Vertex Main
-  const vBody =
-    ir.vertexStatements.length > 0
-      ? ir.vertexStatements.map((s) => `  ${s}`).join('\n') + '\n'
-      : '';
-  sections.push(
-    `@vertex\nfn vertexMain(input: VertexInput) -> VertexOutput {\n  var output: VertexOutput;\n${vBody}  output.position = ${posExpr};\n  output.uv = vec2f(0.5, 0.5);\n  return output;\n}`
-  );
-
-  // Fragment Main
-  const fBody =
-    ir.fragmentStatements.length > 0
-      ? ir.fragmentStatements.map((s) => `  ${s}`).join('\n') + '\n'
-      : '';
-  const fReturnExpr = ir.fragmentReturnExpr || 'vec4f(0.0, 0.0, 0.0, 1.0)';
-  sections.push(
-    `@fragment\nfn fragmentMain(stageInput: VertexOutput) -> @location(0) vec4f {\n${fBody}  return ${fReturnExpr};\n}`
-  );
+  // Compute Main
+  if (hasCompute) {
+    const cBody = ir.computeStatements.map((s) => `  ${s}`).join('\n');
+    sections.push(`@compute @workgroup_size(64)\nfn computeMain() {\n${cBody}\n}`);
+  }
 
   return sections.join('\n\n');
 }

@@ -3,7 +3,8 @@
  */
 
 import type { ShaderDiagnostic, SourceSpan } from '../../types';
-import type { ShaderDataType } from './types';
+import { getShaderNodeDefinition } from './registry';
+import type { ShaderDataType, ShaderGraphNode, ShaderNodeDefinition, ShaderStage } from './types';
 
 const WGSL_IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/u;
 const WGSL_RESERVED_KEYWORDS = new Set([
@@ -185,4 +186,114 @@ export function graphDiagnostic(code: string, message: string): ShaderDiagnostic
     primary: graphSpan(),
     related: NO_RELATED_SPANS
   });
+}
+
+/**
+ * Derives a specific, actionable diagnostic for why a node signature failed to match.
+ */
+export function diagnoseSignatureFailure(
+  node: ShaderGraphNode,
+  definition: ShaderNodeDefinition,
+  providedInputs: Readonly<Record<string, ShaderDataType>>,
+  usedStages: ReadonlySet<ShaderStage>
+): ShaderDiagnostic {
+  // Check if failure is due to stage mismatch
+  const allSigStages = new Set(definition.signatures.map((s) => s.stage));
+  if (!allSigStages.has('all')) {
+    for (const stage of usedStages) {
+      if (!allSigStages.has(stage)) {
+        return graphDiagnostic(
+          'GRAPH_STAGE_MISMATCH',
+          `Node "${node.id}" of kind "${node.kind}" is not valid in "${stage}" stage.`
+        );
+      }
+    }
+  }
+
+  // Check port names
+  const allPortIds = new Set(definition.signatures.flatMap((s) => s.inputs.map((p) => p.id)));
+  for (const inputKey of Object.keys(providedInputs)) {
+    if (!allPortIds.has(inputKey)) {
+      return graphDiagnostic(
+        'GRAPH_INVALID_PORT',
+        `Node "${node.id}" received unexpected input port "${inputKey}".`
+      );
+    }
+  }
+
+  // Check missing ports
+  for (const sig of definition.signatures) {
+    if (sig.inputs.length > 0 && Object.keys(providedInputs).length < sig.inputs.length) {
+      for (const requiredPort of sig.inputs) {
+        if (!(requiredPort.id in providedInputs)) {
+          return graphDiagnostic(
+            'GRAPH_MISSING_PORT',
+            `Node "${node.id}" of kind "${node.kind}" is missing required input port "${requiredPort.id}".`
+          );
+        }
+      }
+    }
+  }
+
+  // Check port types
+  return graphDiagnostic(
+    'GRAPH_TYPE_MISMATCH',
+    `Node "${node.id}" received incompatible port types: ${Object.entries(providedInputs)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ')}.`
+  );
+}
+
+/**
+ * Validates initial node correctness: ID uniqueness, valid WGSL identifier,
+ * known node type in registry, and non-empty input validation.
+ */
+export function validateGraphNodes(
+  nodes: readonly ShaderGraphNode[]
+): ShaderDiagnostic | undefined {
+  const seenIds = new Set<string>();
+  for (const node of nodes) {
+    if (seenIds.has(node.id)) {
+      return graphDiagnostic(
+        'GRAPH_DUPLICATE_NODE_ID',
+        `ShaderGraph contains duplicate node ID "${node.id}".`
+      );
+    }
+    if (!isValidWgslIdentifier(node.id)) {
+      return graphDiagnostic(
+        'GRAPH_INVALID_IDENTIFIER',
+        `Node ID "${node.id}" is not a valid WGSL identifier.`
+      );
+    }
+    const def = getShaderNodeDefinition(node.kind);
+    if (!def) {
+      return graphDiagnostic(
+        'GRAPH_UNKNOWN_NODE_TYPE',
+        `Unknown node type "${node.kind}" on node "${node.id}".`
+      );
+    }
+
+    const inputKeys = Object.keys(node.inputs ?? {});
+    if (def.signatures.length > 0) {
+      const anySigInputs = def.signatures[0]!.inputs;
+      if (anySigInputs.length === 0 && inputKeys.length > 0) {
+        return graphDiagnostic(
+          'GRAPH_INVALID_PORT',
+          `Node "${node.id}" of kind "${node.kind}" must not have inputs.`
+        );
+      }
+      const allPortIds = new Set(def.signatures.flatMap((s) => s.inputs.map((p) => p.id)));
+      for (const inputKey of inputKeys) {
+        if (!allPortIds.has(inputKey)) {
+          return graphDiagnostic(
+            'GRAPH_INVALID_PORT',
+            `Node "${node.id}" received unexpected input port "${inputKey}".`
+          );
+        }
+      }
+    }
+
+    seenIds.add(node.id);
+  }
+  return undefined;
 }
