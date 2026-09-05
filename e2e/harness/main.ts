@@ -1,4 +1,4 @@
-import { BrowserHost, type WindowMetrics } from '../../src';
+import { BrowserGraphicsBootstrapError, BrowserHost, type WindowMetrics } from '../../src';
 import { createDOMBrowserPort } from './browser-port';
 import type { E2EBridge, E2EState } from './types';
 import { runWebGPUScene } from './webgpu-scene';
@@ -210,7 +210,10 @@ function cancelActiveResizes(): void {
 function publishFailed(error: unknown): void {
   currentState = Object.freeze({
     status: 'failed',
-    message: error instanceof Error ? error.message : String(error)
+    message: error instanceof Error ? error.message : String(error),
+    ...(error instanceof BrowserGraphicsBootstrapError
+      ? { graphicsAttempts: Object.freeze([...error.attempts]) }
+      : {})
   });
 }
 

@@ -12,6 +12,7 @@
     "build": "vite build",
     "prebuild": "pnpm run shader:check",
     "dev": "vite --host 127.0.0.1",
+    "doctor": "vite-node --script tools/doctor/cli.ts",
     "test": "vitest run",
     "shader:generate": "vite-node --script scripts/cook-built-in-shaders.ts",
     "shader:check": "vite-node --script scripts/cook-built-in-shaders.ts --check",

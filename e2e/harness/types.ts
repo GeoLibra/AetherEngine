@@ -1,3 +1,5 @@
+import type { BrowserGraphicsAttempt } from '../../src';
+
 export type E2EState =
   | { readonly status: 'booting' }
   | {
@@ -6,7 +8,11 @@ export type E2EState =
       readonly backend: 'browser-host' | 'webgl2' | 'webgpu';
       readonly detail: Readonly<Record<string, unknown>>;
     }
-  | { readonly status: 'failed'; readonly message: string }
+  | {
+      readonly status: 'failed';
+      readonly message: string;
+      readonly graphicsAttempts?: readonly BrowserGraphicsAttempt[];
+    }
   | { readonly status: 'destroyed' };
 
 export interface E2EBridge {
