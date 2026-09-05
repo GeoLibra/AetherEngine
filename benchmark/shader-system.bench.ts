@@ -7,6 +7,7 @@ import {
 } from '../src/shader/experimental/flux/frontend';
 import { ShaderCompiler } from '../src/shader/experimental/flux/compiler';
 import { runBindingLayoutScenario } from './shader-system/binding-layout-scenario';
+import { runShaderGraphScenario } from './shader-system/shader-graph-scenario';
 
 const structFields = Array.from({ length: 64 }, (_, index) => `field${index}: vec4<f32>`).join(
   ', '
@@ -67,3 +68,17 @@ bench(
   },
   { iterations: 1, warmupIterations: 0 }
 );
+
+for (const chainLength of [16, 64]) {
+  bench(
+    `lower and cache-hit ShaderGraph with ${chainLength} nodes`,
+    async () => {
+      const result = await runShaderGraphScenario({ chainLength, cacheHits: 8 });
+      expect(result.nodeCount).toBe(chainLength);
+      expect(result.reusedNodes).toBe(chainLength * 8);
+      expect(result.sliceLowerOk).toBe(true);
+      expect(result.checksum).not.toBe(0);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
