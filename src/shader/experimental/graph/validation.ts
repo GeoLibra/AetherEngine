@@ -4,7 +4,15 @@
 
 import type { ShaderDiagnostic, SourceSpan } from '../../types';
 import { getShaderNodeDefinition } from './registry';
-import type { ShaderDataType, ShaderGraphNode, ShaderNodeDefinition, ShaderStage } from './types';
+import { resolveConnectionNodeId } from './topological-sort';
+import type {
+  ShaderDataType,
+  ShaderGraphNode,
+  ShaderNodeConnection,
+  ShaderNodeDefinition,
+  ShaderPortDefinition,
+  ShaderStage
+} from './types';
 
 const WGSL_IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/u;
 const WGSL_RESERVED_KEYWORDS = new Set([
@@ -296,4 +304,47 @@ export function validateGraphNodes(
     seenIds.add(node.id);
   }
   return undefined;
+}
+
+export type ResolvedPortResult =
+  | Readonly<{ ok: true; sourceId: string; type: ShaderDataType }>
+  | Readonly<{ ok: false; diagnostic: ShaderDiagnostic }>;
+
+/**
+ * Validates and resolves a connection endpoint (source node and optional output portId).
+ */
+export function resolveConnectionPort(
+  conn: string | ShaderNodeConnection,
+  nodeTypes: ReadonlyMap<string, ShaderDataType>,
+  nodeOutputPorts: ReadonlyMap<string, readonly ShaderPortDefinition[]>,
+  targetDescription: string
+): ResolvedPortResult {
+  const sourceId = resolveConnectionNodeId(conn);
+  const sourceType = nodeTypes.get(sourceId);
+  if (!sourceType) {
+    return Object.freeze({
+      ok: false,
+      diagnostic: graphDiagnostic(
+        'GRAPH_MISSING_NODE',
+        `${targetDescription} references uncomputed or missing node "${sourceId}".`
+      )
+    });
+  }
+
+  if (typeof conn !== 'string' && conn.portId !== undefined) {
+    const sourceOutputs = nodeOutputPorts.get(sourceId) ?? [];
+    const matchedPort = sourceOutputs.find((p) => p.id === conn.portId);
+    if (!matchedPort) {
+      return Object.freeze({
+        ok: false,
+        diagnostic: graphDiagnostic(
+          'GRAPH_INVALID_PORT',
+          `${targetDescription} references non-existent output port "${conn.portId}" on node "${sourceId}".`
+        )
+      });
+    }
+    return Object.freeze({ ok: true, sourceId, type: matchedPort.type });
+  }
+
+  return Object.freeze({ ok: true, sourceId, type: sourceType });
 }

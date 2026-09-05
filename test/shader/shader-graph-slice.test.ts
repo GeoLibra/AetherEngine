@@ -1,7 +1,12 @@
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { lowerVerticalSliceGraph, type ShaderGraph } from '../../src/shader/experimental/graph';
+import {
+  BoundedNodeCache,
+  lowerGraphToIR,
+  lowerVerticalSliceGraph,
+  type ShaderGraph
+} from '../../src/shader/experimental/graph';
 import { loadCookedShaderModule } from '../../src/shader/pipeline';
 import { NativeWgslCooker } from '../../tools/shader-cooker/native-wgsl-cooker';
 
@@ -130,10 +135,7 @@ describe('ShaderGraph minimal vertical slice', () => {
       outputs: { fragment: 'sum' }
     };
     const result = lowerVerticalSliceGraph(mismatchGraph);
-    expect(result).toMatchObject({
-      ok: false,
-      diagnostics: [{ code: 'GRAPH_TYPE_MISMATCH' }]
-    });
+    expect(result).toMatchObject({ ok: false, diagnostics: [{ code: 'GRAPH_TYPE_MISMATCH' }] });
   });
 
   test('rejects textureSample with invalid port types', () => {
@@ -149,9 +151,7 @@ describe('ShaderGraph minimal vertical slice', () => {
     };
     const result = lowerVerticalSliceGraph(invalidGraph);
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.diagnostics[0]?.code).toBe('GRAPH_TYPE_MISMATCH');
-    }
+    if (!result.ok) expect(result.diagnostics[0]?.code).toBe('GRAPH_TYPE_MISMATCH');
   });
 
   test('rejects arithmetic nodes with missing inputs', () => {
@@ -165,9 +165,7 @@ describe('ShaderGraph minimal vertical slice', () => {
     };
     const result = lowerVerticalSliceGraph(invalidGraph);
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.diagnostics[0]?.code).toBe('GRAPH_MISSING_PORT');
-    }
+    if (!result.ok) expect(result.diagnostics[0]?.code).toBe('GRAPH_MISSING_PORT');
   });
 
   test('rejects fragmentOutput with non-vec4f input', () => {
@@ -181,9 +179,7 @@ describe('ShaderGraph minimal vertical slice', () => {
     };
     const result = lowerVerticalSliceGraph(invalidGraph);
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.diagnostics[0]?.code).toBe('GRAPH_TYPE_MISMATCH');
-    }
+    if (!result.ok) expect(result.diagnostics[0]?.code).toBe('GRAPH_TYPE_MISMATCH');
   });
 
   test('drives clip-space position from arbitrary attribute names and vertex expressions', () => {
@@ -227,13 +223,9 @@ describe('ShaderGraph minimal vertical slice', () => {
         },
         { id: 'outColor', kind: 'fragmentOutput', inputs: { color: 'sample' } }
       ],
-      outputs: {
-        vertex: 'pos',
-        fragment: 'outColor'
-      }
+      outputs: { vertex: 'pos', fragment: 'outColor' }
     };
-    const result = lowerVerticalSliceGraph(graph);
-    expect(result.ok).toBe(true);
+    expect(lowerVerticalSliceGraph(graph).ok).toBe(true);
   });
 
   test('rejects textureSample when reachable from vertex output', () => {
@@ -249,15 +241,11 @@ describe('ShaderGraph minimal vertical slice', () => {
           inputs: { texture: 'tex', sampler: 'smp', uv: 'uv' }
         }
       ],
-      outputs: {
-        vertex: 'sample'
-      }
+      outputs: { vertex: 'sample' }
     };
     const result = lowerVerticalSliceGraph(graph);
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.diagnostics[0]?.code).toBe('GRAPH_STAGE_MISMATCH');
-    }
+    if (!result.ok) expect(result.diagnostics[0]?.code).toBe('GRAPH_STAGE_MISMATCH');
   });
 
   test('adapts scalar f32 fragment output to vec4f and cooks with Native Naga', async () => {
@@ -338,7 +326,7 @@ describe('ShaderGraph minimal vertical slice', () => {
           id: 'sum',
           kind: 'add',
           inputs: {
-            left: { nodeId: 'c1', portId: 'nonExistentPort' },
+            left: { nodeId: 'c1', portId: 'nonExistent' },
             right: { nodeId: 'c1', portId: 'out' }
           }
         }
@@ -349,7 +337,63 @@ describe('ShaderGraph minimal vertical slice', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.diagnostics[0]?.code).toBe('GRAPH_INVALID_PORT');
-      expect(result.diagnostics[0]?.message).toContain('nonExistentPort');
+      expect(result.diagnostics[0]?.message).toContain('nonExistent');
+    }
+  });
+
+  test('rejects graph root output referencing non-existent output portId', () => {
+    const graph: ShaderGraph = {
+      revision: 1,
+      nodes: [{ id: 'color', kind: 'constant', outputType: 'vec4f', value: [1, 0, 0, 1] }],
+      outputs: { fragment: { nodeId: 'color', portId: 'missing' } }
+    };
+    const result = lowerVerticalSliceGraph(graph);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.diagnostics[0]?.code).toBe('GRAPH_INVALID_PORT');
+      expect(result.diagnostics[0]?.message).toContain('missing');
+    }
+  });
+
+  test('invalidates cached statements when referenced dependency node IDs change', () => {
+    const cache = new BoundedNodeCache();
+    const graphA: ShaderGraph = {
+      revision: 1,
+      nodes: [
+        { id: 'a', kind: 'constant', outputType: 'f32', value: 1.0 },
+        { id: 'sum', kind: 'add', inputs: { left: 'a', right: 'a' } }
+      ],
+      outputs: { fragment: 'sum' }
+    };
+    const firstResult = lowerGraphToIR(graphA, { nodeCache: cache });
+    expect(firstResult.ok).toBe(true);
+    if (firstResult.ok) {
+      expect(firstResult.wgsl).toContain('let sum: f32 = a + a;');
+    }
+
+    // Rename dependency 'a' to 'b'
+    const graphB: ShaderGraph = {
+      revision: 2,
+      nodes: [
+        { id: 'b', kind: 'constant', outputType: 'f32', value: 1.0 },
+        { id: 'sum', kind: 'add', inputs: { left: 'b', right: 'b' } }
+      ],
+      outputs: { fragment: 'sum' }
+    };
+    const warmResult = lowerGraphToIR(graphB, { nodeCache: cache });
+    expect(warmResult.ok).toBe(true);
+    if (warmResult.ok) {
+      expect(warmResult.wgsl).toContain('let b: f32 = 1.0;');
+      expect(warmResult.wgsl).toContain('let sum: f32 = b + b;');
+      expect(warmResult.wgsl).not.toContain('let sum: f32 = a + a;');
+      expect(warmResult.wgsl).not.toContain('let a:');
+    }
+
+    // Verify warm result matches a clean cold lowering
+    const coldResult = lowerGraphToIR(graphB);
+    expect(coldResult.ok).toBe(true);
+    if (warmResult.ok && coldResult.ok) {
+      expect(warmResult.wgsl).toBe(coldResult.wgsl);
     }
   });
 });

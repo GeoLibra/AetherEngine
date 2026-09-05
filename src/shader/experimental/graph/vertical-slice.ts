@@ -36,6 +36,7 @@ import {
   diagnoseSignatureFailure,
   formatWgslLiteral,
   graphDiagnostic,
+  resolveConnectionPort,
   validateGraphNodes
 } from './validation';
 
@@ -155,40 +156,18 @@ export function lowerGraphToIR(
     const definition = getShaderNodeDefinition(node.kind)!;
     const usedStages = stageUsage.get(node.id) ?? new Set<ShaderStage>();
 
+    const currentInputNodeIds: Record<string, string> = {};
     const providedInputs: Record<string, ShaderDataType> = {};
     for (const [portId, conn] of Object.entries(node.inputs ?? {})) {
-      const sourceId = resolveConnectionNodeId(conn);
-      const sourceType = nodeTypes.get(sourceId);
-      if (!sourceType) {
+      currentInputNodeIds[portId] = resolveConnectionNodeId(conn);
+      const resolved = resolveConnectionPort(conn, nodeTypes, nodeOutputPorts, `Node "${node.id}"`);
+      if (!resolved.ok) {
         return Object.freeze({
           ok: false,
-          diagnostics: Object.freeze([
-            graphDiagnostic(
-              'GRAPH_MISSING_NODE',
-              `Node "${node.id}" references uncomputed or missing node "${sourceId}".`
-            )
-          ])
+          diagnostics: Object.freeze([resolved.diagnostic])
         });
       }
-
-      let resolvedPortType = sourceType;
-      if (typeof conn !== 'string' && conn.portId !== undefined) {
-        const sourceOutputs = nodeOutputPorts.get(sourceId) ?? [];
-        const matchedPort = sourceOutputs.find((p) => p.id === conn.portId);
-        if (!matchedPort) {
-          return Object.freeze({
-            ok: false,
-            diagnostics: Object.freeze([
-              graphDiagnostic(
-                'GRAPH_INVALID_PORT',
-                `Node "${node.id}" references non-existent output port "${conn.portId}" on node "${sourceId}".`
-              )
-            ])
-          });
-        }
-        resolvedPortType = matchedPort.type;
-      }
-      providedInputs[portId] = resolvedPortType;
+      providedInputs[portId] = resolved.type;
     }
 
     const matchedSig = findMatchingSignature(
@@ -255,7 +234,22 @@ export function lowerGraphToIR(
       const cached = options.nodeCache.get(nodeHash);
       if (cached !== undefined) {
         reusedNodes++;
-        if (cached.nodeId === node.id && cached.statement) {
+        let canReuse = cached.nodeId === node.id && Boolean(cached.statement);
+        if (canReuse && cached.inputNodeIds) {
+          const cachedKeys = Object.keys(cached.inputNodeIds);
+          const currentKeys = Object.keys(currentInputNodeIds);
+          if (cachedKeys.length !== currentKeys.length) {
+            canReuse = false;
+          } else {
+            for (const key of currentKeys) {
+              if (cached.inputNodeIds[key] !== currentInputNodeIds[key]) {
+                canReuse = false;
+                break;
+              }
+            }
+          }
+        }
+        if (canReuse) {
           cachedStatement = cached.statement;
         } else if (cached.literal !== undefined) {
           literal = cached.literal;
@@ -274,7 +268,8 @@ export function lowerGraphToIR(
             outputType: resolvedOutputType,
             op: node.kind,
             nodeId: node.id,
-            statement: stmt
+            statement: stmt,
+            inputNodeIds: Object.freeze(currentInputNodeIds)
           })
         );
       }
@@ -298,7 +293,8 @@ export function lowerGraphToIR(
               outputType: resolvedOutputType,
               op: node.kind,
               nodeId: node.id,
-              statement: stmt
+              statement: stmt,
+              inputNodeIds: Object.freeze(currentInputNodeIds)
             })
           );
         }
@@ -324,7 +320,8 @@ export function lowerGraphToIR(
             outputType: resolvedOutputType,
             op: node.kind,
             nodeId: node.id,
-            statement: stmt
+            statement: stmt,
+            inputNodeIds: Object.freeze(currentInputNodeIds)
           })
         );
       }
@@ -362,6 +359,7 @@ export function lowerGraphToIR(
           op: node.kind,
           nodeId: node.id,
           statement: stmt,
+          inputNodeIds: Object.freeze(currentInputNodeIds),
           ...(literal !== undefined ? { literal } : {})
         })
       );
@@ -382,18 +380,29 @@ export function lowerGraphToIR(
 
   let vertexReturnExpr = '';
   let vertexReturnType: ShaderDataType = 'vec4f';
-  if (graph.outputs.vertex) {
-    const vId = resolveConnectionNodeId(graph.outputs.vertex);
-    vertexReturnExpr = vId;
-    vertexReturnType = nodeTypes.get(vId) ?? 'vec4f';
-  }
-
   let fragmentReturnExpr = '';
   let fragmentReturnType: ShaderDataType = 'vec4f';
-  if (graph.outputs.fragment) {
-    const fId = resolveConnectionNodeId(graph.outputs.fragment);
-    fragmentReturnExpr = fId;
-    fragmentReturnType = nodeTypes.get(fId) ?? 'vec4f';
+
+  for (const [stageName, conn] of Object.entries(graph.outputs)) {
+    const resolved = resolveConnectionPort(
+      conn,
+      nodeTypes,
+      nodeOutputPorts,
+      `Graph output "${stageName}"`
+    );
+    if (!resolved.ok) {
+      return Object.freeze({
+        ok: false,
+        diagnostics: Object.freeze([resolved.diagnostic])
+      });
+    }
+    if (stageName === 'vertex') {
+      vertexReturnExpr = resolved.sourceId;
+      vertexReturnType = resolved.type;
+    } else if (stageName === 'fragment') {
+      fragmentReturnExpr = resolved.sourceId;
+      fragmentReturnType = resolved.type;
+    }
   }
 
   const uniforms =

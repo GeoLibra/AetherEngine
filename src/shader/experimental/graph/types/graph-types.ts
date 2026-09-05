@@ -193,5 +193,6 @@ export interface CachedNodeExpression {
   readonly op: string;
   readonly statement?: string;
   readonly nodeId?: string;
+  readonly inputNodeIds?: Readonly<Record<string, string>>;
   readonly literal?: string;
 }
