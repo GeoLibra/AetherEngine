@@ -214,6 +214,51 @@ describe('browser graphics bootstrap', () => {
     expect(canvas).toMatchObject({ width: 64, height: 32 });
     await session.destroy();
   });
+
+  test('rejects concurrent sessions on the same canvas with canvas-ownership-conflict', async () => {
+    const fixture = createBrowserFixture();
+    const session1 = await createBrowserGraphics({
+      canvas: fixture.canvas,
+      environment: fixture.environment,
+      device: { requiredFeatures: [], optionalFeatures: [] },
+      surface: { width: 640, height: 360 }
+    });
+
+    await expect(
+      createBrowserGraphics({
+        canvas: fixture.canvas,
+        environment: fixture.environment,
+        device: { requiredFeatures: [], optionalFeatures: [] },
+        surface: { width: 640, height: 360 }
+      })
+    ).rejects.toThrowError(
+      '[canvas-ownership-conflict] Canvas is already owned by an active graphics session.'
+    );
+
+    await session1.destroy();
+  });
+
+  test('allows a new session after previous session on the canvas is destroyed', async () => {
+    const fixture = createBrowserFixture();
+    const session1 = await createBrowserGraphics({
+      canvas: fixture.canvas,
+      environment: fixture.environment,
+      device: { requiredFeatures: [], optionalFeatures: [] },
+      surface: { width: 640, height: 360 }
+    });
+    await session1.destroy();
+    expect(fixture.context.unconfigures).toBe(1);
+
+    const session2 = await createBrowserGraphics({
+      canvas: fixture.canvas,
+      environment: fixture.environment,
+      device: { requiredFeatures: [], optionalFeatures: [] },
+      surface: { width: 640, height: 360 }
+    });
+    expect(session2.backend).toBe('webgpu');
+    await session2.destroy();
+    expect(fixture.context.unconfigures).toBe(2);
+  });
 });
 
 function createFallbackGL(): object {

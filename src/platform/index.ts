@@ -8,8 +8,14 @@ export {
   equalWindowMetrics,
   updateWindowMetrics
 } from './core';
-export { BrowserGraphicsBootstrapError, BrowserHost, createBrowserGraphics } from './browser';
-export type { BrowserPlatformPort, BrowserWindowPort } from './browser';
+export {
+  BrowserGraphicsBootstrapError,
+  BrowserHost,
+  CanvasOwnershipRegistry,
+  createBrowserGraphics,
+  defaultCanvasOwnershipRegistry
+} from './browser';
+export type { BrowserPlatformPort, BrowserWindowPort, CanvasLease } from './browser';
 export { HeadlessHost, ManualClock } from './headless';
 export type { HeadlessHostOptions } from './headless';
 export {

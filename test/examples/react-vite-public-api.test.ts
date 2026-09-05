@@ -11,7 +11,8 @@ describe('React Vite public API example', () => {
     expect(files.map((file) => relative(process.cwd(), file))).toEqual([
       'examples/react-vite-ts/src/App.tsx',
       'examples/react-vite-ts/src/aether-scene.ts',
-      'examples/react-vite-ts/src/main.tsx'
+      'examples/react-vite-ts/src/main.tsx',
+      'examples/react-vite-ts/src/scene-host.ts'
     ]);
 
     for (const file of files) {

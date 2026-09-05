@@ -5,6 +5,8 @@ import type { GPUTextureFormat } from '../../rhi/contracts/webgpu';
 import type { BrowserWebGPUCanvas, BrowserWebGPUEnvironment } from '../../rhi/webgpu/browser';
 import type { WebGL2ShaderTranslationPort } from '../../rhi/webgl2/types';
 
+import type { CanvasOwnershipRegistry } from '../browser/canvas-ownership';
+
 export interface PhysicalSize {
   readonly width: number;
   readonly height: number;
@@ -26,6 +28,8 @@ export interface BrowserGraphicsOptions {
   readonly environment?: BrowserWebGPUEnvironment;
   readonly webgl2Translator?: WebGL2ShaderTranslationPort;
   readonly webgl2ClipControl?: boolean;
+  /** Optional ownership registry governing exclusive canvas leasing. */
+  readonly canvasOwnership?: CanvasOwnershipRegistry;
 }
 
 export interface BrowserGraphicsLoss {

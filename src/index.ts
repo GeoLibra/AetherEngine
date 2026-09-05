@@ -40,7 +40,12 @@ export {
 } from './app/utils';
 export { Schedule } from './app/schedule';
 export { BrowserRunner, HeadlessRunner } from './app/runner';
-export { createBrowserGraphics, BrowserGraphicsBootstrapError } from './platform';
+export {
+  createBrowserGraphics,
+  BrowserGraphicsBootstrapError,
+  CanvasOwnershipRegistry,
+  defaultCanvasOwnershipRegistry
+} from './platform';
 export type {
   BrowserGraphicsAttempt,
   BrowserGraphicsLifecycleEvent,
@@ -48,6 +53,7 @@ export type {
   BrowserGraphicsOptions,
   BrowserGraphicsSession,
   BrowserSurfaceOptions,
+  CanvasLease,
   PhysicalSize
 } from './platform';
 export type {

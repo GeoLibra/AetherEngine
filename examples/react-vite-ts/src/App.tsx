@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Leva, useControls, folder } from 'leva';
-import { mountAetherScene, type MountedAetherScene } from './aether-scene';
+import type { MountedAetherScene } from './aether-scene';
+import { AetherSceneHost } from './scene-host';
 
 type Status =
   | Readonly<{ kind: 'loading'; message: string }>
@@ -10,6 +11,10 @@ type Status =
 export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<MountedAetherScene | null>(null);
+  const hostRef = useRef<AetherSceneHost | null>(null);
+  if (hostRef.current === null) {
+    hostRef.current = new AetherSceneHost();
+  }
   const [status, setStatus] = useState<Status>({
     kind: 'loading',
     message: 'Starting Aether Engine…'
@@ -36,26 +41,22 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
     sceneRef.current.setLightDirection([Math.cos(rad) * -0.7, -1, Math.sin(rad) * -0.7]);
   }, [castsShadow, lightAngle, shadowDistance]);
 
-  // Mount Aether scene
+  // Mount Aether scene via serialized lifecycle host
   useEffect(() => {
     if (!mountScene) return;
     const target = canvas.current;
     if (target === null) return;
-    let active = true;
-    let teardown: (() => Promise<void>) | undefined;
+    const host = hostRef.current!;
 
-    void mountAetherScene(target)
+    void host
+      .mount(target)
       .then((scene) => {
-        teardown = scene.destroy;
         sceneRef.current = scene;
-        if (active) {
-          setStatus({ kind: 'ready', message: `Rendering with ${scene.backend}` });
-        } else {
-          void scene.destroy();
-        }
+        setStatus({ kind: 'ready', message: `Rendering with ${scene.backend}` });
       })
       .catch((error: unknown) => {
-        if (active) {
+        const isCancelled = error instanceof Error && error.message.includes('cancelled');
+        if (!isCancelled) {
           setStatus({
             kind: 'error',
             message: error instanceof Error ? error.message : 'Unable to start the renderer.'
@@ -64,9 +65,8 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
       });
 
     return () => {
-      active = false;
       sceneRef.current = null;
-      void teardown?.();
+      void host.unmount();
     };
   }, [mountScene]);
 

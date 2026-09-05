@@ -10,7 +10,8 @@ const GPU_TEXTURE_USAGE_RENDER_ATTACHMENT = 0x10;
 
 export function createBrowserWebGPUCanvasContextPort(
   nativeContext: object,
-  onFailure?: (stage: 'surface' | 'context', cause: unknown) => void
+  onFailure?: (stage: 'surface' | 'context', cause: unknown) => void,
+  canUnconfigure?: () => boolean
 ): WebGPUNativeCanvasContextPort {
   let owner: BrowserWebGPUDeviceOwner | undefined;
   return {
@@ -44,7 +45,9 @@ export function createBrowserWebGPUCanvasContextPort(
     },
     unconfigure(): void {
       owner = undefined;
-      callOptional(nativeContext, 'unconfigure');
+      if (canUnconfigure === undefined || canUnconfigure()) {
+        callOptional(nativeContext, 'unconfigure');
+      }
     }
   };
 }

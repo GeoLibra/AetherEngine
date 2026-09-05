@@ -12,6 +12,7 @@ import { WebGL2Adapter } from '../../rhi/webgl2/adapter';
 import { createBrowserWebGL2ContextPort, WebGL2BrowserSurface } from '../../rhi/webgl2/browser';
 import type { BrowserWebGL2Canvas } from '../../rhi/webgl2/browser';
 import { STANDARD_LIT_WEBGL2_TRANSLATOR } from '../../shader/builtins';
+import { defaultCanvasOwnershipRegistry, type CanvasLease } from './canvas-ownership';
 import { BrowserGraphicsBootstrapError } from './browser-graphics-error';
 import type {
   BrowserGraphicsAttempt,
@@ -26,9 +27,27 @@ export async function createBrowserGraphics(
   options: BrowserGraphicsOptions
 ): Promise<BrowserGraphicsSession> {
   validateSize(options.surface);
+  const ownershipRegistry = options.canvasOwnership ?? defaultCanvasOwnershipRegistry;
+  const sessionId = Symbol('browser-graphics-session');
+  const lease = ownershipRegistry.acquire(
+    options.canvas as unknown as HTMLCanvasElement | OffscreenCanvas,
+    sessionId
+  );
+  try {
+    return await createSessionWithLease(options, lease);
+  } catch (cause) {
+    lease.release();
+    throw cause;
+  }
+}
+
+async function createSessionWithLease(
+  options: BrowserGraphicsOptions,
+  lease: CanvasLease
+): Promise<BrowserGraphicsSession> {
   const preference = options.preference ?? ['webgpu', 'webgl2'];
   if (preference[0] === 'webgl2' || !preference.includes('webgpu'))
-    return createWebGL2Session(options, []);
+    return await createWebGL2Session(options, [], lease);
 
   let environment;
   try {
@@ -37,7 +56,7 @@ export async function createBrowserGraphics(
       getBrowserWebGPUEnvironment(globalThis as unknown as BrowserWebGPUGlobalObject);
   } catch (cause) {
     const attempts = [attempt('webgpu', 'environment', 'unavailable', messageOf(cause))];
-    if (preference.includes('webgl2')) return createWebGL2Session(options, attempts);
+    if (preference.includes('webgl2')) return await createWebGL2Session(options, attempts, lease);
     throw unavailable(attempts);
   }
 
@@ -48,7 +67,7 @@ export async function createBrowserGraphics(
     const attempts = [
       attempt('webgpu', 'adapter', 'unavailable', 'navigator.gpu.requestAdapter() returned null.')
     ];
-    if (preference.includes('webgl2')) return createWebGL2Session(options, attempts);
+    if (preference.includes('webgl2')) return await createWebGL2Session(options, attempts, lease);
     throw unavailable(attempts);
   }
 
@@ -58,7 +77,7 @@ export async function createBrowserGraphics(
     device = await adapter.requestDevice(options.device);
   } catch (cause) {
     const attempts = [attempt('webgpu', 'device', 'unsupported', messageOf(cause))];
-    if (preference.includes('webgl2')) return createWebGL2Session(options, attempts);
+    if (preference.includes('webgl2')) return await createWebGL2Session(options, attempts, lease);
     throw unavailable(attempts);
   }
 
@@ -102,9 +121,13 @@ export async function createBrowserGraphics(
   };
   const surface = new WebGPUSurface(
     target,
-    createBrowserWebGPUCanvasContextPort(nativeContext, (stage, cause) => {
-      settleLoss(stage, messageOf(cause), surfaceGeneration);
-    })
+    createBrowserWebGPUCanvasContextPort(
+      nativeContext,
+      (stage, cause) => {
+        settleLoss(stage, messageOf(cause), surfaceGeneration);
+      },
+      () => lease.isCurrent()
+    )
   );
   let configuration = createConfiguration(options, environment.gpu.getPreferredCanvasFormat?.());
   let windowGeneration = 1;
@@ -148,13 +171,15 @@ export async function createBrowserGraphics(
       listeners.clear();
       surface.dispose();
       device.destroy();
+      lease.release();
     }
   });
 }
 
 async function createWebGL2Session(
   options: BrowserGraphicsOptions,
-  priorAttempts: readonly BrowserGraphicsAttempt[]
+  priorAttempts: readonly BrowserGraphicsAttempt[],
+  lease: CanvasLease
 ): Promise<BrowserGraphicsSession> {
   const canvas = options.canvas as unknown as BrowserWebGL2Canvas;
   if (
@@ -241,6 +266,7 @@ async function createWebGL2Session(
       listeners.clear();
       surface.dispose();
       device.destroy();
+      lease.release();
     }
   });
 }
