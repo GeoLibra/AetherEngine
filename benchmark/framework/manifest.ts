@@ -429,6 +429,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'test/tooling/filesystem-shader-source-watcher.test.ts',
         'test/tooling/native-wgsl-recook-adapter.test.ts',
         'test/tooling/indexeddb-vfs-provider.test.ts',
+        'test/tooling/file-system-vfs-provider.test.ts',
         'test/tooling/shader-source-change-bridge.test.ts',
         'test/rendering/mesh-prepare.test.ts',
         'test/benchmark/asset-pipeline.test.ts'

@@ -34,3 +34,10 @@ export interface IndexedDbVFSProviderOptions {
    */
   readonly indexedDB: IDBFactory;
 }
+
+/** Construction input for the Node-only full-read filesystem provider. */
+export interface FileSystemVFSProviderOptions {
+  readonly id: string;
+  readonly rootDirectory: string;
+  readonly resolvedRootUri: CanonicalVFSUri;
+}

@@ -17,6 +17,11 @@ import {
   createCookGarbageCollectionFixture,
   planCookGarbageCollectionFixture
 } from '../../benchmark/asset-pipeline/cook-garbage-collection';
+import {
+  copyVFSReadReference,
+  createVFSReadFixture,
+  vfsByteChecksum
+} from '../../benchmark/asset-pipeline/vfs-read';
 
 describe('asset pipeline benchmark semantic oracle', () => {
   test('bucketed scheduler matches the full-sort reference with merged consumers and budgets', () => {
@@ -76,5 +81,16 @@ describe('asset pipeline benchmark semantic oracle', () => {
     expect(result.deleteHashes).toEqual(['hash-00000001', 'hash-00000003', 'hash-00000005']);
     expect(result.deleteBytes).toBe(192);
     expect(result.retainedObjects).toBe(3);
+  });
+
+  test('routes one VFS provider and preserves detached full-read bytes', async () => {
+    const fixture = createVFSReadFixture(16, 1024);
+    const expected = vfsByteChecksum(copyVFSReadReference(fixture.bytes));
+    const result = await fixture.vfs.read({ uri: fixture.uri, expectedLength: 1024 });
+    expect(result.kind).toBe('success');
+    if (result.kind !== 'success') throw new Error('Expected VFS benchmark fixture success.');
+    expect(result.providerId).toBe(fixture.providerId);
+    expect(vfsByteChecksum(result.bytes)).toBe(expected);
+    expect(fixture.dispatches()).toBe(1);
   });
 });
