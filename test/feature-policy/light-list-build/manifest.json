@@ -2,6 +2,6 @@
   "feature": "aether.rendering.light-list-build",
   "semanticContract": "aether.light-list-build@1",
   "schemaVersion": 1,
-  "implementations": ["cpu-bounded@1"],
+  "implementations": ["webgpu-compute@1", "webgl-fragment@1", "cpu-bounded@1"],
   "normalizer": "receiver -> sorted light entity IDs + overflow"
 }

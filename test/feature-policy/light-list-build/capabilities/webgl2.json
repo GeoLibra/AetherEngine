@@ -1,5 +1,8 @@
 {
   "backend": "webgl2",
-  "graphicsQueue": "native",
+  "features": { "compute": "unsupported", "storage-buffer": "unsupported" },
+  "queues": { "graphics": "native" },
+  "limits": { "maxColorAttachments": 4, "maxTextureDimension2D": 4096 },
+  "formats": { "rgba32uint": { "render": true, "sample": true } },
   "hostServices": ["main-cpu"]
 }

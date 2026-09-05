@@ -8,6 +8,8 @@ import {
   FeatureImplementationRegistry,
   ZERO_RESOURCE_BUDGET,
   createCpuBoundedLightListImplementation,
+  createWebGlFragmentLightListImplementation,
+  createWebGpuComputeLightListImplementation,
   resolveFeaturePolicy,
   type CpuLightListResult,
   type DeviceCapabilities,
@@ -28,6 +30,52 @@ const fixture = json<{
 const expected = json<unknown>('expected/basic.json');
 
 describe('LightListBuild cpu-bounded semantic fixture', () => {
+  test.each([
+    ['webgpu', BuiltInFeatureImplementation.WebGpuComputeLightList, 'native'],
+    ['webgl2', BuiltInFeatureImplementation.WebGlFragmentLightList, 'emulated']
+  ] as const)(
+    'selects the %s GPU implementation when its exact capabilities are available',
+    (backend, implementationId, support) => {
+      const implementations = [
+        createWebGpuComputeLightListImplementation({
+          capacity: fixture.capacity,
+          estimatedBudget: ZERO_RESOURCE_BUDGET
+        }),
+        createWebGlFragmentLightListImplementation({
+          capacity: fixture.capacity,
+          estimatedBudget: ZERO_RESOURCE_BUDGET,
+          maxTextureDimension2D: 4096
+        }),
+        createCpuBoundedLightListImplementation({
+          capacity: fixture.capacity,
+          estimatedBudget: ZERO_RESOURCE_BUDGET
+        })
+      ];
+      const result = resolveFeaturePolicy({
+        schemaVersion: 1,
+        revision: 1,
+        profileId: 'fixture',
+        deviceGeneration: 1,
+        capabilities: gpuCapabilities(backend),
+        hostServices: new Set([BuiltInHostService.MainCpu]),
+        budget: ZERO_RESOURCE_BUDGET,
+        requests: [
+          {
+            feature: BuiltInFeature.LightListBuild,
+            semanticContract: 'aether.light-list-build@1',
+            required: true,
+            priority: 1
+          }
+        ],
+        implementations
+      });
+      expect(result.snapshot.decisions.get(BuiltInFeature.LightListBuild)).toMatchObject({
+        implementation: implementationId,
+        support
+      });
+    }
+  );
+
   test.each(['webgpu', 'webgl2'] as const)(
     'selects the same implementation from %s capability facts',
     (backend) => {
@@ -100,6 +148,42 @@ function capabilities(backend: RHIBackend): DeviceCapabilities {
     limits: {},
     formats: new Map(),
     queues: [{ role: 'graphics', status: 'native' }]
+  });
+}
+
+function gpuCapabilities(backend: 'webgpu' | 'webgl2'): DeviceCapabilities {
+  const format = {
+    sample: true,
+    filter: false,
+    render: true,
+    blend: false,
+    storage: false,
+    copySrc: true,
+    copyDst: true,
+    sampleCounts: [1]
+  };
+  return createCapabilitySnapshot({
+    backend,
+    features: new Map(
+      backend === 'webgpu'
+        ? [
+            ['compute', { status: 'native' as const }],
+            ['storage-buffer', { status: 'native' as const }]
+          ]
+        : [
+            ['compute', { status: 'unsupported' as const }],
+            ['storage-buffer', { status: 'unsupported' as const }]
+          ]
+    ),
+    limits: backend === 'webgl2' ? { maxColorAttachments: 4, maxTextureDimension2D: 4096 } : {},
+    formats: backend === 'webgl2' ? new Map([['rgba32uint', format]]) : new Map(),
+    queues:
+      backend === 'webgpu'
+        ? [
+            { role: 'graphics', status: 'native' },
+            { role: 'compute', status: 'native' }
+          ]
+        : [{ role: 'graphics', status: 'native' }]
   });
 }
 

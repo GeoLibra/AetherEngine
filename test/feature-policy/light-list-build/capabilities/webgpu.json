@@ -1,5 +1,6 @@
 {
   "backend": "webgpu",
-  "graphicsQueue": "native",
+  "features": { "compute": "native", "storage-buffer": "native" },
+  "queues": { "graphics": "native", "compute": "native" },
   "hostServices": ["main-cpu"]
 }

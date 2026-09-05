@@ -15,6 +15,18 @@ export type {
 } from './light-list';
 
 export type {
+  WebGlFragmentLightListBuildContext,
+  WebGlFragmentLightListBuildInput,
+  WebGlFragmentLightListBuildOutput,
+  WebGlFragmentLightListBuildRecorder,
+  WebGlLightListPacking,
+  WebGpuLightListBuildContext,
+  WebGpuLightListBuildInput,
+  WebGpuLightListBuildOutput,
+  WebGpuLightListBuildRecorder
+} from './light-list-backend';
+
+export type {
   ShadowAtlasCompactionResult,
   ShadowAtlasMetrics,
   ShadowAtlasRelocation,
