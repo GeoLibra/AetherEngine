@@ -3,7 +3,7 @@
  * Domain nodes are treated as pure data without base class inheritance (composition-first).
  */
 
-import type { ShaderGraphNode, ShaderNodeConnection } from './types';
+import type { ShaderGraphNode, ShaderNodeConnection, ShaderStage } from './types';
 
 export interface TopologicalSortSuccess {
   readonly ok: true;
@@ -87,4 +87,50 @@ export function topologicalSortGraph(
   }
 
   return Object.freeze({ ok: true, order: Object.freeze(order) });
+}
+
+/**
+ * Propagates stage usage backward from each output root endpoint into ancestor nodes.
+ *
+ * @param nodes All nodes present in the graph.
+ * @param outputs Graph entry-point output mapping (e.g. vertex, fragment, compute).
+ * @returns Map from node ID to the set of shader stages where that node is used.
+ */
+export function propagateStageUsage(
+  nodes: readonly ShaderGraphNode[],
+  outputs: Readonly<Record<string, string | ShaderNodeConnection>>
+): ReadonlyMap<string, ReadonlySet<ShaderStage>> {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const stageMap = new Map<string, Set<ShaderStage>>();
+
+  for (const [stageKey, rootTarget] of Object.entries(outputs)) {
+    if (stageKey !== 'vertex' && stageKey !== 'fragment' && stageKey !== 'compute') {
+      continue;
+    }
+    const stage = stageKey as ShaderStage;
+    const visited = new Set<string>();
+    const queue = [resolveConnectionNodeId(rootTarget)];
+
+    while (queue.length > 0) {
+      const currentId = queue.pop()!;
+      if (visited.has(currentId)) continue;
+      visited.add(currentId);
+
+      let stages = stageMap.get(currentId);
+      if (!stages) {
+        stages = new Set<ShaderStage>();
+        stageMap.set(currentId, stages);
+      }
+      stages.add(stage);
+
+      const node = nodeMap.get(currentId);
+      if (node && node.inputs) {
+        for (const inputConn of Object.values(node.inputs)) {
+          queue.push(resolveConnectionNodeId(inputConn));
+        }
+      }
+    }
+  }
+
+  return stageMap;
 }

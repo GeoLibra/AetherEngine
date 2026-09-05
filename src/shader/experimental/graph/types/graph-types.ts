@@ -77,7 +77,7 @@ export interface ShaderNodeConnection {
 export interface ShaderGraphNode {
   readonly id: string;
   readonly kind: string;
-  readonly outputType?: string;
+  readonly outputType?: ShaderDataType;
   readonly inputs?: Readonly<Record<string, string | ShaderNodeConnection>>;
   readonly value?: unknown;
   readonly stage?: ShaderStage;
@@ -94,6 +94,45 @@ export interface ShaderGraph {
   readonly revision: number;
   readonly nodes: readonly ShaderGraphNode[];
   readonly outputs: Readonly<Record<string, string | ShaderNodeConnection>>;
+}
+
+/**
+ * Intermediate typed representation of a lowered shader graph before emission.
+ */
+export interface TypedGraphIR {
+  readonly vertexInputs: readonly {
+    readonly location: number;
+    readonly name: string;
+    readonly type: ShaderDataType;
+  }[];
+  readonly fragmentOutputs: readonly {
+    readonly location: number;
+    readonly name: string;
+    readonly type: ShaderDataType;
+  }[];
+  readonly uniforms: readonly {
+    readonly group: number;
+    readonly binding: number;
+    readonly varName: string;
+    readonly typeName: string;
+    readonly fields: readonly { readonly name: string; readonly type: ShaderDataType }[];
+  }[];
+  readonly textures: readonly {
+    readonly group: number;
+    readonly binding: number;
+    readonly name: string;
+  }[];
+  readonly samplers: readonly {
+    readonly group: number;
+    readonly binding: number;
+    readonly name: string;
+  }[];
+  readonly vertexStatements: readonly string[];
+  readonly fragmentStatements: readonly string[];
+  readonly vertexReturnExpr: string;
+  readonly vertexReturnType: ShaderDataType;
+  readonly fragmentReturnExpr: string;
+  readonly fragmentReturnType: ShaderDataType;
 }
 
 /**
@@ -136,7 +175,9 @@ export type ShaderGraphResult =
   | Readonly<{
       ok: true;
       revision: number;
+      ir: TypedGraphIR;
       wgsl: string;
+      metadataJson: string;
       reusedNodes: number;
       sourceHash: string;
     }>
@@ -147,7 +188,7 @@ export type ShaderGraphResult =
     }>;
 
 export interface CachedNodeExpression {
-  readonly outputType: string;
+  readonly outputType: ShaderDataType;
   readonly op: string;
   readonly literal?: string;
 }

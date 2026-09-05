@@ -18,5 +18,6 @@ export type {
   ShaderGraphWorkerPort,
   ShaderGraphServiceResult,
   ShaderGraphResult,
+  TypedGraphIR,
   CachedNodeExpression
 } from './graph-types';

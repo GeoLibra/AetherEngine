@@ -10,3 +10,4 @@ export * from './cache';
 export * from './graph-compiler';
 export * from './service';
 export * from './vertical-slice';
+export * from './emitter';

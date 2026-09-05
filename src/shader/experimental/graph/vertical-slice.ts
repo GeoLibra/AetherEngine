@@ -1,71 +1,150 @@
 /**
- * @file Minimal vertical slice lowering ShaderGraph to typed IR, standard WGSL, and native Naga cooker.
+ * @file Unified lowering pipeline for ShaderGraph into typed IR, standard WGSL, and Native Naga cooker artifacts.
  *
- * Supported core nodes:
- * 1. constant (scalar/vector literals)
- * 2. parameter (uniform buffer declaration & access)
- * 3. add / multiply (typed arithmetic)
- * 4. textureSample (texture_2d<f32> + sampler + uv -> vec4f)
- * 5. vertexAttribute (@location(N) vertex input)
- * 6. fragmentOutput (@location(0) fragment color)
+ * Implements authoritative:
+ * 1. Identifier & keyword validation
+ * 2. Topological sort with cycle & missing-node detection
+ * 3. Backward stage usage propagation from entry roots
+ * 4. Registry signature matching, port cardinality & port type validation
+ * 5. Merkle sub-tree expression caching
+ * 6. Vertex clip-space position driving from vertex outputs
+ * 7. Standard WGSL emission
  */
 
+import { stableHash } from '../../../core';
 import type { ShaderDiagnostic } from '../../types';
-import { resolveConnectionNodeId, topologicalSortGraph } from './topological-sort';
-import type { ShaderDataType, ShaderGraph } from './types';
+import type { BoundedNodeCache } from './cache';
+import { emitWgslFromIR } from './emitter';
+import { findMatchingSignature, getShaderNodeDefinition } from './registry';
+import {
+  propagateStageUsage,
+  resolveConnectionNodeId,
+  topologicalSortGraph
+} from './topological-sort';
+import type {
+  CachedNodeExpression,
+  ShaderDataType,
+  ShaderGraph,
+  ShaderGraphNode,
+  ShaderGraphResult,
+  ShaderNodeDefinition,
+  ShaderStage,
+  TypedGraphIR
+} from './types';
 import { formatWgslLiteral, graphDiagnostic, isValidWgslIdentifier } from './validation';
 
-const VERTICAL_SLICE_KINDS = new Set([
-  'constant',
-  'parameter',
-  'add',
-  'multiply',
-  'textureSample',
-  'vertexAttribute',
-  'fragmentOutput'
-]);
+const NO_DIAGNOSTICS: readonly ShaderDiagnostic[] = Object.freeze([]);
+const NO_VERTEX_INPUTS: readonly {
+  readonly location: number;
+  readonly name: string;
+  readonly type: ShaderDataType;
+}[] = Object.freeze([]);
+const NO_FRAGMENT_OUTPUTS: readonly {
+  readonly location: number;
+  readonly name: string;
+  readonly type: ShaderDataType;
+}[] = Object.freeze([]);
+const NO_UNIFORMS: readonly {
+  readonly group: number;
+  readonly binding: number;
+  readonly varName: string;
+  readonly typeName: string;
+  readonly fields: readonly { readonly name: string; readonly type: ShaderDataType }[];
+}[] = Object.freeze([]);
+const NO_TEXTURES: readonly {
+  readonly group: number;
+  readonly binding: number;
+  readonly name: string;
+}[] = Object.freeze([]);
+const NO_SAMPLERS: readonly {
+  readonly group: number;
+  readonly binding: number;
+  readonly name: string;
+}[] = Object.freeze([]);
+const NO_STATEMENTS: readonly string[] = Object.freeze([]);
 
-export interface TypedGraphIR {
-  readonly vertexInputs: readonly {
-    readonly location: number;
-    readonly name: string;
-    readonly type: ShaderDataType;
-  }[];
-  readonly fragmentOutputs: readonly {
-    readonly location: number;
-    readonly name: string;
-    readonly type: ShaderDataType;
-  }[];
-  readonly uniforms: readonly {
-    readonly group: number;
-    readonly binding: number;
-    readonly varName: string;
-    readonly typeName: string;
-    readonly fields: readonly { readonly name: string; readonly type: ShaderDataType }[];
-  }[];
-  readonly textures: readonly {
-    readonly group: number;
-    readonly binding: number;
-    readonly name: string;
-  }[];
-  readonly samplers: readonly {
-    readonly group: number;
-    readonly binding: number;
-    readonly name: string;
-  }[];
-  readonly vertexStatements: readonly string[];
-  readonly fragmentStatements: readonly string[];
-  readonly fragmentReturnExpr: string;
+function getArithmeticOp(kind: string): string {
+  switch (kind) {
+    case 'add':
+      return '+';
+    case 'subtract':
+    case 'sub':
+      return '-';
+    case 'multiply':
+    case 'mul':
+      return '*';
+    case 'divide':
+    case 'div':
+      return '/';
+    default:
+      return '+';
+  }
 }
 
-export type VerticalSliceLowerResult =
-  | Readonly<{ ok: true; ir: TypedGraphIR; wgsl: string; metadataJson: string }>
-  | Readonly<{ ok: false; diagnostics: readonly ShaderDiagnostic[] }>;
+function diagnoseSignatureFailure(
+  node: ShaderGraphNode,
+  definition: ShaderNodeDefinition,
+  providedInputs: Readonly<Record<string, ShaderDataType>>,
+  usedStages: ReadonlySet<ShaderStage>
+): ShaderDiagnostic {
+  // Check if failure is due to stage mismatch
+  const allSigStages = new Set(definition.signatures.map((s) => s.stage));
+  if (!allSigStages.has('all')) {
+    for (const stage of usedStages) {
+      if (!allSigStages.has(stage)) {
+        return graphDiagnostic(
+          'GRAPH_STAGE_MISMATCH',
+          `Node "${node.id}" of kind "${node.kind}" is not valid in "${stage}" stage.`
+        );
+      }
+    }
+  }
+
+  // Check port names
+  const allPortIds = new Set(definition.signatures.flatMap((s) => s.inputs.map((p) => p.id)));
+  for (const inputKey of Object.keys(providedInputs)) {
+    if (!allPortIds.has(inputKey)) {
+      return graphDiagnostic(
+        'GRAPH_INVALID_PORT',
+        `Node "${node.id}" received unexpected input port "${inputKey}".`
+      );
+    }
+  }
+
+  // Check missing ports
+  for (const sig of definition.signatures) {
+    if (sig.inputs.length > 0 && Object.keys(providedInputs).length < sig.inputs.length) {
+      for (const requiredPort of sig.inputs) {
+        if (!(requiredPort.id in providedInputs)) {
+          return graphDiagnostic(
+            'GRAPH_MISSING_PORT',
+            `Node "${node.id}" of kind "${node.kind}" is missing required input port "${requiredPort.id}".`
+          );
+        }
+      }
+    }
+  }
+
+  // Check port types
+  return graphDiagnostic(
+    'GRAPH_TYPE_MISMATCH',
+    `Node "${node.id}" received incompatible port types: ${Object.entries(providedInputs)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ')}.`
+  );
+}
 
 /**
- * Typechecks and lowers a minimal ShaderGraph DAG into typed IR and standard WGSL.
+ * Authoritative pipeline lowering a ShaderGraph to TypedGraphIR and standard WGSL.
  */
-export function lowerVerticalSliceGraph(graph: ShaderGraph): VerticalSliceLowerResult {
+export function lowerGraphToIR(
+  graph: ShaderGraph,
+  options?: { nodeCache?: BoundedNodeCache | undefined; signal?: AbortSignal | undefined }
+): ShaderGraphResult {
+  if (options?.signal?.aborted) {
+    return Object.freeze({ ok: false, diagnostics: NO_DIAGNOSTICS, cancelled: true });
+  }
+
   const seenIds = new Set<string>();
   for (const node of graph.nodes) {
     if (seenIds.has(node.id)) {
@@ -90,17 +169,49 @@ export function lowerVerticalSliceGraph(graph: ShaderGraph): VerticalSliceLowerR
         ])
       });
     }
-    if (!VERTICAL_SLICE_KINDS.has(node.kind)) {
+    const def = getShaderNodeDefinition(node.kind);
+    if (!def) {
       return Object.freeze({
         ok: false,
         diagnostics: Object.freeze([
           graphDiagnostic(
             'GRAPH_UNKNOWN_NODE_TYPE',
-            `Node type "${node.kind}" is not supported in the minimal vertical slice.`
+            `Unknown node type "${node.kind}" on node "${node.id}".`
           )
         ])
       });
     }
+
+    const inputKeys = Object.keys(node.inputs ?? {});
+    if (def.signatures.length > 0) {
+      const anySigInputs = def.signatures[0]!.inputs;
+      if (anySigInputs.length === 0 && inputKeys.length > 0) {
+        return Object.freeze({
+          ok: false,
+          diagnostics: Object.freeze([
+            graphDiagnostic(
+              'GRAPH_INVALID_PORT',
+              `Node "${node.id}" of kind "${node.kind}" must not have inputs.`
+            )
+          ])
+        });
+      }
+      const allPortIds = new Set(def.signatures.flatMap((s) => s.inputs.map((p) => p.id)));
+      for (const inputKey of inputKeys) {
+        if (!allPortIds.has(inputKey)) {
+          return Object.freeze({
+            ok: false,
+            diagnostics: Object.freeze([
+              graphDiagnostic(
+                'GRAPH_INVALID_PORT',
+                `Node "${node.id}" received unexpected input port "${inputKey}".`
+              )
+            ])
+          });
+        }
+      }
+    }
+
     seenIds.add(node.id);
   }
 
@@ -121,9 +232,11 @@ export function lowerVerticalSliceGraph(graph: ShaderGraph): VerticalSliceLowerR
     });
   }
 
+  const stageUsage = propagateStageUsage(graph.nodes, graph.outputs);
   const { order } = topoResult;
-  const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
   const nodeTypes = new Map<string, ShaderDataType>();
+  const nodeHashes = new Map<string, string>();
+  let reusedNodes = 0;
 
   const vertexInputs: { location: number; name: string; type: ShaderDataType }[] = [];
   const fragmentOutputs: { location: number; name: string; type: ShaderDataType }[] = [];
@@ -135,34 +248,67 @@ export function lowerVerticalSliceGraph(graph: ShaderGraph): VerticalSliceLowerR
   const fragmentStatements: string[] = [];
 
   for (const node of order) {
-    const inputs = node.inputs ?? {};
-
-    if (node.kind === 'vertexAttribute') {
-      const type = (node.outputType as ShaderDataType) ?? 'vec3f';
-      const loc = node.location ?? vertexInputs.length;
-      vertexInputs.push({ location: loc, name: node.id, type });
-      nodeTypes.set(node.id, type);
-      vertexStatements.push(`let ${node.id}: ${type} = input.${node.id};`);
-      continue;
+    if (options?.signal?.aborted) {
+      return Object.freeze({ ok: false, diagnostics: NO_DIAGNOSTICS, cancelled: true });
     }
 
-    if (node.kind === 'parameter') {
-      const type = (node.outputType as ShaderDataType) ?? 'vec4f';
-      nodeTypes.set(node.id, type);
-      if (type === 'texture_2d<f32>') {
-        textures.push({ group: node.group ?? 1, binding: node.binding ?? 0, name: node.id });
-      } else if (type === 'sampler' || type === 'sampler_comparison') {
-        samplers.push({ group: node.group ?? 1, binding: node.binding ?? 1, name: node.id });
-      } else {
-        uniformFields.push({ name: node.id, type });
-        fragmentStatements.push(`let ${node.id}: ${type} = materialParams.${node.id};`);
+    const definition = getShaderNodeDefinition(node.kind)!;
+    const usedStages = stageUsage.get(node.id) ?? new Set<ShaderStage>();
+
+    const providedInputs: Record<string, ShaderDataType> = {};
+    for (const [portId, conn] of Object.entries(node.inputs ?? {})) {
+      const sourceId = resolveConnectionNodeId(conn);
+      const sourceType = nodeTypes.get(sourceId);
+      if (!sourceType) {
+        return Object.freeze({
+          ok: false,
+          diagnostics: Object.freeze([
+            graphDiagnostic(
+              'GRAPH_MISSING_NODE',
+              `Node "${node.id}" references uncomputed or missing node "${sourceId}".`
+            )
+          ])
+        });
       }
-      continue;
+      providedInputs[portId] = sourceType;
     }
 
+    const matchedSig = findMatchingSignature(
+      definition,
+      providedInputs,
+      usedStages,
+      node.outputType
+    );
+    if (!matchedSig) {
+      return Object.freeze({
+        ok: false,
+        diagnostics: Object.freeze([
+          diagnoseSignatureFailure(node, definition, providedInputs, usedStages)
+        ])
+      });
+    }
+
+    const resolvedOutputType: ShaderDataType =
+      matchedSig.outputs.length > 0
+        ? matchedSig.outputs[0]!.type
+        : ((node.outputType as ShaderDataType) ?? 'vec4f');
+
+    if (node.outputType !== undefined && node.outputType !== resolvedOutputType) {
+      return Object.freeze({
+        ok: false,
+        diagnostics: Object.freeze([
+          graphDiagnostic(
+            'GRAPH_TYPE_MISMATCH',
+            `Node "${node.id}" declared output type "${node.outputType}" does not match signature output type "${resolvedOutputType}".`
+          )
+        ])
+      });
+    }
+    nodeTypes.set(node.id, resolvedOutputType);
+
+    let literal: string | undefined;
     if (node.kind === 'constant') {
-      const type = (node.outputType as ShaderDataType) ?? 'f32';
-      const litRes = formatWgslLiteral(node.value, type);
+      const litRes = formatWgslLiteral(node.value, resolvedOutputType);
       if (!litRes.ok) {
         return Object.freeze({
           ok: false,
@@ -171,55 +317,107 @@ export function lowerVerticalSliceGraph(graph: ShaderGraph): VerticalSliceLowerR
           ])
         });
       }
-      nodeTypes.set(node.id, type);
-      fragmentStatements.push(`let ${node.id}: ${type} = ${litRes.literal};`);
-      continue;
+      literal = litRes.literal;
     }
 
-    if (node.kind === 'add' || node.kind === 'multiply') {
-      const leftId = resolveConnectionNodeId(inputs.left ?? '');
-      const rightId = resolveConnectionNodeId(inputs.right ?? '');
-      const leftType = nodeTypes.get(leftId) ?? 'f32';
-      const rightType = nodeTypes.get(rightId) ?? 'f32';
+    const nodeHash = stableHash({
+      kind: node.kind,
+      outputType: resolvedOutputType,
+      dependencies: Object.entries(node.inputs ?? {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, conn]) => [name, nodeHashes.get(resolveConnectionNodeId(conn))]),
+      value: node.value
+    });
+    nodeHashes.set(node.id, nodeHash);
 
-      let outType: ShaderDataType = leftType;
-      if (leftType !== rightType) {
-        if (node.kind === 'multiply' && (rightType === 'f32' || leftType === 'f32')) {
-          outType = leftType === 'f32' ? rightType : leftType;
-        } else {
-          return Object.freeze({
-            ok: false,
-            diagnostics: Object.freeze([
-              graphDiagnostic(
-                'GRAPH_TYPE_MISMATCH',
-                `Node "${node.id}" type mismatch: ${leftType} and ${rightType}.`
-              )
-            ])
-          });
-        }
+    if (options?.nodeCache) {
+      const cached = options.nodeCache.get(nodeHash);
+      if (cached !== undefined) {
+        reusedNodes++;
+      } else {
+        const cachedEntry: CachedNodeExpression = Object.freeze({
+          outputType: resolvedOutputType,
+          op: node.kind,
+          ...(literal !== undefined ? { literal } : {})
+        });
+        options.nodeCache.set(nodeHash, cachedEntry);
       }
-      nodeTypes.set(node.id, outType);
-      const op = node.kind === 'add' ? '+' : '*';
-      fragmentStatements.push(`let ${node.id}: ${outType} = ${leftId} ${op} ${rightId};`);
+    }
+
+    if (node.kind === 'vertexAttribute') {
+      const loc = node.location ?? vertexInputs.length;
+      vertexInputs.push({ location: loc, name: node.id, type: resolvedOutputType });
+      vertexStatements.push(`let ${node.id}: ${resolvedOutputType} = input.${node.id};`);
       continue;
     }
 
-    if (node.kind === 'textureSample') {
-      const tex = resolveConnectionNodeId(inputs.texture ?? '');
-      const smp = resolveConnectionNodeId(inputs.sampler ?? '');
-      const uv = resolveConnectionNodeId(inputs.uv ?? '');
-      nodeTypes.set(node.id, 'vec4f');
-      fragmentStatements.push(`let ${node.id}: vec4f = textureSample(${tex}, ${smp}, ${uv});`);
+    if (node.kind === 'parameter') {
+      if (resolvedOutputType === 'texture_2d<f32>') {
+        textures.push({ group: node.group ?? 1, binding: node.binding ?? 0, name: node.id });
+      } else if (resolvedOutputType === 'sampler' || resolvedOutputType === 'sampler_comparison') {
+        samplers.push({ group: node.group ?? 1, binding: node.binding ?? 1, name: node.id });
+      } else {
+        uniformFields.push({ name: node.id, type: resolvedOutputType });
+        const stmt = `let ${node.id}: ${resolvedOutputType} = materialParams.${node.id};`;
+        if (usedStages.has('vertex')) vertexStatements.push(stmt);
+        if (usedStages.has('fragment') || usedStages.size === 0) fragmentStatements.push(stmt);
+      }
+      continue;
+    }
+
+    if (node.kind === 'constant') {
+      const stmt = `let ${node.id}: ${resolvedOutputType} = ${literal};`;
+      if (usedStages.has('vertex')) vertexStatements.push(stmt);
+      if (usedStages.has('fragment') || usedStages.size === 0) fragmentStatements.push(stmt);
       continue;
     }
 
     if (node.kind === 'fragmentOutput') {
-      const colorId = resolveConnectionNodeId(inputs.color ?? '');
-      nodeTypes.set(node.id, 'vec4f');
+      const colorId = resolveConnectionNodeId(node.inputs?.color ?? '');
       fragmentOutputs.push({ location: 0, name: node.id, type: 'vec4f' });
       fragmentStatements.push(`let ${node.id}: vec4f = ${colorId};`);
       continue;
     }
+
+    if (node.kind === 'textureSample') {
+      const tex = resolveConnectionNodeId(node.inputs?.texture ?? '');
+      const smp = resolveConnectionNodeId(node.inputs?.sampler ?? '');
+      const uv = resolveConnectionNodeId(node.inputs?.uv ?? '');
+      fragmentStatements.push(`let ${node.id}: vec4f = textureSample(${tex}, ${smp}, ${uv});`);
+      continue;
+    }
+
+    if (node.kind === 'vec4f_from_vec3f') {
+      const rgb = resolveConnectionNodeId(node.inputs?.rgb ?? '');
+      const alpha = resolveConnectionNodeId(node.inputs?.alpha ?? '');
+      const stmt = `let ${node.id}: vec4f = vec4f(${rgb}, ${alpha});`;
+      if (usedStages.has('vertex')) vertexStatements.push(stmt);
+      if (usedStages.has('fragment') || usedStages.size === 0) fragmentStatements.push(stmt);
+      continue;
+    }
+
+    const leftId = resolveConnectionNodeId(node.inputs?.left ?? '');
+    const rightId = resolveConnectionNodeId(node.inputs?.right ?? '');
+    const op = getArithmeticOp(node.kind);
+    const stmt = `let ${node.id}: ${resolvedOutputType} = ${leftId} ${op} ${rightId};`;
+    if (usedStages.has('vertex')) vertexStatements.push(stmt);
+    if (usedStages.has('fragment') || usedStages.size === 0) fragmentStatements.push(stmt);
+  }
+
+  let vertexReturnExpr = '';
+  let vertexReturnType: ShaderDataType = 'vec4f';
+  if (graph.outputs.vertex) {
+    const vId = resolveConnectionNodeId(graph.outputs.vertex);
+    vertexReturnExpr = vId;
+    vertexReturnType = nodeTypes.get(vId) ?? 'vec4f';
+  }
+
+  let fragmentReturnExpr = '';
+  let fragmentReturnType: ShaderDataType = 'vec4f';
+  if (graph.outputs.fragment) {
+    const fId = resolveConnectionNodeId(graph.outputs.fragment);
+    fragmentReturnExpr = fId;
+    fragmentReturnType = nodeTypes.get(fId) ?? 'vec4f';
   }
 
   const uniforms =
@@ -233,21 +431,22 @@ export function lowerVerticalSliceGraph(graph: ShaderGraph): VerticalSliceLowerR
             fields: Object.freeze(uniformFields)
           })
         ]
-      : [];
-
-  const fragOutId = resolveConnectionNodeId(graph.outputs.fragment ?? 'color');
-  const fragRetNode = nodeMap.get(fragOutId);
-  const fragRetType = fragRetNode?.outputType ?? nodeTypes.get(fragOutId) ?? 'vec4f';
+      : NO_UNIFORMS;
 
   const ir: TypedGraphIR = Object.freeze({
-    vertexInputs: Object.freeze(vertexInputs),
-    fragmentOutputs: Object.freeze(fragmentOutputs),
+    vertexInputs: vertexInputs.length > 0 ? Object.freeze(vertexInputs) : NO_VERTEX_INPUTS,
+    fragmentOutputs:
+      fragmentOutputs.length > 0 ? Object.freeze(fragmentOutputs) : NO_FRAGMENT_OUTPUTS,
     uniforms: Object.freeze(uniforms),
-    textures: Object.freeze(textures),
-    samplers: Object.freeze(samplers),
-    vertexStatements: Object.freeze(vertexStatements),
-    fragmentStatements: Object.freeze(fragmentStatements),
-    fragmentReturnExpr: fragOutId
+    textures: textures.length > 0 ? Object.freeze(textures) : NO_TEXTURES,
+    samplers: samplers.length > 0 ? Object.freeze(samplers) : NO_SAMPLERS,
+    vertexStatements: vertexStatements.length > 0 ? Object.freeze(vertexStatements) : NO_STATEMENTS,
+    fragmentStatements:
+      fragmentStatements.length > 0 ? Object.freeze(fragmentStatements) : NO_STATEMENTS,
+    vertexReturnExpr,
+    vertexReturnType,
+    fragmentReturnExpr,
+    fragmentReturnType
   });
 
   const wgsl = emitWgslFromIR(ir);
@@ -265,55 +464,20 @@ export function lowerVerticalSliceGraph(graph: ShaderGraph): VerticalSliceLowerR
 
   return Object.freeze({
     ok: true,
+    revision: graph.revision,
     ir,
     wgsl,
-    metadataJson
+    metadataJson,
+    reusedNodes,
+    sourceHash: stableHash({ nodes: graph.nodes, outputs: graph.outputs })
   });
 }
 
-function emitWgslFromIR(ir: TypedGraphIR): string {
-  const sections: string[] = [];
+export { emitWgslFromIR } from './emitter';
 
-  // Uniform structs
-  for (const u of ir.uniforms) {
-    const fieldsStr = u.fields.map((f) => `  ${f.name}: ${f.type},`).join('\n');
-    sections.push(`struct ${u.typeName} {\n${fieldsStr}\n};`);
-    sections.push(
-      `@group(${u.group}) @binding(${u.binding}) var<uniform> ${u.varName}: ${u.typeName};`
-    );
-  }
-
-  // Textures and Samplers
-  for (const t of ir.textures) {
-    sections.push(`@group(${t.group}) @binding(${t.binding}) var ${t.name}: texture_2d<f32>;`);
-  }
-  for (const s of ir.samplers) {
-    sections.push(`@group(${s.group}) @binding(${s.binding}) var ${s.name}: sampler;`);
-  }
-
-  // Vertex IO
-  const vInputFields =
-    ir.vertexInputs.length > 0
-      ? ir.vertexInputs.map((i) => `  @location(${i.location}) ${i.name}: ${i.type},`).join('\n')
-      : '  @location(0) position: vec3f,';
-  sections.push(`struct VertexInput {\n${vInputFields}\n};`);
-
-  sections.push(
-    `struct VertexOutput {\n  @builtin(position) position: vec4f,\n  @location(0) uv: vec2f,\n};`
-  );
-
-  // Vertex Main
-  const vBody =
-    ir.vertexStatements.length > 0 ? ir.vertexStatements.map((s) => `  ${s}`).join('\n') : '';
-  sections.push(
-    `@vertex\nfn vertexMain(input: VertexInput) -> VertexOutput {\n  var output: VertexOutput;\n${vBody}\n  output.position = vec4f(input.position.xy, 0.0, 1.0);\n  output.uv = vec2f(0.5, 0.5);\n  return output;\n}`
-  );
-
-  // Fragment Main
-  const fBody = ir.fragmentStatements.map((s) => `  ${s}`).join('\n');
-  sections.push(
-    `@fragment\nfn fragmentMain(stageInput: VertexOutput) -> @location(0) vec4f {\n${fBody}\n  return ${ir.fragmentReturnExpr};\n}`
-  );
-
-  return sections.join('\n\n');
+/**
+ * Convenience entry point to typecheck and lower a ShaderGraph into TypedGraphIR and standard WGSL.
+ */
+export function lowerVerticalSliceGraph(graph: ShaderGraph): ShaderGraphResult {
+  return lowerGraphToIR(graph);
 }

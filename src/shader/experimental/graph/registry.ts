@@ -67,6 +67,13 @@ function createMultiplySignatures(): readonly ShaderNodeSignature[] {
 
 const NO_PORTS: readonly ShaderPortDefinition[] = Object.freeze([]);
 
+const PARAMETER_TYPES: readonly ShaderDataType[] = Object.freeze([
+  ...ARITHMETIC_TYPES,
+  'texture_2d<f32>',
+  'sampler',
+  'sampler_comparison'
+]);
+
 const BUILTIN_NODES: readonly ShaderNodeDefinition[] = Object.freeze([
   Object.freeze({
     kind: 'constant',
@@ -83,15 +90,21 @@ const BUILTIN_NODES: readonly ShaderNodeDefinition[] = Object.freeze([
   }),
   Object.freeze({
     kind: 'parameter',
-    description: 'Uniform buffer parameter input.',
+    description: 'Uniform buffer parameter or resource binding input.',
     signatures: Object.freeze(
-      ARITHMETIC_TYPES.map((t) =>
-        Object.freeze({
+      PARAMETER_TYPES.map((t) => {
+        const port =
+          t === 'texture_2d<f32>'
+            ? texPort('out', 'Out')
+            : t === 'sampler' || t === 'sampler_comparison'
+              ? smpPort('out', 'Out')
+              : valPort('out', 'Out', t);
+        return Object.freeze({
           inputs: NO_PORTS,
-          outputs: Object.freeze([valPort('out', 'Out', t)]),
+          outputs: Object.freeze([port]),
           stage: 'all' as const
-        })
-      )
+        });
+      })
     )
   }),
   Object.freeze({
@@ -190,16 +203,29 @@ export function getShaderNodeDefinition(kind: string): ShaderNodeDefinition | un
   return NODE_MAP.get(kind);
 }
 
+function stageMatches(
+  sigStage: ShaderNodeSignature['stage'],
+  targetStages?: ShaderStage | ReadonlySet<ShaderStage>
+): boolean {
+  if (targetStages === undefined || sigStage === 'all') return true;
+  if (typeof targetStages === 'string') return sigStage === targetStages;
+  for (const stage of targetStages) {
+    if (sigStage !== stage) return false;
+  }
+  return true;
+}
+
 /**
- * Finds a matching signature for a given node kind, input types, and target stage.
+ * Finds a matching signature for a given node definition, input types, target stage(s), and optional preferred output type.
  */
 export function findMatchingSignature(
   definition: ShaderNodeDefinition,
   providedInputs: Readonly<Record<string, ShaderDataType>>,
-  targetStage?: ShaderStage
+  targetStages?: ShaderStage | ReadonlySet<ShaderStage>,
+  preferredOutputType?: ShaderDataType
 ): ShaderNodeSignature | undefined {
   for (const sig of definition.signatures) {
-    if (targetStage !== undefined && sig.stage !== 'all' && sig.stage !== targetStage) {
+    if (!stageMatches(sig.stage, targetStages)) {
       continue;
     }
     const reqInputs = sig.inputs;
@@ -213,9 +239,15 @@ export function findMatchingSignature(
         break;
       }
     }
-    if (matches) {
-      return sig;
+    if (!matches) continue;
+
+    if (preferredOutputType !== undefined && sig.outputs.length > 0) {
+      if (sig.outputs[0]!.type !== preferredOutputType) {
+        continue;
+      }
     }
+
+    return sig;
   }
   return undefined;
 }

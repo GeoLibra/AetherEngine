@@ -95,12 +95,28 @@ export async function runShaderGraphScenario(
     }
   };
   const sliceResult = lowerVerticalSliceGraph(sliceGraph);
+  if (!sliceResult.ok) {
+    throw new Error('Vertical slice ShaderGraph lowering failed.');
+  }
 
-  // Deterministic checksum over generated WGSL and reused counts
+  // Deterministic structural correctness assertions
+  if (!sliceResult.wgsl.includes('@location(0) pos: vec3f')) {
+    throw new Error('Vertical slice WGSL missing @location(0) pos: vec3f attribute.');
+  }
+  if (!sliceResult.wgsl.includes('output.position = vec4f(pos, 1.0)')) {
+    throw new Error('Vertical slice WGSL does not drive clip-space position from pos output.');
+  }
+  if (!sliceResult.wgsl.includes('textureSample(tex, smp, uv)')) {
+    throw new Error('Vertical slice WGSL missing textureSample expression.');
+  }
+
+  // Deterministic checksum over both generated WGSL outputs and reused counts
   let hashVal = totalReused * 31 + input.chainLength;
-  const wgsl = coldResult.wgsl;
-  for (let i = 0; i < wgsl.length; i++) {
-    hashVal = (Math.imul(hashVal, 33) ^ wgsl.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < coldResult.wgsl.length; i++) {
+    hashVal = (Math.imul(hashVal, 33) ^ coldResult.wgsl.charCodeAt(i)) >>> 0;
+  }
+  for (let i = 0; i < sliceResult.wgsl.length; i++) {
+    hashVal = (Math.imul(hashVal, 37) ^ sliceResult.wgsl.charCodeAt(i)) >>> 0;
   }
 
   return Object.freeze({

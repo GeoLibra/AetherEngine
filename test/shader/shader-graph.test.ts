@@ -23,7 +23,9 @@ describe('ShaderGraph', () => {
     if (first.ok) {
       expect(first.wgsl).toContain('let sum: f32 = a + b;');
       expect(first.wgsl).toContain('@fragment');
-      expect(first.wgsl).toContain('fn fragmentMain() -> @location(0) vec4f');
+      expect(first.wgsl).toContain(
+        'fn fragmentMain(stageInput: VertexOutput) -> @location(0) vec4f'
+      );
     }
     expect(second.ok && second.reusedNodes).toBe(3);
     const changed = await compiler.lower({
@@ -195,7 +197,7 @@ describe('ShaderGraph', () => {
     });
     expect(missingPort).toMatchObject({
       ok: false,
-      diagnostics: [{ code: 'GRAPH_INVALID_PORT' }]
+      diagnostics: [{ code: 'GRAPH_MISSING_PORT' }]
     });
 
     const extraPortOnConstant = await compiler.lower({

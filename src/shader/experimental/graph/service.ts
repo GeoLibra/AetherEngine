@@ -35,21 +35,38 @@ export class ShaderGraphCompileService<T = unknown> {
         })
       );
 
+      if (result.revision !== request.revision) {
+        if (this.active.get(request.key) === controller) {
+          this.active.delete(request.key);
+        }
+        return Object.freeze({ status: 'stale', revision: request.revision });
+      }
       if (this.latest.get(request.key) !== request.revision) {
+        if (this.active.get(request.key) === controller) {
+          this.active.delete(request.key);
+        }
         return Object.freeze({ status: 'stale', revision: request.revision });
       }
       if (controller.signal.aborted) {
+        if (this.active.get(request.key) === controller) {
+          this.active.delete(request.key);
+        }
         return Object.freeze({ status: 'cancelled', revision: request.revision });
       }
 
       this.good.set(request.key, result.artifact);
-      this.active.delete(request.key);
+      if (this.active.get(request.key) === controller) {
+        this.active.delete(request.key);
+      }
       return Object.freeze({
         status: 'completed',
         revision: request.revision,
         artifact: result.artifact
       });
     } catch (error) {
+      if (this.active.get(request.key) === controller) {
+        this.active.delete(request.key);
+      }
       if (controller.signal.aborted) {
         return Object.freeze({ status: 'cancelled', revision: request.revision });
       }
