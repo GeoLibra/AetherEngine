@@ -83,12 +83,13 @@ export class IndexedDbVFSProvider implements VFSProvider {
    */
   async read(path: NormalizedMountPath, options: VFSReadOptions): Promise<VFSProviderReadResult> {
     const segments = validatePath(path);
-    if (options.signal?.aborted) return failure('aborted', 'vfs-read-aborted');
+    const signal = options.signal;
+    if (signal?.aborted) return failure('aborted', 'vfs-read-aborted');
 
     try {
-      const rawRecord = await getRecordWithCompletion(this.#database, STORE, path, options.signal);
+      const rawRecord = await getRecordWithCompletion(this.#database, STORE, path, signal);
 
-      if (options.signal?.aborted) return failure('aborted', 'vfs-read-aborted');
+      if (signal?.aborted) return failure('aborted', 'vfs-read-aborted');
       if (rawRecord === undefined) return failure('not-found', 'vfs-indexeddb-not-found');
 
       const record = parseStoredRecord(rawRecord, path);
@@ -107,7 +108,7 @@ export class IndexedDbVFSProvider implements VFSProvider {
       });
     } catch (error) {
       const name = errorName(error);
-      if (options.signal?.aborted || name === 'AbortError') {
+      if (signal?.aborted || name === 'AbortError') {
         return failure('aborted', 'vfs-read-aborted');
       }
       if (name === 'SecurityError' || name === 'NotAllowedError') {
@@ -166,14 +167,6 @@ function getRecordWithCompletion(
       }
     };
 
-    const request = transaction.objectStore(storeName).get(key);
-    request.onsuccess = () => {
-      result = request.result;
-    };
-    request.onerror = (event) => {
-      (event as Event)?.preventDefault?.();
-    };
-
     transaction.oncomplete = () => {
       cleanup();
       resolve(result);
@@ -191,6 +184,24 @@ function getRecordWithCompletion(
         reject(transaction.error ?? new Error('IndexedDB transaction aborted.'));
       }
     };
+
+    try {
+      const request = transaction.objectStore(storeName).get(key);
+      request.onsuccess = () => {
+        result = request.result;
+      };
+      request.onerror = (event) => {
+        (event as Event)?.preventDefault?.();
+      };
+    } catch (error) {
+      cleanup();
+      try {
+        transaction.abort();
+      } catch {
+        // Transaction might already be inactive.
+      }
+      reject(error);
+    }
   });
 }
 

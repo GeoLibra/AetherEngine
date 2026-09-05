@@ -346,6 +346,80 @@ describe('IndexedDbVFSProvider', () => {
     expect(calls).toEqual({ id: 1, name: 1, uri: 1, factory: 1 });
     value.close();
   });
+
+  test('evaluates options.signal getter exactly once at the trust boundary', async () => {
+    const { databaseName, value } = await provider();
+    await put(databaseName, {
+      path: '/item.bin',
+      bytes: new Uint8Array([1, 2]),
+      revision: 'r1'
+    });
+    let signalCalls = 0;
+    const controller = new AbortController();
+    const options = {
+      get signal() {
+        signalCalls++;
+        return controller.signal;
+      }
+    };
+    const result = await value.read(toNormalizedMountPath(['item.bin']), options);
+    expect(result.kind).toBe('success');
+    expect(signalCalls).toBe(1);
+    value.close();
+  });
+
+  test('cleans up abort listener when request creation throws synchronously', async () => {
+    let addCalls = 0;
+    let removeCalls = 0;
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const originalAdd = signal.addEventListener.bind(signal);
+    const originalRemove = signal.removeEventListener.bind(signal);
+    signal.addEventListener = (
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions
+    ) => {
+      if (type === 'abort') addCalls++;
+      return originalAdd(type, listener, options);
+    };
+    signal.removeEventListener = (
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | EventListenerOptions
+    ) => {
+      if (type === 'abort') removeCalls++;
+      return originalRemove(type, listener, options);
+    };
+
+    const value = await IndexedDbVFSProvider.open({
+      id: 'indexeddb',
+      databaseName: 'sync-throw-cache',
+      resolvedRootUri: normalizeVFSUri('asset://cache'),
+      indexedDB: factoryWithDatabase({
+        transaction() {
+          return {
+            objectStore() {
+              throw new Error('sync objectStore failure');
+            },
+            oncomplete: null,
+            onerror: null,
+            onabort: null,
+            abort() {}
+          } as unknown as IDBTransaction;
+        }
+      })
+    });
+
+    const result = await value.read(toNormalizedMountPath(['sync-throw.bin']), { signal });
+    expect(result).toMatchObject({
+      kind: 'provider-failure',
+      code: 'vfs-indexeddb-failure'
+    });
+    expect(addCalls).toBe(1);
+    expect(removeCalls).toBe(1);
+    value.close();
+  });
 });
 
 function factoryThat(outcome: 'blocked' | 'error' | 'throws'): IDBFactory {
