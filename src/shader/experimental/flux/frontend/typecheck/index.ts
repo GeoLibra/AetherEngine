@@ -1,4 +1,4 @@
-import type { FluxDeclarationNode, FluxModuleNode, FluxStructNode } from '../../types';
+import type { FluxDeclarationNode, FluxModuleNode, FluxStructNode } from '../../../../types';
 import type {
   ShaderEntryPointIR,
   ShaderFunctionId,
@@ -13,7 +13,7 @@ import type {
   ShaderStructTypeIR,
   ShaderVariantDimension,
   SourceSpan
-} from '../../types';
+} from '../../../../types';
 import { FunctionAnalyzer } from './stmt-lower';
 import {
   ADDRESS_SPACES,

@@ -1,12 +1,12 @@
 import { emitShaderBackend, type ShaderBackendValidator } from '../backends/backend-emitter';
-import { ShaderArtifactCache } from './cache';
-import { canonicalStringify, compareCodeUnits, stableHash } from '../../core';
+import { ShaderArtifactCache } from '../../../pipeline/cache';
+import { canonicalStringify, compareCodeUnits, stableHash } from '../../../../core';
 import { parseFluxShader } from '../frontend/parser';
-import { createShaderBindingManifest } from '../layout/binding-reflection';
+import { createShaderBindingManifest } from '../../../layout/binding-reflection';
 import { resolveShaderSource } from '../frontend/source-resolver';
-import { resolveShaderVariants } from './variant';
-import type { WebGL2ShaderTranslationPort } from '../../rhi/webgl2/types';
-import type { WebGL2ClipDepthMode } from '../../rhi/webgl2/pipeline/clip-depth';
+import { resolveShaderVariants } from '../../../pipeline/variant';
+import type { WebGL2ShaderTranslationPort } from '../../../../rhi/webgl2/types';
+import type { WebGL2ClipDepthMode } from '../../../../rhi/webgl2/pipeline/clip-depth';
 import type {
   ShaderBindingRequirement,
   ShaderBindingManifest,
@@ -15,7 +15,7 @@ import type {
   ShaderSourceResolver,
   ShaderTarget,
   SourceSpan
-} from '../types';
+} from '../../../types';
 
 const NO_SHADER_DIAGNOSTICS: readonly ShaderDiagnostic[] = Object.freeze([]);
 const NO_RELATED_SPANS: readonly SourceSpan[] = Object.freeze([]);

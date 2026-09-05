@@ -1,12 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import {
-  emitGlslEsModule,
-  emitWgslModule,
-  type ShaderFunctionId,
-  type ShaderModuleIR,
-  type ShaderSymbolId,
-  type ShaderTypeId
-} from '../../src';
+import { emitGlslEsModule, emitWgslModule } from '../../src/shader/experimental/flux/backends';
+import type {
+  ShaderFunctionId,
+  ShaderModuleIR,
+  ShaderSymbolId,
+  ShaderTypeId
+} from '../../src/shader/types';
 
 const span = { uri: 'asset://aether/stage-io.flux', line: 1, column: 1, length: 1 };
 const position = 1 as ShaderSymbolId;

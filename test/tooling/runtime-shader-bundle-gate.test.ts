@@ -67,16 +67,18 @@ describe('Runtime Shader Bundle Gate', () => {
       sources: [
         'src/app/app.ts',
         'src/shader/frontend/parser.ts',
-        'src/shader/pipeline/compiler.ts'
+        'src/shader/pipeline/compiler.ts',
+        'src/shader/experimental/flux/frontend/parser.ts'
       ],
       mappings: 'AAAA;'
     });
 
     const violations = checkSourcemapSources('dist/aether-engine.js.map', dirtySourcemap);
-    expect(violations.length).toBeGreaterThanOrEqual(2);
+    expect(violations.length).toBeGreaterThanOrEqual(3);
     const markers = violations.map((v) => v.marker);
     expect(markers).toContain('src/shader/frontend/');
     expect(markers).toContain('src/shader/pipeline/compiler');
+    expect(markers).toContain('src/shader/experimental/');
   });
 
   test('passes on clean sourcemaps containing only runtime engine sources', () => {

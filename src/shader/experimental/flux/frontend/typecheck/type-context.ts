@@ -1,4 +1,4 @@
-import type { FluxDeclarationNode, FluxFunctionNode, FluxStructNode } from '../../types';
+import type { FluxDeclarationNode, FluxFunctionNode, FluxStructNode } from '../../../../types';
 import type {
   ShaderEntryPointIR,
   ShaderExpressionIR,
@@ -8,7 +8,12 @@ import type {
   ShaderSymbolId,
   ShaderTypeId
 } from '../../ir';
-import type { ShaderDiagnostic, ShaderGlobalIR, ShaderStructTypeIR, SourceSpan } from '../../types';
+import type {
+  ShaderDiagnostic,
+  ShaderGlobalIR,
+  ShaderStructTypeIR,
+  SourceSpan
+} from '../../../../types';
 
 export interface SymbolInfo {
   readonly id: ShaderSymbolId;

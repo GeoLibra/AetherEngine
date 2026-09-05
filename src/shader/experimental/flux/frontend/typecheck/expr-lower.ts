@@ -1,6 +1,6 @@
-import type { FluxExpressionNode, FluxStructNode } from '../../types';
+import type { FluxExpressionNode, FluxStructNode } from '../../../../types';
 import type { ShaderExpressionIR, ShaderSymbolId, ShaderTypeId } from '../../ir';
-import type { ShaderDiagnostic, SourceSpan } from '../../types';
+import type { ShaderDiagnostic, SourceSpan } from '../../../../types';
 import {
   ERROR_TYPE,
   FunctionInfo,

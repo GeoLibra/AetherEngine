@@ -1,4 +1,4 @@
-import type { SourceSpan } from '../types';
+import type { SourceSpan } from '../../../types';
 import type { ShaderFunctionId, ShaderSymbolId, ShaderTypeId } from './symbols';
 
 export interface ShaderParameterIR {

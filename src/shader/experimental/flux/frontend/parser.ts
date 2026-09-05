@@ -11,7 +11,7 @@ import type {
   FluxSwitchCaseNode,
   FluxTypeNode,
   FluxVariantNode
-} from '../types';
+} from '../../../types';
 import { lexFluxSource, type FluxToken } from './lexer';
 import { spanAt } from './source-resolver';
 import { lowerFluxModules } from './typecheck';
@@ -22,7 +22,7 @@ import type {
   ShaderModuleIR,
   ShaderSourceModule,
   SourceSpan
-} from '../types';
+} from '../../../types';
 
 const NO_ATTRIBUTES: readonly FluxAttribute[] = Object.freeze([]);
 const NO_CONTINUING_STATEMENTS: readonly FluxStatementNode[] = Object.freeze([]);

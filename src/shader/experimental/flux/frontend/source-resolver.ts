@@ -1,4 +1,4 @@
-import { stableHash } from '../../core';
+import { stableHash } from '../../../../core';
 import type {
   ResolvedShaderSource,
   ShaderIncludeReference,
@@ -6,7 +6,7 @@ import type {
   ShaderSourceRef,
   ShaderSourceResolver,
   SourceSpan
-} from '../types';
+} from '../../../types';
 
 const ASSET_SCHEME = 'asset://';
 const INCLUDE_PATTERN = /@(?:include|import)\s+"([^"]+)"\s*;/g;

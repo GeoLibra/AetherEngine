@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
+import { emitShaderBackend } from '../../src/shader/experimental/flux/backends';
 import {
-  emitShaderBackend,
   resolveShaderVariants,
   type ShaderFunctionId,
   type ShaderModuleIR,
@@ -83,7 +83,7 @@ describe('shader variants and backend output', () => {
       const lines = glsl.source.split('\n');
       expect(lines[0]).toBe('#version 300 es');
       expect(lines[1]).toContain('#extension GL_EXT_draw_buffers');
-      expect(lines.findIndex((line) => line.startsWith('#define'))).toBeGreaterThan(1);
+      expect(lines.findIndex((line: string) => line.startsWith('#define'))).toBeGreaterThan(1);
       expect(glsl.source).toContain('void main()');
       expect(glsl.source).not.toMatch(/@vertex|\bfn\b/);
     }

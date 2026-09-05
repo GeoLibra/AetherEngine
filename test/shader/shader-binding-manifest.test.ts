@@ -10,7 +10,7 @@ import {
   InMemoryShaderSourceResolver,
   parseFluxShader,
   resolveShaderSource
-} from '../../src/shader/frontend';
+} from '../../src/shader/experimental/flux/frontend';
 
 const SOURCE_URI = 'asset://shader/material-bindings.flux';
 

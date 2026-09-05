@@ -1,15 +1,15 @@
-import type { WebGL2ShaderTranslationPort } from '../../rhi/webgl2/types';
-import { finalizeWebGL2Shader } from '../../rhi/webgl2/pipeline/shader-finalization';
-import type { WebGL2ClipDepthMode } from '../../rhi/webgl2/pipeline/clip-depth';
+import type { WebGL2ShaderTranslationPort } from '../../../../rhi/webgl2/types';
+import { finalizeWebGL2Shader } from '../../../../rhi/webgl2/pipeline/shader-finalization';
+import type { WebGL2ClipDepthMode } from '../../../../rhi/webgl2/pipeline/clip-depth';
 import { emitWgslModule } from './wgsl/emitter';
 import { GLSL_ES_EMITTER_VERSION, emitGlslEsModule } from './glsl/emitter';
 import {
   collectGlslTextureSamplerUses,
   fuseGlslTextureSamplerBindings
 } from './glsl/binding-fusion';
-import { reflectBindingEntry } from '../layout/binding-reflection';
-import type { ShaderDiagnostic, ShaderModuleIR, ShaderTarget, SourceSpan } from '../types';
-import type { ResolvedShaderVariants } from '../pipeline/variant';
+import { reflectBindingEntry } from '../../../layout/binding-reflection';
+import type { ShaderDiagnostic, ShaderModuleIR, ShaderTarget, SourceSpan } from '../../../types';
+import type { ResolvedShaderVariants } from '../../../pipeline/variant';
 
 const NO_SHADER_DIAGNOSTICS: readonly ShaderDiagnostic[] = Object.freeze([]);
 const NO_RELATED_SPANS: readonly SourceSpan[] = Object.freeze([]);

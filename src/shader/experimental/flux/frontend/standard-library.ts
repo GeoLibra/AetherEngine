@@ -1,4 +1,4 @@
-import type { ShaderSourceResolver } from '../types';
+import type { ShaderSourceResolver } from '../../../types';
 
 export const AETHER_SHADER_STANDARD_LIBRARY_VERSION = 1;
 export const AETHER_SHADER_STANDARD_LIBRARY_ROOT = 'asset://aether/stdlib';

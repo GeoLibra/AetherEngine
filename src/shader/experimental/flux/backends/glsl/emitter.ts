@@ -4,7 +4,7 @@ import type {
   ShaderFunctionIR,
   ShaderModuleIR,
   ShaderStatementIR
-} from '../../types';
+} from '../../../../types';
 import type { GlslCombinedSamplerBinding } from './binding-fusion';
 
 /**

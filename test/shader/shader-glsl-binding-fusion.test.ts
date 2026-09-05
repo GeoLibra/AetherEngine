@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   collectGlslTextureSamplerUses,
   fuseGlslTextureSamplerBindings
-} from '../../src/shader/backends/glsl';
+} from '../../src/shader/experimental/flux/backends/glsl';
 import type {
   ShaderBindingEntryManifest,
   ShaderFunctionId,

@@ -4,8 +4,8 @@ import {
   InMemoryShaderSourceResolver,
   parseFluxShader,
   resolveShaderSource
-} from '../src/shader/frontend';
-import { ShaderCompiler } from '../src/shader/pipeline/compiler';
+} from '../src/shader/experimental/flux/frontend';
+import { ShaderCompiler } from '../src/shader/experimental/flux/compiler';
 import { runBindingLayoutScenario } from './shader-system/binding-layout-scenario';
 
 const structFields = Array.from({ length: 64 }, (_, index) => `field${index}: vec4<f32>`).join(

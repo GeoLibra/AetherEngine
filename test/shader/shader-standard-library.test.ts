@@ -4,8 +4,8 @@ import {
   AETHER_SHADER_STANDARD_LIBRARY_ROOT,
   AETHER_SHADER_STANDARD_LIBRARY_VERSION,
   StandardLibraryShaderResolver
-} from '../../src/shader/frontend/standard-library';
-import { cookShaderArtifact } from '../../src/shader/pipeline/cook';
+} from '../../src/shader/experimental/flux/frontend/standard-library';
+import { cookShaderArtifact } from '../../src/shader/experimental/flux/compiler/cook';
 
 describe('cookable shader standard library', () => {
   test.each(['math', 'noise', 'pbr', 'sdf'])(

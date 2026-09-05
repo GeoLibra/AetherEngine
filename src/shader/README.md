@@ -21,16 +21,13 @@ The approved production authoring contract is standard WGSL plus versioned typed
 
 ## 2. Directory Responsibilities
 
-| Directory                  | Responsibility                                                                                    | Key Exports                                                                                    |
-| :------------------------- | :------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------- |
-| [`types/`](./types/)       | Canonical shared types, diagnostics, AST, IR, manifests, and compilation options                  | `ShaderBindingManifest`, `BufferLayoutManifest`, `ShaderDiagnostic`, `ShaderCompileRequest`    |
-| [`ir/`](./ir/)             | Strongly typed intermediate representation (IR) nodes, symbol IDs, and module definitions         | `ShaderModuleIR`, `ShaderTypeId`, `ShaderSymbolId`, `ShaderExpressionIR`, `ShaderStatementIR`  |
-| [`frontend/`](./frontend/) | Source include resolution, cycle detection, lexer, recursive-descent parser, and typechecker      | `resolveShaderSource`, `lexFluxSource`, `parseFluxShader`, `lowerFluxModules`                  |
-| [`layout/`](./layout/)     | std140/WGSL memory layout calculation, struct sizing, binding group reflection, CPU buffer writer | `createBufferLayoutManifest`, `createShaderBindingManifest`, `ShaderParameterWriter`           |
-| [`backends/`](./backends/) | Backend emitters (WGSL, GLSL ES 3.00), WebGL2 binding fusion, and backend validation dispatch     | `emitShaderBackend`, `emitWgslModule`, `emitGlslEsModule`, `fuseGlslTextureSamplerBindings`    |
-| [`pipeline/`](./pipeline/) | High-level compiler orchestration, variant specialization, content-addressed cache, and cooking   | `ShaderCompiler`, `resolveShaderVariants`, `ShaderArtifactCache`, `cookShaderArtifact`         |
-| [`graph/`](./graph/)       | ShaderGraph DAG compiler, node caching, and IR lowering service                                   | `ShaderGraphCompiler`, `ShaderGraphCompileService`                                             |
-| [`builtins/`](./builtins/) | Authored built-in WGSL, cooked runtime artifacts, and WebGL2 translation ports                    | `STANDARD_LIT_SHADER_SOURCE`, `STANDARD_LIT_SHADER_ARTIFACT`, `STANDARD_LIT_WEBGL2_TRANSLATOR` |
+| Directory                          | Responsibility                                                                                    | Key Exports                                                                                    |
+| :--------------------------------- | :------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------- |
+| [`types/`](./types/)               | Canonical shared types, diagnostics, AST, IR, manifests, and compilation options                  | `ShaderBindingManifest`, `BufferLayoutManifest`, `ShaderDiagnostic`, `ShaderCompileRequest`    |
+| [`layout/`](./layout/)             | std140/WGSL memory layout calculation, struct sizing, binding group reflection, CPU buffer writer | `createBufferLayoutManifest`, `createShaderBindingManifest`, `ShaderParameterWriter`           |
+| [`pipeline/`](./pipeline/)         | Runtime artifact loading, variant specialization, cache, and fallback                             | `loadCookedShaderModule`, `resolveShaderVariants`, `ShaderArtifactCache`                       |
+| [`builtins/`](./builtins/)         | Authored built-in WGSL, cooked runtime artifacts, and WebGL2 translation ports                    | `STANDARD_LIT_SHADER_SOURCE`, `STANDARD_LIT_SHADER_ARTIFACT`, `STANDARD_LIT_WEBGL2_TRANSLATOR` |
+| [`experimental/`](./experimental/) | Clustered experimental/legacy pipelines: FluxSL compatibility compiler and ShaderGraph (Proposed) | `parseFluxShader`, `lexFluxSource`, `ShaderCompiler`, `ShaderGraphCompiler`                    |
 
 ---
 

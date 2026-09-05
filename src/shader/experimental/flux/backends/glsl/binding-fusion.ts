@@ -3,7 +3,7 @@ import type {
   ShaderExpressionIR,
   ShaderModuleIR,
   ShaderStatementIR
-} from '../../types';
+} from '../../../../types';
 
 /**
  * Represents a concrete pairing of a separate texture and sampler in the authored shader code.

@@ -1,4 +1,4 @@
-import type { SourceSpan } from '../types';
+import type { SourceSpan } from '../../../types';
 import type { ShaderEntryPointIR, ShaderFunctionIR } from './nodes';
 import type { ShaderSymbolId, ShaderTypeId } from './symbols';
 

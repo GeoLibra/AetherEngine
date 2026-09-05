@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { type ShaderCompileRequest } from '../../src/shader';
-import { InMemoryShaderSourceResolver } from '../../src/shader/frontend';
-import { ShaderCompiler } from '../../src/shader/pipeline/compiler';
+import { InMemoryShaderSourceResolver } from '../../src/shader/experimental/flux/frontend';
+import { ShaderCompiler } from '../../src/shader/experimental/flux/compiler';
 
 describe('Shader compiler binding requirements', () => {
   test('carries typed requirements through cache identity and compiled reflection', async () => {
