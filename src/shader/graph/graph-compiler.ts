@@ -34,23 +34,147 @@ export type ShaderGraphResult =
       cancelled?: boolean;
     }>;
 
-function formatWgslLiteral(value: unknown, outputType: string): string {
-  if (typeof value === 'boolean') {
-    return value ? 'true' : 'false';
+const WGSL_IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/u;
+const WGSL_RESERVED_KEYWORDS = new Set([
+  'alias',
+  'break',
+  'case',
+  'const',
+  'const_assert',
+  'continue',
+  'continuing',
+  'default',
+  'diagnostic',
+  'discard',
+  'else',
+  'enable',
+  'false',
+  'fn',
+  'for',
+  'if',
+  'let',
+  'loop',
+  'override',
+  'requires',
+  'return',
+  'struct',
+  'switch',
+  'true',
+  'var',
+  'while',
+  'type',
+  'null',
+  'void',
+  'self',
+  'super'
+]);
+
+/**
+ * Checks whether an identifier string is a valid WGSL identifier and not a reserved keyword.
+ */
+export function isValidWgslIdentifier(id: string): boolean {
+  return WGSL_IDENTIFIER_PATTERN.test(id) && !WGSL_RESERVED_KEYWORDS.has(id);
+}
+
+const KNOWN_NODE_KINDS = new Set([
+  'constant',
+  'add',
+  'subtract',
+  'sub',
+  'multiply',
+  'mul',
+  'divide',
+  'div'
+]);
+
+interface CachedNodeExpression {
+  readonly outputType: string;
+  readonly op: 'constant' | 'add' | 'subtract' | 'multiply' | 'divide';
+  readonly literal?: string;
+}
+
+type LiteralResult =
+  Readonly<{ ok: true; literal: string }> | Readonly<{ ok: false; message: string }>;
+
+function formatWgslLiteral(value: unknown, outputType: string): LiteralResult {
+  if (outputType === 'bool') {
+    if (typeof value === 'boolean') {
+      return { ok: true, literal: value ? 'true' : 'false' };
+    }
+    return { ok: false, message: `Expected boolean for type "bool", received ${typeof value}.` };
   }
-  if (typeof value === 'number') {
-    if (outputType === 'f32') {
-      return Number.isInteger(value) ? `${value}.0` : `${value}`;
+  if (outputType === 'f32') {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return { ok: true, literal: Number.isInteger(value) ? `${value}.0` : `${value}` };
     }
-    if (outputType === 'i32') {
-      return `${value}i`;
-    }
-    if (outputType === 'u32') {
-      return `${value}u`;
-    }
-    return `${value}`;
+    return {
+      ok: false,
+      message: `Expected finite number for type "f32", received ${String(value)}.`
+    };
   }
-  return String(value ?? 0);
+  if (outputType === 'i32') {
+    if (
+      typeof value === 'number' &&
+      Number.isInteger(value) &&
+      value >= -2147483648 &&
+      value <= 2147483647
+    ) {
+      return { ok: true, literal: `${value}i` };
+    }
+    return {
+      ok: false,
+      message: `Expected 32-bit signed integer for type "i32", received ${String(value)}.`
+    };
+  }
+  if (outputType === 'u32') {
+    if (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 4294967295) {
+      return { ok: true, literal: `${value}u` };
+    }
+    return {
+      ok: false,
+      message: `Expected 32-bit unsigned integer for type "u32", received ${String(value)}.`
+    };
+  }
+  if (outputType === 'vec2f' || outputType === 'vec2<f32>') {
+    if (
+      Array.isArray(value) &&
+      value.length === 2 &&
+      value.every((v) => typeof v === 'number' && Number.isFinite(v))
+    ) {
+      return {
+        ok: true,
+        literal: `vec2f(${value.map((v) => (Number.isInteger(v) ? `${v}.0` : `${v}`)).join(', ')})`
+      };
+    }
+    return { ok: false, message: `Expected 2-element finite number array for "${outputType}".` };
+  }
+  if (outputType === 'vec3f' || outputType === 'vec3<f32>') {
+    if (
+      Array.isArray(value) &&
+      value.length === 3 &&
+      value.every((v) => typeof v === 'number' && Number.isFinite(v))
+    ) {
+      return {
+        ok: true,
+        literal: `vec3f(${value.map((v) => (Number.isInteger(v) ? `${v}.0` : `${v}`)).join(', ')})`
+      };
+    }
+    return { ok: false, message: `Expected 3-element finite number array for "${outputType}".` };
+  }
+  if (outputType === 'vec4f' || outputType === 'vec4<f32>') {
+    if (
+      Array.isArray(value) &&
+      value.length === 4 &&
+      value.every((v) => typeof v === 'number' && Number.isFinite(v))
+    ) {
+      return {
+        ok: true,
+        literal: `vec4f(${value.map((v) => (Number.isInteger(v) ? `${v}.0` : `${v}`)).join(', ')})`
+      };
+    }
+    return { ok: false, message: `Expected 4-element finite number array for "${outputType}".` };
+  }
+  return { ok: false, message: `Unsupported literal type "${outputType}".` };
 }
 
 function formatReturnExpression(outputId: string, outputType: string, stage: string): string {
@@ -82,10 +206,55 @@ function formatReturnExpression(outputId: string, outputType: string, stage: str
 }
 
 /**
+ * Bounded LRU cache for lowered node expressions.
+ */
+export class BoundedNodeCache {
+  private readonly maxCapacity: number;
+  private readonly cache = new Map<string, CachedNodeExpression>();
+
+  constructor(maxCapacity = 1024) {
+    this.maxCapacity = Math.max(1, maxCapacity);
+  }
+
+  get(key: string): CachedNodeExpression | undefined {
+    const value = this.cache.get(key);
+    if (value !== undefined) {
+      this.cache.delete(key);
+      this.cache.set(key, value);
+    }
+    return value;
+  }
+
+  set(key: string, value: CachedNodeExpression): void {
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    } else if (this.cache.size >= this.maxCapacity) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.cache.delete(oldestKey);
+      }
+    }
+    this.cache.set(key, value);
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+}
+
+/**
  * Compiles a visual ShaderGraph DAG into standard WGSL shader source code.
  */
 export class ShaderGraphCompiler {
-  private readonly nodeCache = new Map<string, string>();
+  private readonly nodeCache: BoundedNodeCache;
+
+  constructor(options?: { cacheCapacity?: number }) {
+    this.nodeCache = new BoundedNodeCache(options?.cacheCapacity ?? 1024);
+  }
 
   /**
    * Validates graph topology and lowers nodes into standard WGSL.
@@ -97,6 +266,70 @@ export class ShaderGraphCompiler {
   async lower(graph: ShaderGraph, signal?: AbortSignal): Promise<ShaderGraphResult> {
     if (signal?.aborted) {
       return Object.freeze({ ok: false, cancelled: true, diagnostics: NO_SHADER_DIAGNOSTICS });
+    }
+
+    const seenIds = new Set<string>();
+    for (const node of graph.nodes) {
+      if (seenIds.has(node.id)) {
+        return Object.freeze({
+          ok: false,
+          diagnostics: Object.freeze([
+            graphDiagnostic(
+              'GRAPH_DUPLICATE_NODE_ID',
+              `ShaderGraph contains duplicate node ID "${node.id}".`
+            )
+          ])
+        });
+      }
+      if (!isValidWgslIdentifier(node.id)) {
+        return Object.freeze({
+          ok: false,
+          diagnostics: Object.freeze([
+            graphDiagnostic(
+              'GRAPH_INVALID_IDENTIFIER',
+              `Node ID "${node.id}" is not a valid WGSL identifier.`
+            )
+          ])
+        });
+      }
+      if (!KNOWN_NODE_KINDS.has(node.kind)) {
+        return Object.freeze({
+          ok: false,
+          diagnostics: Object.freeze([
+            graphDiagnostic(
+              'GRAPH_UNKNOWN_NODE_TYPE',
+              `Unknown node type "${node.kind}" on node "${node.id}".`
+            )
+          ])
+        });
+      }
+      if (node.kind === 'constant') {
+        if (node.inputs && Object.keys(node.inputs).length > 0) {
+          return Object.freeze({
+            ok: false,
+            diagnostics: Object.freeze([
+              graphDiagnostic(
+                'GRAPH_INVALID_PORT',
+                `Constant node "${node.id}" must not have inputs.`
+              )
+            ])
+          });
+        }
+      } else {
+        const inputKeys = Object.keys(node.inputs ?? {});
+        if (!node.inputs?.left || !node.inputs?.right || inputKeys.length !== 2) {
+          return Object.freeze({
+            ok: false,
+            diagnostics: Object.freeze([
+              graphDiagnostic(
+                'GRAPH_INVALID_PORT',
+                `Node "${node.id}" of kind "${node.kind}" requires exactly "left" and "right" inputs.`
+              )
+            ])
+          });
+        }
+      }
+      seenIds.add(node.id);
     }
 
     const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -162,6 +395,33 @@ export class ShaderGraphCompiler {
         }
       }
 
+      let op: CachedNodeExpression['op'] = 'constant';
+      let literal: string | undefined;
+
+      if (node.kind === 'constant') {
+        const litRes = formatWgslLiteral(node.value, node.outputType);
+        if (!litRes.ok) {
+          return Object.freeze({
+            ok: false,
+            diagnostics: Object.freeze([
+              graphDiagnostic(
+                'GRAPH_INVALID_LITERAL',
+                `Node "${node.id}" has invalid literal: ${litRes.message}`
+              )
+            ])
+          });
+        }
+        literal = litRes.literal;
+      } else if (node.kind === 'add') {
+        op = 'add';
+      } else if (node.kind === 'subtract' || node.kind === 'sub') {
+        op = 'subtract';
+      } else if (node.kind === 'multiply' || node.kind === 'mul') {
+        op = 'multiply';
+      } else if (node.kind === 'divide' || node.kind === 'div') {
+        op = 'divide';
+      }
+
       const hash = stableHash({
         kind: node.kind,
         outputType: node.outputType,
@@ -174,38 +434,20 @@ export class ShaderGraphCompiler {
 
       const cached = this.nodeCache.get(hash);
       if (cached !== undefined) {
-        statements.set(node.id, cached);
         reusedNodes++;
+        const expr = formatBinaryExpression(cached.op, node.inputs, cached.literal);
+        statements.set(node.id, `let ${node.id}: ${node.outputType} = ${expr};`);
         continue;
       }
 
-      let expression = '';
-      if (node.kind === 'constant') {
-        expression = formatWgslLiteral(node.value, node.outputType);
-      } else if (node.kind === 'add') {
-        const left = node.inputs?.left ?? '';
-        const right = node.inputs?.right ?? '';
-        expression = `${left} + ${right}`;
-      } else if (node.kind === 'subtract' || node.kind === 'sub') {
-        const left = node.inputs?.left ?? '';
-        const right = node.inputs?.right ?? '';
-        expression = `${left} - ${right}`;
-      } else if (node.kind === 'multiply' || node.kind === 'mul') {
-        const left = node.inputs?.left ?? '';
-        const right = node.inputs?.right ?? '';
-        expression = `${left} * ${right}`;
-      } else if (node.kind === 'divide' || node.kind === 'div') {
-        const left = node.inputs?.left ?? '';
-        const right = node.inputs?.right ?? '';
-        expression = `${left} / ${right}`;
-      } else {
-        const args = Object.values(node.inputs ?? {}).join(', ');
-        expression = `${node.kind}(${args})`;
-      }
-
-      const statement = `let ${node.id}: ${node.outputType} = ${expression};`;
-      this.nodeCache.set(hash, statement);
-      statements.set(node.id, statement);
+      const expr = formatBinaryExpression(op, node.inputs, literal);
+      const cachedEntry: CachedNodeExpression = Object.freeze({
+        outputType: node.outputType,
+        op,
+        ...(literal !== undefined ? { literal } : {})
+      });
+      this.nodeCache.set(hash, cachedEntry);
+      statements.set(node.id, `let ${node.id}: ${node.outputType} = ${expr};`);
     }
 
     const bodyLines = order.map((node) => `  ${statements.get(node.id)!}`).join('\n');
@@ -230,7 +472,10 @@ export class ShaderGraphCompiler {
     }
 
     const wgsl = entryPointBlocks.join('\n\n');
-    const sourceHash = stableHash(graph);
+    const sourceHash = stableHash({
+      nodes: graph.nodes,
+      outputs: graph.outputs
+    });
 
     return Object.freeze({
       ok: true,
@@ -247,6 +492,28 @@ export class ShaderGraphCompiler {
   acceptResult(result: Readonly<{ revision: number }>, currentRevision: number): boolean {
     return result.revision === currentRevision;
   }
+}
+
+function formatBinaryExpression(
+  op: CachedNodeExpression['op'],
+  inputs: Readonly<Record<string, string>> | undefined,
+  literal: string | undefined
+): string {
+  if (op === 'constant') {
+    return literal ?? '0.0';
+  }
+  const left = inputs?.left ?? '';
+  const right = inputs?.right ?? '';
+  if (op === 'add') {
+    return `${left} + ${right}`;
+  }
+  if (op === 'subtract') {
+    return `${left} - ${right}`;
+  }
+  if (op === 'multiply') {
+    return `${left} * ${right}`;
+  }
+  return `${left} / ${right}`;
 }
 
 /**
