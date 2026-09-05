@@ -6,6 +6,7 @@ import {
   defineExtractorToken,
   defineRenderField
 } from '../src/rendering';
+import { compileCompositionPlan } from '../src/rendering';
 import {
   createRenderPhaseWorkload,
   createPhaseConstructionWorkload,
@@ -37,6 +38,53 @@ const SnapshotOwner = defineExtractorToken('snapshot-owner', [SnapshotBytes]);
 const snapshotExtractorPlan = new RenderExtractorRegistryBuilder()
   .registerExtractor(SnapshotOwner)
   .build();
+
+for (const [viewCount, surfaceCount, overlayCount] of [
+  [1, 1, 0],
+  [2, 1, 4],
+  [4, 2, 4],
+  [8, 4, 16]
+] as const) {
+  bench(
+    `compiles ${viewCount} views / ${surfaceCount} surfaces / ${overlayCount} overlays`,
+    () => {
+      const surfaces = Array.from({ length: surfaceCount }, (_, index) => ({
+        id: `surface-${index}`,
+        generation: 1,
+        width: 1280,
+        height: 720,
+        format: 'rgba8unorm'
+      }));
+      const slots = Array.from({ length: viewCount + overlayCount }, (_, index) => {
+        const target = index % surfaceCount;
+        const position = Math.floor(index / surfaceCount);
+        const last =
+          position === Math.floor((viewCount + overlayCount - 1 - target) / surfaceCount);
+        return {
+          id: `slot-${index}`,
+          viewId: `view-${index % viewCount}`,
+          targetId: `surface-${target}`,
+          viewportPixels: { x: 0, y: 0, width: 1280, height: 720 },
+          colorLoad: position === 0 ? ('clear' as const) : ('load' as const),
+          depthLoad: 'none' as const,
+          stores: { color: true, depth: false },
+          order: position,
+          present: last
+        };
+      });
+      const plan = compileCompositionPlan({
+        id: 'benchmark',
+        revision: 1,
+        policyHash: 'fixed',
+        surfaces,
+        slots
+      });
+      expect(plan.slots).toHaveLength(viewCount + overlayCount);
+      expect(plan.presentOwners.size).toBe(surfaceCount);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
 
 for (const size of [1, 8, 32]) {
   const reference = cameraExtractionReference(size);

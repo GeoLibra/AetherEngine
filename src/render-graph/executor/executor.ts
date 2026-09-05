@@ -204,11 +204,14 @@ export class RenderGraphExecutor {
     );
     const seenTokens = new Set<string>();
     for (const terminal of terminals) {
-      if (!seenTokens.add(terminal.surfaceFrame.id)) {
+      if (seenTokens.has(terminal.surfaceFrame.id)) {
         throw new Error(
           `Render graph surface frame token "${terminal.surfaceFrame.id}" is presented more than once.`
         );
       }
+      seenTokens.add(terminal.surfaceFrame.id);
+    }
+    for (const terminal of terminals) {
       const surface = inputs.surfaces?.get(terminal.surfaceFrame.id) ?? inputs.surface;
       if (surface === undefined) {
         throw new Error(

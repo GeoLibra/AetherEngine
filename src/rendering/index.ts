@@ -1,4 +1,5 @@
 export * from './world';
+export * from './composition';
 export * from './camera';
 export * from './visibility';
 export * from './mesh';

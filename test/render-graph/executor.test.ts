@@ -64,6 +64,45 @@ class CountingTransientPool extends TransientResourcePool {
 }
 
 describe('RenderGraphExecutor', () => {
+  test('rejects duplicate present frame tokens before acquiring a surface', () => {
+    const graph = new RenderGraphBuilder();
+    const first = graph.createTexture(TEXTURE, {
+      origin: {
+        kind: 'imported',
+        initialState: 'undefined',
+        acquire: { kind: 'external-acquire', id: 'surface' }
+      }
+    });
+    const second = graph.createTexture(TEXTURE, {
+      origin: {
+        kind: 'imported',
+        initialState: 'undefined',
+        acquire: { kind: 'external-acquire', id: 'surface' }
+      }
+    });
+    for (const [id, texture] of [
+      ['first', first],
+      ['second', second]
+    ] as const) {
+      graph.addPass({
+        id,
+        setup(pass) {
+          const color = pass.writeTexture(texture, 'color-attachment');
+          pass.presentTexture(color, { kind: 'surface-frame', id: 'surface' });
+        },
+        run() {}
+      });
+    }
+    const acquire = vi.fn();
+    expect(() =>
+      new RenderGraphExecutor().execute(compile(graph), {
+        device: new NullDevice(),
+        surface: { acquire } as never
+      })
+    ).toThrow('presented more than once');
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
   test('exposes externally prepared render pipelines through typed pass capabilities', () => {
     const device = new NullDevice();
     const pipeline = device.createRenderPipeline({ label: 'prepared' });
