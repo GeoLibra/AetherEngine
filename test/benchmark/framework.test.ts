@@ -148,6 +148,16 @@ describe('changed-file routing', () => {
     ]);
   });
 
+  test('routes the IndexedDB VFS provider and its contract test to the asset pipeline suite', () => {
+    expect(
+      routeChangedFiles(BENCHMARK_MANIFEST, ['tools/asset-vfs/indexeddb-vfs-provider.ts']).suiteIds
+    ).toEqual(['asset-pipeline']);
+    expect(
+      routeChangedFiles(BENCHMARK_MANIFEST, ['test/tooling/indexeddb-vfs-provider.test.ts'])
+        .suiteIds
+    ).toEqual(expect.arrayContaining(['asset-pipeline']));
+  });
+
   test('routes Runtime and Jobs to their shared deterministic suite', () => {
     expect(routeChangedFiles(BENCHMARK_MANIFEST, ['src/app/schedule.ts']).suiteIds).toEqual([
       'runtime-jobs'

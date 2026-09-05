@@ -415,6 +415,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'engine/design/v2/05-assets-scene/',
         'src/assets/cook/',
         'tools/asset-cook/',
+        'tools/asset-vfs/',
         'src/geometry/',
         'src/rendering/mesh/mesh-constants.ts',
         'src/rendering/mesh/mesh-prepare.ts',
@@ -427,6 +428,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'test/tooling/filesystem-cook-artifact-store.test.ts',
         'test/tooling/filesystem-shader-source-watcher.test.ts',
         'test/tooling/native-wgsl-recook-adapter.test.ts',
+        'test/tooling/indexeddb-vfs-provider.test.ts',
         'test/tooling/shader-source-change-bridge.test.ts',
         'test/rendering/mesh-prepare.test.ts',
         'test/benchmark/asset-pipeline.test.ts'
