@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest';
 
-import {
-  emitGlslEsModule,
-  type ShaderFunctionId,
-  type ShaderModuleIR,
-  type ShaderSymbolId,
-  type ShaderTypeId
-} from '../../src/shader';
+import { emitGlslEsModule } from '../../src/shader/experimental/flux/backends';
+import type {
+  ShaderFunctionId,
+  ShaderModuleIR,
+  ShaderSymbolId,
+  ShaderTypeId
+} from '../../src/shader/types';
 
 const span = { uri: 'asset://shader.flux', line: 1, column: 1, length: 1 };
 

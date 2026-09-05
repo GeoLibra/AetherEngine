@@ -1,4 +1,4 @@
-import type { FluxStatementNode, FluxStructNode } from '../../types';
+import type { FluxStatementNode, FluxStructNode } from '../../../../types';
 import type {
   ShaderExpressionIR,
   ShaderFunctionIR,
@@ -8,7 +8,7 @@ import type {
   ShaderSymbolId,
   ShaderTypeId
 } from '../../ir';
-import type { ShaderDiagnostic, SourceSpan } from '../../types';
+import type { ShaderDiagnostic, SourceSpan } from '../../../../types';
 import { ExprLowerContext, lowerExpression } from './expr-lower';
 import {
   ERROR_TYPE,

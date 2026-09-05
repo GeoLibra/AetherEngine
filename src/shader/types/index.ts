@@ -105,4 +105,4 @@ export type {
   ShaderTypeIR,
   ShaderUnaryExpressionIR,
   ShaderVariantDimension
-} from '../ir';
+} from '../experimental/flux/ir';

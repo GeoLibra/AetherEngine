@@ -29,6 +29,7 @@ export const FORBIDDEN_BUNDLE_IDENTIFIERS = Object.freeze([
  * Source file paths that MUST NEVER appear in client runtime sourcemaps.
  */
 export const FORBIDDEN_SOURCEMAP_SOURCES = Object.freeze([
+  'src/shader/experimental/',
   'src/shader/frontend/',
   'src/shader/pipeline/compiler',
   'src/shader/pipeline/cook',

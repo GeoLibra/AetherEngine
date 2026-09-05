@@ -1,4 +1,4 @@
-import type { FluxExpressionNode, FluxTypeNode, SourceSpan } from '../types';
+import type { FluxExpressionNode, FluxTypeNode, SourceSpan } from '../../../types';
 import type { FluxToken } from './lexer';
 
 export const BINARY_PRECEDENCE: Readonly<Record<string, number>> = Object.freeze({

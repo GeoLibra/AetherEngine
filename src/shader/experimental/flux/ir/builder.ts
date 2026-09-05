@@ -6,7 +6,7 @@ import type {
   ShaderSymbolId,
   ShaderTypeId,
   SourceSpan
-} from '../types';
+} from '../../../types';
 
 const DEFAULT_SPAN: SourceSpan = Object.freeze({
   uri: 'shader://ir-builder',

@@ -1,7 +1,7 @@
-import { canonicalStringify, stableHash } from '../../core';
+import { canonicalStringify, stableHash } from '../../../../core';
 import { parseFluxShader } from '../frontend/parser';
 import { resolveShaderSource } from '../frontend/source-resolver';
-import type { ShaderModuleIR, ShaderSourceRef, ShaderSourceResolver } from '../types';
+import type { ShaderModuleIR, ShaderSourceRef, ShaderSourceResolver } from '../../../types';
 
 export interface ShaderCookVersions {
   readonly compiler: number;

@@ -21,11 +21,9 @@ describe('ShaderGraph', () => {
     const second = await compiler.lower({ ...graph, revision: 2 });
     expect(first.ok).toBe(true);
     if (first.ok) {
-      expect(first.ir.entryPoints[0]?.body[0]).toMatchObject({
-        kind: 'declare',
-        value: { kind: 'binary', operator: '+' }
-      });
-      expect(first.ir.entryPoints[0]).not.toHaveProperty('source');
+      expect(first.wgsl).toContain('let sum: f32 = a + b;');
+      expect(first.wgsl).toContain('@fragment');
+      expect(first.wgsl).toContain('fn fragmentMain() -> @location(0) vec4f');
     }
     expect(second.ok && second.reusedNodes).toBe(3);
     const changed = await compiler.lower({

@@ -4,7 +4,7 @@ import type {
   ShaderFunctionIR,
   ShaderModuleIR,
   ShaderStatementIR
-} from '../../types';
+} from '../../../../types';
 
 /**
  * Translates a complete ShaderModuleIR back into standard compliant WGSL source code.

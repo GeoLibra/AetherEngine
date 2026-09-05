@@ -1,5 +1,5 @@
 import { spanAt } from './source-resolver';
-import type { ShaderDiagnostic, SourceSpan } from '../types';
+import type { ShaderDiagnostic, SourceSpan } from '../../../types';
 
 /**
  * Token kinds supported by the FluxSL grammar.

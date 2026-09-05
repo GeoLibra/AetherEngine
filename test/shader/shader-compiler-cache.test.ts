@@ -6,8 +6,8 @@ import {
   createShaderFallbackKey,
   selectCompatibleShaderFallback
 } from '../../src/shader';
-import { InMemoryShaderSourceResolver } from '../../src/shader/frontend';
-import { ShaderCompiler } from '../../src/shader/pipeline/compiler';
+import { InMemoryShaderSourceResolver } from '../../src/shader/experimental/flux/frontend';
+import { ShaderCompiler } from '../../src/shader/experimental/flux/compiler';
 import type { WebGL2ShaderTranslationPort } from '../../src';
 
 describe('shader compiler, cache and fallback', () => {
