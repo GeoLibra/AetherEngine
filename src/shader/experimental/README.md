@@ -16,6 +16,7 @@ This directory clusters experimental, non-normative, and legacy compatibility sh
    - `flux-experimental`: Legacy FluxSL lexer, parser, typed IR, backend emitters, and compiler.
    - `shader-graph`: Proposed ShaderGraph node DAG and lowering service.
 3. **No Leaks to Runtime**: Production bundles must never include source or symbols from this experimental directory. Build gates (`scripts/check-runtime-shader-bundle.ts`) explicitly enforce this boundary.
+4. **No Custom GLSL Reverse Parsing**: ShaderGraph explicitly rejects custom GLSL parsers or private markers (e.g. `[main]`/`[init]`). Future code-to-node authoring converges on standard WGSL functions + typed metadata -> Naga reflection -> `ShaderNodeDefinition`.
 
 ---
 

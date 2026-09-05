@@ -3,7 +3,7 @@ import {
   ShaderGraphCompileService,
   ShaderGraphCompiler,
   classifyShaderGraphChange
-} from '../../src/shader/graph';
+} from '../../src/shader/experimental/graph';
 
 describe('ShaderGraph', () => {
   test('typechecks and lowers a DAG with local hash reuse', async () => {
@@ -255,5 +255,61 @@ describe('ShaderGraph', () => {
     // Lowering 3 again should hit cache
     const hit3 = await compiler.lower(makeGraph(3, 'c_new'));
     expect(hit3.ok && hit3.reusedNodes).toBe(1);
+  });
+
+  test('enforces stage isolation and rejects vertex-only nodes in fragment outputs', async () => {
+    const compiler = new ShaderGraphCompiler();
+    const stageMismatch = await compiler.lower({
+      revision: 1,
+      nodes: [{ id: 'attr', kind: 'vertexAttribute', outputType: 'vec3f' }],
+      outputs: { fragment: 'attr' }
+    });
+    expect(stageMismatch).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'GRAPH_STAGE_MISMATCH' }]
+    });
+  });
+
+  test('supports explicit conversion node (vec4f_from_vec3f) without silent coercion', async () => {
+    const compiler = new ShaderGraphCompiler();
+    const converted = await compiler.lower({
+      revision: 1,
+      nodes: [
+        { id: 'rgb', kind: 'constant', outputType: 'vec3f', value: [1, 0.5, 0.2] },
+        { id: 'alpha', kind: 'constant', outputType: 'f32', value: 1 },
+        {
+          id: 'color',
+          kind: 'vec4f_from_vec3f',
+          inputs: { rgb: { nodeId: 'rgb', portId: 'out' }, alpha: 'alpha' }
+        }
+      ],
+      outputs: { fragment: 'color' }
+    });
+    expect(converted.ok).toBe(true);
+    if (converted.ok) {
+      expect(converted.wgsl).toContain('let color: vec4f = vec4f(rgb, alpha);');
+    }
+  });
+
+  test('lowers textureSample with heterogeneous input ports', async () => {
+    const compiler = new ShaderGraphCompiler();
+    const sampled = await compiler.lower({
+      revision: 1,
+      nodes: [
+        { id: 'tex', kind: 'parameter', outputType: 'texture_2d<f32>' },
+        { id: 'smp', kind: 'parameter', outputType: 'sampler' },
+        { id: 'uv', kind: 'constant', outputType: 'vec2f', value: [0.5, 0.5] },
+        {
+          id: 'color',
+          kind: 'textureSample',
+          inputs: { texture: 'tex', sampler: 'smp', uv: 'uv' }
+        }
+      ],
+      outputs: { fragment: 'color' }
+    });
+    expect(sampled.ok).toBe(true);
+    if (sampled.ok) {
+      expect(sampled.wgsl).toContain('let color: vec4f = textureSample(tex, smp, uv);');
+    }
   });
 });
