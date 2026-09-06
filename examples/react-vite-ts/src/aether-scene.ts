@@ -31,6 +31,7 @@ import {
   type Vec3,
   type WorldTransformView
 } from '@aether/engine';
+import { DemandDrivenRunner } from './demand-driven-runner';
 
 export interface CascadeSliceDiagnostics {
   readonly cascadeIndex: number;
@@ -40,14 +41,9 @@ export interface CascadeSliceDiagnostics {
   readonly rawRadius: number;
   readonly worldUnitsPerTexel: number;
   readonly snappedCenterLightSpace: readonly [number, number, number];
-  readonly boundsLightSpace: {
-    readonly left: number;
-    readonly right: number;
-    readonly top: number;
-    readonly bottom: number;
-    readonly near: number;
-    readonly far: number;
-  };
+  readonly boundsLightSpace: Readonly<
+    Record<'left' | 'right' | 'top' | 'bottom' | 'near' | 'far', number>
+  >;
 }
 
 export interface CsmSceneDiagnostics {
@@ -65,12 +61,14 @@ export interface MountedAetherScene {
   diagnostics(): BaselineRenderDiagnostics | undefined;
   csmDiagnostics(): CsmSceneDiagnostics | undefined;
   nativeMetrics(): unknown;
+  validationErrors(): readonly string[];
+  runtimeErrors(): readonly string[];
   /** Overrides automatic rotation with a deterministic YXZ angle in radians. */
-  setRotation(angleRadians: number): void;
+  setRotation(angleRadians: number): Promise<void> | void;
   setCastsShadow(enabled: boolean): void;
   setLightDirection(direction: readonly [number, number, number]): void;
   setShadowDistance(distance: number): void;
-  resize(width: number, height: number): void;
+  resize(width: number, height: number): Promise<void> | void;
   destroy(): Promise<void>;
 }
 
@@ -177,19 +175,19 @@ export async function mountAetherScene(
                 })
                 .build();
 
-              // Caster Box entity
+              const meshSource = {
+                mesh: { handle: meshHandle, payloadVersion: 1 },
+                submesh: 0,
+                materials: [{ slot: 0, handle: materialHandle, payloadVersion: 1 }],
+                localBounds: mesh.bounds,
+                visible: true,
+                layerMask: 1
+              };
               world
                 .spawn()
                 .insert(WorldTransform, transform(boxTranslation))
                 .insert(RotatingTag, {})
-                .insert(MeshRenderSource, {
-                  mesh: { handle: meshHandle, payloadVersion: 1 },
-                  submesh: 0,
-                  materials: [{ slot: 0, handle: materialHandle, payloadVersion: 1 }],
-                  localBounds: mesh.bounds,
-                  visible: true,
-                  layerMask: 1
-                })
+                .insert(MeshRenderSource, meshSource)
                 .build();
 
               // Receiver Ground entity (optional for acceptance test)
@@ -197,14 +195,7 @@ export async function mountAetherScene(
                 world
                   .spawn()
                   .insert(WorldTransform, transform([0, -1.2, -2.5], [6, 0.05, 6]))
-                  .insert(MeshRenderSource, {
-                    mesh: { handle: meshHandle, payloadVersion: 1 },
-                    submesh: 0,
-                    materials: [{ slot: 0, handle: materialHandle, payloadVersion: 1 }],
-                    localBounds: mesh.bounds,
-                    visible: true,
-                    layerMask: 1
-                  })
+                  .insert(MeshRenderSource, meshSource)
                   .build();
               }
 
@@ -332,12 +323,22 @@ export async function mountAetherScene(
     await graphics.destroy();
     throw error;
   }
-  void app.run(
+  const runtimeErrors: string[] = [];
+  const demandRunner = options.animate === false ? new DemandDrivenRunner() : undefined;
+  const runner =
+    demandRunner ??
     new BrowserRunner({
       request: (callback) => requestAnimationFrame(callback),
       cancel: (id) => cancelAnimationFrame(id)
-    })
-  );
+    });
+  void app.run(runner).catch((error: unknown) => {
+    runtimeErrors.push(error instanceof Error ? error.message : String(error));
+  });
+  if (demandRunner !== undefined) {
+    await advanceUntilRendered(demandRunner, () =>
+      app.getResource(BaselineRenderDiagnosticsResource)
+    );
+  }
 
   let destroyed = false;
   return Object.freeze({
@@ -350,9 +351,19 @@ export async function mountAetherScene(
         ? Reflect.apply(metrics, graphics.device.queue, [])
         : undefined;
     },
-    setRotation(angleRadians: number) {
+    validationErrors: () => browserValidationErrors(graphics),
+    runtimeErrors: () => Object.freeze([...runtimeErrors]),
+    async setRotation(angleRadians: number) {
       if (!Number.isFinite(angleRadians)) throw new Error('Scene rotation angle must be finite.');
+      const previousFrame = app.getResource(BaselineRenderDiagnosticsResource)?.frame ?? 0;
       forcedRotation = angleRadians;
+      if (demandRunner !== undefined)
+        await advanceUntilRendered(
+          demandRunner,
+          () => app.getResource(BaselineRenderDiagnosticsResource),
+          'rendered',
+          previousFrame
+        );
     },
     setCastsShadow(enabled: boolean) {
       castsShadow = enabled;
@@ -363,7 +374,15 @@ export async function mountAetherScene(
     setShadowDistance(distance: number) {
       if (Number.isFinite(distance) && distance > 0.5) shadowDistance = distance;
     },
-    resize: (width: number, height: number) => graphics.resize({ width, height }),
+    async resize(width: number, height: number) {
+      graphics.resize({ width, height });
+      if (demandRunner === undefined) return;
+      await advanceUntilRendered(
+        demandRunner,
+        () => app.getResource(BaselineRenderDiagnosticsResource),
+        width === 0 || height === 0 ? 'skipped' : 'rendered'
+      );
+    },
     async destroy() {
       if (destroyed) return;
       destroyed = true;
@@ -373,6 +392,35 @@ export async function mountAetherScene(
       await graphics.destroy();
     }
   });
+}
+
+async function advanceUntilRendered(
+  runner: DemandDrivenRunner,
+  diagnostics: () => BaselineRenderDiagnostics | undefined,
+  expected: BaselineRenderDiagnostics['status'] = 'rendered',
+  afterFrame = -1
+): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    runner.frame();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const current = diagnostics();
+    if (current?.status === expected && current.frame > afterFrame) return;
+  }
+  throw new Error(`Baseline renderer did not reach ${expected} within 30 deterministic frames.`);
+}
+
+function browserValidationErrors(graphics: BrowserGraphicsSession): readonly string[] {
+  const diagnostics = Reflect.get(graphics.adapter, 'diagnostics');
+  if (typeof diagnostics !== 'object' || diagnostics === null) return Object.freeze([]);
+  const list = Reflect.get(diagnostics, 'list');
+  if (typeof list !== 'function') return Object.freeze([]);
+  return Object.freeze(
+    (Reflect.apply(list, diagnostics, []) as readonly unknown[]).map((entry) => {
+      if (typeof entry !== 'object' || entry === null) return String(entry);
+      const message = Reflect.get(entry, 'message');
+      return typeof message === 'string' ? message : String(entry);
+    })
+  );
 }
 
 function calculateFrustumCornersWorld(
@@ -386,7 +434,6 @@ function calculateFrustumCornersWorld(
   const nearWidth = nearHeight * aspectRatio;
   const farHeight = far * tanHalfFov;
   const farWidth = farHeight * aspectRatio;
-
   return [
     [-nearWidth, -nearHeight, -near],
     [nearWidth, -nearHeight, -near],

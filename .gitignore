@@ -17,3 +17,4 @@ graphify-out
 .DS_Store
 target/
 tools/naga-shader-validator/target/
+test-results/

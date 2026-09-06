@@ -11,6 +11,7 @@ describe('React Vite public API example', () => {
     expect(files.map((file) => relative(process.cwd(), file))).toEqual([
       'examples/react-vite-ts/src/App.tsx',
       'examples/react-vite-ts/src/aether-scene.ts',
+      'examples/react-vite-ts/src/demand-driven-runner.ts',
       'examples/react-vite-ts/src/main.tsx',
       'examples/react-vite-ts/src/scene-host.ts'
     ]);
@@ -29,7 +30,8 @@ describe('React Vite public API example', () => {
         const specifier = declaration.moduleSpecifier;
         if (ts.isStringLiteral(specifier)) {
           expect(specifier.text).not.toMatch(/(?:^|\/)src(?:\/|$)/);
-          if (file.endsWith('aether-scene.ts')) expect(specifier.text).toBe('@aether/engine');
+          if (file.endsWith('aether-scene.ts') && !specifier.text.startsWith('.'))
+            expect(specifier.text).toBe('@aether/engine');
         }
       }
 

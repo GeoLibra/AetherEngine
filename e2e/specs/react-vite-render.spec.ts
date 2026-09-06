@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 declare global {
   interface Window {
@@ -20,53 +20,65 @@ test('renders the public React example and survives surface suspension', async (
       diagnostics: { status: 'rendered', indexedDrawCalls: 1, indexCount: 36 }
     });
   const initial = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
-  if (backend === 'webgl2') {
-    expect(initial.nativeError, JSON.stringify(initial)).toBe(0);
-    const metrics = initial.nativeMetrics as Record<string, unknown>;
-    expect(metrics.failed, JSON.stringify(initial)).toBe(0);
-    expect(Number(metrics.logicalDraws), JSON.stringify(initial)).toBeGreaterThan(0);
-    expect(Number(metrics.physicalDraws), JSON.stringify(initial)).toBeGreaterThan(0);
-  }
+  expectBackendClean(initial, backend);
   await page.evaluate(() => window.__AETHER_EXAMPLE__!.setRotation(Math.PI / 6));
   const initialFrame = (initial.diagnostics as { frame: number }).frame;
-  await expect
-    .poll(async () => {
-      const state = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
-      return (state.diagnostics as { frame: number }).frame;
-    })
-    .toBeGreaterThan(initialFrame);
+  await expect.poll(() => cleanFrame(page, backend)).toBeGreaterThan(initialFrame);
   await expect(page.locator('canvas')).toHaveScreenshot('react-vite-standard-lit-box.png', {
     animations: 'disabled',
     maxDiffPixelRatio: 0.01
   });
   const firstPose = await page.locator('canvas').screenshot();
-  await page.evaluate(() => window.__AETHER_EXAMPLE__!.setRotation(-Math.PI / 6));
   const firstPoseFrame = await page.evaluate(
     () => (window.__AETHER_EXAMPLE__!.state().diagnostics as { frame: number }).frame
   );
-  await expect
-    .poll(async () => {
-      const state = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
-      return (state.diagnostics as { frame: number }).frame;
-    })
-    .toBeGreaterThan(firstPoseFrame);
+  await page.evaluate(() => window.__AETHER_EXAMPLE__!.setRotation(-Math.PI / 6));
+  await expect.poll(() => cleanFrame(page, backend)).toBeGreaterThan(firstPoseFrame);
   expect(await page.locator('canvas').screenshot()).not.toEqual(firstPose);
+
+  await page.evaluate(() => window.__AETHER_EXAMPLE__!.resize(640, 360));
+  await expect
+    .poll(() => page.evaluate(() => window.__AETHER_EXAMPLE__!.state()))
+    .toMatchObject({ diagnostics: { status: 'rendered', surfaceGeneration: 2 } });
+  expectBackendClean(await page.evaluate(() => window.__AETHER_EXAMPLE__!.state()), backend);
 
   await page.evaluate(() => window.__AETHER_EXAMPLE__!.resize(0, 0));
   await expect
     .poll(() => page.evaluate(() => window.__AETHER_EXAMPLE__!.state()))
-    .toMatchObject({ diagnostics: { status: 'skipped', reason: 'surface-suspended' } });
+    .toMatchObject({
+      diagnostics: { status: 'skipped', reason: 'surface-suspended', surfaceGeneration: 3 }
+    });
+  expectBackendClean(await page.evaluate(() => window.__AETHER_EXAMPLE__!.state()), backend);
 
   await page.evaluate(() => window.__AETHER_EXAMPLE__!.resize(800, 450));
   await expect
     .poll(() => page.evaluate(() => window.__AETHER_EXAMPLE__!.state()))
-    .toMatchObject({ diagnostics: { status: 'rendered', surfaceGeneration: 3 } });
+    .toMatchObject({ diagnostics: { status: 'rendered', surfaceGeneration: 4 } });
+  const recovered = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
+  expectBackendClean(recovered, backend);
+  await expect(page.locator('canvas')).toHaveScreenshot('react-vite-standard-lit-recovered.png', {
+    animations: 'disabled',
+    maxDiffPixelRatio: 0.01
+  });
   await info.attach('react-vite-state', {
-    body: JSON.stringify(
-      { initial, recovered: await page.evaluate(() => window.__AETHER_EXAMPLE__!.state()) },
-      null,
-      2
-    ),
+    body: JSON.stringify({ initial, recovered }, null, 2),
     contentType: 'application/json'
   });
 });
+
+function expectBackendClean(state: Record<string, unknown>, backend: string): void {
+  expect(state.runtimeErrors, JSON.stringify(state)).toEqual([]);
+  expect(state.validationErrors, JSON.stringify(state)).toEqual([]);
+  if (backend !== 'webgl2') return;
+  expect(state.nativeError, JSON.stringify(state)).toBe(0);
+  const metrics = state.nativeMetrics as Record<string, unknown>;
+  expect(metrics.failed, JSON.stringify(state)).toBe(0);
+  expect(Number(metrics.logicalDraws), JSON.stringify(state)).toBeGreaterThan(0);
+  expect(Number(metrics.physicalDraws), JSON.stringify(state)).toBeGreaterThan(0);
+}
+
+async function cleanFrame(page: Page, backend: string): Promise<number> {
+  const state = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
+  expectBackendClean(state, backend);
+  return (state.diagnostics as { frame: number }).frame;
+}

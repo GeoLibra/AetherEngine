@@ -8,8 +8,8 @@ declare global {
   interface Window {
     __AETHER_EXAMPLE__?: Readonly<{
       state(): Readonly<Record<string, unknown>>;
-      resize(width: number, height: number): void;
-      setRotation(angleRadians: number): void;
+      resize(width: number, height: number): Promise<void> | void;
+      setRotation(angleRadians: number): Promise<void> | void;
       destroy(): Promise<void>;
     }>;
   }
@@ -62,7 +62,9 @@ async function mountForAcceptance(): Promise<void> {
       backend: scene.backend,
       diagnostics: scene.diagnostics(),
       nativeMetrics: scene.nativeMetrics(),
-      nativeError: gl?.getError()
+      nativeError: gl?.getError(),
+      validationErrors: scene.validationErrors(),
+      runtimeErrors: scene.runtimeErrors()
     }),
     resize: (width, height) => scene.resize(width, height),
     setRotation: (angleRadians) => scene.setRotation(angleRadians),

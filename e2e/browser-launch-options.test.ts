@@ -4,6 +4,9 @@ import { browserGraphicsArgs } from './browser-launch-options';
 describe('browserGraphicsArgs', () => {
   it('uses the deterministic Vulkan SwiftShader path for WebGPU on Linux', () => {
     expect(browserGraphicsArgs('webgpu', 'linux')).toEqual([
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
       '--enable-unsafe-webgpu',
       '--use-angle=vulkan',
       '--enable-features=Vulkan',
@@ -14,6 +17,11 @@ describe('browserGraphicsArgs', () => {
   });
 
   it('does not force the Linux software backend on macOS', () => {
-    expect(browserGraphicsArgs('webgpu', 'darwin')).toEqual(['--enable-unsafe-webgpu']);
+    expect(browserGraphicsArgs('webgpu', 'darwin')).toEqual([
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
+      '--enable-unsafe-webgpu'
+    ]);
   });
 });

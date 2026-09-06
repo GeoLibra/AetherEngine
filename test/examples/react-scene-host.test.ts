@@ -15,6 +15,8 @@ vi.mock('../../examples/react-vite-ts/src/aether-scene', () => {
         diagnostics: vi.fn(() => undefined),
         csmDiagnostics: vi.fn(() => undefined),
         nativeMetrics: vi.fn(() => undefined),
+        validationErrors: vi.fn(() => []),
+        runtimeErrors: vi.fn(() => []),
         destroy: vi.fn(async () => {
           destroyed = true;
         })
@@ -113,6 +115,8 @@ describe('AetherSceneHost', () => {
         diagnostics: vi.fn(() => undefined),
         csmDiagnostics: vi.fn(() => undefined),
         nativeMetrics: vi.fn(() => undefined),
+        validationErrors: vi.fn(() => []),
+        runtimeErrors: vi.fn(() => []),
         destroy: vi.fn(async () => {
           init1Destroyed = true;
         })
@@ -179,6 +183,8 @@ describe('AetherSceneHost', () => {
         diagnostics: vi.fn(() => undefined),
         csmDiagnostics: vi.fn(() => undefined),
         nativeMetrics: vi.fn(() => undefined),
+        validationErrors: vi.fn(() => []),
+        runtimeErrors: vi.fn(() => []),
         destroy: vi.fn(async () => {
           if (activeSessionOnCanvas === sessionId) {
             activeSessionOnCanvas = null;
