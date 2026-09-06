@@ -36,7 +36,7 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
 
 test('WebGPU stays validation-clean across resize, zero extent, and surface generations', async ({
   harness
-}) => {
+}, testInfo) => {
   await harness.resize(320, 180, 1);
   expect(await harness.state()).toMatchObject({
     status: 'ready',
@@ -64,7 +64,8 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
   });
 
   await harness.resize(256, 144, 1);
-  expect(await harness.state()).toMatchObject({
+  const finalState = await harness.state();
+  expect(finalState).toMatchObject({
     status: 'ready',
     backend: 'webgpu',
     detail: {
@@ -78,5 +79,13 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
   await expect(harness.page.locator('canvas')).toHaveScreenshot('webgpu-resized-recovered.png', {
     animations: 'disabled',
     maxDiffPixelRatio: 0.01
+  });
+  await testInfo.attach('webgpu-resize-recovery-state', {
+    body: JSON.stringify(finalState, null, 2),
+    contentType: 'application/json'
+  });
+  await testInfo.attach('webgpu-resize-recovery-actual', {
+    body: await harness.page.locator('canvas').screenshot(),
+    contentType: 'image/png'
   });
 });

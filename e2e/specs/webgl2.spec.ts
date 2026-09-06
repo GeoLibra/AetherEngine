@@ -36,7 +36,7 @@ test('WebGL2 renders through the Aether surface and submission chain', async ({ 
 
 test('WebGL2 stays error-free across resize, zero extent, and surface generations', async ({
   harness
-}) => {
+}, testInfo) => {
   await harness.resize(320, 180, 1);
   let state = await harness.state();
   expect(state).toMatchObject({
@@ -86,5 +86,13 @@ test('WebGL2 stays error-free across resize, zero extent, and surface generation
   await expect(harness.page.locator('canvas')).toHaveScreenshot('webgl2-resized-recovered.png', {
     animations: 'disabled',
     maxDiffPixelRatio: 0.01
+  });
+  await testInfo.attach('webgl2-resize-recovery-state', {
+    body: JSON.stringify(state, null, 2),
+    contentType: 'application/json'
+  });
+  await testInfo.attach('webgl2-resize-recovery-actual', {
+    body: await harness.page.locator('canvas').screenshot(),
+    contentType: 'image/png'
   });
 });
