@@ -8,14 +8,14 @@ import type {
 } from '../../../render-graph';
 import type { CpuLightListCapacity } from './light-list';
 
-/** GPU buffer inputs already packed for the WebGPU light-list compute pass. */
+/** GPU buffer inputs supplied to a caller-owned WebGPU light-list recorder. */
 export interface WebGpuLightListBuildInput {
   readonly lights: BufferHandle;
   readonly receivers: BufferHandle;
   readonly receiverCount: number;
 }
 
-/** Storage outputs produced by the WebGPU implementation for later shading passes. */
+/** Declared storage outputs that a WebGPU recorder must populate for later shading passes. */
 export interface WebGpuLightListBuildOutput {
   readonly source: 'gpu-compute';
   readonly directionalIndices: BufferHandle;
@@ -44,14 +44,14 @@ export interface WebGpuLightListBuildContext {
   publish(output: WebGpuLightListBuildOutput): void;
 }
 
-/** Texture inputs packed according to the cooked WebGL2 fragment implementation manifest. */
+/** Texture inputs supplied to a caller-owned WebGL2 fragment recorder. */
 export interface WebGlFragmentLightListBuildInput {
   readonly lights: TextureHandle;
   readonly receivers: TextureHandle;
   readonly receiverCount: number;
 }
 
-/** Integer render-target outputs sampled by later WebGL2 shading passes. */
+/** Declared integer render targets that a WebGL2 recorder must populate. */
 export interface WebGlFragmentLightListBuildOutput {
   readonly source: 'webgl-fragment';
   readonly directionalIndices: TextureHandle;

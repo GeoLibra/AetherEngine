@@ -55,7 +55,7 @@ export interface WebGlFragmentLightListImplementationOptions extends GpuLightLis
   readonly maxTextureDimension2D: number;
 }
 
-/** Creates the native compute/storage implementation selected from negotiated WebGPU capabilities. */
+/** Creates the WebGPU graph contribution seam selected from negotiated compute capabilities. */
 export function createWebGpuComputeLightListImplementation(
   options: GpuLightListImplementationOptions
 ): RenderFeatureImplementation<CpuLightListCapacity, WebGpuLightListBuildContext> {
@@ -80,7 +80,7 @@ export function createWebGpuComputeLightListImplementation(
     quality: {
       tier: 'gpu-compute',
       rank: 20,
-      notes: ['Native compute with explicit bounded storage outputs.']
+      notes: ['Compute graph seam with explicit bounded storage outputs; recorder owns execution.']
     },
     estimate: () => estimatedBudget,
     prepare: async () => capacity,
@@ -89,7 +89,7 @@ export function createWebGpuComputeLightListImplementation(
   };
 }
 
-/** Creates the WebGL2 high-level fragment implementation without changing RHI compute support. */
+/** Creates the WebGL2 integer-MRT graph seam without changing RHI compute support. */
 export function createWebGlFragmentLightListImplementation(
   options: WebGlFragmentLightListImplementationOptions
 ): RenderFeatureImplementation<CpuLightListCapacity, WebGlFragmentLightListBuildContext> {
@@ -118,7 +118,7 @@ export function createWebGlFragmentLightListImplementation(
     quality: {
       tier: 'fragment-emulated',
       rank: 10,
-      notes: ['Integer MRT packing and capacity are explicit.']
+      notes: ['Integer MRT graph packing is explicit; recorder owns fragment execution.']
     },
     estimate: () => estimatedBudget,
     prepare: async () => capacity,

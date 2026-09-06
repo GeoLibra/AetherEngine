@@ -12,17 +12,13 @@ import {
   runShadowSelectionSubject
 } from './lighting-shadow/scenario';
 import { RenderGraphBuilder } from '../src/render-graph';
-import {
-  createPreparedRenderPipelineToken,
-  createWebGlFragmentLightListImplementation,
-  declareShadowDepthPasses,
-  ZERO_RESOURCE_BUDGET
-} from '../src';
+import { declareShadowDepthPasses } from '../src';
 import { ReadonlyMapSnapshot } from '../src/rendering/world/readonly-collection-snapshot';
 import {
   assertDeclaredShadowLayers,
   createShadowDeclarationWorkload
 } from './lighting-shadow/declaration-scenario';
+import { declareLightListBenchmarkGraph } from './lighting-shadow/light-list-declaration';
 
 for (const count of [100, 1_000, 10_000]) {
   const workload = createShadowSelectionWorkload(count);
@@ -60,55 +56,13 @@ bench(
   { iterations: 1, warmupIterations: 0 }
 );
 
-const preparedWebGlLightList = Object.freeze({
-  maxDirectionalLights: 16,
-  maxLightsPerReceiver: 64,
-  maxLightIndices: 65_536
-});
-const webGlLightList = createWebGlFragmentLightListImplementation({
-  capacity: preparedWebGlLightList,
-  estimatedBudget: ZERO_RESOURCE_BUDGET,
-  maxTextureDimension2D: 8192
-});
-const benchmarkLightListPipeline = createPreparedRenderPipelineToken('benchmark-light-list');
 for (const receiverCount of [100, 10_000, 1_000_000]) {
   bench(
     `declare WebGL2 light-list graph for ${receiverCount} receivers`,
     () => {
-      const graph = new RenderGraphBuilder();
-      let inputIndex = 0;
-      const inputTexture = () =>
-        graph.createTexture(
-          {
-            width: 1,
-            height: 1,
-            depthOrArrayLayers: 1,
-            mipLevelCount: 1,
-            sampleCount: 1,
-            format: 'rgba32uint',
-            usage: ['sampled']
-          },
-          {
-            origin: {
-              kind: 'imported',
-              initialState: 'sampled',
-              acquire: { kind: 'external-acquire', id: `benchmark-input-${inputIndex++}` }
-            }
-          }
-        );
-      webGlLightList.contribute(preparedWebGlLightList, {
-        graph,
-        viewId: 'benchmark-view',
-        input: { lights: inputTexture(), receivers: inputTexture(), receiverCount },
-        recorder: {
-          pipeline: benchmarkLightListPipeline,
-          record: () => undefined
-        },
-        publish: () => undefined
-      });
-      const snapshot = graph.build();
-      expect(snapshot.passes).toHaveLength(1);
-      expect(snapshot.resources).toHaveLength(6);
+      const observation = declareLightListBenchmarkGraph(receiverCount);
+      expect(observation.passCount).toBe(1);
+      expect(observation.resourceCount).toBe(6);
     },
     { iterations: 1, warmupIterations: 0 }
   );
