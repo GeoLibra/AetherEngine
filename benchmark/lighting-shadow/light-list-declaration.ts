@@ -4,6 +4,7 @@ import {
   createPreparedRenderPipelineToken,
   createWebGlFragmentLightListImplementation
 } from '../../src';
+import { packWebGpuLightListInput, type RenderEntityId } from '../../src';
 
 const CAPACITY = Object.freeze({
   maxDirectionalLights: 16,
@@ -21,6 +22,33 @@ export interface LightListDeclarationObservation {
   readonly receiverCount: number;
   readonly passCount: number;
   readonly resourceCount: number;
+}
+
+export function createLightListPackingWorkload(count: number) {
+  const lights = Array.from({ length: count }, (_, index) => ({
+    entity: index as RenderEntityId,
+    payloadVersion: 1,
+    kind: 'point' as const,
+    position: [index % 97, 0, 0] as const,
+    luminousIntensityCandela: 1,
+    range: 4,
+    colorLinear: [1, 1, 1] as const,
+    enabled: true,
+    layerMask: 1,
+    castsShadow: false
+  }));
+  const receivers = Array.from({ length: count }, (_, index) => ({
+    renderEntity: index as RenderEntityId,
+    layerMask: 1,
+    bounds: { kind: 'sphere' as const, center: [index % 97, 0, 0] as const, radius: 1 }
+  }));
+  return Object.freeze({ viewLayerMask: 1, lights, receivers, capacity: CAPACITY });
+}
+
+export function packLightListBenchmarkInput(
+  workload: ReturnType<typeof createLightListPackingWorkload>
+) {
+  return packWebGpuLightListInput(workload);
 }
 
 /** Declares the fixed-cost WebGL2 light-list graph seam for benchmark measurement. */

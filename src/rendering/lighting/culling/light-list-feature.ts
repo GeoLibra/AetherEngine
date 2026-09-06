@@ -188,22 +188,22 @@ function contributeWebGpuLightList(
   const directionalIndices = context.graph.createBuffer({
     label: `${context.viewId}:light-list-directional`,
     size: nonZeroWords(capacity.maxDirectionalLights),
-    usage: ['storage-write', 'storage-read']
+    usage: ['storage-write', 'storage-read', 'copy-src']
   });
   const headers = context.graph.createBuffer({
     label: `${context.viewId}:light-list-headers`,
     size: Math.max(16, headerSize),
-    usage: ['storage-write', 'storage-read']
+    usage: ['storage-write', 'storage-read', 'copy-src']
   });
   const lightIndices = context.graph.createBuffer({
     label: `${context.viewId}:light-list-indices`,
     size: nonZeroWords(capacity.maxLightIndices),
-    usage: ['storage-write', 'storage-read']
+    usage: ['storage-write', 'storage-read', 'copy-src']
   });
   const overflow = context.graph.createBuffer({
     label: `${context.viewId}:light-list-overflow`,
-    size: 4,
-    usage: ['storage-write', 'storage-read']
+    size: 16,
+    usage: ['storage-write', 'storage-read', 'copy-src']
   });
   let published: WebGpuLightListBuildOutput | undefined;
   context.graph.addPass({

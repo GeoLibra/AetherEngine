@@ -239,6 +239,7 @@ describe('RenderGraphExecutor', () => {
     expect(Object.keys(context as object).sort()).toEqual([
       'beginCompute',
       'beginRaster',
+      'bindGroupLayout',
       'buffer',
       'computePipeline',
       'copyBufferToBuffer',

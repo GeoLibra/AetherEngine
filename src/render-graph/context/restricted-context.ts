@@ -30,6 +30,8 @@ import type { EndableRenderPass } from '../executor/executor-cleanup';
 import type {
   PreparedComputePipelineBindings,
   PreparedComputePipelineToken,
+  PreparedBindGroupLayoutBindings,
+  PreparedBindGroupLayoutToken,
   PreparedDrawResourcesBindings,
   PreparedDrawResourcesToken,
   PreparedRenderPipelineBindings,
@@ -89,6 +91,7 @@ export class RestrictedContext implements RestrictedPassContext {
     private readonly rhiDevice: RHIDevice,
     private readonly preparedRenderPipelines: PreparedRenderPipelineBindings,
     private readonly preparedComputePipelines: PreparedComputePipelineBindings,
+    private readonly preparedBindGroupLayouts: PreparedBindGroupLayoutBindings,
     private readonly preparedDrawResources: PreparedDrawResourcesBindings,
     private readonly encoder: ReturnType<RHIDevice['createCommandEncoder']>,
     private readonly onBegin: (pass: ActivePass) => void,
@@ -116,6 +119,7 @@ export class RestrictedContext implements RestrictedPassContext {
       buffer: this.buffer.bind(this),
       renderPipeline: this.renderPipeline.bind(this),
       computePipeline: this.computePipeline.bind(this),
+      bindGroupLayout: this.bindGroupLayout.bind(this),
       drawResources: this.drawResources.bind(this),
       beginRaster: this.beginRaster.bind(this),
       beginCompute: this.beginCompute.bind(this),
@@ -140,6 +144,16 @@ export class RestrictedContext implements RestrictedPassContext {
       throw new Error(`Prepared compute pipeline "${token.name}" is not bound.`);
     const capability = Object.freeze({ kind: 'restricted-compute-pipeline' as const });
     this.computePipelines.set(capability, raw);
+    return capability;
+  }
+
+  bindGroupLayout(token: PreparedBindGroupLayoutToken): RestrictedBindGroupLayout {
+    this.requireInactive('resolve a prepared bind-group layout');
+    const raw = this.preparedBindGroupLayouts.get(token);
+    if (raw === undefined)
+      throw new Error(`Prepared bind-group layout "${token.name}" is not bound.`);
+    const capability = Object.freeze({ kind: 'restricted-bind-group-layout' as const });
+    this.bindGroupLayouts.set(capability, raw);
     return capability;
   }
 

@@ -18,7 +18,11 @@ import {
   assertDeclaredShadowLayers,
   createShadowDeclarationWorkload
 } from './lighting-shadow/declaration-scenario';
-import { declareLightListBenchmarkGraph } from './lighting-shadow/light-list-declaration';
+import {
+  declareLightListBenchmarkGraph,
+  createLightListPackingWorkload,
+  packLightListBenchmarkInput
+} from './lighting-shadow/light-list-declaration';
 
 for (const count of [100, 1_000, 10_000]) {
   const workload = createShadowSelectionWorkload(count);
@@ -28,6 +32,15 @@ for (const count of [100, 1_000, 10_000]) {
     () => expect(runShadowSelectionSubject(workload)).toEqual(reference),
     { iterations: 1, warmupIterations: 0 }
   );
+}
+
+for (const count of [100, 1_000, 10_000]) {
+  const workload = createLightListPackingWorkload(count);
+  bench(`pack WebGPU light-list ABI for ${count} lights and receivers`, () => {
+    const packed = packLightListBenchmarkInput(workload);
+    expect(packed.lights.length).toBe(4 + count * 8);
+    expect(packed.receivers.length).toBe(4 + count * 12);
+  });
 }
 
 for (const receiverCount of [100, 1_000, 10_000]) {

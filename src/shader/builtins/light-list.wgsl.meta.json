@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "entryPoints": [{ "name": "buildLightList", "stage": "compute" }],
+  "materialBindings": [],
+  "cookPolicy": {
+    "optimization": "performance",
+    "preserveNames": true
+  }
+}

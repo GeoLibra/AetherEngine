@@ -32,6 +32,7 @@ import {
   resolveResources,
   transferPreparedDrawResources,
   validatePhysicalBinding,
+  validatePreparedBindGroupLayouts,
   validatePreparedComputePipelines,
   validatePreparedDrawResources,
   validatePreparedRenderPipelines,
@@ -82,6 +83,7 @@ export class RenderGraphExecutor {
     validateRenderGraphExecutionPlan(plan);
     validatePreparedRenderPipelines(inputs);
     validatePreparedComputePipelines(inputs);
+    validatePreparedBindGroupLayouts(inputs);
     validatePreparedDrawResources(inputs);
     const frames: SurfaceBinding[] = [];
     const transientResources: TransientResource[] = [];
@@ -120,6 +122,7 @@ export class RenderGraphExecutor {
             inputs.device,
             inputs.preparedRenderPipelines ?? new Map(),
             inputs.preparedComputePipelines ?? new Map(),
+            inputs.preparedBindGroupLayouts ?? new Map(),
             inputs.preparedDrawResources ?? new Map(),
             encoder,
             (next) => {
