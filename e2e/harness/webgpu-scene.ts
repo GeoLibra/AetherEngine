@@ -5,6 +5,7 @@ import {
   type RenderView
 } from '../../src';
 import { createE2EDrawPacket, executeOpaqueScene } from './opaque-scene';
+import { runWebGpuLightListGolden } from './webgpu-light-list';
 
 const WIDTH = 640;
 const HEIGHT = 360;
@@ -38,6 +39,7 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
   const prepared = prepareScenePipelines(session);
 
   try {
+    const lightListGolden = await runWebGpuLightListGolden(session);
     const execution = executeScene(session, indexBuffer, prepared);
     await execution.execution.submission.done;
     const buildDetail = (
@@ -63,7 +65,8 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
         indexedDrawCalls: commandStats.draw.indexedDrawCalls,
         nativeQueueSubmits: currentFastPath.nativeQueueSubmits,
         validationErrors: currentDiagnostics.length,
-        diagnostics: currentDiagnostics
+        diagnostics: currentDiagnostics,
+        lightListGolden
       });
     };
     return Object.freeze({

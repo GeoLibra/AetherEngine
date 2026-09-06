@@ -23,8 +23,17 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
       renderPasses: 1,
       drawCalls: 0,
       indexedDrawCalls: 2,
-      nativeQueueSubmits: 1,
-      validationErrors: 0
+      nativeQueueSubmits: 4,
+      validationErrors: 0,
+      lightListGolden: {
+        matchesCpuOracle: true,
+        directionalIndices: [0],
+        headerCount: 2,
+        lightIndexCount: 3,
+        overflowed: true,
+        zeroLights: true,
+        zeroReceivers: true
+      }
     }
   });
 
@@ -45,7 +54,7 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
       physicalSize: [320, 180],
       surfaceGeneration: 2,
       rendered: true,
-      nativeQueueSubmits: 2,
+      nativeQueueSubmits: 5,
       validationErrors: 0
     }
   });
@@ -58,7 +67,7 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
       physicalSize: [0, 0],
       surfaceGeneration: 3,
       rendered: false,
-      nativeQueueSubmits: 2,
+      nativeQueueSubmits: 5,
       validationErrors: 0
     }
   });
@@ -72,7 +81,7 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
       physicalSize: [256, 144],
       surfaceGeneration: 4,
       rendered: true,
-      nativeQueueSubmits: 3,
+      nativeQueueSubmits: 6,
       validationErrors: 0
     }
   });
