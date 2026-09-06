@@ -74,6 +74,16 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
     );
   }
 
+  let targetBackend: 'webgpu' | 'webgl2' | undefined;
+  if (raw.targetBackend !== undefined) {
+    if (raw.targetBackend !== 'webgpu' && raw.targetBackend !== 'webgl2') {
+      throw new Error(
+        `Invalid targetBackend "${String(raw.targetBackend)}". Expected 'webgpu' or 'webgl2'.`
+      );
+    }
+    targetBackend = raw.targetBackend;
+  }
+
   const sourceKind = (raw.sourceKind ?? 'wgsl') as ShaderSourceKind;
   const validKinds: readonly ShaderSourceKind[] = Object.freeze([
     'wgsl',
@@ -463,13 +473,16 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
   }
 
   // Verify that every vertex / fragment entry point has a corresponding GLSL ES 300 module
-  for (const ep of frozenEntryPoints) {
-    if (ep.stage === 'vertex' || ep.stage === 'fragment') {
-      const glslKey = `${ep.stage}:${ep.name}`;
-      if (!frozenGlsl[glslKey]) {
-        throw new Error(
-          `[artifact-module-missing] Missing GLSL ES 300 module for entry point "${ep.name}" (key: "${glslKey}").`
-        );
+  // (Not required if artifact specifically targets webgpu)
+  if (targetBackend !== 'webgpu') {
+    for (const ep of frozenEntryPoints) {
+      if (ep.stage === 'vertex' || ep.stage === 'fragment') {
+        const glslKey = `${ep.stage}:${ep.name}`;
+        if (!frozenGlsl[glslKey]) {
+          throw new Error(
+            `[artifact-module-missing] Missing GLSL ES 300 module for entry point "${ep.name}" (key: "${glslKey}").`
+          );
+        }
       }
     }
   }
@@ -484,6 +497,7 @@ export function decodeCookedShaderRuntimeArtifact(value: unknown): CookedShaderR
     shaderManifestSchemaVersion: 1 as const,
     shaderModuleSchemaVersion: 2 as const,
     sourceKind,
+    ...(targetBackend !== undefined ? { targetBackend } : {}),
     toolchain: frozenToolchain,
     source: frozenSource,
     entryPoints: Object.freeze(frozenEntryPoints),

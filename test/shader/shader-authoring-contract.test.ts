@@ -340,7 +340,7 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
     ).toThrow(/cookerId/i);
   });
 
-  test('rejects missing GLSL ES 300 module for graphics entry points', () => {
+  test('rejects missing GLSL ES 300 module for graphics entry points on portable artifacts', () => {
     expect(() =>
       decodeCookedShaderRuntimeArtifact({
         ...validArtifact,
@@ -353,6 +353,28 @@ describe('decodeCookedShaderRuntimeArtifact validation', () => {
         }
       })
     ).toThrow(/missing glsl/i);
+  });
+
+  test('permits omitting GLSL ES 300 modules when targetBackend is webgpu', () => {
+    const webgpuArtifact = decodeCookedShaderRuntimeArtifact({
+      ...validArtifact,
+      targetBackend: 'webgpu',
+      modules: {
+        wgsl: validArtifact.modules.wgsl,
+        glslEs300: {}
+      }
+    });
+    expect(webgpuArtifact.targetBackend).toBe('webgpu');
+    expect(webgpuArtifact.modules.glslEs300).toEqual({});
+  });
+
+  test('rejects invalid targetBackend values', () => {
+    expect(() =>
+      decodeCookedShaderRuntimeArtifact({
+        ...validArtifact,
+        targetBackend: 'invalid-backend' as unknown as 'webgpu'
+      })
+    ).toThrow(/invalid targetbackend/i);
   });
 
   test('rejects duplicate bindings in the same entry point', () => {

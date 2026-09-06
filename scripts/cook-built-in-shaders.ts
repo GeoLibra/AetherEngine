@@ -13,6 +13,7 @@ export interface BuiltInShaderRecipe {
   readonly metadataPath: string;
   readonly outputPath: string;
   readonly sourceUri: string;
+  readonly targetBackend?: 'both' | 'webgpu' | 'webgl2';
 }
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -24,7 +25,8 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     sourcePath: 'src/shader/builtins/standard-lit/standard-lit.wgsl',
     metadataPath: 'src/shader/builtins/standard-lit/standard-lit.wgsl.meta.json',
     outputPath: 'src/shader/builtins/standard-lit/standard-lit.generated.ts',
-    sourceUri: 'asset://aether/builtins/standard-lit.wgsl'
+    sourceUri: 'asset://aether/builtins/standard-lit.wgsl',
+    targetBackend: 'both'
   },
   {
     id: 'post-color',
@@ -32,7 +34,8 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     sourcePath: 'src/shader/builtins/post-color/post-color.wgsl',
     metadataPath: 'src/shader/builtins/post-color/post-color.wgsl.meta.json',
     outputPath: 'src/shader/builtins/post-color/post-color.generated.ts',
-    sourceUri: 'asset://aether/builtins/post-color.wgsl'
+    sourceUri: 'asset://aether/builtins/post-color.wgsl',
+    targetBackend: 'both'
   },
   {
     id: 'light-list-webgpu',
@@ -40,7 +43,8 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     sourcePath: 'src/shader/builtins/light-list/webgpu/light-list.wgsl',
     metadataPath: 'src/shader/builtins/light-list/webgpu/light-list.wgsl.meta.json',
     outputPath: 'src/shader/builtins/light-list/webgpu/light-list.generated.ts',
-    sourceUri: 'asset://aether/builtins/light-list.wgsl'
+    sourceUri: 'asset://aether/builtins/light-list.wgsl',
+    targetBackend: 'webgpu'
   },
   {
     id: 'light-list-webgl2',
@@ -49,7 +53,8 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     sourcePath: 'src/shader/builtins/light-list/webgl2/light-list.wgsl',
     metadataPath: 'src/shader/builtins/light-list/webgl2/light-list.wgsl.meta.json',
     outputPath: 'src/shader/builtins/light-list/webgl2/light-list.generated.ts',
-    sourceUri: 'asset://aether/builtins/light-list-webgl.wgsl'
+    sourceUri: 'asset://aether/builtins/light-list-webgl.wgsl',
+    targetBackend: 'webgl2'
   },
   {
     id: 'standard-lit-list-webgpu',
@@ -57,7 +62,8 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     sourcePath: 'src/shader/builtins/standard-lit-list/webgpu/standard-lit-list.wgsl',
     metadataPath: 'src/shader/builtins/standard-lit-list/webgpu/standard-lit-list.wgsl.meta.json',
     outputPath: 'src/shader/builtins/standard-lit-list/webgpu/standard-lit-list.generated.ts',
-    sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl'
+    sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl',
+    targetBackend: 'webgpu'
   },
   {
     id: 'standard-lit-list-webgl2',
@@ -66,7 +72,8 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     sourcePath: 'src/shader/builtins/standard-lit-list/webgl2/standard-lit-list.wgsl',
     metadataPath: 'src/shader/builtins/standard-lit-list/webgl2/standard-lit-list.wgsl.meta.json',
     outputPath: 'src/shader/builtins/standard-lit-list/webgl2/standard-lit-list.generated.ts',
-    sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl'
+    sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl',
+    targetBackend: 'webgl2'
   }
 ]);
 
@@ -74,27 +81,43 @@ function escapeTemplateLiteral(source: string): string {
   return source.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
 }
 
-function formatArtifactSource(artifact: Awaited<ReturnType<typeof cookAuthoredShader>>): string {
-  const { modules, ...metadata } = artifact;
+function formatArtifactSource(
+  artifact: Awaited<ReturnType<typeof cookAuthoredShader>>,
+  targetBackend: 'both' | 'webgpu' | 'webgl2' = 'both'
+): string {
+  const { modules, ...rawMetadata } = artifact;
+  const metadata = {
+    ...rawMetadata,
+    ...(targetBackend === 'both' ? {} : { targetBackend })
+  };
   const metadataJson = JSON.stringify(metadata, null, 2);
   const metadataBody = metadataJson.slice(0, metadataJson.lastIndexOf('}')).trimEnd();
 
-  const glslEntries = Object.entries(modules.glslEs300)
-    .map(([key, mod]) => {
-      const bindingsJson = JSON.stringify(mod.bindings, null, 2);
-      return `      ${JSON.stringify(key)}: {
+  const emitGlsl = targetBackend !== 'webgpu';
+  const emitFullWgsl = targetBackend !== 'webgl2';
+
+  const glslEntries = emitGlsl
+    ? Object.entries(modules.glslEs300)
+        .map(([key, mod]) => {
+          const bindingsJson = JSON.stringify(mod.bindings, null, 2);
+          return `      ${JSON.stringify(key)}: {
         source: \`${escapeTemplateLiteral(mod.source)}\`,
         bindings: ${bindingsJson}
       }`;
-    })
-    .join(',\n');
+        })
+        .join(',\n')
+    : '';
+
+  const wgslSource = emitFullWgsl
+    ? escapeTemplateLiteral(modules.wgsl)
+    : `/* ${artifact.source.sourceUri} (webgl2-only target) */`;
+
+  const glslBody = glslEntries ? `\n${glslEntries}\n    ` : '';
 
   return `${metadataBody},
   modules: {
-    wgsl: \`${escapeTemplateLiteral(modules.wgsl)}\`,
-    glslEs300: {
-${glslEntries}
-    }
+    wgsl: \`${wgslSource}\`,
+    glslEs300: {${glslBody}}
   }
 }`;
 }
@@ -122,12 +145,13 @@ for (const builtIn of BUILT_IN_RECIPES) {
     .map((alias) => `export const ${alias} = ${builtIn.exportName};\n`)
     .join('');
 
+  const targetBackend = builtIn.targetBackend ?? 'both';
   const generated = await format(
     `/* This file is generated by scripts/cook-built-in-shaders.ts. Do not edit. */
 import { decodeCookedShaderRuntimeArtifact } from '${relativeArtifactPath}';
 
 export const ${builtIn.exportName} =
-  decodeCookedShaderRuntimeArtifact(${formatArtifactSource(artifact)});
+  decodeCookedShaderRuntimeArtifact(${formatArtifactSource(artifact, targetBackend)});
 ${aliasLines}`,
     { parser: 'typescript', singleQuote: true, trailingComma: 'none', semi: true, printWidth: 100 }
   );

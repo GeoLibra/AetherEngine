@@ -234,6 +234,7 @@ export const LIGHT_LIST_SHADER_GENERATED_ARTIFACT = decodeCookedShaderRuntimeArt
   ],
   vertexInputs: [],
   fragmentOutputs: [],
+  targetBackend: 'webgpu',
   modules: {
     wgsl: `struct PackedWords {
   values: array<u32>,

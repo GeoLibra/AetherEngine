@@ -125,6 +125,7 @@ export interface CookedShaderRuntimeArtifact {
   readonly shaderManifestSchemaVersion: 1;
   readonly shaderModuleSchemaVersion: 2;
   readonly sourceKind: ShaderSourceKind;
+  readonly targetBackend?: 'webgpu' | 'webgl2';
   readonly toolchain: CookedShaderToolchainInfo;
   readonly source: CookedShaderSourceInfo;
   readonly entryPoints: readonly CookedShaderEntryPoint[];
