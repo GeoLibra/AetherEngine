@@ -12,7 +12,12 @@ import {
   runShadowSelectionSubject
 } from './lighting-shadow/scenario';
 import { RenderGraphBuilder } from '../src/render-graph';
-import { declareShadowDepthPasses } from '../src';
+import {
+  LIGHT_LIST_HEADER_WORDS,
+  LIGHT_LIST_LIGHT_WORDS,
+  LIGHT_LIST_RECEIVER_WORDS,
+  declareShadowDepthPasses
+} from '../src';
 import { ReadonlyMapSnapshot } from '../src/rendering/world/readonly-collection-snapshot';
 import {
   assertDeclaredShadowLayers,
@@ -34,12 +39,14 @@ for (const count of [100, 1_000, 10_000]) {
   );
 }
 
-for (const count of [100, 1_000, 10_000]) {
+for (const count of [16, 64, 256]) {
   const workload = createLightListPackingWorkload(count);
   bench(`pack WebGPU light-list ABI for ${count} lights and receivers`, () => {
     const packed = packLightListBenchmarkInput(workload);
-    expect(packed.lights.length).toBe(4 + count * 8);
-    expect(packed.receivers.length).toBe(4 + count * 12);
+    expect(packed.lights.length).toBe(LIGHT_LIST_HEADER_WORDS + count * LIGHT_LIST_LIGHT_WORDS);
+    expect(packed.receivers.length).toBe(
+      LIGHT_LIST_HEADER_WORDS + count * LIGHT_LIST_RECEIVER_WORDS
+    );
   });
 }
 

@@ -3,7 +3,7 @@ import { decodeCookedShaderRuntimeArtifact } from '../artifact';
 import type { CookedShaderRuntimeArtifact, ShaderAuthoringSource } from '../types';
 import { LIGHT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT } from './light-list-webgl.generated';
 
-export const LIGHT_LIST_WEBGL_SHADER_ABI_VERSION = 1;
+export const LIGHT_LIST_WEBGL_SHADER_ABI_VERSION = 2;
 
 /** Authored WGSL source identity for the WebGL2 integer-MRT light-list kernel. */
 export const LIGHT_LIST_WEBGL_SHADER_SOURCE: ShaderAuthoringSource = Object.freeze({

@@ -1,10 +1,14 @@
 import { orderLightsForGpu } from '../core/light';
 import type { CpuLightListCapacity, LightReceiver, PreparedLight } from '../types';
 
-export const LIGHT_LIST_ABI_VERSION = 1;
+export const LIGHT_LIST_ABI_VERSION = 2;
 export const LIGHT_LIST_HEADER_WORDS = 4;
-export const LIGHT_LIST_LIGHT_WORDS = 8;
+export const LIGHT_LIST_LIGHT_WORDS = 12;
 export const LIGHT_LIST_RECEIVER_WORDS = 12;
+export const LIGHT_LIST_SHADER_MAX_LIGHTS = 256;
+export const LIGHT_LIST_SHADER_MAX_DIRECTIONAL_LIGHTS = 64;
+export const LIGHT_LIST_SHADER_MAX_RECEIVERS = 256;
+export const LIGHT_LIST_SHADER_MAX_INDICES = 4096;
 
 export interface PackedWebGpuLightListInput {
   readonly orderedLights: readonly PreparedLight[];
@@ -33,6 +37,14 @@ export function packWebGpuLightListInput(input: {
 }): PackedWebGpuLightListInput {
   assertUint32(input.viewLayerMask, 'Light-list view layer mask');
   validateCapacity(input.capacity);
+  if (input.lights.length > LIGHT_LIST_SHADER_MAX_LIGHTS)
+    throw new Error(
+      `Light-list input exceeds the shader maximum of ${LIGHT_LIST_SHADER_MAX_LIGHTS} lights.`
+    );
+  if (input.receivers.length > LIGHT_LIST_SHADER_MAX_RECEIVERS)
+    throw new Error(
+      `Light-list input exceeds the shader maximum of ${LIGHT_LIST_SHADER_MAX_RECEIVERS} receivers.`
+    );
   const orderedLights = orderLightsForGpu(input.lights);
   const receivers = [...input.receivers].sort(
     (left, right) => left.renderEntity - right.renderEntity
@@ -49,12 +61,21 @@ export function packWebGpuLightListInput(input: {
     lightWords[base + 1] = light.enabled ? 1 : 0;
     lightWords[base + 2] = light.layerMask;
     lightWords[base + 3] = light.entity;
-    if (light.kind !== 'directional') {
+    if (light.kind === 'directional') {
+      writeFloat(lightWords, base + 4, light.direction[0]);
+      writeFloat(lightWords, base + 5, light.direction[1]);
+      writeFloat(lightWords, base + 6, light.direction[2]);
+      writeFloat(lightWords, base + 11, light.illuminanceLux);
+    } else {
       writeFloat(lightWords, base + 4, light.position[0]);
       writeFloat(lightWords, base + 5, light.position[1]);
       writeFloat(lightWords, base + 6, light.position[2]);
       writeFloat(lightWords, base + 7, light.range);
+      writeFloat(lightWords, base + 11, light.luminousIntensityCandela);
     }
+    writeFloat(lightWords, base + 8, light.colorLinear[0]);
+    writeFloat(lightWords, base + 9, light.colorLinear[1]);
+    writeFloat(lightWords, base + 10, light.colorLinear[2]);
   });
   const receiverWords = new Uint32Array(
     LIGHT_LIST_HEADER_WORDS + receivers.length * LIGHT_LIST_RECEIVER_WORDS

@@ -34,7 +34,7 @@ export type CanonicalBindingLayoutEntry = Readonly<
   | (BindingLocation & {
       readonly kind: 'texture';
       readonly viewDimension: '2d' | 'cube';
-      readonly sampleType: 'float' | 'depth';
+      readonly sampleType: 'float' | 'depth' | 'uint' | 'sint';
       readonly multisampled: boolean;
     })
   | (BindingLocation & {

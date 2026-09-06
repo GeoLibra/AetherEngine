@@ -57,7 +57,7 @@ export type ShaderTextureBindingEntryManifest = Readonly<{
   binding: number;
   name: string;
   viewDimension: '2d' | 'cube';
-  sampleType: 'float' | 'depth';
+  sampleType: 'float' | 'depth' | 'uint' | 'sint';
   multisampled: boolean;
 }>;
 

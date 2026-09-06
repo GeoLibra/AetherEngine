@@ -131,6 +131,8 @@ function reflectTextureBinding(
 ): ShaderBindingEntryManifest | undefined {
   const textureTypes = {
     'texture_2d<f32>': { viewDimension: '2d', sampleType: 'float', multisampled: false },
+    'texture_2d<u32>': { viewDimension: '2d', sampleType: 'uint', multisampled: false },
+    'texture_2d<i32>': { viewDimension: '2d', sampleType: 'sint', multisampled: false },
     'texture_cube<f32>': { viewDimension: 'cube', sampleType: 'float', multisampled: false },
     'texture_multisampled_2d<f32>': {
       viewDimension: '2d',

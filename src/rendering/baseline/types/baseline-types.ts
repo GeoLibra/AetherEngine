@@ -3,6 +3,7 @@ import type { MeshData } from '../../../geometry';
 import type { StandardLitMaterial } from '../../../material';
 import type { BrowserGraphicsSession } from '../../../platform';
 import type { PreparedDrawPacket } from '../../phase';
+import type { BaselineLightListFrame } from '../baseline-preparation';
 import type { RenderView } from '../../visibility';
 
 export type BaselineRenderSkipReason =
@@ -52,6 +53,8 @@ export type BaselinePreparedFrame =
       status: 'ready';
       view: RenderView;
       packets: readonly PreparedDrawPacket[];
+      /** Prepared LightList input for standard-lit packets; legacy/custom packets may omit it. */
+      lightList?: BaselineLightListFrame;
       deviceGeneration: number;
       surfaceGeneration: number;
     }>;

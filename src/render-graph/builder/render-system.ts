@@ -57,6 +57,8 @@ export interface RenderSystemCompileOptions {
   readonly views: readonly RenderView[];
   readonly snapshots?: RenderSystemSnapshotSource;
   readonly phaseSnapshots?: readonly RenderPhaseSnapshot[];
+  /** Existing graph containing feature passes that the systems consume. */
+  readonly graph?: RenderGraphBuilder;
 }
 
 export interface CompiledRenderSystemInstance<TItem = unknown> {
@@ -148,7 +150,7 @@ export function compileRenderSystems(
   const entries = registry.entries();
   const knownIds = new Set(entries.map(({ descriptor }) => descriptor.id));
   const active = instantiate(entries, options, knownIds);
-  const graph = new RenderGraphBuilder();
+  const graph = options.graph ?? new RenderGraphBuilder();
   const incoming = semanticIncoming(active, knownIds);
   const passTokens = new Map(
     active.map((instance) => [instance.instanceId, graph.reservePass(instance.instanceId)])

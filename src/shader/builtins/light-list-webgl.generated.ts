@@ -13,8 +13,8 @@ export const LIGHT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT = decodeCookedShaderRunt
   },
   source: {
     sourceUri: 'asset://aether/builtins/light-list-webgl.wgsl',
-    contentHash: '243a4fed0e6dfc71ec6fd66423eb3ad015a5e98e1fb9ff543799efe58d05f8b0',
-    byteLength: 6821
+    contentHash: '37e4be207923e5e6fdf72b5f9c97e4170aa49fe9d646fe525f1201530e3a04a7',
+    byteLength: 6822
   },
   entryPoints: [
     {
@@ -96,7 +96,7 @@ export const LIGHT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT = decodeCookedShaderRunt
 @group(0) @binding(1) var receiverWords: texture_2d<u32>;
 
 const HEADER_WORDS: u32 = 4u;
-const LIGHT_WORDS: u32 = 8u;
+const LIGHT_WORDS: u32 = 12u;
 const RECEIVER_WORDS: u32 = 12u;
 const VALID_HEADER: u32 = 0x80000000u;
 const DIRECTIONAL_OVERFLOW: u32 = 0x80000000u;
@@ -283,7 +283,7 @@ struct FragmentOutput {
     uvec4 overflow;
 };
 const uint HEADER_WORDS = 4u;
-const uint LIGHT_WORDS = 8u;
+const uint LIGHT_WORDS = 12u;
 const uint RECEIVER_WORDS = 12u;
 const uint VALID_HEADER = 2147483648u;
 const uint DIRECTIONAL_OVERFLOW = 2147483648u;
@@ -638,7 +638,7 @@ struct FragmentOutput {
     uvec4 overflow;
 };
 const uint HEADER_WORDS = 4u;
-const uint LIGHT_WORDS = 8u;
+const uint LIGHT_WORDS = 12u;
 const uint RECEIVER_WORDS = 12u;
 const uint VALID_HEADER = 2147483648u;
 const uint DIRECTIONAL_OVERFLOW = 2147483648u;

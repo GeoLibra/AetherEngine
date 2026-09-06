@@ -13,8 +13,8 @@ export const LIGHT_LIST_SHADER_GENERATED_ARTIFACT = decodeCookedShaderRuntimeArt
   },
   source: {
     sourceUri: 'asset://aether/builtins/light-list.wgsl',
-    contentHash: '3b9358876026c1c53b1a8090e1ab8bc4d2d00f67114e4b61bfedf31ce714454e',
-    byteLength: 4956
+    contentHash: '712be48525c0bc87412abbe0df8b09a73129327575ff714129c9d1e06f0e0be3',
+    byteLength: 4957
   },
   entryPoints: [
     {
@@ -247,7 +247,7 @@ export const LIGHT_LIST_SHADER_GENERATED_ARTIFACT = decodeCookedShaderRuntimeArt
 @group(0) @binding(5) var<storage, read_write> overflow: PackedWords;
 
 const HEADER_WORDS: u32 = 4u;
-const LIGHT_WORDS: u32 = 8u;
+const LIGHT_WORDS: u32 = 12u;
 const RECEIVER_WORDS: u32 = 12u;
 const DIRECTIONAL_KIND: u32 = 0u;
 const SPHERE_BOUNDS: u32 = 0u;

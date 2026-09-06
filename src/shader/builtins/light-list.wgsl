@@ -10,7 +10,7 @@ struct PackedWords {
 @group(0) @binding(5) var<storage, read_write> overflow: PackedWords;
 
 const HEADER_WORDS: u32 = 4u;
-const LIGHT_WORDS: u32 = 8u;
+const LIGHT_WORDS: u32 = 12u;
 const RECEIVER_WORDS: u32 = 12u;
 const DIRECTIONAL_KIND: u32 = 0u;
 const SPHERE_BOUNDS: u32 = 0u;

@@ -20,6 +20,11 @@ import type {
   WebGpuLightListBuildOutput
 } from '../types';
 import { calculateWebGlLightListPacking } from './light-list-packing';
+import {
+  LIGHT_LIST_SHADER_MAX_DIRECTIONAL_LIGHTS,
+  LIGHT_LIST_SHADER_MAX_INDICES,
+  LIGHT_LIST_SHADER_MAX_RECEIVERS
+} from './light-list-abi';
 
 export const BuiltInFeature = Object.freeze({
   LightListBuild: featureId('aether.rendering.light-list-build')
@@ -60,6 +65,7 @@ export function createWebGpuComputeLightListImplementation(
   options: GpuLightListImplementationOptions
 ): RenderFeatureImplementation<CpuLightListCapacity, WebGpuLightListBuildContext> {
   const capacity = snapshotCapacity(options.capacity);
+  validateShaderCapacity(capacity);
   const estimatedBudget = snapshotResourceBudget(options.estimatedBudget);
   return {
     kind: 'render',
@@ -181,29 +187,27 @@ function contributeWebGpuLightList(
   const record = context.recorder?.record;
   const publish = context.publish;
   validateBuildContext(context.viewId, context.input.receiverCount, record, publish);
-  const headerSize = context.input.receiverCount * 16;
-  if (!Number.isSafeInteger(headerSize)) {
-    throw new Error('WebGPU light-list header buffer size exceeds the safe integer range.');
-  }
+  if (context.input.receiverCount > LIGHT_LIST_SHADER_MAX_RECEIVERS)
+    throw new Error('WebGPU light-list receiver count exceeds the built-in shader maximum.');
   const directionalIndices = context.graph.createBuffer({
     label: `${context.viewId}:light-list-directional`,
-    size: nonZeroWords(capacity.maxDirectionalLights),
-    usage: ['storage-write', 'storage-read', 'copy-src']
+    size: LIGHT_LIST_SHADER_MAX_DIRECTIONAL_LIGHTS * 4,
+    usage: ['storage-write', 'storage-read', 'uniform', 'copy-src']
   });
   const headers = context.graph.createBuffer({
     label: `${context.viewId}:light-list-headers`,
-    size: Math.max(16, headerSize),
-    usage: ['storage-write', 'storage-read', 'copy-src']
+    size: LIGHT_LIST_SHADER_MAX_RECEIVERS * 16,
+    usage: ['storage-write', 'storage-read', 'uniform', 'copy-src']
   });
   const lightIndices = context.graph.createBuffer({
     label: `${context.viewId}:light-list-indices`,
-    size: nonZeroWords(capacity.maxLightIndices),
-    usage: ['storage-write', 'storage-read', 'copy-src']
+    size: LIGHT_LIST_SHADER_MAX_INDICES * 4,
+    usage: ['storage-write', 'storage-read', 'uniform', 'copy-src']
   });
   const overflow = context.graph.createBuffer({
     label: `${context.viewId}:light-list-overflow`,
     size: 16,
-    usage: ['storage-write', 'storage-read', 'copy-src']
+    usage: ['storage-write', 'storage-read', 'uniform', 'copy-src']
   });
   let published: WebGpuLightListBuildOutput | undefined;
   context.graph.addPass({
@@ -310,8 +314,12 @@ function validateBuildContext(
     throw new Error('Light-list build requires a publish callback.');
 }
 
-function nonZeroWords(count: number): number {
-  return Math.max(4, count * 4);
+function validateShaderCapacity(capacity: CpuLightListCapacity): void {
+  if (
+    capacity.maxDirectionalLights > LIGHT_LIST_SHADER_MAX_DIRECTIONAL_LIGHTS ||
+    capacity.maxLightIndices > LIGHT_LIST_SHADER_MAX_INDICES
+  )
+    throw new Error('WebGPU light-list capacity exceeds the built-in shader ABI maximum.');
 }
 
 function snapshotCapacity(capacity: CpuLightListCapacity): CpuLightListCapacity {

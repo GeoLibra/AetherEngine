@@ -31,7 +31,7 @@ export interface WebGl2BindingLayoutPlan {
     BindingLocation & {
       textureUnit: number;
       viewDimension: '2d' | 'cube';
-      sampleType: 'float' | 'depth';
+      sampleType: 'float' | 'depth' | 'uint' | 'sint';
       multisampled: boolean;
     }
   >[];

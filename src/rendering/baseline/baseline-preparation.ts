@@ -1,12 +1,22 @@
 import {
-  STANDARD_LIT_SHADER_ABI_VERSION,
-  STANDARD_LIT_SHADER_ARTIFACT,
-  STANDARD_LIT_SHADER_MODULE,
+  STANDARD_LIT_LIST_SHADER_ABI_VERSION,
+  STANDARD_LIT_LIST_SHADER_MODULE_KEY,
+  STANDARD_LIT_LIST_WEBGL_SHADER_ARTIFACT,
+  STANDARD_LIT_LIST_WEBGL_SHADER_MODULE,
+  STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT,
+  STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE,
   createCookedShaderBindingManifest
 } from '../../shader';
 import { StandardLitMaterialSchema } from '../../material';
-import { STANDARD_LIT_SHADER_MODULE_KEY } from '../../material/builtins';
-import type { RHIBindGroup, RHIBuffer, RHIResource, RHISubmission } from '../../rhi/contracts';
+import type {
+  RHIBindGroup,
+  RHIBindGroupLayout,
+  RHIBuffer,
+  RHIResource,
+  RHISubmission,
+  RHITexture
+} from '../../rhi/contracts';
+import type { PreparedBindGroupLayoutToken } from '../../render-graph';
 import {
   compileBindingLayoutPlan,
   createBindingKey,
@@ -17,14 +27,60 @@ import {
 } from '../pipeline';
 import { disposePreparedMesh, prepareMesh, type PreparedMesh } from '../mesh';
 import type { PreparedDrawPacket } from '../phase';
+import { createPreparedBindGroupLayoutToken } from '../../render-graph';
 import type { ExtractedView } from '../camera';
-import type { PreparedLight } from '../lighting';
 import type { RenderEntityId } from '../world';
 import type { RenderTransformFact } from '../mesh';
 import type { BaselineRenderingOptions } from './types';
+import {
+  LIGHT_LIST_SHADER_MAX_LIGHTS,
+  packWebGlLightListInput,
+  packWebGpuLightListInput,
+  prepareWebGlLightListRecorder,
+  prepareWebGpuLightListRecorder,
+  type CpuLightListCapacity,
+  type LightReceiver,
+  type PreparedLight,
+  type PreparedWebGlLightListRecorder,
+  type PreparedWebGpuLightListRecorder
+} from '../lighting';
 
 const UNIFORM_BUFFER_USAGE = (1 << 3) | (1 << 6);
+const STORAGE_UNIFORM_UPLOAD_BUFFER_USAGE = (1 << 3) | (1 << 6) | (1 << 7);
+const STORAGE_UPLOAD_BUFFER_USAGE = (1 << 3) | (1 << 7);
+const SAMPLED_UPLOAD_TEXTURE_USAGE = (1 << 2) | (1 << 4);
 const EMPTY_DYNAMIC_OFFSETS: readonly number[] = Object.freeze([]);
+
+export const BASELINE_LIGHT_LIST_CAPACITY: CpuLightListCapacity = Object.freeze({
+  maxDirectionalLights: 64,
+  maxLightsPerReceiver: 16,
+  maxLightIndices: 4096
+});
+
+export type BaselineLightListFrame =
+  | Readonly<{
+      source: 'gpu-compute';
+      lights: RHIBuffer;
+      receivers: RHIBuffer;
+      receiverCount: number;
+      recorder: PreparedWebGpuLightListRecorder;
+      forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
+      forwardBindGroupLayout: RHIBindGroupLayout;
+      release(): void;
+      retain(submission: RHISubmission): void;
+    }>
+  | Readonly<{
+      source: 'webgl-fragment';
+      lights: RHITexture;
+      receivers: RHITexture;
+      receiverCount: number;
+      maxTextureDimension2D: number;
+      recorder: PreparedWebGlLightListRecorder;
+      forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
+      forwardBindGroupLayout: RHIBindGroupLayout;
+      release(): void;
+      retain(submission: RHISubmission): void;
+    }>;
 
 type RegisteredOptions = BaselineRenderingOptions &
   Required<Pick<BaselineRenderingOptions, 'mesh' | 'material' | 'featurePolicyKey'>>;
@@ -47,14 +103,26 @@ export class BaselineStandardLitPreparation {
   private readonly pipelineKey: string;
   private readonly bindingLayoutHash: string;
   private readonly pendingSubmissions = new Set<Promise<unknown>>();
+  private readonly lightListRecorder:
+    PreparedWebGpuLightListRecorder | PreparedWebGlLightListRecorder;
+  readonly lightListBindGroupLayoutToken =
+    createPreparedBindGroupLayoutToken('standard-lit-light-list');
   private frameAllocationGeneration = 0;
   private disposed = false;
 
   constructor(private readonly options: RegisteredOptions) {
     const { device } = options.graphics;
+    const shaderArtifact =
+      options.graphics.backend === 'webgpu'
+        ? STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT
+        : STANDARD_LIT_LIST_WEBGL_SHADER_ARTIFACT;
+    const shaderModule =
+      options.graphics.backend === 'webgpu'
+        ? STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE
+        : STANDARD_LIT_LIST_WEBGL_SHADER_MODULE;
     const manifest = createCookedShaderBindingManifest(
-      STANDARD_LIT_SHADER_ARTIFACT,
-      STANDARD_LIT_SHADER_ABI_VERSION
+      shaderArtifact,
+      STANDARD_LIT_LIST_SHADER_ABI_VERSION
     );
     const compiled = compileBindingLayoutPlan(manifest);
     if (compiled.kind !== 'success') {
@@ -63,7 +131,7 @@ export class BaselineStandardLitPreparation {
     const target = options.graphics.backend;
     const entry = new LayoutCache().resolve({
       plan: compiled.plan,
-      layoutRevision: STANDARD_LIT_SHADER_ABI_VERSION,
+      layoutRevision: STANDARD_LIT_LIST_SHADER_ABI_VERSION,
       featurePolicyHash: options.featurePolicyKey,
       target,
       deviceGeneration: device.generation
@@ -76,8 +144,12 @@ export class BaselineStandardLitPreparation {
     this.pipelineLayout = layout.layout.pipelineLayout;
     this.shaderModule = device.createShaderModule({
       label: 'aether-standard-lit',
-      code: STANDARD_LIT_SHADER_MODULE
+      code: shaderModule
     });
+    this.lightListRecorder =
+      options.graphics.backend === 'webgpu'
+        ? prepareWebGpuLightListRecorder(device)
+        : prepareWebGlLightListRecorder(device);
     this.pipeline = device.createRenderPipeline({
       label: 'aether-standard-lit',
       layout: this.pipelineLayout,
@@ -119,7 +191,7 @@ export class BaselineStandardLitPreparation {
     }).value;
     this.bindingLayoutHash = compiled.plan.hash;
     this.pipelineKey = createPipelineKey({
-      shaderModuleKey: STANDARD_LIT_SHADER_MODULE_KEY,
+      shaderModuleKey: STANDARD_LIT_LIST_SHADER_MODULE_KEY,
       entryPoints: [
         { stage: 'vertex', name: 'standardLitVertex' },
         { stage: 'fragment', name: 'standardLitFragment' }
@@ -156,19 +228,17 @@ export class BaselineStandardLitPreparation {
     entity: RenderEntityId;
     transform: RenderTransformFact;
     view: ExtractedView;
-    light: PreparedLight;
   }): PreparedDrawPacket {
     this.assertLive();
     const { device } = this.options.graphics;
     const buffers = [
-      uniformBuffer(device, objectUniform(input.transform)),
+      uniformBuffer(device, objectUniform(input.transform, input.entity)),
       uniformBuffer(device, viewUniform(input.view)),
-      uniformBuffer(device, materialUniform(this.options.material.material)),
-      uniformBuffer(device, lightUniform(input.light))
+      uniformBuffer(device, materialUniform(this.options.material.material))
     ];
     const bindGroups: RHIBindGroup[] = [];
     try {
-      for (let group = 0; group < this.bindGroupLayouts.length; group += 1) {
+      for (let group = 0; group < 3; group += 1) {
         bindGroups.push(
           device.createBindGroup({
             layout: this.bindGroupLayouts[group]!,
@@ -183,12 +253,83 @@ export class BaselineStandardLitPreparation {
     return this.packet(input.entity, buffers, bindGroups);
   }
 
+  get lightListBindGroupLayout() {
+    return this.bindGroupLayouts[3]!;
+  }
+
+  /** Uploads immutable backend input resources consumed by one LightList build submission. */
+  createLightListFrame(input: {
+    viewLayerMask: number;
+    lights: readonly PreparedLight[];
+    receivers: readonly LightReceiver[];
+  }): BaselineLightListFrame {
+    this.assertLive();
+    const { device } = this.options.graphics;
+    if (this.options.graphics.backend === 'webgpu') {
+      const packed = packWebGpuLightListInput({ ...input, capacity: BASELINE_LIGHT_LIST_CAPACITY });
+      const lightWords = new Uint32Array(4 + LIGHT_LIST_SHADER_MAX_LIGHTS * 12);
+      lightWords.set(packed.lights);
+      const lights = device.createBuffer({
+        size: lightWords.byteLength,
+        usage: STORAGE_UNIFORM_UPLOAD_BUFFER_USAGE
+      });
+      const receivers = device.createBuffer({
+        size: Math.max(16, packed.receivers.byteLength),
+        usage: STORAGE_UPLOAD_BUFFER_USAGE
+      });
+      device.queue.writeBuffer(lights, 0, lightWords);
+      device.queue.writeBuffer(receivers, 0, packed.receivers);
+      return this.ownedLightListFrame({
+        source: 'gpu-compute',
+        lights,
+        receivers,
+        receiverCount: input.receivers.length,
+        recorder: this.lightListRecorder as PreparedWebGpuLightListRecorder,
+        forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
+        forwardBindGroupLayout: this.lightListBindGroupLayout
+      });
+    }
+    const maxTextureDimension2D = device.capabilities.limits.maxTextureDimension2D;
+    if (maxTextureDimension2D === undefined)
+      throw new Error('WebGL2 LightList requires maxTextureDimension2D.');
+    const packed = packWebGlLightListInput({
+      ...input,
+      capacity: BASELINE_LIGHT_LIST_CAPACITY,
+      maxTextureDimension2D
+    });
+    const texture = (height: number, words: Uint32Array) => {
+      const result = device.createTexture({
+        size: [packed.width, height],
+        format: 'rgba32uint',
+        usage: SAMPLED_UPLOAD_TEXTURE_USAGE
+      });
+      device.queue.writeTexture(
+        { texture: result },
+        words,
+        { bytesPerRow: packed.width * 16, rowsPerImage: height },
+        { width: packed.width, height }
+      );
+      return result;
+    };
+    return this.ownedLightListFrame({
+      source: 'webgl-fragment',
+      lights: texture(packed.lightsHeight, packed.lights),
+      receivers: texture(packed.receiversHeight, packed.receivers),
+      receiverCount: input.receivers.length,
+      maxTextureDimension2D,
+      recorder: this.lightListRecorder as PreparedWebGlLightListRecorder,
+      forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
+      forwardBindGroupLayout: this.lightListBindGroupLayout
+    });
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
     await Promise.allSettled([...this.pendingSubmissions]);
     disposePreparedMesh(this.mesh);
     this.pipeline.dispose();
+    this.lightListRecorder.dispose();
     this.shaderModule.dispose();
     this.pipelineLayout.dispose();
     disposeResources(this.bindGroupLayouts);
@@ -259,15 +400,44 @@ export class BaselineStandardLitPreparation {
   private assertLive(): void {
     if (this.disposed) throw new Error('Standard-lit preparation has been disposed.');
   }
+
+  private ownedLightListFrame<T extends Omit<BaselineLightListFrame, 'release' | 'retain'>>(
+    value: T
+  ): BaselineLightListFrame {
+    let released = false;
+    let retained = false;
+    const resources: readonly RHIResource[] = [value.lights, value.receivers];
+    return Object.freeze({
+      ...value,
+      release: () => {
+        if (released) return;
+        released = true;
+        if (!retained) disposeResources(resources);
+      },
+      retain: (submission: RHISubmission) => {
+        if (released || retained) throw new Error('Baseline LightList frame cannot be retained.');
+        retained = true;
+        const pending = submission.done.finally(() => {
+          disposeResources(resources);
+          this.pendingSubmissions.delete(pending);
+        });
+        this.pendingSubmissions.add(pending);
+      }
+    }) as BaselineLightListFrame;
+  }
 }
 
 function uniformBuffer(
   device: RegisteredOptions['graphics']['device'],
-  values: readonly number[]
+  values: readonly number[] | Uint32Array
 ): RHIBuffer {
   const byteLength = Math.max(16, Math.ceil(values.length / 4) * 16);
   const buffer = device.createBuffer({ size: byteLength, usage: UNIFORM_BUFFER_USAGE });
-  device.queue.writeBuffer(buffer, 0, new Float32Array(values));
+  device.queue.writeBuffer(
+    buffer,
+    0,
+    values instanceof Uint32Array ? values : new Float32Array(values)
+  );
   return buffer;
 }
 
@@ -285,10 +455,10 @@ function materialUniform(material: RegisteredOptions['material']['material']): r
   ];
 }
 
-function objectUniform(transform: RenderTransformFact): readonly number[] {
+function objectUniform(transform: RenderTransformFact, entity: RenderEntityId): Uint32Array {
   const normal = transform.normalMatrix;
   if (normal.length !== 9) throw new Error('Standard-lit normal matrix must contain nine values.');
-  return [
+  const floats = new Float32Array([
     ...transform.matrix,
     normal[0]!,
     normal[1]!,
@@ -305,8 +475,19 @@ function objectUniform(transform: RenderTransformFact): readonly number[] {
     0,
     0,
     0,
-    1
-  ];
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ]);
+  const words = new Uint32Array(floats.buffer);
+  words[32] = entity;
+  return words;
 }
 
 function viewUniform(view: ExtractedView): readonly number[] {
@@ -315,21 +496,6 @@ function viewUniform(view: ExtractedView): readonly number[] {
     view.cameraPosition[0],
     view.cameraPosition[1],
     view.cameraPosition[2],
-    0
-  ];
-}
-
-function lightUniform(light: PreparedLight): readonly number[] {
-  if (light.kind !== 'directional')
-    throw new Error('Baseline standard-lit requires directional light.');
-  return [
-    light.direction[0],
-    light.direction[1],
-    light.direction[2],
-    light.illuminanceLux,
-    light.colorLinear[0],
-    light.colorLinear[1],
-    light.colorLinear[2],
     0
   ];
 }

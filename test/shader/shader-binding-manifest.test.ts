@@ -50,7 +50,8 @@ describe('Shader binding manifest', () => {
       '@group(0) @binding(3) var resolvedColor: texture_multisampled_2d<f32>;',
       '@group(0) @binding(4) var shadowMap: texture_depth_2d;',
       '@group(0) @binding(5) var linearSampler: sampler;',
-      '@group(0) @binding(6) var shadowSampler: sampler_comparison;'
+      '@group(0) @binding(6) var shadowSampler: sampler_comparison;',
+      '@group(0) @binding(7) var lightIndices: texture_2d<u32>;'
     ]);
 
     const manifest = createShaderBindingManifest(ir, 1);
@@ -112,6 +113,15 @@ describe('Shader binding manifest', () => {
         binding: 6,
         name: 'shadowSampler',
         samplerType: 'comparison'
+      },
+      {
+        kind: 'texture',
+        group: 0,
+        binding: 7,
+        name: 'lightIndices',
+        viewDimension: '2d',
+        sampleType: 'uint',
+        multisampled: false
       }
     ]);
     expect(manifest.buffers).toHaveLength(1);

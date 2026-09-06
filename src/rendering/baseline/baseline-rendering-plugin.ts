@@ -174,10 +174,10 @@ class BaselineRenderingRuntime {
     const matching = visible.filter(({ renderEntity }) =>
       this.matchesRegistration(camera.revision, renderEntity)
     );
-    const light = this.lightExtraction!.lights().find(
+    const lights = this.lightExtraction!.lights().filter(
       (candidate) => candidate.enabled && (candidate.layerMask & view.layerMask) !== 0
     );
-    if (matching.length === 0 || light === undefined) {
+    if (matching.length === 0 || lights.length === 0) {
       this.prepared = Object.freeze({
         status: 'missing',
         view,
@@ -196,14 +196,29 @@ class BaselineRenderingRuntime {
       return this.standardLit!.createPacket({
         entity: selected.renderEntity,
         transform,
-        view: camera.views[0]!,
-        light
+        view: camera.views[0]!
       });
+    });
+    const receivers = matching.map(({ renderEntity }) => {
+      const candidate = candidates.find(({ entity }) => entity === renderEntity);
+      if (candidate === undefined) throw new Error('Visible baseline receiver is missing bounds.');
+      return Object.freeze({
+        renderEntity,
+        layerMask: candidate.layerMask,
+        enabled: candidate.enabled,
+        bounds: candidate.bounds
+      });
+    });
+    const lightList = this.standardLit.createLightListFrame({
+      viewLayerMask: view.layerMask,
+      lights,
+      receivers
     });
     this.prepared = Object.freeze({
       status: 'ready',
       view,
       packets: Object.freeze(packets),
+      lightList,
       deviceGeneration: this.options.graphics.device.generation,
       surfaceGeneration: this.options.graphics.surface.generation
     });
@@ -279,6 +294,7 @@ class BaselineRenderingRuntime {
   private discardPrepared(): void {
     if (this.prepared?.status === 'ready') {
       for (const packet of this.prepared.packets) packet.release();
+      this.prepared.lightList?.release();
     }
     this.prepared = undefined;
     this.preparedSkip = undefined;

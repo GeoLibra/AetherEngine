@@ -3,6 +3,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { summarize } from '../harness/statistics';
 import {
+  LIGHT_LIST_LIGHT_WORDS,
+  LIGHT_LIST_RECEIVER_WORDS,
+  LIGHT_LIST_HEADER_WORDS
+} from '../../src';
+import {
   declareLightListBenchmarkGraph,
   createLightListPackingWorkload,
   packLightListBenchmarkInput
@@ -43,7 +48,7 @@ const declarationResults = [100, 10_000, 1_000_000].map((receiverCount) => {
     summary: summarize(rawSamplesMs)
   });
 });
-const packingResults = [100, 1_000, 10_000].map((count) => {
+const packingResults = [16, 64, 256].map((count) => {
   const workload = createLightListPackingWorkload(count);
   const rawSamplesMs: number[] = [];
   const rounds = warmupCounts[profile] + sampleCounts[profile];
@@ -51,7 +56,10 @@ const packingResults = [100, 1_000, 10_000].map((count) => {
     const start = performance.now();
     const packed = packLightListBenchmarkInput(workload);
     const duration = performance.now() - start;
-    if (packed.lights.length !== 4 + count * 8 || packed.receivers.length !== 4 + count * 12)
+    if (
+      packed.lights.length !== LIGHT_LIST_HEADER_WORDS + count * LIGHT_LIST_LIGHT_WORDS ||
+      packed.receivers.length !== LIGHT_LIST_HEADER_WORDS + count * LIGHT_LIST_RECEIVER_WORDS
+    )
       throw new Error('Light-list packed ABI benchmark structural oracle failed.');
     if (round >= warmupCounts[profile]) rawSamplesMs.push(duration);
   }

@@ -2,7 +2,7 @@
 @group(0) @binding(1) var receiverWords: texture_2d<u32>;
 
 const HEADER_WORDS: u32 = 4u;
-const LIGHT_WORDS: u32 = 8u;
+const LIGHT_WORDS: u32 = 12u;
 const RECEIVER_WORDS: u32 = 12u;
 const VALID_HEADER: u32 = 0x80000000u;
 const DIRECTIONAL_OVERFLOW: u32 = 0x80000000u;

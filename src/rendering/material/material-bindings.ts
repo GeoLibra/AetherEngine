@@ -32,7 +32,7 @@ export type CompiledMaterialTextureBinding = Readonly<{
   group: number;
   binding: number;
   viewDimension: '2d' | 'cube';
-  sampleType: 'float' | 'depth';
+  sampleType: 'float' | 'depth' | 'uint' | 'sint';
   multisampled: boolean;
 }>;
 
@@ -71,7 +71,7 @@ export type ResolvedMaterialTextureResource = Readonly<
   ResolvedMaterialResourceBase & {
     kind: 'texture';
     viewDimension: '2d' | 'cube';
-    sampleType: 'float' | 'depth';
+    sampleType: 'float' | 'depth' | 'uint' | 'sint';
     multisampled: boolean;
   }
 >;
