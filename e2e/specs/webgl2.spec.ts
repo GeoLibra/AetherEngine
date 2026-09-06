@@ -14,9 +14,16 @@ test('WebGL2 renders through the Aether surface and submission chain', async ({ 
       renderPasses: 1,
       drawCalls: 0,
       indexedDrawCalls: 2,
-      nativeQueueSubmits: 1,
+      nativeQueueSubmits: 2,
       glCalls: expect.any(Number),
-      glErrors: [0, 0, 0, 0, 0],
+      glErrors: [0, 0, 0, 0, 0, 0],
+      lightList: {
+        matchesCpuOracle: true,
+        directionalIndices: [0],
+        headerCount: 2,
+        lightIndexCount: 3,
+        overflowed: true
+      },
       centerPixel: expect.any(Array),
       presentedPixel: expect.any(Array)
     }
@@ -46,7 +53,7 @@ test('WebGL2 stays error-free across resize, zero extent, and surface generation
       physicalSize: [320, 180],
       surfaceGeneration: 2,
       rendered: true,
-      nativeQueueSubmits: 2
+      nativeQueueSubmits: 3
     }
   });
   if (state.status === 'ready')
@@ -61,7 +68,7 @@ test('WebGL2 stays error-free across resize, zero extent, and surface generation
       physicalSize: [0, 0],
       surfaceGeneration: 3,
       rendered: false,
-      nativeQueueSubmits: 2
+      nativeQueueSubmits: 3
     }
   });
   if (state.status === 'ready')
@@ -76,7 +83,7 @@ test('WebGL2 stays error-free across resize, zero extent, and surface generation
       physicalSize: [256, 144],
       surfaceGeneration: 4,
       rendered: true,
-      nativeQueueSubmits: 3
+      nativeQueueSubmits: 4
     }
   });
   if (state.status === 'ready') {

@@ -1,11 +1,14 @@
 import {
   BrowserGraphicsBootstrapError,
+  LIGHT_LIST_WEBGL2_TRANSLATOR,
+  LIGHT_LIST_WEBGL_SHADER_MODULE,
   createBrowserGraphics,
   type RenderEntityId,
   type RenderView,
   type WebGL2ShaderTranslationPort
 } from '../../src';
 import { createE2EDrawPacket, executeOpaqueScene } from './opaque-scene';
+import { runWebGlLightListGolden } from './webgl2-light-list';
 
 const TRIANGLE_INDEX_COUNT = 3;
 const CUBE_INDEX_COUNT = 6;
@@ -16,6 +19,9 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
   const gl = canvas.getContext('webgl2');
   const presentProbe = gl === null ? undefined : instrumentGL(gl);
   const glErrors: number[] = [gl?.getError() ?? -1];
+  if (gl === null) throw new Error('WebGL2 context disappeared after session creation.');
+  const lightList = await runWebGlLightListGolden(session, gl);
+  glErrors.push(gl.getError());
   const index = session.device.createBuffer({ size: INDICES.byteLength, usage: 0x18 });
   session.device.queue.writeBuffer(index, 0, INDICES);
   const uniform = session.device.createBuffer({ size: 16, usage: 0x40 });
@@ -136,6 +142,7 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
       nativeQueueSubmits: currentMetrics.submissionEpochs,
       glCalls: currentMetrics.glCalls,
       glErrors: Object.freeze([...glErrors]),
+      lightList,
       centerPixel: [...centerPixel],
       presentedPixel: [...presentedPixel]
     });
@@ -285,6 +292,8 @@ const TRANSLATOR: WebGL2ShaderTranslationPort = {
   translatorId: 'aether-e2e-glsl',
   version: 1,
   translate(input) {
+    if (input.wgsl === LIGHT_LIST_WEBGL_SHADER_MODULE)
+      return LIGHT_LIST_WEBGL2_TRANSLATOR.translate(input);
     const source =
       input.stage === 'vertex'
         ? input.wgsl === 'triangle'

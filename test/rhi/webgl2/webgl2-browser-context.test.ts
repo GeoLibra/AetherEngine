@@ -40,6 +40,7 @@ describe('browser WebGL2 context port', () => {
     expect([...port.extensions]).toEqual(['EXT_clip_control', 'EXT_color_buffer_float']);
     expect(port.limits).toMatchObject({
       maxTextureUnits: 16,
+      maxTextureDimension2D: 8192,
       maxUniformBufferBindings: 24,
       maxUniformBlockSize: 65_536,
       uniformBufferOffsetAlignment: 64
@@ -54,6 +55,13 @@ describe('browser WebGL2 context port', () => {
       render: true,
       blend: true,
       sampleCounts: [1, 4]
+    });
+    expect(port.formats.get('rgba32uint')).toMatchObject({
+      sample: true,
+      filter: false,
+      render: true,
+      blend: false,
+      sampleCounts: [1]
     });
     expect(gl.calls).toEqual(
       expect.arrayContaining([
@@ -112,6 +120,7 @@ class FakeWebGL2Context {
   readonly VENDOR = 0x1f00;
   readonly RENDERER = 0x1f01;
   readonly MAX_COMBINED_TEXTURE_IMAGE_UNITS = 0x8b4d;
+  readonly MAX_TEXTURE_SIZE = 0x0d33;
   readonly MAX_UNIFORM_BUFFER_BINDINGS = 0x8a2f;
   readonly MAX_UNIFORM_BLOCK_SIZE = 0x8a30;
   readonly UNIFORM_BUFFER_OFFSET_ALIGNMENT = 0x8a34;
@@ -131,6 +140,7 @@ class FakeWebGL2Context {
         [this.VENDOR, 'Fake Vendor'],
         [this.RENDERER, 'Fake Renderer'],
         [this.MAX_COMBINED_TEXTURE_IMAGE_UNITS, 16],
+        [this.MAX_TEXTURE_SIZE, 8192],
         [this.MAX_UNIFORM_BUFFER_BINDINGS, 24],
         [this.MAX_UNIFORM_BLOCK_SIZE, 65_536],
         [this.UNIFORM_BUFFER_OFFSET_ALIGNMENT, 64],

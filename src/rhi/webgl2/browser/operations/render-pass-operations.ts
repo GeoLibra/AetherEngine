@@ -22,7 +22,17 @@ export function createBrowserWebGL2RenderPassOperations(
       for (const [index, attachment] of colorAttachments(descriptor).entries()) {
         if (Reflect.get(attachment, 'loadOp') !== 'clear') continue;
         const value = colorValue(Reflect.get(attachment, 'clearValue'));
-        glCall(gl, 'clearBufferfv', [constant(gl, 'COLOR'), index, value]);
+        const subresource = textureSubresource(attachment, textureFacts, {
+          texture: 'view',
+          mipLevel: 'mipLevel',
+          width: 'width',
+          height: 'height'
+        });
+        glCall(gl, subresource.facts.format === 'rgba32uint' ? 'clearBufferuiv' : 'clearBufferfv', [
+          constant(gl, 'COLOR'),
+          index,
+          subresource.facts.format === 'rgba32uint' ? new Uint32Array(value) : value
+        ]);
       }
       const depth = objectField(descriptor, 'depthStencilAttachment');
       if (depth?.depthLoadOp === 'clear') {

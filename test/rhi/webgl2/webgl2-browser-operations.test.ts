@@ -492,6 +492,9 @@ class FakeOperationsGL {
   readonly DEPTH_COMPONENT24 = 0x81a6;
   readonly TEXTURE_MIN_FILTER = 0x2801;
   readonly TEXTURE_MAG_FILTER = 0x2800;
+  readonly TEXTURE_WRAP_S = 0x2802;
+  readonly TEXTURE_WRAP_T = 0x2803;
+  readonly CLAMP_TO_EDGE = 0x812f;
   readonly LINEAR = 0x2601;
   readonly NEAREST = 0x2600;
   readonly TRIANGLES = 0x0004;
@@ -557,6 +560,9 @@ class FakeOperationsGL {
   }
   texStorage2D(...args: unknown[]): void {
     this.calls.push(['texStorage2D', ...args]);
+  }
+  texParameteri(...args: unknown[]): void {
+    this.calls.push(['texParameteri', ...args]);
   }
   texSubImage2D(...args: unknown[]): void {
     this.calls.push(['texSubImage2D', ...args]);

@@ -14,6 +14,10 @@ const BUILT_INS = Object.freeze([
   {
     name: 'light-list',
     exportName: 'LIGHT_LIST_SHADER_GENERATED_ARTIFACT'
+  },
+  {
+    name: 'light-list-webgl',
+    exportName: 'LIGHT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT'
   }
 ]);
 function escapeTemplateLiteral(source: string): string {

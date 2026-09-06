@@ -257,7 +257,7 @@ function contributeWebGlFragmentLightList(
       mipLevelCount: 1,
       sampleCount: 1,
       format: 'rgba32uint',
-      usage: ['color-attachment', 'sampled']
+      usage: ['color-attachment', 'sampled', 'copy-src']
     });
   // WebGL2 requires every attachment in one MRT pass to have the same extent.
   const directionalIndices = createOutput('light-list-directional');

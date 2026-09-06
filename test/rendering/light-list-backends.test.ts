@@ -6,13 +6,13 @@ import {
   RenderGraphExecutor,
   ZERO_RESOURCE_BUDGET,
   compileRenderGraph,
-  createPreparedRenderPipelineToken,
   createRenderGraphExecutionPlan,
   createWebGlFragmentLightListImplementation,
   createWebGpuComputeLightListImplementation,
   calculateWebGlLightListPacking,
   decodeWebGpuLightListOutput,
   packWebGpuLightListInput,
+  prepareWebGlLightListRecorder,
   prepareWebGpuLightListRecorder,
   type HostServiceId,
   type RenderEntityId
@@ -210,7 +210,7 @@ describe('LightListBuild backend graph implementations', () => {
       );
     const lights = inputTexture();
     const receivers = inputTexture();
-    const pipelineToken = createPreparedRenderPipelineToken('webgl-light-list');
+    const preparedRecorder = prepareWebGlLightListRecorder(device);
     const implementation = createWebGlFragmentLightListImplementation({
       capacity,
       estimatedBudget: ZERO_RESOURCE_BUDGET,
@@ -222,24 +222,7 @@ describe('LightListBuild backend graph implementations', () => {
       graph,
       viewId: 'main',
       input: { lights, receivers, receiverCount: 2 },
-      recorder: {
-        pipeline: pipelineToken,
-        record(context, _input, output) {
-          const pipeline = context.renderPipeline(pipelineToken);
-          const raster = context.beginRaster({
-            label: 'webgl-light-list',
-            colorAttachments: [
-              output.directionalIndices,
-              output.headers,
-              output.lightIndices,
-              output.overflow
-            ].map((texture) => ({ texture, loadOp: 'clear' as const, storeOp: 'store' as const }))
-          });
-          raster.setPipeline(pipeline);
-          raster.draw(3);
-          raster.end();
-        }
-      },
+      recorder: preparedRecorder.recorder,
       publish(output) {
         published = output;
       }
@@ -253,7 +236,10 @@ describe('LightListBuild backend graph implementations', () => {
         [receivers, texture()]
       ]),
       preparedRenderPipelines: new Map([
-        [pipelineToken, device.createRenderPipeline({ label: 'webgl-light-list' })]
+        [preparedRecorder.pipelineToken, preparedRecorder.pipeline]
+      ]),
+      preparedBindGroupLayouts: new Map([
+        [preparedRecorder.bindGroupLayoutToken, preparedRecorder.bindGroupLayout]
       ])
     });
     expect(implementation.id).toBe(BuiltInFeatureImplementation.WebGlFragmentLightList);
@@ -265,6 +251,7 @@ describe('LightListBuild backend graph implementations', () => {
     );
     expect(execution.commandStats.renderPasses).toBe(1);
     expect(execution.commandStats.draw.drawCalls).toBe(1);
+    preparedRecorder.dispose();
   });
 });
 

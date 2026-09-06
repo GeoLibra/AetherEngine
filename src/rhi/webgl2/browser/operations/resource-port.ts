@@ -66,6 +66,28 @@ export function createBrowserWebGL2ResourcePort(
         width,
         height
       ]);
+      // WebGL defaults require a complete mip chain. RHI textures must remain complete when
+      // textureLoad/texelFetch is used without a separately bound sampler.
+      glCall(gl, 'texParameteri', [
+        constant(gl, 'TEXTURE_2D'),
+        constant(gl, 'TEXTURE_MIN_FILTER'),
+        constant(gl, 'NEAREST')
+      ]);
+      glCall(gl, 'texParameteri', [
+        constant(gl, 'TEXTURE_2D'),
+        constant(gl, 'TEXTURE_MAG_FILTER'),
+        constant(gl, 'NEAREST')
+      ]);
+      glCall(gl, 'texParameteri', [
+        constant(gl, 'TEXTURE_2D'),
+        constant(gl, 'TEXTURE_WRAP_S'),
+        constant(gl, 'CLAMP_TO_EDGE')
+      ]);
+      glCall(gl, 'texParameteri', [
+        constant(gl, 'TEXTURE_2D'),
+        constant(gl, 'TEXTURE_WRAP_T'),
+        constant(gl, 'CLAMP_TO_EDGE')
+      ]);
       textureFacts.set(texture, {
         width,
         height,
@@ -104,6 +126,7 @@ function textureFormat(
   value: unknown
 ): { readonly internalFormat: number; readonly aspect: BrowserWebGL2TextureFacts['aspect'] } {
   if (value === 'rgba8unorm') return { internalFormat: constant(gl, 'RGBA8'), aspect: 'color' };
+  if (value === 'rgba32uint') return { internalFormat: constant(gl, 'RGBA32UI'), aspect: 'color' };
   if (value === 'depth24plus')
     return { internalFormat: constant(gl, 'DEPTH_COMPONENT24'), aspect: 'depth' };
   if (value === 'depth24plus-stencil8')

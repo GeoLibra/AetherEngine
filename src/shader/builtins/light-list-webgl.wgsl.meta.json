@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "entryPoints": [
+    { "name": "lightListVertex", "stage": "vertex" },
+    { "name": "lightListFragment", "stage": "fragment" }
+  ],
+  "materialBindings": [],
+  "cookPolicy": {
+    "optimization": "performance",
+    "preserveNames": true
+  }
+}

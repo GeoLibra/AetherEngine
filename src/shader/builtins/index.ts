@@ -11,3 +11,12 @@ export {
   LIGHT_LIST_SHADER_MODULE,
   LIGHT_LIST_SHADER_SOURCE
 } from './light-list';
+export {
+  LIGHT_LIST_WEBGL_SHADER_ABI_VERSION,
+  LIGHT_LIST_WEBGL_SHADER_ARTIFACT,
+  LIGHT_LIST_WEBGL_SHADER_MODULE,
+  LIGHT_LIST_WEBGL_SHADER_SOURCE,
+  LIGHT_LIST_WEBGL2_TRANSLATOR,
+  createLightListWebGL2Translator
+} from './light-list-webgl';
+export { BUILT_IN_WEBGL2_TRANSLATOR } from './webgl2-translator';

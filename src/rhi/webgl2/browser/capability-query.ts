@@ -10,6 +10,7 @@ export function queryWebGL2Extensions(gl: BrowserWebGL2Context): Set<string> {
 export function queryWebGL2Limits(gl: BrowserWebGL2Context): WebGL2NativeLimits {
   return Object.freeze({
     maxTextureUnits: numberParameter(gl, 'MAX_COMBINED_TEXTURE_IMAGE_UNITS'),
+    maxTextureDimension2D: numberParameter(gl, 'MAX_TEXTURE_SIZE'),
     maxUniformBufferBindings: numberParameter(gl, 'MAX_UNIFORM_BUFFER_BINDINGS'),
     maxUniformBlockSize: numberParameter(gl, 'MAX_UNIFORM_BLOCK_SIZE'),
     uniformBufferOffsetAlignment: numberParameter(gl, 'UNIFORM_BUFFER_OFFSET_ALIGNMENT'),
@@ -36,6 +37,8 @@ export function queryWebGL2Formats(
   const sampleCounts = maxSamples >= 4 ? [1, 4] : [1];
   const formats = new Map<GPUTextureFormat, FormatCapabilities>();
   formats.set('rgba8unorm', format(true, true, true, true, sampleCounts));
+  // RGBA32UI color rendering and integer sampling are core WebGL2 capabilities.
+  formats.set('rgba32uint', format(true, false, true, false, [1]));
   formats.set('depth24plus', format(false, false, true, false, sampleCounts));
   if (extensions.has(COLOR_BUFFER_FLOAT_EXTENSION)) {
     formats.set('rgba16float', format(true, true, true, false, sampleCounts));

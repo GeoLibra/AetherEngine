@@ -19,11 +19,15 @@ export function createBrowserWebGL2TextureCopyPort(
       requireBaselineExtent(extent);
       glCall(gl, 'bindBuffer', [constant(gl, 'PIXEL_UNPACK_BUFFER'), null]);
       setAlignment(gl, 'UNPACK_ALIGNMENT', 4);
-      setRowLength(gl, 'UNPACK_ROW_LENGTH', layout.bytesPerRow, 4);
+      setRowLength(gl, 'UNPACK_ROW_LENGTH', layout.bytesPerRow, bytesPerPixel(copy.format));
       glCall(gl, 'bindTexture', [constant(gl, 'TEXTURE_2D'), copy.texture]);
       const offset = layout.offset ?? 0;
-      const bytes = new Uint8Array(data.buffer, data.byteOffset + offset, data.byteLength - offset);
-      texSubImage(gl, copy, extent, bytes);
+      const byteLength = data.byteLength - offset;
+      const upload =
+        copy.format === 'rgba32uint'
+          ? new Uint32Array(data.buffer, data.byteOffset + offset, byteLength / 4)
+          : new Uint8Array(data.buffer, data.byteOffset + offset, byteLength);
+      texSubImage(gl, copy, extent, upload);
       setRowLength(gl, 'UNPACK_ROW_LENGTH', 0, 4);
     },
     copyBufferToTexture(source, destination, size): void {
@@ -33,7 +37,7 @@ export function createBrowserWebGL2TextureCopyPort(
       const buffer = requiredObject(source, 'buffer');
       glCall(gl, 'bindBuffer', [constant(gl, 'PIXEL_UNPACK_BUFFER'), buffer]);
       setAlignment(gl, 'UNPACK_ALIGNMENT', 4);
-      setRowLength(gl, 'UNPACK_ROW_LENGTH', source.bytesPerRow, 4);
+      setRowLength(gl, 'UNPACK_ROW_LENGTH', source.bytesPerRow, bytesPerPixel(copy.format));
       glCall(gl, 'bindTexture', [constant(gl, 'TEXTURE_2D'), copy.texture]);
       texSubImage(gl, copy, extent, numberField(source, 'offset', 0));
       setRowLength(gl, 'UNPACK_ROW_LENGTH', 0, 4);
@@ -47,14 +51,14 @@ export function createBrowserWebGL2TextureCopyPort(
       withReadFramebuffer(gl, copy.texture, copy.mipLevel, () => {
         glCall(gl, 'bindBuffer', [constant(gl, 'PIXEL_PACK_BUFFER'), buffer]);
         setAlignment(gl, 'PACK_ALIGNMENT', 4);
-        setRowLength(gl, 'PACK_ROW_LENGTH', destination.bytesPerRow, 4);
+        setRowLength(gl, 'PACK_ROW_LENGTH', destination.bytesPerRow, bytesPerPixel(copy.format));
         glCall(gl, 'readPixels', [
           copy.x,
           copy.y,
           extent.width,
           extent.height,
-          constant(gl, 'RGBA'),
-          constant(gl, 'UNSIGNED_BYTE'),
+          constant(gl, copy.format === 'rgba32uint' ? 'RGBA_INTEGER' : 'RGBA'),
+          constant(gl, copy.format === 'rgba32uint' ? 'UNSIGNED_INT' : 'UNSIGNED_BYTE'),
           numberField(destination, 'offset', 0)
         ]);
         setRowLength(gl, 'PACK_ROW_LENGTH', 0, 4);
@@ -88,6 +92,7 @@ interface TextureCopy {
   readonly mipLevel: number;
   readonly x: number;
   readonly y: number;
+  readonly format: string;
 }
 interface CopyExtent {
   readonly width: number;
@@ -101,9 +106,11 @@ function textureCopy(
 ): TextureCopy {
   const texture = requiredObject(value, 'texture');
   const textureFacts = facts.get(texture);
-  if (textureFacts === undefined || textureFacts.format !== 'rgba8unorm') {
-    throw new Error('WebGL2 baseline texture copy supports owned rgba8unorm textures only.');
-  }
+  if (
+    textureFacts === undefined ||
+    (textureFacts.format !== 'rgba8unorm' && textureFacts.format !== 'rgba32uint')
+  )
+    throw new Error('WebGL2 texture copy supports owned RGBA8Unorm and RGBA32Uint textures only.');
   const origin =
     typeof value.origin === 'object' && value.origin !== null
       ? (value.origin as Readonly<Record<string, unknown>>)
@@ -112,7 +119,8 @@ function textureCopy(
     texture,
     mipLevel: numberField(value, 'mipLevel', 0),
     x: numberField(origin, 'x', 0),
-    y: numberField(origin, 'y', 0)
+    y: numberField(origin, 'y', 0),
+    format: textureFacts.format
   };
 }
 
@@ -142,8 +150,8 @@ function texSubImage(
     copy.y,
     extent.width,
     extent.height,
-    constant(gl, 'RGBA'),
-    constant(gl, 'UNSIGNED_BYTE'),
+    constant(gl, copy.format === 'rgba32uint' ? 'RGBA_INTEGER' : 'RGBA'),
+    constant(gl, copy.format === 'rgba32uint' ? 'UNSIGNED_INT' : 'UNSIGNED_BYTE'),
     data
   ]);
 }
@@ -199,4 +207,8 @@ function setRowLength(
   const value = typeof bytesPerRow === 'number' ? bytesPerRow / bytesPerPixel : 0;
   if (!Number.isInteger(value)) throw new Error(`WebGL2 ${name} requires whole texel rows.`);
   glCall(gl, 'pixelStorei', [constant(gl, name), value]);
+}
+
+function bytesPerPixel(format: string): number {
+  return format === 'rgba32uint' ? 16 : 4;
 }
