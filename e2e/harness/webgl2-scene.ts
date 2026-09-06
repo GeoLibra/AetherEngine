@@ -74,65 +74,84 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
     depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' }
   });
   glErrors.push(gl?.getError() ?? -1);
-  const execution = executeOpaqueScene({
-    device: session.device,
-    surface: session.surface,
-    view: sceneView(),
-    surfaceFrame: { kind: 'surface-frame', id: 'webgl2-main' },
-    width: 640,
-    height: 360,
-    colorFormat: 'rgba8unorm',
-    packets: [
-      createE2EDrawPacket({
-        entity: 1 as RenderEntityId,
-        drawKey: 'triangle',
-        pipeline: triangle,
-        indexBuffer: index,
-        indexFormat: 'uint16',
-        indexCount: TRIANGLE_INDEX_COUNT,
-        retain: () => undefined,
-        release: () => undefined
-      }),
-      createE2EDrawPacket({
-        entity: 2 as RenderEntityId,
-        drawKey: 'cube',
-        pipeline: cube,
-        bindGroups: [group],
-        indexBuffer: index,
-        indexFormat: 'uint16',
-        firstIndex: TRIANGLE_INDEX_COUNT,
-        indexCount: CUBE_INDEX_COUNT,
-        retain: () => undefined,
-        release: () => undefined
-      })
-    ]
-  });
+  const render = (width: number, height: number) =>
+    executeOpaqueScene({
+      device: session.device,
+      surface: session.surface,
+      view: sceneView(width, height),
+      surfaceFrame: { kind: 'surface-frame', id: 'webgl2-main' },
+      width,
+      height,
+      colorFormat: 'rgba8unorm',
+      packets: [
+        createE2EDrawPacket({
+          entity: 1 as RenderEntityId,
+          drawKey: 'triangle',
+          pipeline: triangle,
+          indexBuffer: index,
+          indexFormat: 'uint16',
+          indexCount: TRIANGLE_INDEX_COUNT,
+          retain: () => undefined,
+          release: () => undefined
+        }),
+        createE2EDrawPacket({
+          entity: 2 as RenderEntityId,
+          drawKey: 'cube',
+          pipeline: cube,
+          bindGroups: [group],
+          indexBuffer: index,
+          indexFormat: 'uint16',
+          firstIndex: TRIANGLE_INDEX_COUNT,
+          indexCount: CUBE_INDEX_COUNT,
+          retain: () => undefined,
+          release: () => undefined
+        })
+      ]
+    });
+  const execution = render(640, 360);
   glErrors.push(gl?.getError() ?? -1);
   await execution.execution.submission.done;
   const centerPixel = presentProbe?.beforePresentPixel ?? new Uint8Array(4);
   const presentedPixel = presentProbe?.afterPresentPixel ?? new Uint8Array(4);
   glErrors.push(gl?.getError() ?? -1);
-  const metrics = Reflect.apply(
-    Reflect.get(session.device.queue, 'metrics'),
-    session.device.queue,
-    []
-  ) as unknown as Readonly<Record<string, number>>;
-  return Object.freeze({
-    detail: Object.freeze({
+  const buildDetail = (
+    rendered: boolean,
+    commandStats = execution.execution.commandStats
+  ): Readonly<Record<string, unknown>> => {
+    const currentMetrics = Reflect.apply(
+      Reflect.get(session.device.queue, 'metrics'),
+      session.device.queue,
+      []
+    ) as unknown as Readonly<Record<string, number>>;
+    return Object.freeze({
       generation: session.device.generation,
       surfaceGeneration: session.surface.generation,
       format: session.surface.configuration?.format,
       renderPath: execution.renderPath,
       renderSystemInstances: execution.renderSystemInstances,
-      renderPasses: execution.execution.commandStats.renderPasses,
-      drawCalls: execution.execution.commandStats.draw.drawCalls,
-      indexedDrawCalls: execution.execution.commandStats.draw.indexedDrawCalls,
-      nativeQueueSubmits: metrics.submissionEpochs,
-      glCalls: metrics.glCalls,
-      glErrors,
+      rendered,
+      renderPasses: commandStats.renderPasses,
+      drawCalls: commandStats.draw.drawCalls,
+      indexedDrawCalls: commandStats.draw.indexedDrawCalls,
+      nativeQueueSubmits: currentMetrics.submissionEpochs,
+      glCalls: currentMetrics.glCalls,
+      glErrors: Object.freeze([...glErrors]),
       centerPixel: [...centerPixel],
       presentedPixel: [...presentedPixel]
-    }),
+    });
+  };
+  return Object.freeze({
+    detail: buildDetail(true),
+    async resize(width: number, height: number): Promise<Readonly<Record<string, unknown>>> {
+      session.resize({ width, height });
+      presentProbe?.setExtent(width, height);
+      glErrors.push(gl?.getError() ?? -1);
+      if (width === 0 || height === 0) return buildDetail(false);
+      const resized = render(width, height);
+      await resized.execution.submission.done;
+      glErrors.push(gl?.getError() ?? -1);
+      return buildDetail(true, resized.execution.commandStats);
+    },
     async destroy(): Promise<void> {
       cube.dispose();
       triangle.dispose();
@@ -156,11 +175,14 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
 interface WebGL2PresentProbe {
   readonly beforePresentPixel: Uint8Array;
   readonly afterPresentPixel: Uint8Array;
+  setExtent(width: number, height: number): void;
 }
 
 function instrumentGL(gl: WebGL2RenderingContext): WebGL2PresentProbe {
   const beforePresentPixel = new Uint8Array(4);
   const afterPresentPixel = new Uint8Array(4);
+  let width = 640;
+  let height = 360;
   for (const name of [
     'bindFramebuffer',
     'framebufferTexture2D',
@@ -182,13 +204,29 @@ function instrumentGL(gl: WebGL2RenderingContext): WebGL2PresentProbe {
       configurable: true,
       value: (...args: unknown[]) => {
         if (name === 'blitFramebuffer') {
-          gl.readPixels(320, 179, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, beforePresentPixel);
+          gl.readPixels(
+            Math.floor(width / 2),
+            Math.max(0, Math.floor(height / 2) - 1),
+            1,
+            1,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            beforePresentPixel
+          );
         }
         const result = Reflect.apply(original, gl, args);
         if (name === 'blitFramebuffer') {
           const source = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
           gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-          gl.readPixels(320, 180, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, afterPresentPixel);
+          gl.readPixels(
+            Math.floor(width / 2),
+            Math.floor(height / 2),
+            1,
+            1,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            afterPresentPixel
+          );
           gl.bindFramebuffer(gl.READ_FRAMEBUFFER, source);
         }
         const error = gl.getError();
@@ -198,15 +236,22 @@ function instrumentGL(gl: WebGL2RenderingContext): WebGL2PresentProbe {
       }
     });
   }
-  return Object.freeze({ beforePresentPixel, afterPresentPixel });
+  return Object.freeze({
+    beforePresentPixel,
+    afterPresentPixel,
+    setExtent(nextWidth: number, nextHeight: number): void {
+      width = nextWidth;
+      height = nextHeight;
+    }
+  });
 }
 
-function sceneView(): RenderView {
+function sceneView(width: number, height: number): RenderView {
   return Object.freeze({
     id: 'webgl2-main',
     camera: 1 as RenderEntityId,
     surface: 'webgl2-main',
-    viewport: Object.freeze({ x: 0, y: 0, width: 640, height: 360 }),
+    viewport: Object.freeze({ x: 0, y: 0, width, height }),
     layerMask: 1,
     featurePolicyKey: 'webgl2-baseline',
     historyKey: 'webgl2-main'

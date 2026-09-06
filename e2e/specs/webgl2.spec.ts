@@ -33,3 +33,58 @@ test('WebGL2 renders through the Aether surface and submission chain', async ({ 
     maxDiffPixelRatio: 0.01
   });
 });
+
+test('WebGL2 stays error-free across resize, zero extent, and surface generations', async ({
+  harness
+}) => {
+  await harness.resize(320, 180, 1);
+  let state = await harness.state();
+  expect(state).toMatchObject({
+    status: 'ready',
+    backend: 'webgl2',
+    detail: {
+      physicalSize: [320, 180],
+      surfaceGeneration: 2,
+      rendered: true,
+      nativeQueueSubmits: 2
+    }
+  });
+  if (state.status === 'ready')
+    expect((state.detail.glErrors as number[]).every((error) => error === 0)).toBe(true);
+
+  await harness.resize(0, 0, 1);
+  state = await harness.state();
+  expect(state).toMatchObject({
+    status: 'ready',
+    backend: 'webgl2',
+    detail: {
+      physicalSize: [0, 0],
+      surfaceGeneration: 3,
+      rendered: false,
+      nativeQueueSubmits: 2
+    }
+  });
+  if (state.status === 'ready')
+    expect((state.detail.glErrors as number[]).every((error) => error === 0)).toBe(true);
+
+  await harness.resize(256, 144, 1);
+  state = await harness.state();
+  expect(state).toMatchObject({
+    status: 'ready',
+    backend: 'webgl2',
+    detail: {
+      physicalSize: [256, 144],
+      surfaceGeneration: 4,
+      rendered: true,
+      nativeQueueSubmits: 3
+    }
+  });
+  if (state.status === 'ready') {
+    expect((state.detail.glErrors as number[]).every((error) => error === 0)).toBe(true);
+    expect(state.detail.presentedPixel).toEqual(state.detail.centerPixel);
+  }
+  await expect(harness.page.locator('canvas')).toHaveScreenshot('webgl2-resized-recovered.png', {
+    animations: 'disabled',
+    maxDiffPixelRatio: 0.01
+  });
+});

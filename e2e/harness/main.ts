@@ -10,12 +10,18 @@ interface ResizeOperation {
   readonly completion: Promise<void>;
   readonly cancel: () => void;
 }
+interface ResizableGraphicsScene {
+  readonly detail: Readonly<Record<string, unknown>>;
+  resize(width: number, height: number): Promise<Readonly<Record<string, unknown>>>;
+  destroy(): Promise<void>;
+}
 
 const INITIAL_WIDTH = 640;
 const INITIAL_HEIGHT = 360;
 
 let currentState: E2EState = Object.freeze({ status: 'booting' });
 let resizeHarness: ((width: number, height: number, dpr: number) => ResizeOperation) | undefined;
+let graphicsScene: ResizableGraphicsScene | undefined;
 const cleanups: Cleanup[] = [];
 const activeResizes = new Set<ResizeOperation>();
 let teardownStarted = false;
@@ -96,14 +102,19 @@ async function initialize(): Promise<void> {
     const frameCommit = beginFrameCommit(host);
     return {
       cancel: frameCommit.cancel,
-      completion: frameCommit.completion.then(() => {
-        publishReady(scenario, metricsDetail(hostWindow.metrics, hostWindow.generation));
+      completion: frameCommit.completion.then(async () => {
+        const graphicsDetail = await graphicsScene?.resize(canvas.width, canvas.height);
+        publishReady(scenario, {
+          ...(graphicsDetail ?? {}),
+          ...metricsDetail(hostWindow.metrics, hostWindow.generation)
+        });
       })
     };
   };
 
   if (scenario === 'webgl2') {
     const scene = await runWebGL2Scene(canvas);
+    graphicsScene = scene;
     cleanups.push(() => scene.destroy());
     publishReady('webgl2', scene.detail);
     return;
@@ -111,6 +122,7 @@ async function initialize(): Promise<void> {
 
   if (scenario === 'webgpu') {
     const scene = await runWebGPUScene(canvas);
+    graphicsScene = scene;
     cleanups.push(() => scene.destroy());
     publishReady('webgpu', scene.detail);
     return;
@@ -229,6 +241,7 @@ async function runCleanups(): Promise<void> {
     }
   }
   resizeHarness = undefined;
+  graphicsScene = undefined;
   if (errors.length === 1) throw errors[0];
   if (errors.length > 1) {
     throw new AggregateError(errors, `E2E harness cleanup failed (${errors.length}).`);

@@ -17,6 +17,7 @@ const INDEX_DATA = new Uint16Array([0, 1, 2, ...CUBE_INDEX_DATA, 0]);
 
 export interface WebGPUSceneResult {
   readonly detail: Readonly<Record<string, unknown>>;
+  resize(width: number, height: number): Promise<Readonly<Record<string, unknown>>>;
   destroy(): Promise<void>;
 }
 
@@ -39,10 +40,13 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
   try {
     const execution = executeScene(session, indexBuffer, prepared);
     await execution.execution.submission.done;
-    const fastPath = fastPathMetrics(session.device);
-    const diagnostics = diagnosticMessages(session);
-    return Object.freeze({
-      detail: Object.freeze({
+    const buildDetail = (
+      rendered: boolean,
+      commandStats = execution.execution.commandStats
+    ): Readonly<Record<string, unknown>> => {
+      const currentFastPath = fastPathMetrics(session.device);
+      const currentDiagnostics = diagnosticMessages(session);
+      return Object.freeze({
         adapterName: session.adapter.info.name,
         adapterVendor: session.adapter.info.vendor,
         adapterArchitecture: session.adapter.info.architecture,
@@ -53,13 +57,24 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
         alphaMode: session.surface.configuration?.alphaMode,
         renderPath: execution.renderPath,
         renderSystemInstances: execution.renderSystemInstances,
-        renderPasses: execution.execution.commandStats.renderPasses,
-        drawCalls: execution.execution.commandStats.draw.drawCalls,
-        indexedDrawCalls: execution.execution.commandStats.draw.indexedDrawCalls,
-        nativeQueueSubmits: fastPath.nativeQueueSubmits,
-        validationErrors: diagnostics.length,
-        diagnostics
-      }),
+        rendered,
+        renderPasses: commandStats.renderPasses,
+        drawCalls: commandStats.draw.drawCalls,
+        indexedDrawCalls: commandStats.draw.indexedDrawCalls,
+        nativeQueueSubmits: currentFastPath.nativeQueueSubmits,
+        validationErrors: currentDiagnostics.length,
+        diagnostics: currentDiagnostics
+      });
+    };
+    return Object.freeze({
+      detail: buildDetail(true),
+      async resize(width: number, height: number) {
+        session.resize({ width, height });
+        if (width === 0 || height === 0) return buildDetail(false);
+        const resized = executeScene(session, indexBuffer, prepared);
+        await resized.execution.submission.done;
+        return buildDetail(true, resized.execution.commandStats);
+      },
       async destroy(): Promise<void> {
         prepared.dispose();
         indexBuffer.dispose();
@@ -176,11 +191,13 @@ function diagnosticMessages(session: BrowserGraphicsSession): readonly string[] 
   if (typeof diagnostics !== 'object' || diagnostics === null) return [];
   const list = Reflect.get(diagnostics, 'list');
   if (typeof list !== 'function') return [];
-  return (Reflect.apply(list, diagnostics, []) as readonly unknown[]).map((entry) => {
-    if (typeof entry !== 'object' || entry === null) return String(entry);
-    const message = Reflect.get(entry, 'message');
-    return typeof message === 'string' ? message : String(entry);
-  });
+  return Object.freeze(
+    (Reflect.apply(list, diagnostics, []) as readonly unknown[]).map((entry) => {
+      if (typeof entry !== 'object' || entry === null) return String(entry);
+      const message = Reflect.get(entry, 'message');
+      return typeof message === 'string' ? message : String(entry);
+    })
+  );
 }
 
 const TRIANGLE_SHADER = `

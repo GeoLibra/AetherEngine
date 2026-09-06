@@ -33,3 +33,50 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
     maxDiffPixelRatio: 0.01
   });
 });
+
+test('WebGPU stays validation-clean across resize, zero extent, and surface generations', async ({
+  harness
+}) => {
+  await harness.resize(320, 180, 1);
+  expect(await harness.state()).toMatchObject({
+    status: 'ready',
+    backend: 'webgpu',
+    detail: {
+      physicalSize: [320, 180],
+      surfaceGeneration: 2,
+      rendered: true,
+      nativeQueueSubmits: 2,
+      validationErrors: 0
+    }
+  });
+
+  await harness.resize(0, 0, 1);
+  expect(await harness.state()).toMatchObject({
+    status: 'ready',
+    backend: 'webgpu',
+    detail: {
+      physicalSize: [0, 0],
+      surfaceGeneration: 3,
+      rendered: false,
+      nativeQueueSubmits: 2,
+      validationErrors: 0
+    }
+  });
+
+  await harness.resize(256, 144, 1);
+  expect(await harness.state()).toMatchObject({
+    status: 'ready',
+    backend: 'webgpu',
+    detail: {
+      physicalSize: [256, 144],
+      surfaceGeneration: 4,
+      rendered: true,
+      nativeQueueSubmits: 3,
+      validationErrors: 0
+    }
+  });
+  await expect(harness.page.locator('canvas')).toHaveScreenshot('webgpu-resized-recovered.png', {
+    animations: 'disabled',
+    maxDiffPixelRatio: 0.01
+  });
+});
