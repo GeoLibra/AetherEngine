@@ -4,3 +4,4 @@ export * from './core';
 export * from './culling';
 export * from './shading';
 export * from './shadow';
+export * from './environment';

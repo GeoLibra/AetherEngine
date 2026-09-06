@@ -41,6 +41,12 @@ struct PackedHeaderWords { values: array<vec4<u32>, 256> };
 struct PackedIndexWords { values: array<vec4<u32>, 1024> };
 struct PackedOverflowWords { values: vec4<u32> };
 struct ReceiverLightHeader { offset: u32, count: u32 };
+struct EnvironmentData {
+  diffuseIrradiance: vec3<f32>,
+  intensity: f32,
+  prefilteredRadiance: vec3<f32>,
+  brdfBias: f32,
+};
 
 // ----------------------------------------------------------------------------
 // Stage Input / Output Interfaces
@@ -71,6 +77,11 @@ struct StandardLitFragmentInput {
 @group(3) @binding(2) var<uniform> headerWords: PackedHeaderWords;
 @group(3) @binding(3) var<uniform> indexWords: PackedIndexWords;
 @group(3) @binding(4) var<uniform> overflowWords: PackedOverflowWords;
+@group(3) @binding(5) var<uniform> environmentData: EnvironmentData;
+@group(3) @binding(6) var irradianceMap: texture_2d<f32>;
+@group(3) @binding(7) var prefilteredRadianceMap: texture_2d<f32>;
+@group(3) @binding(8) var environmentBrdfLut: texture_2d<f32>;
+@group(3) @binding(9) var environmentSampler: sampler;
 
 // ----------------------------------------------------------------------------
 // PBR Mathematical Helpers & Cook-Torrance BRDF Implementation
@@ -232,6 +243,7 @@ fn evaluatePackedLight(
     bitcast<f32>(lightWord(base + 9u)),
     bitcast<f32>(lightWord(base + 10u))
   );
+  let intensity = bitcast<f32>(lightWord(base + 11u));
   if (lightWord(base) == 0u) {
     return cookTorranceDirect(
       normal,
@@ -240,7 +252,7 @@ fn evaluatePackedLight(
       materialData.baseColor.rgb,
       materialData.metallic,
       materialData.roughness,
-      color
+      color * intensity
     );
   }
   let delta = vector - worldPosition;
@@ -252,7 +264,39 @@ fn evaluatePackedLight(
     materialData.baseColor.rgb,
     materialData.metallic,
     materialData.roughness,
-    color / distanceSquared
+    color * intensity / distanceSquared
+  );
+}
+
+fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
+  let metallic = clamp(materialData.metallic, 0.0, 1.0);
+  let roughness = clamp(materialData.roughness, 0.045, 1.0);
+  let f0 = vec3<f32>(0.04) * (1.0 - metallic) + materialData.baseColor.rgb * metallic;
+  let fresnel = fresnelSchlick(max(dot(normal, viewDirection), 0.0), f0);
+  let irradianceUv = directionToEquirectangularUv(normal);
+  let reflection = reflect(-viewDirection, normal);
+  let radianceUv = directionToEquirectangularUv(reflection);
+  let irradiance = textureSample(irradianceMap, environmentSampler, irradianceUv).rgb *
+    environmentData.diffuseIrradiance;
+  let prefiltered = textureSampleLevel(
+    prefilteredRadianceMap, environmentSampler, radianceUv, roughness * 2.0
+  ).rgb * environmentData.prefilteredRadiance;
+  let brdf = textureSample(
+    environmentBrdfLut,
+    environmentSampler,
+    vec2<f32>(max(dot(normal, viewDirection), 0.0), roughness)
+  ).rg;
+  let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
+    materialData.baseColor.rgb * irradiance / 3.14159265359;
+  let specular = prefiltered * (fresnel * brdf.x + vec3<f32>(brdf.y + environmentData.brdfBias));
+  return (diffuse + specular) * environmentData.intensity;
+}
+
+fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
+  let normalized = normalize(direction);
+  return vec2<f32>(
+    atan2(normalized.z, normalized.x) * 0.15915494309 + 0.5,
+    acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830988618
   );
 }
 
@@ -262,7 +306,7 @@ fn standardLitFragment(
 ) -> @location(0) vec4<f32> {
   let normal = normalize(fragmentInput.normal);
   let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
-  var lit = vec3<f32>(0.0);
+  var lit = evaluateIbl(normal, viewDirection);
   let directionalCount = overflowWords.values.x & 0x3fffffffu;
   for (var index = 0u; index < directionalCount; index += 1u) {
     lit += evaluatePackedLight(

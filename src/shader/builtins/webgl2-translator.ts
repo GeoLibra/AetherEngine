@@ -5,6 +5,7 @@ import {
   STANDARD_LIT_LIST_WEBGL2_TRANSLATOR,
   STANDARD_LIT_LIST_WEBGL_SHADER_MODULE
 } from './standard-lit-list';
+import { POST_COLOR_SHADER_MODULE, POST_COLOR_WEBGL2_TRANSLATOR } from './post-color';
 
 const LIGHT_LIST_ENTRY_POINTS = new Set(['lightListVertex', 'lightListFragment']);
 
@@ -15,6 +16,8 @@ export const BUILT_IN_WEBGL2_TRANSLATOR: WebGL2ShaderTranslationPort = Object.fr
   translate(input: Parameters<WebGL2ShaderTranslationPort['translate']>[0]) {
     if (input.wgsl === STANDARD_LIT_LIST_WEBGL_SHADER_MODULE)
       return STANDARD_LIT_LIST_WEBGL2_TRANSLATOR.translate(input);
+    if (input.wgsl === POST_COLOR_SHADER_MODULE)
+      return POST_COLOR_WEBGL2_TRANSLATOR.translate(input);
     return LIGHT_LIST_ENTRY_POINTS.has(input.entryPoint)
       ? LIGHT_LIST_WEBGL2_TRANSLATOR.translate(input)
       : STANDARD_LIT_WEBGL2_TRANSLATOR.translate(input);

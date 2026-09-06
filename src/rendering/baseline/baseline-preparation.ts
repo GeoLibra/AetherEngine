@@ -7,16 +7,13 @@ import {
   STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE,
   createCookedShaderBindingManifest
 } from '../../shader';
-import { StandardLitMaterialSchema } from '../../material';
 import type {
   RHIBindGroup,
   RHIBindGroupLayout,
   RHIBuffer,
   RHIResource,
-  RHISubmission,
-  RHITexture
+  RHISubmission
 } from '../../rhi/contracts';
-import type { PreparedBindGroupLayoutToken } from '../../render-graph';
 import {
   compileBindingLayoutPlan,
   createBindingKey,
@@ -27,11 +24,14 @@ import {
 } from '../pipeline';
 import { disposePreparedMesh, prepareMesh, type PreparedMesh } from '../mesh';
 import type { PreparedDrawPacket } from '../phase';
-import { createPreparedBindGroupLayoutToken } from '../../render-graph';
+import {
+  createPreparedBindGroupLayoutToken,
+  createPreparedRenderPipelineToken
+} from '../../render-graph';
 import type { ExtractedView } from '../camera';
 import type { RenderEntityId } from '../world';
 import type { RenderTransformFact } from '../mesh';
-import type { BaselineRenderingOptions } from './types';
+import type { BaselineLightListFrame, BaselineRenderingOptions } from './types';
 import {
   LIGHT_LIST_SHADER_MAX_LIGHTS,
   packWebGlLightListInput,
@@ -44,8 +44,21 @@ import {
   type PreparedWebGlLightListRecorder,
   type PreparedWebGpuLightListRecorder
 } from '../lighting';
+import {
+  createDefaultEnvironmentTextures,
+  type EnvironmentTextureSet
+} from '../lighting/environment';
+import { prepareBaselinePostColor, type BaselinePostColorPreparation } from './baseline-post-color';
+import {
+  createBaselineUniformBuffer as uniformBuffer,
+  packBaselineMaterialUniform as materialUniform,
+  packBaselineObjectUniform as objectUniform,
+  packBaselineViewUniform as viewUniform
+} from './baseline-uniforms';
 
-const UNIFORM_BUFFER_USAGE = (1 << 3) | (1 << 6);
+export type { BaselinePostColorPreparation } from './baseline-post-color';
+export type { BaselineLightListFrame } from './types';
+
 const STORAGE_UNIFORM_UPLOAD_BUFFER_USAGE = (1 << 3) | (1 << 6) | (1 << 7);
 const STORAGE_UPLOAD_BUFFER_USAGE = (1 << 3) | (1 << 7);
 const SAMPLED_UPLOAD_TEXTURE_USAGE = (1 << 2) | (1 << 4);
@@ -56,31 +69,6 @@ export const BASELINE_LIGHT_LIST_CAPACITY: CpuLightListCapacity = Object.freeze(
   maxLightsPerReceiver: 16,
   maxLightIndices: 4096
 });
-
-export type BaselineLightListFrame =
-  | Readonly<{
-      source: 'gpu-compute';
-      lights: RHIBuffer;
-      receivers: RHIBuffer;
-      receiverCount: number;
-      recorder: PreparedWebGpuLightListRecorder;
-      forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
-      forwardBindGroupLayout: RHIBindGroupLayout;
-      release(): void;
-      retain(submission: RHISubmission): void;
-    }>
-  | Readonly<{
-      source: 'webgl-fragment';
-      lights: RHITexture;
-      receivers: RHITexture;
-      receiverCount: number;
-      maxTextureDimension2D: number;
-      recorder: PreparedWebGlLightListRecorder;
-      forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
-      forwardBindGroupLayout: RHIBindGroupLayout;
-      release(): void;
-      retain(submission: RHISubmission): void;
-    }>;
 
 type RegisteredOptions = BaselineRenderingOptions &
   Required<Pick<BaselineRenderingOptions, 'mesh' | 'material' | 'featurePolicyKey'>>;
@@ -103,6 +91,10 @@ export class BaselineStandardLitPreparation {
   private readonly pipelineKey: string;
   private readonly bindingLayoutHash: string;
   private readonly pendingSubmissions = new Set<Promise<unknown>>();
+  private readonly environmentBuffer: RHIBuffer;
+  private readonly environmentTextures: EnvironmentTextureSet;
+  readonly postColor: BaselinePostColorPreparation;
+  private readonly postColorOwnedResources: readonly RHIResource[];
   private readonly lightListRecorder:
     PreparedWebGpuLightListRecorder | PreparedWebGlLightListRecorder;
   readonly lightListBindGroupLayoutToken =
@@ -146,6 +138,14 @@ export class BaselineStandardLitPreparation {
       label: 'aether-standard-lit',
       code: shaderModule
     });
+    this.environmentBuffer = uniformBuffer(device, [300, 350, 500, 1, 100, 120, 180, 0.02]);
+    this.environmentTextures = createDefaultEnvironmentTextures(device);
+    const postColor = prepareBaselinePostColor(
+      device,
+      options.graphics.surface.configuration!.format
+    );
+    this.postColor = postColor.preparation;
+    this.postColorOwnedResources = postColor.ownedResources;
     this.lightListRecorder =
       options.graphics.backend === 'webgpu'
         ? prepareWebGpuLightListRecorder(device)
@@ -180,7 +180,7 @@ export class BaselineStandardLitPreparation {
       fragment: {
         module: this.shaderModule,
         entryPoint: 'standardLitFragment',
-        targets: [{ format: options.graphics.surface.configuration!.format }]
+        targets: [{ format: 'rgba16float' }]
       }
     });
     this.mesh = prepareMesh(device, options.mesh.data, {
@@ -216,7 +216,7 @@ export class BaselineStandardLitPreparation {
         format: 'depth24plus'
       }).hash,
       blendStateHash: createCanonicalKey({ colorWrite: 'all', blend: null }).hash,
-      attachmentFormats: [options.graphics.surface.configuration!.format],
+      attachmentFormats: ['rgba16float'],
       depthStencilFormat: 'depth24plus',
       sampleCount: 1,
       featurePolicyHash: options.featurePolicyKey,
@@ -286,7 +286,11 @@ export class BaselineStandardLitPreparation {
         receiverCount: input.receivers.length,
         recorder: this.lightListRecorder as PreparedWebGpuLightListRecorder,
         forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
-        forwardBindGroupLayout: this.lightListBindGroupLayout
+        forwardBindGroupLayout: this.lightListBindGroupLayout,
+        environmentBuffer: this.environmentBuffer,
+        irradianceMap: this.environmentTextures.irradianceMap,
+        prefilteredRadianceMap: this.environmentTextures.prefilteredRadianceMap,
+        environmentBrdfLut: this.environmentTextures.environmentBrdfLut
       });
     }
     const maxTextureDimension2D = device.capabilities.limits.maxTextureDimension2D;
@@ -319,7 +323,11 @@ export class BaselineStandardLitPreparation {
       maxTextureDimension2D,
       recorder: this.lightListRecorder as PreparedWebGlLightListRecorder,
       forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
-      forwardBindGroupLayout: this.lightListBindGroupLayout
+      forwardBindGroupLayout: this.lightListBindGroupLayout,
+      environmentBuffer: this.environmentBuffer,
+      irradianceMap: this.environmentTextures.irradianceMap,
+      prefilteredRadianceMap: this.environmentTextures.prefilteredRadianceMap,
+      environmentBrdfLut: this.environmentTextures.environmentBrdfLut
     });
   }
 
@@ -330,6 +338,12 @@ export class BaselineStandardLitPreparation {
     disposePreparedMesh(this.mesh);
     this.pipeline.dispose();
     this.lightListRecorder.dispose();
+    this.environmentBuffer.dispose();
+    disposeResources([
+      this.environmentTextures.irradianceMap,
+      this.environmentTextures.prefilteredRadianceMap
+    ]);
+    disposeResources(this.postColorOwnedResources);
     this.shaderModule.dispose();
     this.pipelineLayout.dispose();
     disposeResources(this.bindGroupLayouts);
@@ -425,79 +439,6 @@ export class BaselineStandardLitPreparation {
       }
     }) as BaselineLightListFrame;
   }
-}
-
-function uniformBuffer(
-  device: RegisteredOptions['graphics']['device'],
-  values: readonly number[] | Uint32Array
-): RHIBuffer {
-  const byteLength = Math.max(16, Math.ceil(values.length / 4) * 16);
-  const buffer = device.createBuffer({ size: byteLength, usage: UNIFORM_BUFFER_USAGE });
-  device.queue.writeBuffer(
-    buffer,
-    0,
-    values instanceof Uint32Array ? values : new Float32Array(values)
-  );
-  return buffer;
-}
-
-function materialUniform(material: RegisteredOptions['material']['material']): readonly number[] {
-  const baseColor = material.instance.parameters.get(StandardLitMaterialSchema.fields.baseColor);
-  return [
-    baseColor[0]!,
-    baseColor[1]!,
-    baseColor[2]!,
-    baseColor[3]!,
-    material.instance.parameters.get(StandardLitMaterialSchema.fields.metallic),
-    material.instance.parameters.get(StandardLitMaterialSchema.fields.roughness),
-    0,
-    0
-  ];
-}
-
-function objectUniform(transform: RenderTransformFact, entity: RenderEntityId): Uint32Array {
-  const normal = transform.normalMatrix;
-  if (normal.length !== 9) throw new Error('Standard-lit normal matrix must contain nine values.');
-  const floats = new Float32Array([
-    ...transform.matrix,
-    normal[0]!,
-    normal[1]!,
-    normal[2]!,
-    0,
-    normal[3]!,
-    normal[4]!,
-    normal[5]!,
-    0,
-    normal[6]!,
-    normal[7]!,
-    normal[8]!,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0
-  ]);
-  const words = new Uint32Array(floats.buffer);
-  words[32] = entity;
-  return words;
-}
-
-function viewUniform(view: ExtractedView): readonly number[] {
-  return [
-    ...Array.from(view.viewProjection),
-    view.cameraPosition[0],
-    view.cameraPosition[1],
-    view.cameraPosition[2],
-    0
-  ];
 }
 
 function disposeResources(resources: readonly RHIResource[]): void {

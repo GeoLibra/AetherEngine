@@ -2,9 +2,54 @@ import type { AssetHandle, GeometryMeshAsset, MaterialAssetPayload } from '../..
 import type { MeshData } from '../../../geometry';
 import type { StandardLitMaterial } from '../../../material';
 import type { BrowserGraphicsSession } from '../../../platform';
+import type {
+  RHIBindGroupLayout,
+  RHIBuffer,
+  RHISubmission,
+  RHITexture
+} from '../../../rhi/contracts';
+import type { PreparedBindGroupLayoutToken } from '../../../render-graph';
+import type {
+  PreparedWebGlLightListRecorder,
+  PreparedWebGpuLightListRecorder
+} from '../../lighting';
 import type { PreparedDrawPacket } from '../../phase';
-import type { BaselineLightListFrame } from '../baseline-preparation';
 import type { RenderView } from '../../visibility';
+import type { BaselinePostColorPreparation } from '../baseline-post-color';
+
+/** Submission-scoped LightList inputs and environment resources consumed by forward shading. */
+export type BaselineLightListFrame =
+  | Readonly<{
+      source: 'gpu-compute';
+      lights: RHIBuffer;
+      receivers: RHIBuffer;
+      receiverCount: number;
+      recorder: PreparedWebGpuLightListRecorder;
+      forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
+      forwardBindGroupLayout: RHIBindGroupLayout;
+      environmentBuffer: RHIBuffer;
+      irradianceMap: RHITexture;
+      prefilteredRadianceMap: RHITexture;
+      environmentBrdfLut: RHITexture;
+      release(): void;
+      retain(submission: RHISubmission): void;
+    }>
+  | Readonly<{
+      source: 'webgl-fragment';
+      lights: RHITexture;
+      receivers: RHITexture;
+      receiverCount: number;
+      maxTextureDimension2D: number;
+      recorder: PreparedWebGlLightListRecorder;
+      forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
+      forwardBindGroupLayout: RHIBindGroupLayout;
+      environmentBuffer: RHIBuffer;
+      irradianceMap: RHITexture;
+      prefilteredRadianceMap: RHITexture;
+      environmentBrdfLut: RHITexture;
+      release(): void;
+      retain(submission: RHISubmission): void;
+    }>;
 
 export type BaselineRenderSkipReason =
   | 'surface-suspended'
@@ -26,6 +71,7 @@ export type BaselineRenderDiagnostics =
       frame: number;
       viewId: string;
       status: 'rendered';
+      renderPasses: number;
       indexedDrawCalls: number;
       indexCount: number;
       submissionId: number;
@@ -55,6 +101,7 @@ export type BaselinePreparedFrame =
       packets: readonly PreparedDrawPacket[];
       /** Prepared LightList input for standard-lit packets; legacy/custom packets may omit it. */
       lightList?: BaselineLightListFrame;
+      postColor?: BaselinePostColorPreparation;
       deviceGeneration: number;
       surfaceGeneration: number;
     }>;

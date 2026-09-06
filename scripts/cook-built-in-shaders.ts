@@ -26,6 +26,10 @@ const BUILT_INS = Object.freeze([
   {
     name: 'standard-lit-list-webgl',
     exportName: 'STANDARD_LIT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT'
+  },
+  {
+    name: 'post-color',
+    exportName: 'POST_COLOR_SHADER_GENERATED_ARTIFACT'
   }
 ]);
 function escapeTemplateLiteral(source: string): string {

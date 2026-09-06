@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT = decodeCookedSha
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl',
-    contentHash: '39d4f4aeb86c14525b8daf0061a9c6c00e113534106d146b3995a30cbdf7a4b0',
-    byteLength: 11225
+    contentHash: '1943c93c7be60036ec79fe3a629831f393f5cfa2101bc36c4fcac79a4fdefe72',
+    byteLength: 13269
   },
   entryPoints: [
     {
@@ -116,6 +116,51 @@ export const STANDARD_LIT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT = decodeCookedSha
           addressSpace: 'handle',
           access: 'read',
           typeName: 'texture_2d<u32>'
+        },
+        {
+          group: 3,
+          binding: 5,
+          name: 'environmentData',
+          kind: 'uniform-buffer',
+          addressSpace: 'uniform',
+          access: 'read',
+          typeName: 'EnvironmentData'
+        },
+        {
+          group: 3,
+          binding: 6,
+          name: 'irradianceMap',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 3,
+          binding: 7,
+          name: 'prefilteredRadianceMap',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 3,
+          binding: 8,
+          name: 'environmentBrdfLut',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 3,
+          binding: 9,
+          name: 'environmentSampler',
+          kind: 'sampler',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'sampler'
         }
       ]
     }
@@ -192,6 +237,51 @@ export const STANDARD_LIT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT = decodeCookedSha
       addressSpace: 'handle',
       access: 'read',
       typeName: 'texture_2d<u32>'
+    },
+    {
+      group: 3,
+      binding: 5,
+      name: 'environmentData',
+      kind: 'uniform-buffer',
+      addressSpace: 'uniform',
+      access: 'read',
+      typeName: 'EnvironmentData'
+    },
+    {
+      group: 3,
+      binding: 6,
+      name: 'irradianceMap',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 3,
+      binding: 7,
+      name: 'prefilteredRadianceMap',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 3,
+      binding: 8,
+      name: 'environmentBrdfLut',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 3,
+      binding: 9,
+      name: 'environmentSampler',
+      kind: 'sampler',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'sampler'
     }
   ],
   bufferLayouts: [
@@ -305,6 +395,43 @@ export const STANDARD_LIT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT = decodeCookedSha
           typeName: 'f32'
         }
       ]
+    },
+    {
+      group: 3,
+      binding: 5,
+      name: 'environmentData',
+      byteSize: 32,
+      alignment: 16,
+      fields: [
+        {
+          path: 'diffuseIrradiance',
+          offset: 0,
+          size: 12,
+          alignment: 16,
+          typeName: 'vec3<f32>'
+        },
+        {
+          path: 'intensity',
+          offset: 12,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
+        },
+        {
+          path: 'prefilteredRadiance',
+          offset: 16,
+          size: 12,
+          alignment: 16,
+          typeName: 'vec3<f32>'
+        },
+        {
+          path: 'brdfBias',
+          offset: 28,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
+        }
+      ]
     }
   ],
   vertexInputs: [
@@ -370,6 +497,12 @@ struct PackedHeaderWords { values: array<vec4<u32>, 256> };
 struct PackedIndexWords { values: array<vec4<u32>, 1024> };
 struct PackedOverflowWords { values: vec4<u32> };
 struct ReceiverLightHeader { offset: u32, count: u32 };
+struct EnvironmentData {
+  diffuseIrradiance: vec3<f32>,
+  intensity: f32,
+  prefilteredRadiance: vec3<f32>,
+  brdfBias: f32,
+};
 
 // ----------------------------------------------------------------------------
 // Stage Input / Output Interfaces
@@ -400,6 +533,11 @@ struct StandardLitFragmentInput {
 @group(3) @binding(2) var headerWords: texture_2d<u32>;
 @group(3) @binding(3) var indexWords: texture_2d<u32>;
 @group(3) @binding(4) var overflowWords: texture_2d<u32>;
+@group(3) @binding(5) var<uniform> environmentData: EnvironmentData;
+@group(3) @binding(6) var irradianceMap: texture_2d<f32>;
+@group(3) @binding(7) var prefilteredRadianceMap: texture_2d<f32>;
+@group(3) @binding(8) var environmentBrdfLut: texture_2d<f32>;
+@group(3) @binding(9) var environmentSampler: sampler;
 
 // ----------------------------------------------------------------------------
 // PBR Mathematical Helpers & Cook-Torrance BRDF Implementation
@@ -571,6 +709,7 @@ fn evaluatePackedLight(
     bitcast<f32>(lightWord(base + 9u)),
     bitcast<f32>(lightWord(base + 10u))
   );
+  let intensity = bitcast<f32>(lightWord(base + 11u));
   if (lightWord(base) == 0u) {
     return cookTorranceDirect(
       normal,
@@ -579,7 +718,7 @@ fn evaluatePackedLight(
       materialData.baseColor.rgb,
       materialData.metallic,
       materialData.roughness,
-      color
+      color * intensity
     );
   }
   let delta = vector - worldPosition;
@@ -591,7 +730,39 @@ fn evaluatePackedLight(
     materialData.baseColor.rgb,
     materialData.metallic,
     materialData.roughness,
-    color / distanceSquared
+    color * intensity / distanceSquared
+  );
+}
+
+fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
+  let metallic = clamp(materialData.metallic, 0.0, 1.0);
+  let roughness = clamp(materialData.roughness, 0.045, 1.0);
+  let f0 = vec3<f32>(0.04) * (1.0 - metallic) + materialData.baseColor.rgb * metallic;
+  let fresnel = fresnelSchlick(max(dot(normal, viewDirection), 0.0), f0);
+  let irradianceUv = directionToEquirectangularUv(normal);
+  let reflection = reflect(-viewDirection, normal);
+  let radianceUv = directionToEquirectangularUv(reflection);
+  let irradiance = textureSample(irradianceMap, environmentSampler, irradianceUv).rgb *
+    environmentData.diffuseIrradiance;
+  let prefiltered = textureSampleLevel(
+    prefilteredRadianceMap, environmentSampler, radianceUv, roughness * 2.0
+  ).rgb * environmentData.prefilteredRadiance;
+  let brdf = textureSample(
+    environmentBrdfLut,
+    environmentSampler,
+    vec2<f32>(max(dot(normal, viewDirection), 0.0), roughness)
+  ).rg;
+  let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
+    materialData.baseColor.rgb * irradiance / 3.14159265359;
+  let specular = prefiltered * (fresnel * brdf.x + vec3<f32>(brdf.y + environmentData.brdfBias));
+  return (diffuse + specular) * environmentData.intensity;
+}
+
+fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
+  let normalized = normalize(direction);
+  return vec2<f32>(
+    atan2(normalized.z, normalized.x) * 0.15915494309 + 0.5,
+    acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830988618
   );
 }
 
@@ -601,7 +772,7 @@ fn standardLitFragment(
 ) -> @location(0) vec4<f32> {
   let normal = normalize(fragmentInput.normal);
   let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
-  var lit = vec3<f32>(0.0);
+  var lit = evaluateIbl(normal, viewDirection);
   let directionalCount = textureWord(overflowWords, 0u) & 0x3fffffffu;
   for (var index = 0u; index < directionalCount; index += 1u) {
     lit += evaluatePackedLight(
@@ -665,6 +836,12 @@ struct ReceiverLightHeader {
     uint offset;
     uint count;
 };
+struct EnvironmentData {
+    vec3 diffuseIrradiance;
+    float intensity;
+    vec3 prefilteredRadiance;
+    float brdfBias;
+};
 struct StandardLitVertexOutput {
     vec4 position;
     vec3 normal;
@@ -689,6 +866,14 @@ uniform highp usampler2D _group_3_binding_2_fs;
 uniform highp usampler2D _group_3_binding_3_fs;
 
 uniform highp usampler2D _group_3_binding_4_fs;
+
+layout(std140) uniform EnvironmentData_block_3Fragment { EnvironmentData _group_3_binding_5_fs; };
+
+uniform highp sampler2D _group_3_binding_6_fs;
+
+uniform highp sampler2D _group_3_binding_7_fs;
+
+uniform highp sampler2D _group_3_binding_8_fs;
 
 smooth in vec3 _vs2fs_location0;
 smooth in vec3 _vs2fs_location1;
@@ -823,21 +1008,55 @@ vec3 evaluatePackedLight(uint index_4, vec3 worldPosition, vec3 normal_4, vec3 v
     uint _e27 = lightWord((base_1 + 9u));
     uint _e31 = lightWord((base_1 + 10u));
     vec3 color = vec3(uintBitsToFloat(_e23), uintBitsToFloat(_e27), uintBitsToFloat(_e31));
-    uint _e34 = lightWord(base_1);
-    if ((_e34 == 0u)) {
-        vec4 _e41 = _group_2_binding_0_fs.baseColor;
-        float _e45 = _group_2_binding_0_fs.metallic;
-        float _e48 = _group_2_binding_0_fs.roughness;
-        vec3 _e49 = cookTorranceDirect(normal_4, viewDirection_2, -(normalize(vector)), _e41.xyz, _e45, _e48, color);
-        return _e49;
+    uint _e36 = lightWord((base_1 + 11u));
+    float intensity = uintBitsToFloat(_e36);
+    uint _e38 = lightWord(base_1);
+    if ((_e38 == 0u)) {
+        vec4 _e45 = _group_2_binding_0_fs.baseColor;
+        float _e49 = _group_2_binding_0_fs.metallic;
+        float _e52 = _group_2_binding_0_fs.roughness;
+        vec3 _e54 = cookTorranceDirect(normal_4, viewDirection_2, -(normalize(vector)), _e45.xyz, _e49, _e52, (color * intensity));
+        return _e54;
     }
     vec3 delta = (vector - worldPosition);
     float distanceSquared = max(dot(delta, delta), 1e-6);
-    vec4 _e57 = _group_2_binding_0_fs.baseColor;
-    float _e61 = _group_2_binding_0_fs.metallic;
-    float _e64 = _group_2_binding_0_fs.roughness;
-    vec3 _e67 = cookTorranceDirect(normal_4, viewDirection_2, normalize(delta), _e57.xyz, _e61, _e64, (color / vec3(distanceSquared)));
-    return _e67;
+    vec4 _e62 = _group_2_binding_0_fs.baseColor;
+    float _e66 = _group_2_binding_0_fs.metallic;
+    float _e69 = _group_2_binding_0_fs.roughness;
+    vec3 _e73 = cookTorranceDirect(normal_4, viewDirection_2, normalize(delta), _e62.xyz, _e66, _e69, ((color * intensity) / vec3(distanceSquared)));
+    return _e73;
+}
+
+vec2 directionToEquirectangularUv(vec3 direction) {
+    vec3 normalized = normalize(direction);
+    return vec2(((atan(normalized.z, normalized.x) * 0.15915494) + 0.5), (acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830987));
+}
+
+vec3 evaluateIbl(vec3 normal_5, vec3 viewDirection_3) {
+    float _e4 = _group_2_binding_0_fs.metallic;
+    float metallic_1 = clamp(_e4, 0.0, 1.0);
+    float _e10 = _group_2_binding_0_fs.roughness;
+    float roughness_4 = clamp(_e10, 0.045, 1.0);
+    vec4 _e21 = _group_2_binding_0_fs.baseColor;
+    vec3 f0_2 = ((vec3(0.04) * (1.0 - metallic_1)) + (_e21.xyz * metallic_1));
+    vec3 _e28 = fresnelSchlick(max(dot(normal_5, viewDirection_3), 0.0), f0_2);
+    vec2 _e29 = directionToEquirectangularUv(normal_5);
+    vec3 reflection = reflect(-(viewDirection_3), normal_5);
+    vec2 _e32 = directionToEquirectangularUv(reflection);
+    vec4 _e35 = texture(_group_3_binding_6_fs, vec2(_e29));
+    vec3 _e39 = _group_3_binding_5_fs.diffuseIrradiance;
+    vec3 irradiance = (_e35.xyz * _e39);
+    vec4 _e45 = textureLod(_group_3_binding_7_fs, vec2(_e32), (roughness_4 * 2.0));
+    vec3 _e49 = _group_3_binding_5_fs.prefilteredRadiance;
+    vec3 prefiltered = (_e45.xyz * _e49);
+    vec4 _e57 = texture(_group_3_binding_8_fs, vec2(vec2(max(dot(normal_5, viewDirection_3), 0.0), roughness_4)));
+    vec2 brdf = _e57.xy;
+    vec4 _e67 = _group_2_binding_0_fs.baseColor;
+    vec3 diffuse_1 = (((((vec3(1.0) - _e28) * (1.0 - metallic_1)) * _e67.xyz) * irradiance) / vec3(3.1415927));
+    float _e79 = _group_3_binding_5_fs.brdfBias;
+    vec3 specular_1 = (prefiltered * ((_e28 * brdf.x) + vec3((brdf.y + _e79))));
+    float _e87 = _group_3_binding_5_fs.intensity;
+    return ((diffuse_1 + specular_1) * _e87);
 }
 
 void main() {
@@ -845,63 +1064,73 @@ void main() {
     vec3 lit = vec3(0.0);
     uint index = 0u;
     uint index_1 = 0u;
-    vec3 normal_5 = normalize(fragmentInput.normal);
+    vec3 normal_6 = normalize(fragmentInput.normal);
     vec3 _e5 = _group_1_binding_0_fs.cameraPosition;
-    vec3 viewDirection_3 = normalize((_e5 - fragmentInput.worldPosition));
-    uint _e14 = textureWord(_group_3_binding_4_fs, 0u);
-    uint directionalCount = (_e14 & 1073741823u);
+    vec3 viewDirection_4 = normalize((_e5 - fragmentInput.worldPosition));
+    vec3 _e9 = evaluateIbl(normal_6, viewDirection_4);
+    lit = _e9;
+    uint _e13 = textureWord(_group_3_binding_4_fs, 0u);
+    uint directionalCount = (_e13 & 1073741823u);
     bool loop_init_1 = true;
     while(true) {
         if (!loop_init_1) {
-            uint _e27 = index;
-            index = (_e27 + 1u);
+            uint _e26 = index;
+            index = (_e26 + 1u);
         }
         loop_init_1 = false;
-        uint _e19 = index;
-        if ((_e19 < directionalCount)) {
+        uint _e18 = index;
+        if ((_e18 < directionalCount)) {
         } else {
             break;
         }
         {
-            vec3 _e21 = lit;
-            uint _e22 = index;
-            uint _e23 = directionalIndex(_e22);
-            vec3 _e25 = evaluatePackedLight(_e23, fragmentInput.worldPosition, normal_5, viewDirection_3);
-            lit = (_e21 + _e25);
+            vec3 _e20 = lit;
+            uint _e21 = index;
+            uint _e22 = directionalIndex(_e21);
+            vec3 _e24 = evaluatePackedLight(_e22, fragmentInput.worldPosition, normal_6, viewDirection_4);
+            lit = (_e20 + _e24);
         }
     }
-    ReceiverLightHeader _e30 = receiverLightHeader();
+    ReceiverLightHeader _e29 = receiverLightHeader();
     uint listWidth = uvec2(textureSize(_group_3_binding_3_fs, 0).xy).x;
     bool loop_init_2 = true;
     while(true) {
         if (!loop_init_2) {
-            uint _e59 = index_1;
-            index_1 = (_e59 + 1u);
+            uint _e58 = index_1;
+            index_1 = (_e58 + 1u);
         }
         loop_init_2 = false;
-        uint _e36 = index_1;
-        if ((_e36 < _e30.count)) {
+        uint _e35 = index_1;
+        if ((_e35 < _e29.count)) {
         } else {
             break;
         }
         {
-            uint _e41 = index_1;
-            uint _e49 = index_1;
-            uint fixedWord = (((_e30.offset + ((1u + (_e41 / 4u)) * listWidth)) * 4u) + (_e49 % 4u));
-            vec3 _e53 = lit;
-            uint _e55 = textureWord(_group_3_binding_3_fs, fixedWord);
-            vec3 _e57 = evaluatePackedLight(_e55, fragmentInput.worldPosition, normal_5, viewDirection_3);
-            lit = (_e53 + _e57);
+            uint _e40 = index_1;
+            uint _e48 = index_1;
+            uint fixedWord = (((_e29.offset + ((1u + (_e40 / 4u)) * listWidth)) * 4u) + (_e48 % 4u));
+            vec3 _e52 = lit;
+            uint _e54 = textureWord(_group_3_binding_3_fs, fixedWord);
+            vec3 _e56 = evaluatePackedLight(_e54, fragmentInput.worldPosition, normal_6, viewDirection_4);
+            lit = (_e52 + _e56);
         }
     }
-    vec3 _e62 = lit;
-    float _e66 = _group_2_binding_0_fs.baseColor.w;
-    _fs2p_location0 = vec4(_e62, _e66);
+    vec3 _e61 = lit;
+    float _e65 = _group_2_binding_0_fs.baseColor.w;
+    _fs2p_location0 = vec4(_e61, _e65);
     return;
 }
 
 `,
         bindings: [
+          {
+            kind: 'uniform-buffer',
+            name: 'EnvironmentData_block_3Fragment',
+            resource: {
+              group: 3,
+              binding: 5
+            }
+          },
           {
             kind: 'uniform-buffer',
             name: 'MaterialData_block_2Fragment',
@@ -965,6 +1194,42 @@ void main() {
               group: 3,
               binding: 4
             }
+          },
+          {
+            kind: 'combined-sampler',
+            name: '_group_3_binding_6_fs',
+            texture: {
+              group: 3,
+              binding: 6
+            },
+            sampler: {
+              group: 3,
+              binding: 9
+            }
+          },
+          {
+            kind: 'combined-sampler',
+            name: '_group_3_binding_7_fs',
+            texture: {
+              group: 3,
+              binding: 7
+            },
+            sampler: {
+              group: 3,
+              binding: 9
+            }
+          },
+          {
+            kind: 'combined-sampler',
+            name: '_group_3_binding_8_fs',
+            texture: {
+              group: 3,
+              binding: 8
+            },
+            sampler: {
+              group: 3,
+              binding: 9
+            }
           }
         ]
       },
@@ -1010,6 +1275,12 @@ struct PackedOverflowWords {
 struct ReceiverLightHeader {
     uint offset;
     uint count;
+};
+struct EnvironmentData {
+    vec3 diffuseIrradiance;
+    float intensity;
+    vec3 prefilteredRadiance;
+    float brdfBias;
 };
 struct StandardLitVertexOutput {
     vec4 position;
@@ -1093,6 +1364,11 @@ uint textureWord(highp usampler2D source, uint word) {
     uint texel_1 = (word / 4u);
     uvec4 _e13 = texelFetch(source, ivec2(int((texel_1 % dimensions.x)), int((texel_1 / dimensions.x))), 0);
     return _e13[(word % 4u)];
+}
+
+vec2 directionToEquirectangularUv(vec3 direction) {
+    vec3 normalized = normalize(direction);
+    return vec2(((atan(normalized.z, normalized.x) * 0.15915494) + 0.5), (acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830987));
 }
 
 void main() {

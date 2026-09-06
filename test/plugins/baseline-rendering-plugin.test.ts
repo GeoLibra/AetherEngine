@@ -91,6 +91,7 @@ describe('baseline rendering plugin', () => {
 
     expect(app.getResource(BaselineRenderDiagnosticsResource)).toMatchObject({
       status: 'rendered',
+      renderPasses: 2,
       indexedDrawCalls: 1,
       indexCount: 36
     });

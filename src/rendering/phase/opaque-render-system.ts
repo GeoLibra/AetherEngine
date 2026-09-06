@@ -27,32 +27,58 @@ export function createOpaqueRenderSystem(
     scope: 'per-view',
     runIf: ({ view }) => view?.id === input.phase.viewId,
     setup(pass) {
-      const surface = pass.createTexture(input.color, {
-        origin: {
-          kind: 'imported',
-          initialState: 'undefined',
-          acquire: { kind: 'external-acquire', id: input.surfaceFrame.id }
-        }
-      });
+      const surface =
+        input.colorTarget ??
+        pass.createTexture(input.color, {
+          origin: {
+            kind: 'imported',
+            initialState: 'undefined',
+            acquire: { kind: 'external-acquire', id: input.surfaceFrame.id }
+          }
+        });
       const depth = pass.createTexture(input.depth);
       const color = pass.writeTexture(surface, 'color-attachment');
       const depthAttachment = pass.writeTexture(depth, 'depth-stencil-attachment');
-      pass.presentTexture(color, input.surfaceFrame);
+      input.publishColor?.(color);
+      if (input.present !== false) pass.presentTexture(color, input.surfaceFrame);
       const lightList =
         input.lightList === undefined ? undefined : declareLightList(pass, input.lightList);
-      return Object.freeze({ color, depth: depthAttachment, lightList });
+      const environment =
+        input.environment === undefined
+          ? undefined
+          : Object.freeze({
+              buffer: pass.readBuffer(input.environment.buffer, 'uniform'),
+              irradianceMap: pass.readTexture(input.environment.irradianceMap, 'sampled'),
+              prefilteredRadianceMap: pass.readTexture(
+                input.environment.prefilteredRadianceMap,
+                'sampled'
+              ),
+              environmentBrdfLut: pass.readTexture(input.environment.environmentBrdfLut, 'sampled')
+            });
+      return Object.freeze({ color, depth: depthAttachment, lightList, environment });
     },
     run(context, resources) {
       const attachments = resources as {
         color: TextureHandle;
         depth: TextureHandle;
         lightList?: ReturnType<typeof declareLightList>;
+        environment?: {
+          buffer: import('../../render-graph').BufferHandle;
+          irradianceMap: TextureHandle;
+          prefilteredRadianceMap: TextureHandle;
+          environmentBrdfLut: TextureHandle;
+        };
       };
       const draws = entries.map(([token]) => context.drawResources(token));
       const lightListGroup =
-        attachments.lightList === undefined
+        attachments.lightList === undefined || attachments.environment === undefined
           ? undefined
-          : createLightListGroup(context, input.lightList!, attachments.lightList);
+          : createLightListGroup(
+              context,
+              input.lightList!,
+              attachments.lightList,
+              attachments.environment
+            );
       const raster = context.beginRaster({
         label: 'opaque-draw',
         colorAttachments: [
@@ -118,7 +144,13 @@ function declareLightList(
 function createLightListGroup(
   context: RestrictedPassContext,
   input: NonNullable<OpaqueRenderSystemInput['lightList']>,
-  resources: ReturnType<typeof declareLightList>
+  resources: ReturnType<typeof declareLightList>,
+  environment: {
+    buffer: import('../../render-graph').BufferHandle;
+    irradianceMap: TextureHandle;
+    prefilteredRadianceMap: TextureHandle;
+    environmentBrdfLut: TextureHandle;
+  }
 ) {
   const layout = context.bindGroupLayout(input.bindGroupLayout);
   const handles = [
@@ -131,13 +163,27 @@ function createLightListGroup(
   return context.device.createBindGroup({
     label: 'standard-lit-light-list',
     layout,
-    entries: handles.map((handle, binding) => ({
-      binding,
-      resource:
-        resources.source === 'gpu-compute'
-          ? context.buffer(handle as import('../../render-graph').BufferHandle, 'uniform')
-          : context.texture(handle as TextureHandle, 'sampled')
-    }))
+    entries: [
+      ...handles.map((handle, binding) => ({
+        binding,
+        resource:
+          resources.source === 'gpu-compute'
+            ? context.buffer(handle as import('../../render-graph').BufferHandle, 'uniform')
+            : context.texture(handle as TextureHandle, 'sampled')
+      })),
+      { binding: 5, resource: context.buffer(environment.buffer, 'uniform') },
+      { binding: 6, resource: context.texture(environment.irradianceMap, 'sampled') },
+      { binding: 7, resource: context.texture(environment.prefilteredRadianceMap, 'sampled') },
+      { binding: 8, resource: context.texture(environment.environmentBrdfLut, 'sampled') },
+      {
+        binding: 9,
+        resource: context.device.createSampler({
+          minFilter: 'linear',
+          magFilter: 'linear',
+          mipmapFilter: 'linear'
+        })
+      }
+    ]
   });
 }
 

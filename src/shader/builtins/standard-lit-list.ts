@@ -33,7 +33,11 @@ export function createStandardLitListWebGL2Translator(
         throw new Error(`Missing cooked standard-lit LightList module for "${input.entryPoint}".`);
       const activeBindings = Object.freeze(
         entryPoint.bindings.map((binding) => {
-          if (binding.kind !== 'uniform-buffer' && binding.kind !== 'texture')
+          if (
+            binding.kind !== 'uniform-buffer' &&
+            binding.kind !== 'texture' &&
+            binding.kind !== 'sampler'
+          )
             throw new Error(`Unsupported standard-lit LightList binding kind "${binding.kind}".`);
           return Object.freeze({
             group: binding.group,
@@ -44,12 +48,25 @@ export function createStandardLitListWebGL2Translator(
         })
       );
       const physicalBindings = Object.freeze(
-        activeBindings.map((binding) =>
-          Object.freeze({
-            ...binding,
-            slot: binding.kind === 'uniform-buffer' ? binding.group : binding.binding
-          })
-        )
+        activeBindings.flatMap((binding) => {
+          if (binding.kind !== 'sampler') {
+            return [
+              Object.freeze({
+                ...binding,
+                slot: binding.kind === 'uniform-buffer' ? binding.group : binding.binding
+              })
+            ];
+          }
+          // A WebGL sampler object is bound to texture units. One authored sampler therefore
+          // occupies every unit whose cooked combined sampler references that logical binding.
+          return emitted.bindings.flatMap((programBinding) =>
+            programBinding.kind === 'combined-sampler' &&
+            programBinding.sampler?.group === binding.group &&
+            programBinding.sampler.binding === binding.binding
+              ? [Object.freeze({ ...binding, slot: programBinding.texture.binding })]
+              : []
+          );
+        })
       );
       const programBindings = Object.freeze(
         emitted.bindings.map((binding) =>

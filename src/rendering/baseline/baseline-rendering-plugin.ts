@@ -219,6 +219,7 @@ class BaselineRenderingRuntime {
       view,
       packets: Object.freeze(packets),
       lightList,
+      postColor: this.standardLit.postColor,
       deviceGeneration: this.options.graphics.device.generation,
       surfaceGeneration: this.options.graphics.surface.generation
     });

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "entryPoints": [
+    { "name": "postColorVertex", "stage": "vertex" },
+    { "name": "postColorFragment", "stage": "fragment" }
+  ],
+  "cookPolicy": { "optimization": "performance", "preserveNames": true }
+}
