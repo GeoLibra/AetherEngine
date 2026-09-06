@@ -6,7 +6,7 @@ import {
   type PreparedRenderPipelineToken,
   type RestrictedPassContext
 } from '../../../render-graph';
-import { LIGHT_LIST_WEBGL_SHADER_MODULE } from '../../../shader';
+import { LIGHT_LIST_WEBGL2_SHADER_MODULE } from '../../../shader';
 import type {
   WebGlFragmentLightListBuildInput,
   WebGlFragmentLightListBuildOutput,
@@ -30,7 +30,7 @@ export function prepareWebGlLightListRecorder(device: RHIDevice): PreparedWebGlL
   const bindGroupLayoutToken = createPreparedBindGroupLayoutToken('aether-light-list-webgl');
   const shader = device.createShaderModule({
     label: 'aether-light-list-webgl',
-    code: LIGHT_LIST_WEBGL_SHADER_MODULE
+    code: LIGHT_LIST_WEBGL2_SHADER_MODULE
   });
   const bindGroupLayout = device.createBindGroupLayout({
     label: 'aether-light-list-webgl',

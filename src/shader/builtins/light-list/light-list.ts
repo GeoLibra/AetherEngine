@@ -1,5 +1,5 @@
-import type { CookedShaderRuntimeArtifact, ShaderAuthoringSource } from '../types';
-import { LIGHT_LIST_SHADER_GENERATED_ARTIFACT } from './light-list.generated';
+import type { CookedShaderRuntimeArtifact, ShaderAuthoringSource } from '../../types';
+import { LIGHT_LIST_SHADER_GENERATED_ARTIFACT } from './webgpu/light-list.generated';
 
 export const LIGHT_LIST_SHADER_ABI_VERSION = 2;
 

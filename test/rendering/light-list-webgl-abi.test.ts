@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   LIGHT_LIST_WEBGL2_TRANSLATOR,
+  LIGHT_LIST_WEBGL2_SHADER_ARTIFACT,
   LIGHT_LIST_WEBGL_SHADER_ARTIFACT,
   decodeWebGlLightListOutput,
   packWebGlLightListInput,
@@ -23,6 +24,7 @@ describe('WebGL2 light-list ABI', () => {
       { binding: 1, kind: 'texture' }
     ]);
     expect(LIGHT_LIST_WEBGL_SHADER_ARTIFACT.fragmentOutputs).toHaveLength(4);
+    expect(LIGHT_LIST_WEBGL2_SHADER_ARTIFACT).toBe(LIGHT_LIST_WEBGL_SHADER_ARTIFACT);
     const translated = LIGHT_LIST_WEBGL2_TRANSLATOR.translate({
       wgsl: LIGHT_LIST_WEBGL_SHADER_ARTIFACT.modules.wgsl,
       stage: 'fragment',

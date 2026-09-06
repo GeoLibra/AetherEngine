@@ -1,37 +1,75 @@
-import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, relative, resolve } from 'node:path';
 import { format } from 'prettier';
 
 import { defineShaderAuthoringSource } from '../src/shader/authoring';
 import { cookAuthoredShader } from '../tools/shader-cooker/authoring-dispatch';
 
+export interface BuiltInShaderRecipe {
+  readonly id: string;
+  readonly exportName: string;
+  readonly exportAliases?: readonly string[];
+  readonly sourcePath: string;
+  readonly metadataPath: string;
+  readonly outputPath: string;
+  readonly sourceUri: string;
+}
+
 const ROOT = resolve(import.meta.dirname, '..');
-const BUILT_INS = Object.freeze([
+
+export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
   {
-    name: 'standard-lit',
-    exportName: 'STANDARD_LIT_SHADER_GENERATED_ARTIFACT'
+    id: 'standard-lit',
+    exportName: 'STANDARD_LIT_SHADER_GENERATED_ARTIFACT',
+    sourcePath: 'src/shader/builtins/standard-lit/standard-lit.wgsl',
+    metadataPath: 'src/shader/builtins/standard-lit/standard-lit.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/standard-lit/standard-lit.generated.ts',
+    sourceUri: 'asset://aether/builtins/standard-lit.wgsl'
   },
   {
-    name: 'light-list',
-    exportName: 'LIGHT_LIST_SHADER_GENERATED_ARTIFACT'
+    id: 'post-color',
+    exportName: 'POST_COLOR_SHADER_GENERATED_ARTIFACT',
+    sourcePath: 'src/shader/builtins/post-color/post-color.wgsl',
+    metadataPath: 'src/shader/builtins/post-color/post-color.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/post-color/post-color.generated.ts',
+    sourceUri: 'asset://aether/builtins/post-color.wgsl'
   },
   {
-    name: 'light-list-webgl',
-    exportName: 'LIGHT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT'
+    id: 'light-list-webgpu',
+    exportName: 'LIGHT_LIST_SHADER_GENERATED_ARTIFACT',
+    sourcePath: 'src/shader/builtins/light-list/webgpu/light-list.wgsl',
+    metadataPath: 'src/shader/builtins/light-list/webgpu/light-list.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/light-list/webgpu/light-list.generated.ts',
+    sourceUri: 'asset://aether/builtins/light-list.wgsl'
   },
   {
-    name: 'standard-lit-list-webgpu',
-    exportName: 'STANDARD_LIT_LIST_WEBGPU_SHADER_GENERATED_ARTIFACT'
+    id: 'light-list-webgl2',
+    exportName: 'LIGHT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT',
+    exportAliases: ['LIGHT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT'],
+    sourcePath: 'src/shader/builtins/light-list/webgl2/light-list.wgsl',
+    metadataPath: 'src/shader/builtins/light-list/webgl2/light-list.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/light-list/webgl2/light-list.generated.ts',
+    sourceUri: 'asset://aether/builtins/light-list-webgl.wgsl'
   },
   {
-    name: 'standard-lit-list-webgl',
-    exportName: 'STANDARD_LIT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT'
+    id: 'standard-lit-list-webgpu',
+    exportName: 'STANDARD_LIT_LIST_WEBGPU_SHADER_GENERATED_ARTIFACT',
+    sourcePath: 'src/shader/builtins/standard-lit-list/webgpu/standard-lit-list.wgsl',
+    metadataPath: 'src/shader/builtins/standard-lit-list/webgpu/standard-lit-list.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/standard-lit-list/webgpu/standard-lit-list.generated.ts',
+    sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl'
   },
   {
-    name: 'post-color',
-    exportName: 'POST_COLOR_SHADER_GENERATED_ARTIFACT'
+    id: 'standard-lit-list-webgl2',
+    exportName: 'STANDARD_LIT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT',
+    exportAliases: ['STANDARD_LIT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT'],
+    sourcePath: 'src/shader/builtins/standard-lit-list/webgl2/standard-lit-list.wgsl',
+    metadataPath: 'src/shader/builtins/standard-lit-list/webgl2/standard-lit-list.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/standard-lit-list/webgl2/standard-lit-list.generated.ts',
+    sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl'
   }
 ]);
+
 function escapeTemplateLiteral(source: string): string {
   return source.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
 }
@@ -61,35 +99,47 @@ ${glslEntries}
 }`;
 }
 
-for (const builtIn of BUILT_INS) {
-  const sourcePath = resolve(ROOT, `src/shader/builtins/${builtIn.name}.wgsl`);
-  const metadataPath = resolve(ROOT, `src/shader/builtins/${builtIn.name}.wgsl.meta.json`);
-  const outputPath = resolve(ROOT, `src/shader/builtins/${builtIn.name}.generated.ts`);
-  const sourceUri = `asset://aether/builtins/${builtIn.name}.wgsl`;
+for (const builtIn of BUILT_IN_RECIPES) {
+  const sourcePath = resolve(ROOT, builtIn.sourcePath);
+  const metadataPath = resolve(ROOT, builtIn.metadataPath);
+  const outputPath = resolve(ROOT, builtIn.outputPath);
   const artifact = await cookAuthoredShader({
     source: defineShaderAuthoringSource({
       kind: 'wgsl',
-      uri: sourceUri,
+      uri: builtIn.sourceUri,
       languageVersion: 'wgsl-1'
     }),
     sourcePath,
     metadataPath
   });
+
+  const relativeArtifactPath = relative(
+    dirname(outputPath),
+    resolve(ROOT, 'src/shader/artifact')
+  ).replace(/\\/g, '/');
+
+  const aliasLines = (builtIn.exportAliases ?? [])
+    .map((alias) => `export const ${alias} = ${builtIn.exportName};\n`)
+    .join('');
+
   const generated = await format(
     `/* This file is generated by scripts/cook-built-in-shaders.ts. Do not edit. */
-import { decodeCookedShaderRuntimeArtifact } from '../artifact';
+import { decodeCookedShaderRuntimeArtifact } from '${relativeArtifactPath}';
 
 export const ${builtIn.exportName} =
   decodeCookedShaderRuntimeArtifact(${formatArtifactSource(artifact)});
-`,
+${aliasLines}`,
     { parser: 'typescript', singleQuote: true, trailingComma: 'none', semi: true, printWidth: 100 }
   );
 
   if (process.argv.includes('--check')) {
     const published = await readFile(outputPath, 'utf8').catch(() => '');
     if (published !== generated)
-      throw new Error('Built-in shader artifacts are stale. Run "pnpm run shader:generate".');
+      throw new Error(
+        `Built-in shader artifact is stale: "${builtIn.outputPath}". Run "pnpm run shader:generate".`
+      );
   } else {
+    await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, generated, 'utf8');
   }
 }

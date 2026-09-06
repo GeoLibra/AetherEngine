@@ -1,0 +1,9 @@
+export {
+  POST_COLOR_SHADER_ABI_VERSION,
+  POST_COLOR_SHADER_ARTIFACT,
+  POST_COLOR_SHADER_MODULE,
+  POST_COLOR_SHADER_SOURCE,
+  POST_COLOR_WEBGL2_TRANSLATOR,
+  createPostColorWebGL2Translator
+} from './post-color';
+export { POST_COLOR_SHADER_GENERATED_ARTIFACT } from './post-color.generated';
