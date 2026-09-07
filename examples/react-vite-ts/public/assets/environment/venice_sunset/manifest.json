@@ -1,0 +1,72 @@
+{
+  "brdfLut": {
+    "contentHash": "5ef02369ea36aeb86f1ede5473d28a0f1b6450ebdbddaee656d4096b90461d56",
+    "schema": "BrdfLutArtifact@1"
+  },
+  "colorSpace": "linear-srgb",
+  "diffuseNormalization": "irradiance",
+  "irradiance": {
+    "blobHash": "835321116088732683d7e80c604701c5c6be4e1c2826df66f6d24dc5eb6eeab5",
+    "byteLength": 4096,
+    "format": "rgba16float",
+    "levels": [
+      {
+        "byteLength": 4096,
+        "byteOffset": 0,
+        "contentHash": "835321116088732683d7e80c604701c5c6be4e1c2826df66f6d24dc5eb6eeab5",
+        "height": 16,
+        "level": 0,
+        "width": 32
+      }
+    ]
+  },
+  "maxValidRadianceLod": 3,
+  "orientation": "y-up-atan2-z-x-top-left@1",
+  "projection": "equirectangular",
+  "radiance": {
+    "blobHash": "bc31ccc2df13f22972b535c8368c73123a114dcdc2450783adfc64a6256297c9",
+    "byteLength": 87040,
+    "format": "rgba16float",
+    "levels": [
+      {
+        "byteLength": 65536,
+        "byteOffset": 0,
+        "contentHash": "06d9faca0e4a0aa469dd5c198542597822faca490b07844e7d480ec016b85897",
+        "height": 64,
+        "level": 0,
+        "width": 128
+      },
+      {
+        "byteLength": 16384,
+        "byteOffset": 65536,
+        "contentHash": "6246ad2c353a889b51c0e3e9a2d931e404e84deb46f3fd6e14d7b2fdc91c4669",
+        "height": 32,
+        "level": 1,
+        "width": 64
+      },
+      {
+        "byteLength": 4096,
+        "byteOffset": 81920,
+        "contentHash": "f5983848785a755ea5a38b3f65567f5174f4bacdba3f598c5a030c0c47d6c4a1",
+        "height": 16,
+        "level": 2,
+        "width": 32
+      },
+      {
+        "byteLength": 1024,
+        "byteOffset": 86016,
+        "contentHash": "aa9892c801095e24d36ed66ad38c612d3573917165a2bc71410dc91dbf79db2f",
+        "height": 8,
+        "level": 3,
+        "width": 16
+      }
+    ]
+  },
+  "radianceUnits": "relative",
+  "recipeHash": "73bbbf16f4201c3bbdfb2b00f219ceadc4c43e97540aaa9bd1162b9546e01d41",
+  "roughnessMapping": "linear-perceptual-valid-lod@1",
+  "samplingAbi": "ibl-equirect-ggx@1",
+  "schema": "EnvironmentArtifact@1",
+  "sourceHash": "9826ec7a7601836517dd75446fcc513beca516b3aaf02e3df3cf494cb989eb1e",
+  "targetProfileHash": "5d29699e14bce985d350e72b5912ae1bcb84ddacde00f35145149468bff5c0ca"
+}

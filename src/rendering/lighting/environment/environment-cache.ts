@@ -189,3 +189,6 @@ export class EnvironmentTextureCache {
     }
   }
 }
+
+/** Shared singleton instance for device-scoped environment texture caching. */
+export const sharedEnvironmentTextureCache = new EnvironmentTextureCache();

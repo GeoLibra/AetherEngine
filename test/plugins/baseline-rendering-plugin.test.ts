@@ -18,6 +18,9 @@ import {
   type BrowserGraphicsSession,
   type Plugin
 } from '../../src';
+import { cookEnvironmentPanorama, DEFAULT_COOK_RECIPES } from '../../tools/asset-cook/environment';
+import { createConstantHdrFixture } from '../../benchmark/environment-cook/fixtures';
+import type { EnvironmentAsset } from '../../src/assets/environment';
 
 describe('baseline rendering plugin', () => {
   test('renders one MainWorld-authored standard-lit indexed box through Null RHI', async () => {
@@ -187,6 +190,108 @@ describe('baseline rendering plugin', () => {
         }
       })
     ).toThrow(/provided together/i);
+  });
+
+  test('accepts and renders with cooked EnvironmentAsset', async () => {
+    const { graphics } = fixture(true);
+    const mesh = createBoxMeshData();
+    const material = createStandardLitMaterial({ baseColor: [0.8, 0.2, 0.1, 1] });
+    const meshHandle = createAssetHandle(MeshAssetType, 'demo.mesh.box');
+    const materialHandle = createAssetHandle(MaterialAssetType, 'demo.material.standard-lit');
+
+    const fixtureHdr = createConstantHdrFixture(16, 8, [2.0, 1.5, 1.0]);
+    const canonical = {
+      width: fixtureHdr.width,
+      height: fixtureHdr.height,
+      pixels: fixtureHdr.data,
+      metadata: { format: '32-bit_rle_rgbe', rawHeaderBytes: 40 }
+    };
+    const cooked = cookEnvironmentPanorama(canonical, DEFAULT_COOK_RECIPES['smoke-v1']);
+
+    const environment: EnvironmentAsset = {
+      assetId: 'asset.smoke-env' as any,
+      artifact: cooked.environmentArtifact,
+      irradianceBytes: cooked.irradianceBlob,
+      radianceBytes: cooked.radianceBlob,
+      brdfLutArtifact: cooked.brdfLutArtifact,
+      brdfLutBytes: cooked.brdfLutBlob
+    } as unknown as EnvironmentAsset;
+
+    const scene: Plugin = {
+      id: 'test.baseline-env-scene',
+      dependencies: ['aether.baseline-rendering'],
+      build(builder) {
+        builder.addSystem('Startup', {
+          id: 'test.baseline-env-scene.spawn',
+          run(world) {
+            world
+              .spawn()
+              .insert(WorldTransform, transform([0, 0, 0]))
+              .insert(CameraRenderSource, {
+                projection: {
+                  kind: 'perspective',
+                  near: 0.1,
+                  far: 100,
+                  verticalFovRadians: Math.PI / 3
+                },
+                viewportRect: { x: 0, y: 0, width: 1, height: 1 },
+                layerMask: 1,
+                depthMode: 'standard',
+                historyKey: 'main-history'
+              })
+              .build();
+            world
+              .spawn()
+              .insert(WorldTransform, transform([0, 0, -2]))
+              .insert(MeshRenderSource, {
+                mesh: { handle: meshHandle, payloadVersion: 1 },
+                submesh: 0,
+                materials: [{ slot: 0, handle: materialHandle, payloadVersion: 1 }],
+                localBounds: mesh.bounds,
+                visible: true,
+                layerMask: 1
+              })
+              .build();
+            world
+              .spawn()
+              .insert(DirectionalLightSource, {
+                direction: [0, -1, -1],
+                colorLinear: [1, 1, 1],
+                illuminanceLux: 10_000,
+                enabled: true,
+                layerMask: 1,
+                castsShadow: false
+              })
+              .build();
+          }
+        });
+      }
+    };
+
+    const app = new App()
+      .addPlugin(
+        createBaselineRenderingPlugin({
+          graphics,
+          mesh: { handle: meshHandle, payloadVersion: 1, data: mesh },
+          material: { handle: materialHandle, payloadVersion: 1, material },
+          environment
+        })
+      )
+      .addPlugin(scene);
+
+    await app.startup();
+    await app.run(new HeadlessRunner({ frames: 1 }));
+
+    const diagnostics = app.getResource(BaselineRenderDiagnosticsResource);
+    expect(diagnostics).toMatchObject({
+      frame: 1,
+      viewId: 'main',
+      status: 'rendered',
+      renderPasses: 2,
+      indexedDrawCalls: 1
+    });
+
+    await app.destroy();
   });
 });
 

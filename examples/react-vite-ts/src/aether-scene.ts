@@ -27,6 +27,7 @@ import {
   type BaselineRenderDiagnostics,
   type BrowserGraphicsSession,
   type DirectionalLightSourceView,
+  type EnvironmentAsset,
   type ShadowRequest,
   type Vec3,
   type WorldTransformView
@@ -58,6 +59,7 @@ export interface CsmSceneDiagnostics {
 
 export interface MountedAetherScene {
   readonly backend: BrowserGraphicsSession['backend'];
+  readonly environmentMode: 'hdr' | 'synthetic';
   diagnostics(): BaselineRenderDiagnostics | undefined;
   csmDiagnostics(): CsmSceneDiagnostics | undefined;
   nativeMetrics(): unknown;
@@ -78,6 +80,8 @@ export interface AetherSceneOptions {
   readonly animate?: boolean;
   /** Spawns a ground receiver mesh; defaults to true. */
   readonly ground?: boolean;
+  /** Environment IBL lighting source: 'hdr' (Venice Sunset) or 'synthetic' (fallback). Defaults to 'hdr'. */
+  readonly environment?: 'hdr' | 'synthetic';
 }
 
 const RotatingTag = defineTagComponent({
@@ -99,6 +103,40 @@ const INITIAL_CSM_DIAGNOSTICS: CsmSceneDiagnostics = Object.freeze({
   usedTexels: 0,
   acceptedRequests: 0
 });
+
+/** Fetches cooked Venice Sunset HDR artifacts from the public assets directory. */
+async function loadDemoEnvironmentAsset(
+  basePath = '/assets/environment/venice_sunset'
+): Promise<EnvironmentAsset> {
+  const [manifestRes, irrRes, radRes, lutManifestRes, lutBinRes] = await Promise.all([
+    fetch(`${basePath}/manifest.json`),
+    fetch(`${basePath}/irradiance.bin`),
+    fetch(`${basePath}/radiance.bin`),
+    fetch(`${basePath}/brdf_lut.json`),
+    fetch(`${basePath}/brdf_lut.bin`)
+  ]);
+
+  if (!manifestRes.ok || !irrRes.ok || !radRes.ok || !lutManifestRes.ok || !lutBinRes.ok) {
+    throw new Error('Failed to fetch Venice Sunset HDR environment artifacts.');
+  }
+
+  const [manifestJson, irrBuf, radBuf, lutJson, lutBuf] = await Promise.all([
+    manifestRes.json(),
+    irrRes.arrayBuffer(),
+    radRes.arrayBuffer(),
+    lutManifestRes.json(),
+    lutBinRes.arrayBuffer()
+  ]);
+
+  return Object.freeze({
+    assetId: 'environment.venice_sunset' as any,
+    artifact: manifestJson,
+    irradianceBytes: new Uint8Array(irrBuf),
+    radianceBytes: new Uint8Array(radBuf),
+    brdfLutArtifact: lutJson,
+    brdfLutBytes: new Uint8Array(lutBuf)
+  }) as unknown as EnvironmentAsset;
+}
 
 /** Mounts the public baseline renderer and one MainWorld-authored scene with real-time CSM on a canvas. */
 export async function mountAetherScene(
@@ -130,13 +168,26 @@ export async function mountAetherScene(
     ? [0, 0.2, -2.5]
     : [0, 0, -2];
 
+  let environmentAsset: EnvironmentAsset | undefined;
+  let activeEnvironmentMode: 'hdr' | 'synthetic' = 'synthetic';
+
+  if (options.environment !== 'synthetic') {
+    try {
+      environmentAsset = await loadDemoEnvironmentAsset();
+      activeEnvironmentMode = 'hdr';
+    } catch (error) {
+      console.warn('Could not load HDR environment, falling back to synthetic:', error);
+    }
+  }
+
   const app = new App()
     .addPlugin(TimePlugin)
     .addPlugin(
       createBaselineRenderingPlugin({
         graphics,
         mesh: { handle: meshHandle, payloadVersion: 1, data: mesh },
-        material: { handle: materialHandle, payloadVersion: 1, material }
+        material: { handle: materialHandle, payloadVersion: 1, material },
+        ...(environmentAsset ? { environment: environmentAsset } : {})
       })
     )
     .addPlugin(
@@ -343,6 +394,7 @@ export async function mountAetherScene(
   let destroyed = false;
   return Object.freeze({
     backend: graphics.backend,
+    environmentMode: activeEnvironmentMode,
     diagnostics: () => app.getResource(BaselineRenderDiagnosticsResource),
     csmDiagnostics: () => app.getResource(CsmDiagnosticsResource),
     nativeMetrics: () => {

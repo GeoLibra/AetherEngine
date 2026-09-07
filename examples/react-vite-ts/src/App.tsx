@@ -21,9 +21,17 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
   });
 
   // Leva controls
-  const [{ castsShadow, lightAngle, shadowDistance }] = useControls(
+  const [{ castsShadow, lightAngle, shadowDistance, environmentMode }] = useControls(
     () => ({
-      'Shadow Settings': folder({
+      'Environment & Lighting': folder({
+        environmentMode: {
+          value: 'hdr',
+          options: {
+            'Venice Sunset (Real HDR)': 'hdr',
+            'Synthetic Fallback': 'synthetic'
+          },
+          label: 'Environment IBL'
+        },
         castsShadow: { value: true, label: 'Cast Shadows' },
         lightAngle: { value: 45, min: 0, max: 360, step: 1, label: 'Light Azimuth (°)' },
         shadowDistance: { value: 25, min: 5, max: 60, step: 1, label: 'Shadow Dist (m)' }
@@ -48,11 +56,17 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
     if (target === null) return;
     const host = hostRef.current!;
 
+    setStatus({
+      kind: 'loading',
+      message: `Loading ${environmentMode === 'hdr' ? 'Venice Sunset HDR' : 'Synthetic'} environment…`
+    });
+
     void host
-      .mount(target)
+      .mount(target, { environment: environmentMode as 'hdr' | 'synthetic' })
       .then((scene) => {
         sceneRef.current = scene;
-        setStatus({ kind: 'ready', message: `Rendering with ${scene.backend}` });
+        const envLabel = scene.environmentMode === 'hdr' ? 'Venice Sunset HDR' : 'Synthetic IBL';
+        setStatus({ kind: 'ready', message: `Rendering with ${scene.backend} (${envLabel})` });
       })
       .catch((error: unknown) => {
         const isCancelled = error instanceof Error && error.message.includes('cancelled');
@@ -68,7 +82,7 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
       sceneRef.current = null;
       void host.unmount();
     };
-  }, [mountScene]);
+  }, [mountScene, environmentMode]);
 
   return (
     <main>
