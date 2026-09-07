@@ -138,7 +138,7 @@ export class BaselineStandardLitPreparation {
       label: 'aether-standard-lit',
       code: shaderModule
     });
-    this.environmentBuffer = uniformBuffer(device, [300, 350, 500, 1, 100, 120, 180, 0.02]);
+    this.environmentBuffer = uniformBuffer(device, [300, 350, 500, 1, 100, 120, 180, 2.0]);
     this.environmentTextures = createDefaultEnvironmentTextures(device);
     const postColor = prepareBaselinePostColor(
       device,

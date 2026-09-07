@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl',
-    contentHash: 'c1e1ee4b930952e59a76e1840bf718390f8fe8733cddd1aea984679dff3b38ad',
-    byteLength: 13829
+    contentHash: 'a8bf94045b64de99e4187dacca1cdc9405c7229a78efe11e86838b77fb0b0ae6',
+    byteLength: 13874
   },
   entryPoints: [
     {
@@ -505,7 +505,7 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
           typeName: 'vec3<f32>'
         },
         {
-          path: 'brdfBias',
+          path: 'maxValidRadianceLod',
           offset: 28,
           size: 4,
           alignment: 4,
@@ -626,7 +626,7 @@ struct EnvironmentData {
   diffuseIrradiance: vec3<f32>,
   intensity: f32,
   prefilteredRadiance: vec3<f32>,
-  brdfBias: f32,
+  maxValidRadianceLod: f32,
 };
 
 // ----------------------------------------------------------------------------
@@ -844,8 +844,9 @@ fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
   let radianceUv = directionToEquirectangularUv(reflection);
   let irradiance = textureSample(irradianceMap, environmentSampler, irradianceUv).rgb *
     environmentData.diffuseIrradiance;
+  let lod = clamp(roughness, 0.0, 1.0) * environmentData.maxValidRadianceLod;
   let prefiltered = textureSampleLevel(
-    prefilteredRadianceMap, environmentSampler, radianceUv, roughness * 2.0
+    prefilteredRadianceMap, environmentSampler, radianceUv, lod
   ).rgb * environmentData.prefilteredRadiance;
   let brdf = textureSample(
     environmentBrdfLut,
@@ -854,7 +855,7 @@ fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
   ).rg;
   let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
     materialData.baseColor.rgb * irradiance / 3.14159265359;
-  let specular = prefiltered * (fresnel * brdf.x + vec3<f32>(brdf.y + environmentData.brdfBias));
+  let specular = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
   return (diffuse + specular) * environmentData.intensity;
 }
 

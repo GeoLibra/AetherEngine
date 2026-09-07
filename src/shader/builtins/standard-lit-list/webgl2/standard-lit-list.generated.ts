@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl',
-    contentHash: '3bde41a418b758006811bea32efc0f8b5385653986c441c32c15e337e4e7b50f',
-    byteLength: 13979
+    contentHash: '572352fb52604e28c9e6525f74ec891937fce0e08150221d91eb6198be5f5c09',
+    byteLength: 14024
   },
   entryPoints: [
     {
@@ -425,7 +425,7 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
           typeName: 'vec3<f32>'
         },
         {
-          path: 'brdfBias',
+          path: 'maxValidRadianceLod',
           offset: 28,
           size: 4,
           alignment: 4,
@@ -489,7 +489,7 @@ struct EnvironmentData {
     vec3 diffuseIrradiance;
     float intensity;
     vec3 prefilteredRadiance;
-    float brdfBias;
+    float maxValidRadianceLod;
 };
 struct StandardLitVertexOutput {
     vec4 position;
@@ -702,17 +702,18 @@ vec3 evaluateIbl(vec3 normal_5, vec3 viewDirection_3) {
     vec4 _e35 = texture(_group_3_binding_6_fs, vec2(_e29));
     vec3 _e39 = _group_3_binding_5_fs.diffuseIrradiance;
     vec3 irradiance = (_e35.xyz * _e39);
-    vec4 _e45 = textureLod(_group_3_binding_7_fs, vec2(_e32), (roughness_4 * 2.0));
-    vec3 _e49 = _group_3_binding_5_fs.prefilteredRadiance;
-    vec3 prefiltered = (_e45.xyz * _e49);
-    vec4 _e57 = texture(_group_3_binding_8_fs, vec2(vec2(max(dot(normal_5, viewDirection_3), 0.0), roughness_4)));
-    vec2 brdf = _e57.xy;
-    vec4 _e67 = _group_2_binding_0_fs.baseColor;
-    vec3 diffuse_1 = (((((vec3(1.0) - _e28) * (1.0 - metallic_1)) * _e67.xyz) * irradiance) / vec3(3.1415927));
-    float _e79 = _group_3_binding_5_fs.brdfBias;
-    vec3 specular_1 = (prefiltered * ((_e28 * brdf.x) + vec3((brdf.y + _e79))));
-    float _e87 = _group_3_binding_5_fs.intensity;
-    return ((diffuse_1 + specular_1) * _e87);
+    float _e46 = _group_3_binding_5_fs.maxValidRadianceLod;
+    float lod = (clamp(roughness_4, 0.0, 1.0) * _e46);
+    vec4 _e50 = textureLod(_group_3_binding_7_fs, vec2(_e32), lod);
+    vec3 _e54 = _group_3_binding_5_fs.prefilteredRadiance;
+    vec3 prefiltered = (_e50.xyz * _e54);
+    vec4 _e62 = texture(_group_3_binding_8_fs, vec2(vec2(max(dot(normal_5, viewDirection_3), 0.0), roughness_4)));
+    vec2 brdf = _e62.xy;
+    vec4 _e72 = _group_2_binding_0_fs.baseColor;
+    vec3 diffuse_1 = (((((vec3(1.0) - _e28) * (1.0 - metallic_1)) * _e72.xyz) * irradiance) / vec3(3.1415927));
+    vec3 specular_1 = (prefiltered * ((f0_2 * brdf.x) + vec3(brdf.y)));
+    float _e88 = _group_3_binding_5_fs.intensity;
+    return ((diffuse_1 + specular_1) * _e88);
 }
 
 void main() {
@@ -917,7 +918,7 @@ struct EnvironmentData {
     vec3 diffuseIrradiance;
     float intensity;
     vec3 prefilteredRadiance;
-    float brdfBias;
+    float maxValidRadianceLod;
 };
 struct StandardLitVertexOutput {
     vec4 position;
