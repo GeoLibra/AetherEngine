@@ -68,6 +68,7 @@ export interface MountedAetherScene {
   /** Overrides automatic rotation with a deterministic YXZ angle in radians. */
   setRotation(angleRadians: number): Promise<void> | void;
   setCastsShadow(enabled: boolean): void;
+  setSunlight(enabled: boolean): void;
   setLightDirection(direction: readonly [number, number, number]): void;
   setShadowDistance(distance: number): void;
   resize(width: number, height: number): Promise<void> | void;
@@ -82,6 +83,12 @@ export interface AetherSceneOptions {
   readonly ground?: boolean;
   /** Environment IBL lighting source: 'hdr' (Venice Sunset) or 'synthetic' (fallback). Defaults to 'hdr'. */
   readonly environment?: 'hdr' | 'synthetic';
+  /** Material roughness [0.0 = mirror, 1.0 = rough]. Defaults to 0.15. */
+  readonly roughness?: number;
+  /** Material metallic [0.0 = dielectric, 1.0 = metal]. Defaults to 0.85. */
+  readonly metallic?: number;
+  /** Enables directional sunlight; defaults to true. */
+  readonly sunlight?: boolean;
 }
 
 const RotatingTag = defineTagComponent({
@@ -151,17 +158,20 @@ export async function mountAetherScene(
     surface: { ...size, alphaMode: 'opaque' },
     webgl2ClipControl: false
   });
+  const metallic = options.metallic ?? 0.85;
+  const roughness = options.roughness ?? 0.15;
+  let sunlight = options.sunlight !== false;
   const mesh = createBoxMeshData();
   const material = createStandardLitMaterial({
     baseColor: [0.18, 0.48, 0.92, 1],
-    metallic: 0.08,
-    roughness: 0.42
+    metallic,
+    roughness
   });
   const meshHandle = createAssetHandle(MeshAssetType, 'example.mesh.box');
   const materialHandle = createAssetHandle(MaterialAssetType, 'example.material.standard-lit');
   let forcedRotation = options.animate === false ? 0 : undefined;
   const includeGround = options.ground !== false;
-  let castsShadow = includeGround;
+  let castsShadow = includeGround && sunlight;
   let shadowDistance = 25;
   let lightDirection: Vec3 = INITIAL_LIGHT_DIRECTION;
   const boxTranslation: readonly [number, number, number] = includeGround
@@ -256,8 +266,8 @@ export async function mountAetherScene(
                 .insert(DirectionalLightSource, {
                   direction: lightDirection,
                   colorLinear: [1, 0.95, 0.88],
-                  illuminanceLux: 12_000,
-                  enabled: true,
+                  illuminanceLux: sunlight ? 12_000 : 0,
+                  enabled: sunlight,
                   layerMask: 1,
                   castsShadow
                 })
@@ -286,11 +296,14 @@ export async function mountAetherScene(
                 const source = lightSource as DirectionalLightSourceView;
                 if (
                   source.castsShadow !== castsShadow ||
+                  source.enabled !== sunlight ||
                   !Vec3Math.equals(source.direction, lightDirection)
                 ) {
                   world.insertComponent(entity, DirectionalLightSource, {
                     ...source,
                     castsShadow,
+                    enabled: sunlight,
+                    illuminanceLux: sunlight ? 12_000 : 0,
                     direction: lightDirection
                   });
                 }
@@ -419,6 +432,10 @@ export async function mountAetherScene(
     },
     setCastsShadow(enabled: boolean) {
       castsShadow = enabled;
+    },
+    setSunlight(enabled: boolean) {
+      sunlight = enabled;
+      castsShadow = includeGround && sunlight;
     },
     setLightDirection(direction: readonly [number, number, number]) {
       lightDirection = Vec3Math.normalize(direction as Vec3, 'Light direction');

@@ -21,7 +21,9 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
   });
 
   // Leva controls
-  const [{ castsShadow, lightAngle, shadowDistance, environmentMode }] = useControls(
+  const [
+    { castsShadow, sunlight, lightAngle, shadowDistance, environmentMode, metallic, roughness }
+  ] = useControls(
     () => ({
       'Environment & Lighting': folder({
         environmentMode: {
@@ -32,9 +34,14 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
           },
           label: 'Environment IBL'
         },
+        sunlight: { value: true, label: 'Sunlight (12k Lux)' },
         castsShadow: { value: true, label: 'Cast Shadows' },
         lightAngle: { value: 45, min: 0, max: 360, step: 1, label: 'Light Azimuth (°)' },
         shadowDistance: { value: 25, min: 5, max: 60, step: 1, label: 'Shadow Dist (m)' }
+      }),
+      'Object Material': folder({
+        metallic: { value: 0.85, min: 0.0, max: 1.0, step: 0.01, label: 'Metallic' },
+        roughness: { value: 0.15, min: 0.0, max: 1.0, step: 0.01, label: 'Roughness' }
       })
     }),
     []
@@ -44,10 +51,11 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
   useEffect(() => {
     if (!sceneRef.current) return;
     sceneRef.current.setCastsShadow(castsShadow);
+    sceneRef.current.setSunlight(sunlight);
     sceneRef.current.setShadowDistance(shadowDistance);
     const rad = (lightAngle * Math.PI) / 180;
     sceneRef.current.setLightDirection([Math.cos(rad) * -0.7, -1, Math.sin(rad) * -0.7]);
-  }, [castsShadow, lightAngle, shadowDistance]);
+  }, [castsShadow, sunlight, lightAngle, shadowDistance]);
 
   // Mount Aether scene via serialized lifecycle host
   useEffect(() => {
@@ -62,7 +70,12 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
     });
 
     void host
-      .mount(target, { environment: environmentMode as 'hdr' | 'synthetic' })
+      .mount(target, {
+        environment: environmentMode as 'hdr' | 'synthetic',
+        metallic,
+        roughness,
+        sunlight
+      })
       .then((scene) => {
         sceneRef.current = scene;
         const envLabel = scene.environmentMode === 'hdr' ? 'Venice Sunset HDR' : 'Synthetic IBL';
@@ -82,7 +95,7 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
       sceneRef.current = null;
       void host.unmount();
     };
-  }, [mountScene, environmentMode]);
+  }, [mountScene, environmentMode, metallic, roughness]);
 
   return (
     <main>
