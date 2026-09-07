@@ -4,10 +4,11 @@ import { getSharedEnvironmentBrdfLut } from './environment-brdf-lut';
 const SAMPLED_COPY_DST_TEXTURE_USAGE = (1 << 1) | (1 << 2);
 
 const samplerDeviceCache = new WeakMap<RHIDevice, RHISampler>();
+const brdfSamplerDeviceCache = new WeakMap<RHIDevice, RHISampler>();
 
 /**
  * Creates or retrieves a device-scoped singleton texture sampler configured for
- * environment map sampling (bilinear filtering with clamp-to-edge wrap mode).
+ * equirectangular environment map sampling (bilinear filtering with repeat-U and clamp-V wrap mode).
  *
  * @param device - Active RHI device.
  * @returns Cached or newly created RHI sampler.
@@ -23,11 +24,37 @@ export function getSharedEnvironmentSampler(device: RHIDevice): RHISampler {
     minFilter: 'linear',
     magFilter: 'linear',
     mipmapFilter: 'linear',
-    addressModeU: 'clamp-to-edge',
+    addressModeU: 'repeat',
     addressModeV: 'clamp-to-edge'
   });
 
   samplerDeviceCache.set(device, sampler);
+  return sampler;
+}
+
+/**
+ * Creates or retrieves a device-scoped singleton texture sampler configured for
+ * 2D BRDF LUT sampling (bilinear filtering with clamp-to-edge wrap mode in both U and V).
+ *
+ * @param device - Active RHI device.
+ * @returns Cached or newly created RHI sampler.
+ */
+export function getSharedBrdfLutSampler(device: RHIDevice): RHISampler {
+  const existing = brdfSamplerDeviceCache.get(device);
+  if (existing !== undefined && existing.state === 'live') {
+    return existing;
+  }
+
+  const sampler = device.createSampler({
+    label: 'aether-brdf-lut-sampler',
+    minFilter: 'linear',
+    magFilter: 'linear',
+    mipmapFilter: 'linear',
+    addressModeU: 'clamp-to-edge',
+    addressModeV: 'clamp-to-edge'
+  });
+
+  brdfSamplerDeviceCache.set(device, sampler);
   return sampler;
 }
 

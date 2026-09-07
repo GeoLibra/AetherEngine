@@ -21,38 +21,67 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
   });
 
   // Leva controls
-  const [{ castsShadow, lightAngle, shadowDistance }] = useControls(
+  const [
+    { castsShadow, sunlight, lightAngle, shadowDistance, environmentMode, metallic, roughness }
+  ] = useControls(
     () => ({
-      'Shadow Settings': folder({
+      'Environment & Lighting': folder({
+        environmentMode: {
+          value: 'hdr',
+          options: {
+            'Venice Sunset (Real HDR)': 'hdr',
+            'Synthetic Fallback': 'synthetic'
+          },
+          label: 'Environment IBL'
+        },
+        sunlight: { value: true, label: 'Sunlight (12k Lux)' },
         castsShadow: { value: true, label: 'Cast Shadows' },
         lightAngle: { value: 45, min: 0, max: 360, step: 1, label: 'Light Azimuth (°)' },
         shadowDistance: { value: 25, min: 5, max: 60, step: 1, label: 'Shadow Dist (m)' }
+      }),
+      'Object Material': folder({
+        metallic: { value: 0.85, min: 0.0, max: 1.0, step: 0.01, label: 'Metallic' },
+        roughness: { value: 0.15, min: 0.0, max: 1.0, step: 0.01, label: 'Roughness' }
       })
     }),
     []
   );
 
-  // Sync Leva control updates into the 3D scene
+  // Sync Leva control updates into the 3D scene in real-time without unmounting
   useEffect(() => {
     if (!sceneRef.current) return;
     sceneRef.current.setCastsShadow(castsShadow);
+    sceneRef.current.setSunlight(sunlight);
     sceneRef.current.setShadowDistance(shadowDistance);
+    sceneRef.current.setMetallic(metallic);
+    sceneRef.current.setRoughness(roughness);
     const rad = (lightAngle * Math.PI) / 180;
     sceneRef.current.setLightDirection([Math.cos(rad) * -0.7, -1, Math.sin(rad) * -0.7]);
-  }, [castsShadow, lightAngle, shadowDistance]);
+  }, [castsShadow, sunlight, shadowDistance, metallic, roughness, lightAngle]);
 
-  // Mount Aether scene via serialized lifecycle host
+  // Mount Aether scene via serialized lifecycle host (only remounts on environment change)
   useEffect(() => {
     if (!mountScene) return;
     const target = canvas.current;
     if (target === null) return;
     const host = hostRef.current!;
 
+    setStatus({
+      kind: 'loading',
+      message: `Loading ${environmentMode === 'hdr' ? 'Venice Sunset HDR' : 'Synthetic'} environment…`
+    });
+
     void host
-      .mount(target)
+      .mount(target, {
+        environment: environmentMode as 'hdr' | 'synthetic',
+        metallic,
+        roughness,
+        sunlight
+      })
       .then((scene) => {
         sceneRef.current = scene;
-        setStatus({ kind: 'ready', message: `Rendering with ${scene.backend}` });
+        const envLabel = scene.environmentMode === 'hdr' ? 'Venice Sunset HDR' : 'Synthetic IBL';
+        setStatus({ kind: 'ready', message: `Rendering with ${scene.backend} (${envLabel})` });
       })
       .catch((error: unknown) => {
         const isCancelled = error instanceof Error && error.message.includes('cancelled');
@@ -68,7 +97,7 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
       sceneRef.current = null;
       void host.unmount();
     };
-  }, [mountScene]);
+  }, [mountScene, environmentMode]);
 
   return (
     <main>

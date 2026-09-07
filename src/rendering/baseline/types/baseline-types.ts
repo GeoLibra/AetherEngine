@@ -1,4 +1,9 @@
-import type { AssetHandle, GeometryMeshAsset, MaterialAssetPayload } from '../../../assets';
+import type {
+  AssetHandle,
+  EnvironmentAsset,
+  GeometryMeshAsset,
+  MaterialAssetPayload
+} from '../../../assets';
 import type { MeshData } from '../../../geometry';
 import type { StandardLitMaterial } from '../../../material';
 import type { BrowserGraphicsSession } from '../../../platform';
@@ -125,4 +130,6 @@ export interface BaselineRenderingOptions {
     payloadVersion: number;
     material: StandardLitMaterial;
   }>;
+  /** Optional pre-cooked real environment asset; if omitted, defaults to synthetic fallback. */
+  readonly environment?: EnvironmentAsset | undefined;
 }

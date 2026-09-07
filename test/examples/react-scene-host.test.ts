@@ -7,9 +7,13 @@ vi.mock('../../examples/react-vite-ts/src/aether-scene', () => {
       let destroyed = false;
       const scene: MountedAetherScene = {
         backend: 'webgpu',
+        environmentMode: 'hdr',
         resize: vi.fn(),
         setRotation: vi.fn(),
         setCastsShadow: vi.fn(),
+        setSunlight: vi.fn(),
+        setRoughness: vi.fn(),
+        setMetallic: vi.fn(),
         setShadowDistance: vi.fn(),
         setLightDirection: vi.fn(),
         diagnostics: vi.fn(() => undefined),
@@ -107,9 +111,13 @@ describe('AetherSceneHost', () => {
       await init1Promise;
       return {
         backend: 'webgpu',
+        environmentMode: 'hdr',
         resize: vi.fn(),
         setRotation: vi.fn(),
         setCastsShadow: vi.fn(),
+        setSunlight: vi.fn(),
+        setRoughness: vi.fn(),
+        setMetallic: vi.fn(),
         setShadowDistance: vi.fn(),
         setLightDirection: vi.fn(),
         diagnostics: vi.fn(() => undefined),
@@ -175,9 +183,13 @@ describe('AetherSceneHost', () => {
 
       return {
         backend: 'webgpu',
+        environmentMode: options?.environment ?? 'hdr',
         resize: vi.fn(),
         setRotation: vi.fn(),
         setCastsShadow: vi.fn(),
+        setSunlight: vi.fn(),
+        setRoughness: vi.fn(),
+        setMetallic: vi.fn(),
         setShadowDistance: vi.fn(),
         setLightDirection: vi.fn(),
         diagnostics: vi.fn(() => undefined),

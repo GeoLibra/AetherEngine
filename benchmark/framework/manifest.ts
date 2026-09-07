@@ -472,6 +472,27 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         executable: 'node',
         args: Object.freeze(['benchmark/editor-workflow-runner.mjs', '{profile}'])
       })
+    }),
+    Object.freeze({
+      id: 'environment-cook',
+      description:
+        'HDR environment decode, offline convolution (irradiance, GGX radiance mips, shared BRDF LUT), and deterministic artifact packaging.',
+      domainIds: Object.freeze(['assets', 'rendering']),
+      pathPrefixes: Object.freeze([
+        'benchmark/environment-cook.bench.ts',
+        'benchmark/environment-cook-runner.mjs',
+        'benchmark/environment-cook/',
+        'engine/design/v2/05-assets-scene/07-environment-ibl-cook.md',
+        'src/assets/environment/',
+        'src/rendering/lighting/environment/',
+        'tools/asset-cook/environment/',
+        'test/benchmark/environment-cook.test.ts',
+        'test/tooling/environment-'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/environment-cook-runner.mjs', '{profile}'])
+      })
     })
   ])
 });

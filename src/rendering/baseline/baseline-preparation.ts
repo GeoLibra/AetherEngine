@@ -46,7 +46,9 @@ import {
 } from '../lighting';
 import {
   createDefaultEnvironmentTextures,
-  type EnvironmentTextureSet
+  sharedEnvironmentTextureCache,
+  type EnvironmentTextureSet,
+  type PreparedEnvironmentBundle
 } from '../lighting/environment';
 import { prepareBaselinePostColor, type BaselinePostColorPreparation } from './baseline-post-color';
 import {
@@ -91,6 +93,7 @@ export class BaselineStandardLitPreparation {
   private readonly pipelineKey: string;
   private readonly bindingLayoutHash: string;
   private readonly pendingSubmissions = new Set<Promise<unknown>>();
+  private readonly environmentBundle?: PreparedEnvironmentBundle | undefined;
   private readonly environmentBuffer: RHIBuffer;
   private readonly environmentTextures: EnvironmentTextureSet;
   readonly postColor: BaselinePostColorPreparation;
@@ -138,8 +141,15 @@ export class BaselineStandardLitPreparation {
       label: 'aether-standard-lit',
       code: shaderModule
     });
-    this.environmentBuffer = uniformBuffer(device, [300, 350, 500, 1, 100, 120, 180, 0.02]);
-    this.environmentTextures = createDefaultEnvironmentTextures(device);
+    if (options.environment !== undefined) {
+      this.environmentBundle = sharedEnvironmentTextureCache.acquire(device, options.environment);
+      this.environmentTextures = this.environmentBundle.textures;
+      const maxLod = this.environmentBundle.maxValidRadianceLod;
+      this.environmentBuffer = uniformBuffer(device, [300, 350, 500, 1, 100, 120, 180, maxLod]);
+    } else {
+      this.environmentBuffer = uniformBuffer(device, [300, 350, 500, 1, 100, 120, 180, 2.0]);
+      this.environmentTextures = createDefaultEnvironmentTextures(device);
+    }
     const postColor = prepareBaselinePostColor(
       device,
       options.graphics.surface.configuration!.format
@@ -339,10 +349,14 @@ export class BaselineStandardLitPreparation {
     this.pipeline.dispose();
     this.lightListRecorder.dispose();
     this.environmentBuffer.dispose();
-    disposeResources([
-      this.environmentTextures.irradianceMap,
-      this.environmentTextures.prefilteredRadianceMap
-    ]);
+    if (this.environmentBundle !== undefined) {
+      this.environmentBundle.release();
+    } else {
+      disposeResources([
+        this.environmentTextures.irradianceMap,
+        this.environmentTextures.prefilteredRadianceMap
+      ]);
+    }
     disposeResources(this.postColorOwnedResources);
     this.shaderModule.dispose();
     this.pipelineLayout.dispose();

@@ -24,9 +24,11 @@ import {
   defineTagComponent,
   selectShadowRequests,
   BaselineRenderDiagnosticsResource,
+  StandardLitMaterialSchema,
   type BaselineRenderDiagnostics,
   type BrowserGraphicsSession,
   type DirectionalLightSourceView,
+  type EnvironmentAsset,
   type ShadowRequest,
   type Vec3,
   type WorldTransformView
@@ -58,6 +60,7 @@ export interface CsmSceneDiagnostics {
 
 export interface MountedAetherScene {
   readonly backend: BrowserGraphicsSession['backend'];
+  readonly environmentMode: 'hdr' | 'synthetic';
   diagnostics(): BaselineRenderDiagnostics | undefined;
   csmDiagnostics(): CsmSceneDiagnostics | undefined;
   nativeMetrics(): unknown;
@@ -66,6 +69,9 @@ export interface MountedAetherScene {
   /** Overrides automatic rotation with a deterministic YXZ angle in radians. */
   setRotation(angleRadians: number): Promise<void> | void;
   setCastsShadow(enabled: boolean): void;
+  setSunlight(enabled: boolean): void;
+  setRoughness(roughness: number): void;
+  setMetallic(metallic: number): void;
   setLightDirection(direction: readonly [number, number, number]): void;
   setShadowDistance(distance: number): void;
   resize(width: number, height: number): Promise<void> | void;
@@ -78,6 +84,14 @@ export interface AetherSceneOptions {
   readonly animate?: boolean;
   /** Spawns a ground receiver mesh; defaults to true. */
   readonly ground?: boolean;
+  /** Environment IBL lighting source: 'hdr' (Venice Sunset) or 'synthetic' (fallback). Defaults to 'hdr'. */
+  readonly environment?: 'hdr' | 'synthetic';
+  /** Material roughness [0.0 = mirror, 1.0 = rough]. Defaults to 0.15. */
+  readonly roughness?: number;
+  /** Material metallic [0.0 = dielectric, 1.0 = metal]. Defaults to 0.85. */
+  readonly metallic?: number;
+  /** Enables directional sunlight; defaults to true. */
+  readonly sunlight?: boolean;
 }
 
 const RotatingTag = defineTagComponent({
@@ -100,6 +114,40 @@ const INITIAL_CSM_DIAGNOSTICS: CsmSceneDiagnostics = Object.freeze({
   acceptedRequests: 0
 });
 
+/** Fetches cooked Venice Sunset HDR artifacts from the public assets directory. */
+async function loadDemoEnvironmentAsset(
+  basePath = '/assets/environment/venice_sunset'
+): Promise<EnvironmentAsset> {
+  const [manifestRes, irrRes, radRes, lutManifestRes, lutBinRes] = await Promise.all([
+    fetch(`${basePath}/manifest.json`),
+    fetch(`${basePath}/irradiance.bin`),
+    fetch(`${basePath}/radiance.bin`),
+    fetch(`${basePath}/brdf_lut.json`),
+    fetch(`${basePath}/brdf_lut.bin`)
+  ]);
+
+  if (!manifestRes.ok || !irrRes.ok || !radRes.ok || !lutManifestRes.ok || !lutBinRes.ok) {
+    throw new Error('Failed to fetch Venice Sunset HDR environment artifacts.');
+  }
+
+  const [manifestJson, irrBuf, radBuf, lutJson, lutBuf] = await Promise.all([
+    manifestRes.json(),
+    irrRes.arrayBuffer(),
+    radRes.arrayBuffer(),
+    lutManifestRes.json(),
+    lutBinRes.arrayBuffer()
+  ]);
+
+  return Object.freeze({
+    assetId: 'environment.venice_sunset' as any,
+    artifact: manifestJson,
+    irradianceBytes: new Uint8Array(irrBuf),
+    radianceBytes: new Uint8Array(radBuf),
+    brdfLutArtifact: lutJson,
+    brdfLutBytes: new Uint8Array(lutBuf)
+  }) as unknown as EnvironmentAsset;
+}
+
 /** Mounts the public baseline renderer and one MainWorld-authored scene with real-time CSM on a canvas. */
 export async function mountAetherScene(
   canvas: HTMLCanvasElement,
@@ -113,22 +161,64 @@ export async function mountAetherScene(
     surface: { ...size, alphaMode: 'opaque' },
     webgl2ClipControl: false
   });
+  let liveMetallic = options.metallic ?? 0.85;
+  let liveRoughness = options.roughness ?? 0.15;
+  let sunlight = options.sunlight !== false;
   const mesh = createBoxMeshData();
-  const material = createStandardLitMaterial({
+  const baseMaterial = createStandardLitMaterial({
     baseColor: [0.18, 0.48, 0.92, 1],
-    metallic: 0.08,
-    roughness: 0.42
+    metallic: liveMetallic,
+    roughness: liveRoughness
+  });
+
+  const liveParameters = new Proxy(baseMaterial.instance.parameters, {
+    get(target, prop, receiver) {
+      if (prop === 'get') {
+        return (field: unknown) => {
+          if (field === StandardLitMaterialSchema.fields.metallic) return liveMetallic;
+          if (field === StandardLitMaterialSchema.fields.roughness) return liveRoughness;
+          return Reflect.apply(target.get, target, [field]);
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+
+  const liveInstance = new Proxy(baseMaterial.instance, {
+    get(target, prop, receiver) {
+      if (prop === 'parameters') return liveParameters;
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+
+  const material = new Proxy(baseMaterial, {
+    get(target, prop, receiver) {
+      if (prop === 'instance') return liveInstance;
+      return Reflect.get(target, prop, receiver);
+    }
   });
   const meshHandle = createAssetHandle(MeshAssetType, 'example.mesh.box');
   const materialHandle = createAssetHandle(MaterialAssetType, 'example.material.standard-lit');
   let forcedRotation = options.animate === false ? 0 : undefined;
   const includeGround = options.ground !== false;
-  let castsShadow = includeGround;
+  let castsShadow = includeGround && sunlight;
   let shadowDistance = 25;
   let lightDirection: Vec3 = INITIAL_LIGHT_DIRECTION;
   const boxTranslation: readonly [number, number, number] = includeGround
     ? [0, 0.2, -2.5]
     : [0, 0, -2];
+
+  let environmentAsset: EnvironmentAsset | undefined;
+  let activeEnvironmentMode: 'hdr' | 'synthetic' = 'synthetic';
+
+  if (options.environment !== 'synthetic') {
+    try {
+      environmentAsset = await loadDemoEnvironmentAsset();
+      activeEnvironmentMode = 'hdr';
+    } catch (error) {
+      console.warn('Could not load HDR environment, falling back to synthetic:', error);
+    }
+  }
 
   const app = new App()
     .addPlugin(TimePlugin)
@@ -136,7 +226,8 @@ export async function mountAetherScene(
       createBaselineRenderingPlugin({
         graphics,
         mesh: { handle: meshHandle, payloadVersion: 1, data: mesh },
-        material: { handle: materialHandle, payloadVersion: 1, material }
+        material: { handle: materialHandle, payloadVersion: 1, material },
+        ...(environmentAsset ? { environment: environmentAsset } : {})
       })
     )
     .addPlugin(
@@ -205,8 +296,8 @@ export async function mountAetherScene(
                 .insert(DirectionalLightSource, {
                   direction: lightDirection,
                   colorLinear: [1, 0.95, 0.88],
-                  illuminanceLux: 12_000,
-                  enabled: true,
+                  illuminanceLux: sunlight ? 12_000 : 0,
+                  enabled: sunlight,
                   layerMask: 1,
                   castsShadow
                 })
@@ -235,11 +326,14 @@ export async function mountAetherScene(
                 const source = lightSource as DirectionalLightSourceView;
                 if (
                   source.castsShadow !== castsShadow ||
+                  source.enabled !== sunlight ||
                   !Vec3Math.equals(source.direction, lightDirection)
                 ) {
                   world.insertComponent(entity, DirectionalLightSource, {
                     ...source,
                     castsShadow,
+                    enabled: sunlight,
+                    illuminanceLux: sunlight ? 12_000 : 0,
                     direction: lightDirection
                   });
                 }
@@ -343,6 +437,7 @@ export async function mountAetherScene(
   let destroyed = false;
   return Object.freeze({
     backend: graphics.backend,
+    environmentMode: activeEnvironmentMode,
     diagnostics: () => app.getResource(BaselineRenderDiagnosticsResource),
     csmDiagnostics: () => app.getResource(CsmDiagnosticsResource),
     nativeMetrics: () => {
@@ -367,6 +462,22 @@ export async function mountAetherScene(
     },
     setCastsShadow(enabled: boolean) {
       castsShadow = enabled;
+    },
+    setSunlight(enabled: boolean) {
+      sunlight = enabled;
+      castsShadow = includeGround && sunlight;
+    },
+    setRoughness(value: number) {
+      if (Number.isFinite(value)) {
+        liveRoughness = Math.max(0, Math.min(1, value));
+        demandRunner?.frame();
+      }
+    },
+    setMetallic(value: number) {
+      if (Number.isFinite(value)) {
+        liveMetallic = Math.max(0, Math.min(1, value));
+        demandRunner?.frame();
+      }
     },
     setLightDirection(direction: readonly [number, number, number]) {
       lightDirection = Vec3Math.normalize(direction as Vec3, 'Light direction');

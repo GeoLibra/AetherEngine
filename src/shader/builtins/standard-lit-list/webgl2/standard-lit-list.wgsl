@@ -95,7 +95,7 @@ struct EnvironmentData {
   diffuseIrradiance: vec3<f32>,
   intensity: f32,
   prefilteredRadiance: vec3<f32>,
-  brdfBias: f32,
+  maxValidRadianceLod: f32,
 };
 
 // ----------------------------------------------------------------------------
@@ -313,8 +313,9 @@ fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
   let radianceUv = directionToEquirectangularUv(reflection);
   let irradiance = textureSample(irradianceMap, environmentSampler, irradianceUv).rgb *
     environmentData.diffuseIrradiance;
+  let lod = clamp(roughness, 0.0, 1.0) * environmentData.maxValidRadianceLod;
   let prefiltered = textureSampleLevel(
-    prefilteredRadianceMap, environmentSampler, radianceUv, roughness * 2.0
+    prefilteredRadianceMap, environmentSampler, radianceUv, lod
   ).rgb * environmentData.prefilteredRadiance;
   let brdf = textureSample(
     environmentBrdfLut,
@@ -323,7 +324,7 @@ fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
   ).rg;
   let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
     materialData.baseColor.rgb * irradiance / 3.14159265359;
-  let specular = prefiltered * (fresnel * brdf.x + vec3<f32>(brdf.y + environmentData.brdfBias));
+  let specular = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
   return (diffuse + specular) * environmentData.intensity;
 }
 

@@ -180,7 +180,9 @@ function createLightListGroup(
         resource: context.device.createSampler({
           minFilter: 'linear',
           magFilter: 'linear',
-          mipmapFilter: 'linear'
+          mipmapFilter: 'linear',
+          addressModeU: 'repeat',
+          addressModeV: 'clamp-to-edge'
         })
       }
     ]
