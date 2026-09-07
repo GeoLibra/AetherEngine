@@ -49,12 +49,44 @@ export interface EnvironmentArtifactV1 {
   readonly brdfLut: { readonly schema: 'BrdfLutArtifact@1'; readonly contentHash: ContentHash };
 }
 
+/** Declares background availability without changing IBL normalization. */
+export type BackgroundPayload =
+  | Readonly<{ kind: 'absent' }>
+  | Readonly<{
+      kind: 'panorama';
+      samplingAbi: 'sky-equirect-linear@1';
+      payload: EnvironmentTexturePayload;
+      mipFilter: 'spherical-area@1';
+    }>;
+
+export interface EnvironmentArtifactV2 {
+  readonly schema: 'EnvironmentArtifact@2';
+  readonly samplingAbi: 'ibl-equirect-ggx@1';
+  readonly recipeHash: ContentHash;
+  readonly sourceHash: ContentHash;
+  readonly targetProfileHash: ContentHash;
+  readonly projection: 'equirectangular';
+  readonly orientation: 'y-up-atan2-z-x-top-left@1';
+  readonly colorSpace: 'linear-srgb';
+  readonly radianceUnits: 'relative';
+  readonly diffuseNormalization: 'irradiance';
+  readonly roughnessMapping: 'linear-perceptual-valid-lod@1';
+  readonly maxValidRadianceLod: number;
+  readonly irradiance: EnvironmentTexturePayload;
+  readonly radiance: EnvironmentTexturePayload;
+  readonly brdfLut: { readonly schema: 'BrdfLutArtifact@1'; readonly contentHash: ContentHash };
+  readonly background: BackgroundPayload;
+}
+
+export type EnvironmentArtifact = EnvironmentArtifactV1 | EnvironmentArtifactV2;
+
 export interface EnvironmentCookRecipe {
-  readonly recipeName: 'smoke-v1' | 'demo-v1' | 'quality-v1' | 'custom';
+  readonly recipeName: 'smoke-v1' | 'demo-v1' | 'quality-v1' | 'custom' | string;
   readonly irradianceSize: [number, number];
   readonly irradianceSamples: number;
   readonly radianceBaseSize: [number, number];
   readonly radianceSamples: number;
   readonly lutSize: number;
   readonly lutSamples: number;
+  readonly panoramaSize?: [number, number];
 }

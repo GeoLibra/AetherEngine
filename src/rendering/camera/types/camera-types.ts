@@ -31,6 +31,7 @@ export interface ExtractedView {
   readonly layerMask: number;
   readonly jitterPixels: readonly [number, number];
   readonly depthMode: 'standard' | 'reverse';
+  readonly projectionKind: 'perspective' | 'orthographic';
 }
 
 export interface ExtractViewOptions {

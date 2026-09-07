@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "entryPoints": [
+    { "name": "skyboxVertex", "stage": "vertex" },
+    { "name": "skyboxFragment", "stage": "fragment" }
+  ],
+  "cookPolicy": { "optimization": "performance", "preserveNames": true }
+}

@@ -1,5 +1,4 @@
 import { definePlugin } from '../../app/utils';
-import { MaterialAssetType, MeshAssetType, validateAssetHandle } from '../../assets';
 import { defineResource } from '../../ecs/resource';
 import type { Entity } from '../../ecs/types';
 import type { World } from '../../ecs/world';
@@ -9,6 +8,8 @@ import {
   DirectionalLightExtractor,
   DirectionalLightSource
 } from '../lighting';
+import { prepareBaselinePostColor, type BaselinePostColorPreparation } from './baseline-post-color';
+import type { RHIResource } from '../../rhi/contracts';
 import {
   MeshAssetField,
   MeshMaterialsField,
@@ -22,7 +23,7 @@ import {
   type RenderMeshFact,
   type RenderTransformFact
 } from '../mesh';
-import { validateMeshData, type MeshBounds, type MeshData } from '../../geometry';
+import type { MeshBounds } from '../../geometry';
 import type { RenderVisibilityFact } from '../mesh';
 import { computeVisibility } from '../visibility';
 import { RenderExtractorRegistryBuilder, RenderWorld } from '../world';
@@ -35,9 +36,14 @@ import type {
   BaselineRenderSkipReason,
   BaselineRenderingOptions
 } from './types';
+import {
+  assertGraphicsReady,
+  createBaselineBackgroundFrame,
+  validateOptions,
+  type NormalizedBaselineRenderingOptions
+} from './baseline-options';
 
-type NormalizedBaselineRenderingOptions = BaselineRenderingOptions &
-  Readonly<{ viewId: string; featurePolicyKey: string }>;
+const EMPTY_PACKETS = Object.freeze([]);
 
 /** Latest immutable baseline frame outcome published by the rendering plugin. */
 export const BaselineRenderDiagnosticsResource = defineResource<BaselineRenderDiagnostics>(
@@ -98,6 +104,8 @@ class BaselineRenderingRuntime {
   private lightExtraction: DirectionalLightExtraction | undefined;
   private cameraExtraction: CameraViewExtraction | undefined;
   private standardLit: BaselineStandardLitPreparation | undefined;
+  private standalonePostColor: BaselinePostColorPreparation | undefined;
+  private standalonePostColorResources: readonly RHIResource[] = [];
   private prepared: BaselinePreparedFrame | undefined;
   private preparedSkip: BaselineRenderSkipReason | undefined;
   private sourceTick = 0;
@@ -135,7 +143,7 @@ class BaselineRenderingRuntime {
             {
               camera: cameras[0],
               viewId: this.options.viewId,
-              surface: this.options.viewId,
+              surface: 'main',
               logicalWidth: configuration.width,
               logicalHeight: configuration.height,
               devicePixelRatio: 1,
@@ -151,8 +159,34 @@ class BaselineRenderingRuntime {
       camera.revision.release();
       return;
     }
-    if (view === undefined || this.standardLit === undefined) {
+    if (view === undefined) {
       this.prepared = undefined;
+      camera.revision.release();
+      return;
+    }
+    if (this.standardLit === undefined) {
+      if (this.standalonePostColor === undefined && configuration !== undefined) {
+        const { preparation, ownedResources } = prepareBaselinePostColor(
+          this.options.graphics.device,
+          configuration.format
+        );
+        this.standalonePostColor = preparation;
+        this.standalonePostColorResources = ownedResources;
+      }
+      const background = createBaselineBackgroundFrame(
+        this.options.graphics.device,
+        camera.views[0]!,
+        this.options
+      );
+      this.prepared = Object.freeze({
+        status: 'ready',
+        view,
+        packets: EMPTY_PACKETS,
+        ...(background === undefined ? {} : { background }),
+        ...(this.standalonePostColor === undefined ? {} : { postColor: this.standalonePostColor }),
+        deviceGeneration: this.options.graphics.device.generation,
+        surfaceGeneration: this.options.graphics.surface.generation
+      });
       camera.revision.release();
       return;
     }
@@ -177,16 +211,6 @@ class BaselineRenderingRuntime {
     const lights = this.lightExtraction!.lights().filter(
       (candidate) => candidate.enabled && (candidate.layerMask & view.layerMask) !== 0
     );
-    if (matching.length === 0 || lights.length === 0) {
-      this.prepared = Object.freeze({
-        status: 'missing',
-        view,
-        deviceGeneration: this.options.graphics.device.generation,
-        surfaceGeneration: this.options.graphics.surface.generation
-      });
-      camera.revision.release();
-      return;
-    }
     const packets = matching.map((selected) => {
       const transform = camera.revision.snapshot
         .get(selected.renderEntity)
@@ -214,10 +238,13 @@ class BaselineRenderingRuntime {
       lights,
       receivers
     });
+    const background = this.standardLit.createBackgroundFrame(camera.views[0]!);
     this.prepared = Object.freeze({
       status: 'ready',
       view,
       packets: Object.freeze(packets),
+      environment: this.standardLit.environmentFrame,
+      ...(background === undefined ? {} : { background }),
       lightList,
       postColor: this.standardLit.postColor,
       deviceGeneration: this.options.graphics.device.generation,
@@ -272,6 +299,11 @@ class BaselineRenderingRuntime {
     this.lightExtraction?.dispose();
     this.cameraExtraction?.dispose();
     this.renderer.dispose();
+    for (const res of [...this.standalonePostColorResources].reverse()) {
+      res.dispose();
+    }
+    this.standalonePostColor = undefined;
+    this.standalonePostColorResources = [];
     await this.standardLit?.dispose();
   }
 
@@ -296,6 +328,7 @@ class BaselineRenderingRuntime {
     if (this.prepared?.status === 'ready') {
       for (const packet of this.prepared.packets) packet.release();
       this.prepared.lightList?.release();
+      this.prepared.background?.release();
     }
     this.prepared = undefined;
     this.preparedSkip = undefined;
@@ -338,68 +371,4 @@ function collectTransforms(world: World): ReadonlyMap<Entity, RenderTransformFac
       }
     ])
   );
-}
-
-function validateOptions(options: BaselineRenderingOptions): NormalizedBaselineRenderingOptions {
-  const viewId = options.viewId ?? 'main';
-  const featurePolicyKey = options.featurePolicyKey ?? 'baseline';
-  if (!viewId.trim()) throw new Error('Baseline rendering viewId must be non-empty.');
-  if (!featurePolicyKey.trim()) {
-    throw new Error('Baseline rendering featurePolicyKey must be non-empty.');
-  }
-  if ((options.mesh === undefined) !== (options.material === undefined)) {
-    throw new Error(
-      'Baseline rendering mesh and material registrations must be provided together.'
-    );
-  }
-  const mesh =
-    options.mesh === undefined
-      ? undefined
-      : Object.freeze({
-          handle: validateAssetHandle(options.mesh.handle, MeshAssetType, 'Baseline mesh'),
-          payloadVersion: payloadVersion(options.mesh.payloadVersion, 'mesh'),
-          // Recompute bounds while taking ownership. Revalidating an already-derived floating
-          // sphere as authored data can turn harmless rounding into a false containment failure.
-          data: validateMeshData(meshInputWithoutBounds(options.mesh.data))
-        });
-  const material =
-    options.material === undefined
-      ? undefined
-      : Object.freeze({
-          handle: validateAssetHandle(
-            options.material.handle,
-            MaterialAssetType,
-            'Baseline material'
-          ),
-          payloadVersion: payloadVersion(options.material.payloadVersion, 'material'),
-          material: options.material.material
-        });
-  return Object.freeze({
-    graphics: options.graphics,
-    viewId,
-    featurePolicyKey,
-    ...(mesh === undefined ? {} : { mesh }),
-    ...(material === undefined ? {} : { material })
-  });
-}
-
-function meshInputWithoutBounds(data: MeshData) {
-  const { bounds: _derivedBounds, ...input } = data;
-  return input;
-}
-
-function payloadVersion(value: number, label: string): number {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`Baseline rendering ${label} payloadVersion must be non-negative.`);
-  }
-  return value;
-}
-
-function assertGraphicsReady(graphics: BaselineRenderingOptions['graphics']): void {
-  if (graphics.device.state !== 'live') {
-    throw new Error('Baseline rendering startup requires a live graphics device.');
-  }
-  if (graphics.surface.state !== 'configured' || graphics.surface.configuration === undefined) {
-    throw new Error('Baseline rendering startup requires a configured graphics surface.');
-  }
 }

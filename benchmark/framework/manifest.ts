@@ -493,6 +493,26 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         executable: 'node',
         args: Object.freeze(['benchmark/environment-cook-runner.mjs', '{profile}'])
       })
+    }),
+    Object.freeze({
+      id: 'skybox-background',
+      description:
+        'Skybox fullscreen background raster pass, vertex direction reconstruction, and pass merging.',
+      domainIds: Object.freeze(['rendering']),
+      pathPrefixes: Object.freeze([
+        'benchmark/skybox-background.bench.ts',
+        'benchmark/skybox-background-runner.mjs',
+        'benchmark/skybox-background/',
+        'engine/design/v2/04-rendering/10-skybox-background.md',
+        'src/rendering/background/',
+        'src/shader/builtins/skybox/',
+        'test/benchmark/skybox-background.test.ts',
+        'test/rendering/background/'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/skybox-background-runner.mjs', '{profile}'])
+      })
     })
   ])
 });

@@ -29,8 +29,12 @@ import {
   type BrowserGraphicsSession,
   type DirectionalLightSourceView,
   type EnvironmentAsset,
+  type MaterialField,
+  type MaterialValue,
   type ShadowRequest,
+  type StandardLitMaterial,
   type Vec3,
+  type ViewBackground,
   type WorldTransformView
 } from '@aether/engine';
 import { DemandDrivenRunner } from './demand-driven-runner';
@@ -61,6 +65,7 @@ export interface CsmSceneDiagnostics {
 export interface MountedAetherScene {
   readonly backend: BrowserGraphicsSession['backend'];
   readonly environmentMode: 'hdr' | 'synthetic';
+  readonly backgroundMode?: 'hdr' | 'solid' | 'none';
   diagnostics(): BaselineRenderDiagnostics | undefined;
   csmDiagnostics(): CsmSceneDiagnostics | undefined;
   nativeMetrics(): unknown;
@@ -86,6 +91,10 @@ export interface AetherSceneOptions {
   readonly ground?: boolean;
   /** Environment IBL lighting source: 'hdr' (Venice Sunset) or 'synthetic' (fallback). Defaults to 'hdr'. */
   readonly environment?: 'hdr' | 'synthetic';
+  /** Background skybox mode: 'hdr' (radiance level 0), 'solid', or 'none'. Defaults to 'hdr' if environment is loaded, otherwise 'solid'. */
+  readonly background?: 'hdr' | 'solid' | 'none' | ViewBackground;
+  /** Multiplier applied to HDR background radiance. Defaults to 1.0. */
+  readonly backgroundMultiplier?: number;
   /** Material roughness [0.0 = mirror, 1.0 = rough]. Defaults to 0.15. */
   readonly roughness?: number;
   /** Material metallic [0.0 = dielectric, 1.0 = metal]. Defaults to 0.85. */
@@ -171,32 +180,23 @@ export async function mountAetherScene(
     roughness: liveRoughness
   });
 
-  const liveParameters = new Proxy(baseMaterial.instance.parameters, {
-    get(target, prop, receiver) {
-      if (prop === 'get') {
-        return (field: unknown) => {
-          if (field === StandardLitMaterialSchema.fields.metallic) return liveMetallic;
-          if (field === StandardLitMaterialSchema.fields.roughness) return liveRoughness;
-          return Reflect.apply(target.get, target, [field]);
-        };
-      }
-      return Reflect.get(target, prop, receiver);
-    }
-  });
-
-  const liveInstance = new Proxy(baseMaterial.instance, {
-    get(target, prop, receiver) {
-      if (prop === 'parameters') return liveParameters;
-      return Reflect.get(target, prop, receiver);
-    }
-  });
-
-  const material = new Proxy(baseMaterial, {
-    get(target, prop, receiver) {
-      if (prop === 'instance') return liveInstance;
-      return Reflect.get(target, prop, receiver);
-    }
-  });
+  const material = Object.freeze({
+    asset: baseMaterial.asset,
+    resolved: baseMaterial.resolved,
+    instance: Object.freeze({
+      ...baseMaterial.instance,
+      parameters: Object.freeze({
+        ...baseMaterial.instance.parameters,
+        get: <T extends MaterialValue>(field: MaterialField<T>): T => {
+          if ((field as unknown) === StandardLitMaterialSchema.fields.metallic)
+            return liveMetallic as T;
+          if ((field as unknown) === StandardLitMaterialSchema.fields.roughness)
+            return liveRoughness as T;
+          return baseMaterial.instance.parameters.get(field);
+        }
+      })
+    })
+  }) as StandardLitMaterial;
   const meshHandle = createAssetHandle(MeshAssetType, 'example.mesh.box');
   const materialHandle = createAssetHandle(MaterialAssetType, 'example.material.standard-lit');
   let forcedRotation = options.animate === false ? 0 : undefined;
@@ -220,6 +220,37 @@ export async function mountAetherScene(
     }
   }
 
+  let activeBackground: ViewBackground | undefined;
+  let activeBgMode: 'hdr' | 'solid' | 'none' = 'none';
+
+  if (typeof options.background === 'object' && options.background !== null) {
+    activeBackground = options.background;
+    activeBgMode =
+      options.background.kind === 'environment'
+        ? 'hdr'
+        : options.background.kind === 'solid'
+          ? 'solid'
+          : 'none';
+  } else {
+    const bgMode = options.background ?? (activeEnvironmentMode === 'hdr' ? 'hdr' : 'solid');
+    activeBgMode = bgMode;
+    if (bgMode === 'hdr' && environmentAsset !== undefined) {
+      activeBackground = {
+        kind: 'environment',
+        source: 'view-environment',
+        representation: 'radiance-level-zero',
+        multiplier: options.backgroundMultiplier ?? 1.0
+      };
+    } else if (bgMode === 'solid') {
+      activeBackground = {
+        kind: 'solid',
+        colorLinear: [0.03, 0.04, 0.06]
+      };
+    } else {
+      activeBackground = { kind: 'none' };
+    }
+  }
+
   const app = new App()
     .addPlugin(TimePlugin)
     .addPlugin(
@@ -227,7 +258,8 @@ export async function mountAetherScene(
         graphics,
         mesh: { handle: meshHandle, payloadVersion: 1, data: mesh },
         material: { handle: materialHandle, payloadVersion: 1, material },
-        ...(environmentAsset ? { environment: environmentAsset } : {})
+        ...(environmentAsset ? { environment: environmentAsset } : {}),
+        background: activeBackground
       })
     )
     .addPlugin(
@@ -438,6 +470,7 @@ export async function mountAetherScene(
   return Object.freeze({
     backend: graphics.backend,
     environmentMode: activeEnvironmentMode,
+    backgroundMode: activeBgMode,
     diagnostics: () => app.getResource(BaselineRenderDiagnosticsResource),
     csmDiagnostics: () => app.getResource(CsmDiagnosticsResource),
     nativeMetrics: () => {

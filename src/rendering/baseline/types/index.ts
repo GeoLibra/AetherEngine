@@ -1,4 +1,5 @@
 export type {
+  BaselineEnvironmentFrame,
   BaselineLightListFrame,
   BaselinePreparedFrame,
   BaselineRenderDiagnostics,

@@ -18,6 +18,15 @@ export const Quat = Object.freeze({
     return [value[0] * inverse, value[1] * inverse, value[2] * inverse, value[3] * inverse];
   },
 
+  conjugate(value: Quaternion): Quaternion {
+    return [-value[0], -value[1], -value[2], value[3]];
+  },
+
+  invert(value: Quaternion): Quaternion {
+    const normalized = Quat.normalize(value);
+    return [-normalized[0], -normalized[1], -normalized[2], normalized[3]];
+  },
+
   fromAxisAngle(axis: Vec3, radians: number): Quaternion {
     const length = Math.hypot(axis[0], axis[1], axis[2]);
     if (!Number.isFinite(length) || length < MIN_QUATERNION_LENGTH) {

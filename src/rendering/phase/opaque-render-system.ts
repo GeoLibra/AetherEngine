@@ -27,8 +27,10 @@ export function createOpaqueRenderSystem(
     scope: 'per-view',
     runIf: ({ view }) => view?.id === input.phase.viewId,
     setup(pass) {
+      const target =
+        typeof input.colorTarget === 'function' ? input.colorTarget() : input.colorTarget;
       const surface =
-        input.colorTarget ??
+        target ??
         pass.createTexture(input.color, {
           origin: {
             kind: 'imported',
@@ -55,7 +57,14 @@ export function createOpaqueRenderSystem(
               ),
               environmentBrdfLut: pass.readTexture(input.environment.environmentBrdfLut, 'sampled')
             });
-      return Object.freeze({ color, depth: depthAttachment, lightList, environment });
+      const background =
+        input.background === undefined
+          ? undefined
+          : Object.freeze({
+              uniformBuffer: pass.readBuffer(input.background.uniformBuffer, 'uniform'),
+              skyTexture: pass.readTexture(input.background.skyTexture, 'sampled')
+            });
+      return Object.freeze({ color, depth: depthAttachment, lightList, environment, background });
     },
     run(context, resources) {
       const attachments = resources as {
@@ -68,6 +77,10 @@ export function createOpaqueRenderSystem(
           prefilteredRadianceMap: TextureHandle;
           environmentBrdfLut: TextureHandle;
         };
+        background?: {
+          uniformBuffer: import('../../render-graph').BufferHandle;
+          skyTexture: TextureHandle;
+        };
       };
       const draws = entries.map(([token]) => context.drawResources(token));
       const lightListGroup =
@@ -79,12 +92,48 @@ export function createOpaqueRenderSystem(
               attachments.lightList,
               attachments.environment
             );
+      const backgroundBindings =
+        input.background === undefined || attachments.background === undefined
+          ? undefined
+          : {
+              pipeline: context.renderPipeline(input.background.pipelineToken),
+              uniformGroup: context.device.createBindGroup({
+                label: 'aether-skybox-uniforms',
+                layout: context.bindGroupLayout(input.background.uniformLayoutToken),
+                entries: [
+                  {
+                    binding: 0,
+                    resource: context.buffer(attachments.background.uniformBuffer, 'uniform')
+                  }
+                ]
+              }),
+              textureGroup: context.device.createBindGroup({
+                label: 'aether-skybox-texture',
+                layout: context.bindGroupLayout(input.background.textureLayoutToken),
+                entries: [
+                  {
+                    binding: 0,
+                    resource: context.texture(attachments.background.skyTexture, 'sampled')
+                  },
+                  {
+                    binding: 1,
+                    resource: context.device.createSampler({
+                      minFilter: 'linear',
+                      magFilter: 'linear',
+                      mipmapFilter: 'linear',
+                      addressModeU: 'repeat',
+                      addressModeV: 'clamp-to-edge'
+                    })
+                  }
+                ]
+              })
+            };
       const raster = context.beginRaster({
         label: 'opaque-draw',
         colorAttachments: [
           {
             texture: attachments.color,
-            loadOp: 'clear',
+            loadOp: input.colorLoadOp ?? 'clear',
             storeOp: 'store',
             clearValue: { r: 0, g: 0, b: 0, a: 1 }
           }
@@ -98,6 +147,12 @@ export function createOpaqueRenderSystem(
       });
       raster.setViewport(0, 0, input.color.width, input.color.height, 0, 1);
       raster.setScissorRect(0, 0, input.color.width, input.color.height);
+      if (backgroundBindings !== undefined) {
+        raster.setPipeline(backgroundBindings.pipeline);
+        raster.setBindGroup(0, backgroundBindings.uniformGroup);
+        raster.setBindGroup(1, backgroundBindings.textureGroup);
+        raster.draw(3);
+      }
       for (const draw of draws) {
         raster.setPipeline(draw.pipeline);
         draw.bindGroups.forEach((group, index) =>

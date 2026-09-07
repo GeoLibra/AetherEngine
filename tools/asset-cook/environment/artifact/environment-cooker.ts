@@ -14,13 +14,16 @@ import {
   computeSha256Digest
 } from './recipe-key';
 import type {
+  BackgroundPayload,
   BrdfLutArtifactV1,
   EnvironmentArtifactV1,
+  EnvironmentArtifactV2,
   EnvironmentCookRecipe,
   EnvironmentMip,
   EnvironmentTexturePayload
 } from './types';
 import type { CanonicalHdrPanorama } from '../decode/types';
+import { cookPanoramaMipChain } from '../filtering/panorama-filter';
 
 export interface CookEnvironmentResult {
   readonly environmentArtifact: EnvironmentArtifactV1;
@@ -28,6 +31,15 @@ export interface CookEnvironmentResult {
   readonly radianceBlob: Uint8Array;
   readonly brdfLutArtifact: BrdfLutArtifactV1;
   readonly brdfLutBlob: Uint8Array;
+}
+
+export interface CookEnvironmentResultV2 {
+  readonly environmentArtifact: EnvironmentArtifactV2;
+  readonly irradianceBlob: Uint8Array;
+  readonly radianceBlob: Uint8Array;
+  readonly brdfLutArtifact: BrdfLutArtifactV1;
+  readonly brdfLutBlob: Uint8Array;
+  readonly panoramaBlob?: Uint8Array | undefined;
 }
 
 export const DEFAULT_COOK_RECIPES: Record<
@@ -41,7 +53,8 @@ export const DEFAULT_COOK_RECIPES: Record<
     radianceBaseSize: [64, 32] as [number, number],
     radianceSamples: 64,
     lutSize: 32,
-    lutSamples: 128
+    lutSamples: 128,
+    panoramaSize: [64, 32] as [number, number]
   }),
   'demo-v1': Object.freeze({
     recipeName: 'demo-v1',
@@ -50,7 +63,8 @@ export const DEFAULT_COOK_RECIPES: Record<
     radianceBaseSize: [256, 128] as [number, number],
     radianceSamples: 1024,
     lutSize: 128,
-    lutSamples: 2048
+    lutSamples: 2048,
+    panoramaSize: [1024, 512] as [number, number]
   }),
   'quality-v1': Object.freeze({
     recipeName: 'quality-v1',
@@ -59,7 +73,8 @@ export const DEFAULT_COOK_RECIPES: Record<
     radianceBaseSize: [512, 256] as [number, number],
     radianceSamples: 4096,
     lutSize: 256,
-    lutSamples: 4096
+    lutSamples: 4096,
+    panoramaSize: [2048, 1024] as [number, number]
   })
 });
 
@@ -222,5 +237,46 @@ export function cookEnvironmentPanorama(
     radianceBlob,
     brdfLutArtifact: lut.artifact,
     brdfLutBlob: lut.blob
+  };
+}
+
+/**
+ * Cooks a CanonicalHdrPanorama into an EnvironmentArtifact@2 package with an optional sharp background panorama.
+ */
+export function cookEnvironmentPanoramaV2(
+  canonicalHdr: CanonicalHdrPanorama,
+  recipe: EnvironmentCookRecipe = DEFAULT_COOK_RECIPES['demo-v1'],
+  includeBackground = true
+): CookEnvironmentResultV2 {
+  const baseResult = cookEnvironmentPanorama(canonicalHdr, recipe);
+  let background: BackgroundPayload;
+  let panoramaBlob: Uint8Array | undefined;
+
+  if (includeBackground) {
+    const panoramaResult = cookPanoramaMipChain(canonicalHdr, recipe.panoramaSize);
+    panoramaBlob = panoramaResult.blob;
+    background = {
+      kind: 'panorama',
+      samplingAbi: 'sky-equirect-linear@1',
+      payload: panoramaResult.payload,
+      mipFilter: 'spherical-area@1'
+    };
+  } else {
+    background = { kind: 'absent' };
+  }
+
+  const environmentArtifact: EnvironmentArtifactV2 = {
+    ...baseResult.environmentArtifact,
+    schema: 'EnvironmentArtifact@2',
+    background
+  };
+
+  return {
+    environmentArtifact,
+    irradianceBlob: baseResult.irradianceBlob,
+    radianceBlob: baseResult.radianceBlob,
+    brdfLutArtifact: baseResult.brdfLutArtifact,
+    brdfLutBlob: baseResult.brdfLutBlob,
+    panoramaBlob
   };
 }

@@ -21,8 +21,18 @@ import type {
 import type { PreparedDrawPacket } from '../../phase';
 import type { RenderView } from '../../visibility';
 import type { BaselinePostColorPreparation } from '../baseline-post-color';
+import type { PreparedBackgroundFrame } from '../../background/prepare';
+import type { ViewBackground } from '../../background/types';
 
-/** Submission-scoped LightList inputs and environment resources consumed by forward shading. */
+/** Environment resources consumed by forward IBL shading. */
+export interface BaselineEnvironmentFrame {
+  readonly buffer: RHIBuffer;
+  readonly irradianceMap: RHITexture;
+  readonly prefilteredRadianceMap: RHITexture;
+  readonly environmentBrdfLut: RHITexture;
+}
+
+/** Submission-scoped LightList inputs consumed by forward shading. */
 export type BaselineLightListFrame =
   | Readonly<{
       source: 'gpu-compute';
@@ -32,10 +42,6 @@ export type BaselineLightListFrame =
       recorder: PreparedWebGpuLightListRecorder;
       forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
       forwardBindGroupLayout: RHIBindGroupLayout;
-      environmentBuffer: RHIBuffer;
-      irradianceMap: RHITexture;
-      prefilteredRadianceMap: RHITexture;
-      environmentBrdfLut: RHITexture;
       release(): void;
       retain(submission: RHISubmission): void;
     }>
@@ -48,10 +54,6 @@ export type BaselineLightListFrame =
       recorder: PreparedWebGlLightListRecorder;
       forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
       forwardBindGroupLayout: RHIBindGroupLayout;
-      environmentBuffer: RHIBuffer;
-      irradianceMap: RHITexture;
-      prefilteredRadianceMap: RHITexture;
-      environmentBrdfLut: RHITexture;
       release(): void;
       retain(submission: RHISubmission): void;
     }>;
@@ -104,6 +106,10 @@ export type BaselinePreparedFrame =
       status: 'ready';
       view: RenderView;
       packets: readonly PreparedDrawPacket[];
+      /** Environment resources consumed by forward IBL shading. */
+      environment?: BaselineEnvironmentFrame;
+      /** Prepared fullscreen background (skybox/solid/panorama). */
+      background?: PreparedBackgroundFrame;
       /** Prepared LightList input for standard-lit packets; legacy/custom packets may omit it. */
       lightList?: BaselineLightListFrame;
       postColor?: BaselinePostColorPreparation;
@@ -132,4 +138,8 @@ export interface BaselineRenderingOptions {
   }>;
   /** Optional pre-cooked real environment asset; if omitted, defaults to synthetic fallback. */
   readonly environment?: EnvironmentAsset | undefined;
+  /** Optional view background configuration (skybox/solid/none). */
+  readonly background?: ViewBackground | undefined;
+  /** Optional toggle to force separate physical passes instead of merging. */
+  readonly forceSeparatePasses?: boolean | undefined;
 }

@@ -31,7 +31,11 @@ import {
 import type { ExtractedView } from '../camera';
 import type { RenderEntityId } from '../world';
 import type { RenderTransformFact } from '../mesh';
-import type { BaselineLightListFrame, BaselineRenderingOptions } from './types';
+import type {
+  BaselineEnvironmentFrame,
+  BaselineLightListFrame,
+  BaselineRenderingOptions
+} from './types';
 import {
   LIGHT_LIST_SHADER_MAX_LIGHTS,
   packWebGlLightListInput,
@@ -57,9 +61,11 @@ import {
   packBaselineObjectUniform as objectUniform,
   packBaselineViewUniform as viewUniform
 } from './baseline-uniforms';
+import { prepareBackground, type PreparedBackgroundFrame } from '../background/prepare';
+import type { ViewBackground } from '../background/types';
 
 export type { BaselinePostColorPreparation } from './baseline-post-color';
-export type { BaselineLightListFrame } from './types';
+export type { BaselineEnvironmentFrame, BaselineLightListFrame } from './types';
 
 const STORAGE_UNIFORM_UPLOAD_BUFFER_USAGE = (1 << 3) | (1 << 6) | (1 << 7);
 const STORAGE_UPLOAD_BUFFER_USAGE = (1 << 3) | (1 << 7);
@@ -267,6 +273,36 @@ export class BaselineStandardLitPreparation {
     return this.bindGroupLayouts[3]!;
   }
 
+  get environmentFrame(): BaselineEnvironmentFrame {
+    return Object.freeze({
+      buffer: this.environmentBuffer,
+      irradianceMap: this.environmentTextures.irradianceMap,
+      prefilteredRadianceMap: this.environmentTextures.prefilteredRadianceMap,
+      environmentBrdfLut: this.environmentTextures.environmentBrdfLut
+    });
+  }
+
+  /** Prepares background resources for the given view and background configuration. */
+  createBackgroundFrame(
+    view: ExtractedView,
+    background?: ViewBackground
+  ): PreparedBackgroundFrame | undefined {
+    const bg = background ?? this.options.background;
+    if (bg === undefined || bg.kind === 'none') return undefined;
+    const { device } = this.options.graphics;
+    return prepareBackground({
+      device,
+      view,
+      background: bg,
+      colorFormat: 'rgba16float',
+      depthFormat: 'depth24plus',
+      environmentAsset: this.options.environment,
+      environmentCache: sharedEnvironmentTextureCache,
+      depthMode: 'standard',
+      reconstructionMode: 'vertex'
+    });
+  }
+
   /** Uploads immutable backend input resources consumed by one LightList build submission. */
   createLightListFrame(input: {
     viewLayerMask: number;
@@ -296,11 +332,7 @@ export class BaselineStandardLitPreparation {
         receiverCount: input.receivers.length,
         recorder: this.lightListRecorder as PreparedWebGpuLightListRecorder,
         forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
-        forwardBindGroupLayout: this.lightListBindGroupLayout,
-        environmentBuffer: this.environmentBuffer,
-        irradianceMap: this.environmentTextures.irradianceMap,
-        prefilteredRadianceMap: this.environmentTextures.prefilteredRadianceMap,
-        environmentBrdfLut: this.environmentTextures.environmentBrdfLut
+        forwardBindGroupLayout: this.lightListBindGroupLayout
       });
     }
     const maxTextureDimension2D = device.capabilities.limits.maxTextureDimension2D;
@@ -333,11 +365,7 @@ export class BaselineStandardLitPreparation {
       maxTextureDimension2D,
       recorder: this.lightListRecorder as PreparedWebGlLightListRecorder,
       forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
-      forwardBindGroupLayout: this.lightListBindGroupLayout,
-      environmentBuffer: this.environmentBuffer,
-      irradianceMap: this.environmentTextures.irradianceMap,
-      prefilteredRadianceMap: this.environmentTextures.prefilteredRadianceMap,
-      environmentBrdfLut: this.environmentTextures.environmentBrdfLut
+      forwardBindGroupLayout: this.lightListBindGroupLayout
     });
   }
 

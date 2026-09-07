@@ -33,6 +33,14 @@ export {
 } from './post-color';
 
 export {
+  SKYBOX_SHADER_ABI_VERSION,
+  SKYBOX_SHADER_ARTIFACT,
+  SKYBOX_SHADER_MODULE,
+  SKYBOX_SHADER_SOURCE,
+  SKYBOX_SHADER_GENERATED_ARTIFACT
+} from './skybox';
+
+export {
   STANDARD_LIT_LIST_SHADER_ABI_VERSION,
   STANDARD_LIT_LIST_SHADER_MODULE_KEY,
   STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT,
@@ -54,6 +62,7 @@ import {
 } from '../../rhi/webgl2/shader';
 import { LIGHT_LIST_WEBGL2_SHADER_ARTIFACT } from './light-list';
 import { POST_COLOR_SHADER_ABI_VERSION, POST_COLOR_SHADER_ARTIFACT } from './post-color';
+import { SKYBOX_SHADER_ABI_VERSION, SKYBOX_SHADER_ARTIFACT } from './skybox';
 import { STANDARD_LIT_SHADER_ARTIFACT } from './standard-lit';
 import {
   STANDARD_LIT_LIST_SHADER_ABI_VERSION,
@@ -73,6 +82,13 @@ export const BUILT_IN_SHADER_REGISTRATIONS: readonly BuiltInShaderRegistration[]
     webgl2: Object.freeze({
       version: POST_COLOR_SHADER_ABI_VERSION,
       targetAbiFingerprint: 'post-color-v1'
+    })
+  }),
+  Object.freeze({
+    artifact: SKYBOX_SHADER_ARTIFACT,
+    webgl2: Object.freeze({
+      version: SKYBOX_SHADER_ABI_VERSION,
+      targetAbiFingerprint: 'skybox-v1'
     })
   }),
   Object.freeze({

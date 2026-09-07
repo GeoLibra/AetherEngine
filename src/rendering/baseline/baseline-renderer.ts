@@ -19,6 +19,13 @@ import type {
   BaselineRenderingOptions
 } from './types';
 import type { RHITexture } from '../../rhi/contracts';
+import { NullDevice } from '../../rhi';
+import {
+  contributeBackground,
+  createBackgroundRenderSystem,
+  evaluatePassMerging
+} from '../background/graph';
+import { createPostColorContribution } from './baseline-post-color-graph';
 
 /** Executes immutable ready snapshots without compiling or creating draw resources in the frame loop. */
 export class BaselineRenderer {
@@ -69,8 +76,72 @@ export class BaselineRenderer {
       prepared.postColor === undefined
         ? undefined
         : createPostColorContribution(graph, prepared, configuration);
+    const environment =
+      prepared.environment === undefined ? undefined : contributeEnvironment(graph, prepared);
     const lightList =
       prepared.lightList === undefined ? undefined : contributeLightList(graph, prepared);
+    const bgFrame = prepared.background;
+    const bgContribution =
+      bgFrame !== undefined && bgFrame.status === 'ready'
+        ? contributeBackground(graph, bgFrame, prepared.view.id)
+        : undefined;
+    const mergeDecision =
+      bgFrame !== undefined && bgFrame.status === 'ready'
+        ? evaluatePassMerging({
+            backgroundEnabled: true,
+            backgroundRepresentation: bgFrame.representation ?? 'solid',
+            colorFormat: post === undefined ? configuration.format : 'rgba16float',
+            depthFormat: 'depth24plus',
+            width: configuration.width,
+            height: configuration.height,
+            // Pass merging is enabled on WebGPU (which validates bind groups at draw time)
+            // or when there are no mesh draw calls in the pass (e.g. background-only scenes).
+            // On NullDevice/WebGL2 with mesh draws, pipeline layout switching requires separate passes.
+            hasInterveningDependency:
+              (this.options.graphics.backend !== 'webgpu' ||
+                this.options.graphics.device instanceof NullDevice) &&
+              prepared.packets.length > 0,
+            forceSeparate: this.options.forceSeparatePasses
+          })
+        : undefined;
+    const merged = mergeDecision?.canMerge === true;
+    const colorTarget =
+      post?.hdrTarget ??
+      graph.createTexture(
+        attachment(
+          configuration.width,
+          configuration.height,
+          post === undefined ? configuration.format : 'rgba16float',
+          'color-attachment'
+        ),
+        post === undefined
+          ? {
+              origin: {
+                kind: 'imported',
+                initialState: 'undefined',
+                acquire: { kind: 'external-acquire', id: prepared.view.surface }
+              }
+            }
+          : undefined
+      );
+
+    let activeColorTarget = colorTarget;
+    const bgSystem =
+      !merged && bgContribution !== undefined && bgFrame !== undefined && bgFrame.status === 'ready'
+        ? createBackgroundRenderSystem({
+            viewId: prepared.view.id,
+            prepared: bgFrame,
+            colorTarget,
+            publishColor(color) {
+              activeColorTarget = color;
+            },
+            uniformBuffer: bgContribution.uniformBuffer,
+            skyTexture: bgContribution.skyTexture,
+            width: configuration.width,
+            height: configuration.height
+          })
+        : undefined;
+
     const opaque = createOpaqueRenderSystem({
       phase: phase.snapshot,
       surfaceFrame: { kind: 'surface-frame', id: prepared.view.surface },
@@ -86,6 +157,10 @@ export class BaselineRenderer {
         'depth24plus',
         'depth-stencil-attachment'
       ),
+      colorLoadOp: bgSystem !== undefined ? 'load' : 'clear',
+      colorTarget: () => activeColorTarget,
+      present: post === undefined,
+      ...(post === undefined ? {} : { publishColor: post.publishSource }),
       ...(lightList === undefined || prepared.lightList === undefined
         ? {}
         : {
@@ -96,39 +171,57 @@ export class BaselineRenderer {
               bindGroupLayout: prepared.lightList.forwardBindGroupLayoutToken
             } as NonNullable<Parameters<typeof createOpaqueRenderSystem>[0]['lightList']>
           }),
-      ...(lightList === undefined || prepared.lightList === undefined
+      ...(environment === undefined || prepared.environment === undefined
         ? {}
         : {
             environment: {
-              buffer: lightList.environment,
-              irradianceMap: lightList.irradianceMap,
-              prefilteredRadianceMap: lightList.prefilteredRadianceMap,
-              environmentBrdfLut: lightList.environmentBrdfLut
+              buffer: environment.buffer,
+              irradianceMap: environment.irradianceMap,
+              prefilteredRadianceMap: environment.prefilteredRadianceMap,
+              environmentBrdfLut: environment.environmentBrdfLut
             }
           }),
-      ...(post === undefined
-        ? {}
-        : {
-            colorTarget: post.hdrTarget,
-            present: false,
-            publishColor: post.publishSource
-          })
+      ...(merged &&
+      bgContribution !== undefined &&
+      bgFrame !== undefined &&
+      bgFrame.status === 'ready'
+        ? {
+            background: {
+              pipelineToken: bgFrame.pipelineToken!,
+              uniformLayoutToken: bgFrame.uniformLayoutToken!,
+              textureLayoutToken: bgFrame.textureLayoutToken!,
+              uniformBuffer: bgContribution.uniformBuffer,
+              skyTexture: bgContribution.skyTexture
+            }
+          }
+        : {})
     });
     const systems = new RenderSystemRegistry();
-    const opaqueToken = systems.add(opaque.descriptor);
+    const bgToken = bgSystem !== undefined ? systems.add(bgSystem) : undefined;
+    const opaqueToken = systems.add({
+      ...opaque.descriptor,
+      after: bgToken !== undefined ? [bgToken] : []
+    });
     if (post !== undefined) systems.add(post.descriptor(opaqueToken));
     const compiled = compileRenderSystems(systems, { views: [prepared.view], graph });
     let execution: ReturnType<RenderGraphExecutor['execute']>;
     try {
       const lightFrame = prepared.lightList;
+      const environmentFrame = prepared.environment;
       const resources = new Map();
+      if (environment !== undefined && environmentFrame !== undefined) {
+        resources.set(environment.buffer, environmentFrame.buffer);
+        resources.set(environment.irradianceMap, environmentFrame.irradianceMap);
+        resources.set(environment.prefilteredRadianceMap, environmentFrame.prefilteredRadianceMap);
+        resources.set(environment.environmentBrdfLut, environmentFrame.environmentBrdfLut);
+      }
       if (lightList !== undefined && lightFrame !== undefined) {
         resources.set(lightList.lights, lightFrame.lights);
         resources.set(lightList.receivers, lightFrame.receivers);
-        resources.set(lightList.environment, lightFrame.environmentBuffer);
-        resources.set(lightList.irradianceMap, lightFrame.irradianceMap);
-        resources.set(lightList.prefilteredRadianceMap, lightFrame.prefilteredRadianceMap);
-        resources.set(lightList.environmentBrdfLut, lightFrame.environmentBrdfLut);
+      }
+      if (bgContribution !== undefined && bgFrame !== undefined && bgFrame.status === 'ready') {
+        resources.set(bgContribution.uniformBuffer, bgFrame.uniformBuffer!);
+        resources.set(bgContribution.skyTexture, bgFrame.texture!);
       }
       if (post !== undefined) {
         resources.set(post.uniform, post.prepared.uniformBuffer);
@@ -138,6 +231,12 @@ export class BaselineRenderer {
         renderPipelines.set(lightFrame.recorder.pipelineToken, lightFrame.recorder.pipeline);
       if (post !== undefined)
         renderPipelines.set(post.prepared.pipelineToken, post.prepared.pipeline);
+      if (
+        bgFrame !== undefined &&
+        bgFrame.status === 'ready' &&
+        bgFrame.pipelineToken !== undefined
+      )
+        renderPipelines.set(bgFrame.pipelineToken, bgFrame.pipeline!);
       const bindGroupLayouts = new Map();
       if (lightFrame !== undefined) {
         bindGroupLayouts.set(
@@ -152,6 +251,15 @@ export class BaselineRenderer {
       if (post !== undefined) {
         bindGroupLayouts.set(post.prepared.textureLayoutToken, post.prepared.textureLayout);
         bindGroupLayouts.set(post.prepared.uniformLayoutToken, post.prepared.uniformLayout);
+      }
+      if (
+        bgFrame !== undefined &&
+        bgFrame.status === 'ready' &&
+        bgFrame.uniformLayoutToken !== undefined &&
+        bgFrame.textureLayoutToken !== undefined
+      ) {
+        bindGroupLayouts.set(bgFrame.uniformLayoutToken, bgFrame.uniformLayout!);
+        bindGroupLayouts.set(bgFrame.textureLayoutToken, bgFrame.textureLayout!);
       }
       execution = new RenderGraphExecutor().execute(compiled.plan, {
         device,
@@ -169,9 +277,11 @@ export class BaselineRenderer {
           : {})
       });
       lightFrame?.retain(execution.submission);
+      bgFrame?.retain(execution.submission);
     } catch (error) {
       for (const packet of phase.snapshot.packets) packet.release();
       prepared.lightList?.release();
+      prepared.background?.release();
       throw error;
     }
     return Object.freeze({
@@ -192,130 +302,15 @@ export class BaselineRenderer {
   }
 }
 
-function createPostColorContribution(
-  graph: RenderGraphBuilder,
-  prepared: Extract<BaselinePreparedFrame, { status: 'ready' }>,
-  configuration: NonNullable<BaselineRenderingOptions['graphics']['surface']['configuration']>
-) {
-  const postColor = prepared.postColor!;
-  const hdrTarget = graph.createTexture({
-    width: configuration.width,
-    height: configuration.height,
-    depthOrArrayLayers: 1,
-    mipLevelCount: 1,
-    sampleCount: 1,
-    format: 'rgba16float',
-    usage: ['color-attachment', 'sampled']
-  });
-  const uniform = graph.createBuffer(
-    { size: postColor.uniformBuffer.size, usage: ['uniform'] },
-    {
-      origin: {
-        kind: 'imported',
-        initialState: 'uniform',
-        acquire: { kind: 'external-acquire', id: `${prepared.view.id}:post-color` }
-      }
-    }
-  );
-  let source: import('../../render-graph').TextureHandle | undefined;
-  return {
-    hdrTarget,
-    uniform,
-    prepared: postColor,
-    publishSource(value: import('../../render-graph').TextureHandle) {
-      source = value;
-    },
-    descriptor(after: import('../../render-graph').RenderSystemToken) {
-      return {
-        id: 'post-color',
-        scope: 'per-view' as const,
-        after: [after],
-        runIf: ({ view }: import('../../render-graph').RenderSystemConditionContext) =>
-          view?.id === prepared.view.id,
-        setup(pass: import('../../render-graph').PassBuilder) {
-          if (source === undefined) throw new Error('Opaque HDR output was not published.');
-          const sceneColor = pass.readTexture(source, 'sampled');
-          const postUniform = pass.readBuffer(uniform, 'uniform');
-          const surfaceTarget = pass.createTexture(
-            attachment(
-              configuration.width,
-              configuration.height,
-              configuration.format,
-              'color-attachment'
-            ),
-            {
-              origin: {
-                kind: 'imported',
-                initialState: 'undefined',
-                acquire: { kind: 'external-acquire', id: prepared.view.surface }
-              }
-            }
-          );
-          const output = pass.writeTexture(surfaceTarget, 'color-attachment');
-          pass.presentTexture(output, { kind: 'surface-frame', id: prepared.view.surface });
-          return Object.freeze({ sceneColor, uniform: postUniform, output });
-        },
-        run(
-          context: import('../../render-graph').RestrictedPassContext,
-          resources: {
-            sceneColor: import('../../render-graph').TextureHandle;
-            uniform: import('../../render-graph').BufferHandle;
-            output: import('../../render-graph').TextureHandle;
-          }
-        ) {
-          const textureGroup = context.device.createBindGroup({
-            label: 'aether-post-color-texture',
-            layout: context.bindGroupLayout(postColor.textureLayoutToken),
-            entries: [
-              { binding: 0, resource: context.texture(resources.sceneColor, 'sampled') },
-              {
-                binding: 1,
-                resource: context.device.createSampler({ minFilter: 'linear', magFilter: 'linear' })
-              }
-            ]
-          });
-          const uniformGroup = context.device.createBindGroup({
-            label: 'aether-post-color-uniform',
-            layout: context.bindGroupLayout(postColor.uniformLayoutToken),
-            entries: [{ binding: 0, resource: context.buffer(resources.uniform, 'uniform') }]
-          });
-          const pipeline = context.renderPipeline(postColor.pipelineToken);
-          const raster = context.beginRaster({
-            label: 'post-color',
-            colorAttachments: [
-              {
-                texture: resources.output,
-                loadOp: 'clear',
-                storeOp: 'store',
-                clearValue: { r: 0, g: 0, b: 0, a: 1 }
-              }
-            ]
-          });
-          raster.setViewport(0, 0, configuration.width, configuration.height, 0, 1);
-          raster.setScissorRect(0, 0, configuration.width, configuration.height);
-          raster.setPipeline(pipeline);
-          raster.setBindGroup(0, textureGroup);
-          raster.setBindGroup(1, uniformGroup);
-          raster.draw(3);
-          raster.end();
-        }
-      };
-    }
-  };
-}
-
-function contributeLightList(
+function contributeEnvironment(
   graph: RenderGraphBuilder,
   prepared: Extract<BaselinePreparedFrame, { status: 'ready' }>
 ) {
-  if (prepared.lightList === undefined) throw new Error('Baseline LightList input is missing.');
+  if (prepared.environment === undefined) throw new Error('Baseline Environment input is missing.');
   const origin = {
     kind: 'imported' as const,
-    initialState:
-      prepared.lightList.source === 'gpu-compute'
-        ? ('storage-read' as const)
-        : ('sampled' as const),
-    acquire: { kind: 'external-acquire' as const, id: `${prepared.view.id}:light-list-input` }
+    initialState: 'sampled' as const,
+    acquire: { kind: 'external-acquire' as const, id: `${prepared.view.id}:environment-input` }
   };
   const textureHandle = (raw: RHITexture, id: string) =>
     graph.createTexture(
@@ -331,28 +326,44 @@ function contributeLightList(
       { origin: { ...origin, acquire: { ...origin.acquire, id } } }
     );
   const irradianceMap = textureHandle(
-    prepared.lightList.irradianceMap,
+    prepared.environment.irradianceMap,
     `${origin.acquire.id}:irradiance`
   );
   const prefilteredRadianceMap = textureHandle(
-    prepared.lightList.prefilteredRadianceMap,
+    prepared.environment.prefilteredRadianceMap,
     `${origin.acquire.id}:prefiltered-radiance`
   );
   const environmentBrdfLut = textureHandle(
-    prepared.lightList.environmentBrdfLut,
+    prepared.environment.environmentBrdfLut,
     `${origin.acquire.id}:brdf-lut`
   );
-  if (prepared.lightList.source === 'gpu-compute') {
-    const environment = graph.createBuffer(
-      { size: prepared.lightList.environmentBuffer.size, usage: ['uniform'] },
-      {
-        origin: {
-          kind: 'imported',
-          initialState: 'uniform',
-          acquire: { kind: 'external-acquire', id: `${origin.acquire.id}:environment` }
-        }
+  const buffer = graph.createBuffer(
+    { size: prepared.environment.buffer.size, usage: ['uniform'] },
+    {
+      origin: {
+        kind: 'imported',
+        initialState: 'uniform',
+        acquire: { kind: 'external-acquire', id: `${origin.acquire.id}:environment` }
       }
-    );
+    }
+  );
+  return { buffer, irradianceMap, prefilteredRadianceMap, environmentBrdfLut };
+}
+
+function contributeLightList(
+  graph: RenderGraphBuilder,
+  prepared: Extract<BaselinePreparedFrame, { status: 'ready' }>
+) {
+  if (prepared.lightList === undefined) throw new Error('Baseline LightList input is missing.');
+  const origin = {
+    kind: 'imported' as const,
+    initialState:
+      prepared.lightList.source === 'gpu-compute'
+        ? ('storage-read' as const)
+        : ('sampled' as const),
+    acquire: { kind: 'external-acquire' as const, id: `${prepared.view.id}:light-list-input` }
+  };
+  if (prepared.lightList.source === 'gpu-compute') {
     const lights = graph.createBuffer(
       { size: prepared.lightList.lights.size, usage: ['storage-read', 'uniform'] },
       { origin }
@@ -377,28 +388,23 @@ function contributeLightList(
       }
     });
     if (output === undefined) throw new Error('WebGPU LightList did not publish output.');
-    return {
-      lights,
-      receivers,
-      environment,
-      irradianceMap,
-      prefilteredRadianceMap,
-      environmentBrdfLut,
-      output
-    };
+    return { lights, receivers, output };
   }
+  const textureHandle = (raw: RHITexture, id: string) =>
+    graph.createTexture(
+      {
+        width: raw.width,
+        height: raw.height,
+        depthOrArrayLayers: raw.depthOrArrayLayers,
+        mipLevelCount: raw.descriptor.mipLevelCount ?? 1,
+        sampleCount: raw.descriptor.sampleCount ?? 1,
+        format: raw.format,
+        usage: ['sampled']
+      },
+      { origin: { ...origin, acquire: { ...origin.acquire, id } } }
+    );
   const lights = textureHandle(prepared.lightList.lights, `${origin.acquire.id}:lights`);
   const receivers = textureHandle(prepared.lightList.receivers, `${origin.acquire.id}:receivers`);
-  const environment = graph.createBuffer(
-    { size: prepared.lightList.environmentBuffer.size, usage: ['uniform'] },
-    {
-      origin: {
-        kind: 'imported',
-        initialState: 'uniform',
-        acquire: { kind: 'external-acquire', id: `${origin.acquire.id}:environment` }
-      }
-    }
-  );
   let output: import('../lighting').WebGlFragmentLightListBuildOutput | undefined;
   createWebGlFragmentLightListImplementation({
     capacity: BASELINE_LIGHT_LIST_CAPACITY,
@@ -414,15 +420,7 @@ function contributeLightList(
     }
   });
   if (output === undefined) throw new Error('WebGL2 LightList did not publish output.');
-  return {
-    lights,
-    receivers,
-    environment,
-    irradianceMap,
-    prefilteredRadianceMap,
-    environmentBrdfLut,
-    output
-  };
+  return { lights, receivers, output };
 }
 
 function skipped(

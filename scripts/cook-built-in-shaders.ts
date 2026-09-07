@@ -48,6 +48,16 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     targetBackend: 'both'
   },
   {
+    id: 'skybox',
+    exportName: 'SKYBOX_SHADER_ARTIFACT',
+    exportAliases: ['SKYBOX_SHADER_GENERATED_ARTIFACT'],
+    sourcePath: 'src/shader/builtins/skybox/skybox.wgsl',
+    metadataPath: 'src/shader/builtins/skybox/skybox.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/skybox/skybox.generated.ts',
+    sourceUri: 'asset://aether/builtins/skybox.wgsl',
+    targetBackend: 'both'
+  },
+  {
     id: 'light-list-webgpu',
     exportName: 'LIGHT_LIST_SHADER_ARTIFACT',
     exportAliases: ['LIGHT_LIST_SHADER_GENERATED_ARTIFACT'],

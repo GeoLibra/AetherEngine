@@ -20,9 +20,28 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
     message: 'Starting Aether Engine…'
   });
 
+  // Read backend preference from URL query parameter (?backend=webgl2 or ?backend=webgpu)
+  const backendPreference = (() => {
+    if (typeof window === 'undefined') return undefined;
+    const requested = new URLSearchParams(window.location.search).get('backend');
+    const valid = new Set(['webgpu', 'webgl2'] as const);
+    const hasPreference = valid.has(requested as any);
+    return hasPreference ? [requested as 'webgpu' | 'webgl2'] : undefined;
+  })();
+
   // Leva controls
   const [
-    { castsShadow, sunlight, lightAngle, shadowDistance, environmentMode, metallic, roughness }
+    {
+      castsShadow,
+      sunlight,
+      lightAngle,
+      shadowDistance,
+      environmentMode,
+      backgroundMode,
+      backgroundMultiplier,
+      metallic,
+      roughness
+    }
   ] = useControls(
     () => ({
       'Environment & Lighting': folder({
@@ -33,6 +52,22 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
             'Synthetic Fallback': 'synthetic'
           },
           label: 'Environment IBL'
+        },
+        backgroundMode: {
+          value: 'hdr',
+          options: {
+            'HDR Skybox': 'hdr',
+            'Solid Color': 'solid',
+            'None (Black)': 'none'
+          },
+          label: 'Background'
+        },
+        backgroundMultiplier: {
+          value: 1.0,
+          min: 0.0,
+          max: 3.0,
+          step: 0.1,
+          label: 'Sky Multiplier'
         },
         sunlight: { value: true, label: 'Sunlight (12k Lux)' },
         castsShadow: { value: true, label: 'Cast Shadows' },
@@ -73,15 +108,23 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
 
     void host
       .mount(target, {
+        preference: backendPreference,
         environment: environmentMode as 'hdr' | 'synthetic',
+        background: backgroundMode as 'hdr' | 'solid' | 'none',
+        backgroundMultiplier,
         metallic,
         roughness,
         sunlight
       })
       .then((scene) => {
         sceneRef.current = scene;
+        (window as unknown as Record<string, unknown>).__aetherScene = scene;
         const envLabel = scene.environmentMode === 'hdr' ? 'Venice Sunset HDR' : 'Synthetic IBL';
-        setStatus({ kind: 'ready', message: `Rendering with ${scene.backend} (${envLabel})` });
+        const bgLabel = scene.backgroundMode ? ` + ${scene.backgroundMode} bg` : '';
+        setStatus({
+          kind: 'ready',
+          message: `Rendering with ${scene.backend} (${envLabel}${bgLabel})`
+        });
       })
       .catch((error: unknown) => {
         const isCancelled = error instanceof Error && error.message.includes('cancelled');
@@ -97,7 +140,7 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
       sceneRef.current = null;
       void host.unmount();
     };
-  }, [mountScene, environmentMode]);
+  }, [mountScene, environmentMode, backgroundMode, backgroundMultiplier, backendPreference]);
 
   return (
     <main>

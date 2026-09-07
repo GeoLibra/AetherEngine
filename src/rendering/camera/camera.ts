@@ -115,7 +115,8 @@ export function extractView(options: ExtractViewOptions): ExtractedView {
     viewportPixels: computeViewportPixels(options.viewport),
     layerMask: options.layerMask,
     jitterPixels,
-    depthMode: options.depthMode ?? 'standard'
+    depthMode: options.depthMode ?? 'standard',
+    projectionKind: options.projectionDescriptor.kind
   });
 }
 

@@ -2,16 +2,21 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   NullDevice,
   NullSurface,
+  RenderGraphBuilder,
   RenderGraphExecutor,
+  createPreparedBindGroupLayoutToken,
+  createPreparedRenderPipelineToken,
   RenderSystemRegistry,
   compileRenderSystems,
   createOpaqueRenderSystem,
+  type GraphHandle,
   type PreparedDrawPacket,
   type PreparedDrawPhaseSnapshot,
   type RenderEntityId,
   type RenderView,
   type TextureDescriptor
 } from '../../src';
+import type { RHIBuffer, RHITexture } from '../../src/rhi/contracts';
 import type { SurfaceTarget } from '../../src/platform/types';
 
 const COLOR: TextureDescriptor = {
@@ -81,6 +86,114 @@ describe('createOpaqueRenderSystem', () => {
         depth: DEPTH
       })
     ).toThrow(/color-attachment usage/i);
+  });
+
+  test('records merged background draw when background descriptor is provided in opaque pass', () => {
+    const device = new NullDevice();
+    const graph = new RenderGraphBuilder();
+    const skyTextureHandle = graph.createTexture(
+      {
+        width: 4,
+        height: 4,
+        depthOrArrayLayers: 1,
+        mipLevelCount: 1,
+        sampleCount: 1,
+        format: 'rgba8unorm',
+        usage: ['sampled']
+      },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'sampled',
+          acquire: { kind: 'external-acquire', id: 'sky' }
+        }
+      }
+    );
+    const uniformBufferHandle = graph.createBuffer(
+      { size: 64, usage: ['uniform'] },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'uniform',
+          acquire: { kind: 'external-acquire', id: 'uniforms' }
+        }
+      }
+    );
+
+    const uniformLayout = device.createBindGroupLayout({
+      entries: [{ binding: 0, visibility: 1, buffer: { type: 'uniform', minBindingSize: 64 } }]
+    });
+    const textureLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: 2, texture: { sampleType: 'float', viewDimension: '2d' } },
+        { binding: 1, visibility: 2, sampler: { type: 'filtering' } }
+      ]
+    });
+    const bgPipeline = device.createRenderPipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [uniformLayout, textureLayout] }),
+      primitive: { topology: 'triangle-list' }
+    });
+
+    const pipelineToken = createPreparedRenderPipelineToken('bg-pipeline');
+    const uniformToken = createPreparedBindGroupLayoutToken('bg-uniform-bgl');
+    const textureToken = createPreparedBindGroupLayoutToken('bg-texture-bgl');
+
+    const emptyPhase: PreparedDrawPhaseSnapshot = Object.freeze({
+      viewId: 'view:main',
+      phase: 'opaque',
+      packets: Object.freeze([])
+    });
+
+    const prepared = createOpaqueRenderSystem({
+      phase: emptyPhase,
+      surfaceFrame: { kind: 'surface-frame', id: 'main' },
+      color: COLOR,
+      depth: DEPTH,
+      background: {
+        pipelineToken,
+        uniformLayoutToken: uniformToken,
+        textureLayoutToken: textureToken,
+        skyTexture: skyTextureHandle,
+        uniformBuffer: uniformBufferHandle
+      }
+    });
+
+    const registry = new RenderSystemRegistry();
+    registry.add(prepared.descriptor);
+    const compiled = compileRenderSystems(registry, { views: [view()], graph });
+
+    const physicalSky = device.createTexture({
+      size: {
+        width: 4,
+        height: 4,
+        depthOrArrayLayers: 1
+      },
+      mipLevelCount: 1,
+      sampleCount: 1,
+      format: 'rgba8unorm',
+      usage: 1 << 2
+    });
+    const physicalUniform = device.createBuffer({ size: 64, usage: 1 << 6 });
+
+    const execution = new RenderGraphExecutor().execute(compiled.plan, {
+      device,
+      surface: surface(device),
+      preparedDrawResources: prepared.preparedDrawResources,
+      preparedRenderPipelines: new Map([[pipelineToken, bgPipeline]]),
+      preparedBindGroupLayouts: new Map([
+        [uniformToken, uniformLayout],
+        [textureToken, textureLayout]
+      ]),
+      resources: new Map<GraphHandle, RHITexture | RHIBuffer>([
+        [skyTextureHandle, physicalSky],
+        [uniformBufferHandle, physicalUniform]
+      ])
+    });
+
+    expect(execution.commandStats).toMatchObject({
+      renderPasses: 1,
+      draw: { drawCalls: 1, vertexCount: 3, indexedDrawCalls: 0 }
+    });
   });
 });
 
