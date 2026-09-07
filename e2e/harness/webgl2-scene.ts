@@ -1,6 +1,6 @@
 import {
   BrowserGraphicsBootstrapError,
-  LIGHT_LIST_WEBGL2_TRANSLATOR,
+  BUILT_IN_WEBGL2_TRANSLATOR,
   LIGHT_LIST_WEBGL_SHADER_MODULE,
   createBrowserGraphics,
   type RenderEntityId,
@@ -293,7 +293,7 @@ const TRANSLATOR: WebGL2ShaderTranslationPort = {
   version: 1,
   translate(input) {
     if (input.wgsl === LIGHT_LIST_WEBGL_SHADER_MODULE)
-      return LIGHT_LIST_WEBGL2_TRANSLATOR.translate(input);
+      return BUILT_IN_WEBGL2_TRANSLATOR.translate(input);
     const source =
       input.stage === 'vertex'
         ? input.wgsl === 'triangle'

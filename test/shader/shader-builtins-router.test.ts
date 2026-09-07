@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  BUILT_IN_SHADER_REGISTRATIONS,
   BUILT_IN_WEBGL2_TRANSLATOR,
   LIGHT_LIST_SHADER_ARTIFACT,
   LIGHT_LIST_WEBGL2_SHADER_ARTIFACT,
@@ -187,5 +188,66 @@ describe('Built-in WebGL2 Shader Translation Router & Generic Translator', () =>
     expect(LIGHT_LIST_WEBGL_SHADER_MODULE).toBe(LIGHT_LIST_WEBGL2_SHADER_MODULE);
     expect(STANDARD_LIT_LIST_WEBGL_SHADER_ARTIFACT).toBe(STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT);
     expect(STANDARD_LIT_LIST_WEBGL_SHADER_MODULE).toBe(STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE);
+  });
+
+  test('createCookedArtifactWebGL2Translator accepts raw artifact and infers ID, version, and fingerprint', () => {
+    const translator = createCookedArtifactWebGL2Translator(STANDARD_LIT_SHADER_ARTIFACT);
+    expect(translator.translatorId).toBe('aether.standard-lit.naga-glsl');
+    expect(translator.version).toBe(2);
+
+    const translated = translator.translate({
+      wgsl: STANDARD_LIT_SHADER_MODULE,
+      stage: 'vertex',
+      entryPoint: 'standardLitVertex',
+      constants: {},
+      capabilities: [],
+      approvedExtensions: [],
+      clipDepthMode: 'vertex-remap'
+    });
+    expect(translated.targetAbiFingerprint).toBe('standard-lit-v2');
+    expect(translated.source).toBeTruthy();
+  });
+
+  test('createWebGL2TranslationRouter supports direct artifact and options registrations without manual translator wrapping', () => {
+    const router = createWebGL2TranslationRouter([
+      STANDARD_LIT_SHADER_ARTIFACT,
+      {
+        artifact: POST_COLOR_SHADER_ARTIFACT,
+        targetAbiFingerprint: 'custom-post-color-fingerprint'
+      }
+    ]);
+
+    const standardLit = router.translate({
+      wgsl: STANDARD_LIT_SHADER_MODULE,
+      stage: 'vertex',
+      entryPoint: 'standardLitVertex',
+      constants: {},
+      capabilities: [],
+      approvedExtensions: [],
+      clipDepthMode: 'vertex-remap'
+    });
+    expect(standardLit.targetAbiFingerprint).toBe('standard-lit-v2');
+
+    const postColor = router.translate({
+      wgsl: POST_COLOR_SHADER_MODULE,
+      stage: 'fragment',
+      entryPoint: 'postColorFragment',
+      constants: {},
+      capabilities: [],
+      approvedExtensions: [],
+      clipDepthMode: 'vertex-remap'
+    });
+    expect(postColor.targetAbiFingerprint).toBe('custom-post-color-fingerprint');
+  });
+
+  test('BUILT_IN_SHADER_REGISTRATIONS contains declarative registrations for all built-in shaders', () => {
+    expect(BUILT_IN_SHADER_REGISTRATIONS).toHaveLength(4);
+    expect(BUILT_IN_SHADER_REGISTRATIONS[0]?.artifact).toBe(STANDARD_LIT_SHADER_ARTIFACT);
+    expect(BUILT_IN_SHADER_REGISTRATIONS[1]?.artifact).toBe(POST_COLOR_SHADER_ARTIFACT);
+    expect(BUILT_IN_SHADER_REGISTRATIONS[2]?.artifact).toBe(LIGHT_LIST_WEBGL2_SHADER_ARTIFACT);
+    expect(BUILT_IN_SHADER_REGISTRATIONS[3]?.artifact).toBe(
+      STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT
+    );
+    expect(BUILT_IN_SHADER_REGISTRATIONS[3]?.webgl2?.mapPhysicalBindings).toBeTypeOf('function');
   });
 });

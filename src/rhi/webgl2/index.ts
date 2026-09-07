@@ -14,3 +14,4 @@ export * from './pipeline';
 export * from './resources';
 export * from './types';
 export * from './browser';
+export * from './shader';

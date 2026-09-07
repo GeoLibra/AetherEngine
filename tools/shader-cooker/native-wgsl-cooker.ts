@@ -100,22 +100,37 @@ export interface NativeCookExecutionOptions {
 }
 
 /**
+ * Options for NativeCookerError.
+ */
+export interface NativeCookerErrorOptions {
+  readonly code: string;
+  readonly sourceUri: string;
+  readonly rawStderr: string;
+  readonly line?: number | undefined;
+  readonly column?: number | undefined;
+  readonly backendStage?: string | undefined;
+}
+
+/**
  * Error thrown when native WGSL cooking fails.
  */
 export class NativeCookerError extends Error {
   public readonly code: string;
   public readonly sourceUri: string;
   public readonly rawStderr: string;
+  public readonly line?: number | undefined;
+  public readonly column?: number | undefined;
+  public readonly backendStage?: string | undefined;
 
-  public constructor(
-    message: string,
-    options: { code: string; sourceUri: string; rawStderr: string }
-  ) {
+  public constructor(message: string, options: NativeCookerErrorOptions) {
     super(message);
     this.name = 'NativeCookerError';
     this.code = options.code;
     this.sourceUri = options.sourceUri;
     this.rawStderr = options.rawStderr;
+    this.line = options.line;
+    this.column = options.column;
+    this.backendStage = options.backendStage;
   }
 }
 
@@ -186,6 +201,9 @@ export class NativeWgslCooker {
       // Parse structured stderr if possible
       let errorCode = 'native-cook-failed';
       let errorMessage = 'Native WGSL cooking failed.';
+      let errorLine: number | undefined;
+      let errorColumn: number | undefined;
+      let errorStage: string | undefined;
       const trimmedStderr = result.stderr.trim();
 
       if (trimmedStderr) {
@@ -199,6 +217,15 @@ export class NativeWgslCooker {
           } else {
             errorMessage = `Native cooker reported error "${errorCode}".`;
           }
+          if (typeof parsedStderr.line === 'number') {
+            errorLine = parsedStderr.line;
+          }
+          if (typeof parsedStderr.column === 'number') {
+            errorColumn = parsedStderr.column;
+          }
+          if (typeof parsedStderr.backend_stage === 'string') {
+            errorStage = parsedStderr.backend_stage;
+          }
         } catch {
           // Stderr is plain text, sanitize local paths
           errorMessage = trimmedStderr.replace(
@@ -211,7 +238,10 @@ export class NativeWgslCooker {
       throw new NativeCookerError(errorMessage, {
         code: errorCode,
         sourceUri,
-        rawStderr: result.stderr
+        rawStderr: result.stderr,
+        line: errorLine,
+        column: errorColumn,
+        backendStage: errorStage
       });
     }
 

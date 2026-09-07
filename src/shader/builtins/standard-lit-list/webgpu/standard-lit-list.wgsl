@@ -1,6 +1,54 @@
+// --- Source Fragment: src/shader/builtins/standard-lit-list/webgpu/light-access.wgsl ---
+// ============================================================================
+// AetherEngine Standard PBR Shader - WebGPU Light Access
+// Uniform buffer bindings and light list accessors.
+// ============================================================================
+
+struct PackedLightWords { values: array<vec4<u32>, 769> };
+struct PackedDirectionalWords { values: array<vec4<u32>, 16> };
+struct PackedHeaderWords { values: array<vec4<u32>, 256> };
+struct PackedIndexWords { values: array<vec4<u32>, 1024> };
+struct PackedOverflowWords { values: vec4<u32> };
+
+@group(3) @binding(0) var<uniform> lightWords: PackedLightWords;
+@group(3) @binding(1) var<uniform> directionalWords: PackedDirectionalWords;
+@group(3) @binding(2) var<uniform> headerWords: PackedHeaderWords;
+@group(3) @binding(3) var<uniform> indexWords: PackedIndexWords;
+@group(3) @binding(4) var<uniform> overflowWords: PackedOverflowWords;
+
+fn lightWord(word: u32) -> u32 {
+  return lightWords.values[word / 4u][word % 4u];
+}
+
+fn directionalLightCount() -> u32 {
+  return overflowWords.values.x & 0x3fffffffu;
+}
+
+fn directionalIndex(index: u32) -> u32 {
+  return directionalWords.values[index / 4u][index % 4u];
+}
+
+fn receiverLightHeader() -> ReceiverLightHeader {
+  for (var index = 0u; index < overflowWords.values.y; index += 1u) {
+    let header = headerWords.values[index];
+    if (header.x == objectData.receiver) {
+      return ReceiverLightHeader(header.y, header.z);
+    }
+  }
+  return ReceiverLightHeader(0u, 0u);
+}
+
+fn receiverLightIndex(header: ReceiverLightHeader, index: u32) -> u32 {
+  let wordIndex = header.offset + index;
+  return indexWords.values[wordIndex / 4u][wordIndex % 4u];
+}
+
+
+// --- Source Fragment: src/shader/builtins/standard-lit-list/shading.wgsl ---
 // ============================================================================
 // AetherEngine Standard PBR Shader (Metallic-Roughness Workflow)
 // Cook-Torrance microfacet specular BRDF + Lambertian diffuse direct lighting.
+// Shared shading logic: vertex stage, PBR evaluation, IBL, and light loops.
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -35,12 +83,8 @@ struct MaterialData {
   padding1: f32,
 };
 
-struct PackedLightWords { values: array<vec4<u32>, 769> };
-struct PackedDirectionalWords { values: array<vec4<u32>, 16> };
-struct PackedHeaderWords { values: array<vec4<u32>, 256> };
-struct PackedIndexWords { values: array<vec4<u32>, 1024> };
-struct PackedOverflowWords { values: vec4<u32> };
 struct ReceiverLightHeader { offset: u32, count: u32 };
+
 struct EnvironmentData {
   diffuseIrradiance: vec3<f32>,
   intensity: f32,
@@ -66,17 +110,12 @@ struct StandardLitFragmentInput {
 };
 
 // ----------------------------------------------------------------------------
-// Resource Bindings (Organized by Update Frequency)
+// Shared Resource Bindings
 // ----------------------------------------------------------------------------
 
 @group(0) @binding(0) var<uniform> objectData: ObjectData;               // Group 0: Per-draw
 @group(1) @binding(0) var<uniform> viewData: ViewData;                   // Group 1: Per-view / Per-frame
 @group(2) @binding(0) var<uniform> materialData: MaterialData;           // Group 2: Per-material
-@group(3) @binding(0) var<uniform> lightWords: PackedLightWords;
-@group(3) @binding(1) var<uniform> directionalWords: PackedDirectionalWords;
-@group(3) @binding(2) var<uniform> headerWords: PackedHeaderWords;
-@group(3) @binding(3) var<uniform> indexWords: PackedIndexWords;
-@group(3) @binding(4) var<uniform> overflowWords: PackedOverflowWords;
 @group(3) @binding(5) var<uniform> environmentData: EnvironmentData;
 @group(3) @binding(6) var irradianceMap: texture_2d<f32>;
 @group(3) @binding(7) var prefilteredRadianceMap: texture_2d<f32>;
@@ -201,30 +240,8 @@ fn standardLitVertex(
 }
 
 // ----------------------------------------------------------------------------
-// Fragment Shader Stage
+// Direct Light Evaluation
 // ----------------------------------------------------------------------------
-
-fn lightWord(word: u32) -> u32 {
-  return lightWords.values[word / 4u][word % 4u];
-}
-
-fn directionalIndex(index: u32) -> u32 {
-  return directionalWords.values[index / 4u][index % 4u];
-}
-
-fn lightIndex(index: u32) -> u32 {
-  return indexWords.values[index / 4u][index % 4u];
-}
-
-fn receiverLightHeader() -> ReceiverLightHeader {
-  for (var index = 0u; index < overflowWords.values.y; index += 1u) {
-    let header = headerWords.values[index];
-    if (header.x == objectData.receiver) {
-      return ReceiverLightHeader(header.y, header.z);
-    }
-  }
-  return ReceiverLightHeader(0u, 0u);
-}
 
 fn evaluatePackedLight(
   index: u32,
@@ -268,6 +285,18 @@ fn evaluatePackedLight(
   );
 }
 
+// ----------------------------------------------------------------------------
+// Image-Based Lighting (IBL)
+// ----------------------------------------------------------------------------
+
+fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
+  let normalized = normalize(direction);
+  return vec2<f32>(
+    atan2(normalized.z, normalized.x) * 0.15915494309 + 0.5,
+    acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830988618
+  );
+}
+
 fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
   let metallic = clamp(materialData.metallic, 0.0, 1.0);
   let roughness = clamp(materialData.roughness, 0.045, 1.0);
@@ -292,13 +321,9 @@ fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
   return (diffuse + specular) * environmentData.intensity;
 }
 
-fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
-  let normalized = normalize(direction);
-  return vec2<f32>(
-    atan2(normalized.z, normalized.x) * 0.15915494309 + 0.5,
-    acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830988618
-  );
-}
+// ----------------------------------------------------------------------------
+// Fragment Shader Stage
+// ----------------------------------------------------------------------------
 
 @fragment
 fn standardLitFragment(
@@ -307,7 +332,7 @@ fn standardLitFragment(
   let normal = normalize(fragmentInput.normal);
   let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
   var lit = evaluateIbl(normal, viewDirection);
-  let directionalCount = overflowWords.values.x & 0x3fffffffu;
+  let directionalCount = directionalLightCount();
   for (var index = 0u; index < directionalCount; index += 1u) {
     lit += evaluatePackedLight(
       directionalIndex(index), fragmentInput.worldPosition, normal, viewDirection
@@ -316,9 +341,10 @@ fn standardLitFragment(
   let header = receiverLightHeader();
   for (var index = 0u; index < header.count; index += 1u) {
     lit += evaluatePackedLight(
-      lightIndex(header.offset + index), fragmentInput.worldPosition, normal, viewDirection
+      receiverLightIndex(header, index), fragmentInput.worldPosition, normal, viewDirection
     );
   }
 
   return vec4<f32>(lit, materialData.baseColor.a);
 }
+

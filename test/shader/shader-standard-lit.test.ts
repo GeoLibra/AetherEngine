@@ -4,10 +4,10 @@ import {
   STANDARD_LIT_SHADER_ARTIFACT,
   STANDARD_LIT_SHADER_MODULE,
   STANDARD_LIT_SHADER_SOURCE,
-  STANDARD_LIT_WEBGL2_TRANSLATOR,
+  BUILT_IN_WEBGL2_TRANSLATOR,
+  createCookedArtifactWebGL2Translator,
   createCookedShaderBindingManifest
 } from '../../src';
-import { createStandardLitWebGL2Translator } from '../../src/shader/builtins/standard-lit';
 
 describe('standard-lit built-in shader', () => {
   test('publishes a native-cooked WGSL artifact', () => {
@@ -102,7 +102,7 @@ describe('standard-lit built-in shader', () => {
   });
 
   test('uses Naga GLSL block names and applies clip conversion exactly once', () => {
-    const translated = STANDARD_LIT_WEBGL2_TRANSLATOR.translate({
+    const translated = BUILT_IN_WEBGL2_TRANSLATOR.translate({
       wgsl: STANDARD_LIT_SHADER_MODULE,
       stage: 'vertex',
       entryPoint: 'standardLitVertex',
@@ -123,15 +123,17 @@ describe('standard-lit built-in shader', () => {
   test('uses cooked binding metadata without inspecting GLSL declarations', () => {
     const vertexModule =
       STANDARD_LIT_SHADER_ARTIFACT.modules.glslEs300['vertex:standardLitVertex']!;
-    const translator = createStandardLitWebGL2Translator({
-      ...STANDARD_LIT_SHADER_ARTIFACT,
-      modules: {
-        ...STANDARD_LIT_SHADER_ARTIFACT.modules,
-        glslEs300: {
-          ...STANDARD_LIT_SHADER_ARTIFACT.modules.glslEs300,
-          'vertex:standardLitVertex': {
-            ...vertexModule,
-            source: '#version 300 es\nvoid main() {}'
+    const translator = createCookedArtifactWebGL2Translator({
+      artifact: {
+        ...STANDARD_LIT_SHADER_ARTIFACT,
+        modules: {
+          ...STANDARD_LIT_SHADER_ARTIFACT.modules,
+          glslEs300: {
+            ...STANDARD_LIT_SHADER_ARTIFACT.modules.glslEs300,
+            'vertex:standardLitVertex': {
+              ...vertexModule,
+              source: '#version 300 es\nvoid main() {}'
+            }
           }
         }
       }

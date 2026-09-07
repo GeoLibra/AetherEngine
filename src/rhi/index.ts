@@ -19,6 +19,20 @@ export {
   initializeWebGL2StateDefaults,
   WebGL2BrowserSurface
 } from './webgl2/browser';
+export {
+  createCookedArtifactWebGL2Translator,
+  createWebGL2TranslationRouter
+} from './webgl2/shader';
+export type {
+  BuiltInShaderRegistration,
+  CookedArtifactWebGL2TranslatorOptions,
+  WebGL2RouterRegistrationEntry,
+  WebGL2ShaderModuleRegistration,
+  WebGL2ShaderRegistration,
+  WebGL2ShaderRegistrationOverrides,
+  WebGL2TranslationInput,
+  WebGL2TranslationRouterOptions
+} from './webgl2/shader';
 export type { BrowserWebGL2Canvas, BrowserWebGL2ContextOptions } from './webgl2/browser';
 export {
   NativeDawnAdapter,

@@ -4,18 +4,18 @@ import type {
   WebGL2PhysicalBinding,
   WebGL2ProgramBinding,
   WebGL2ShaderTranslationPort
-} from '../../rhi/webgl2/types';
-import { decodeCookedShaderRuntimeArtifact } from '../artifact';
-import type { CookedGlslEs300Module, CookedShaderRuntimeArtifact } from '../types';
+} from '../types';
+import { decodeCookedShaderRuntimeArtifact } from '../../../shader/artifact';
+import type { CookedGlslEs300Module, CookedShaderRuntimeArtifact } from '../../../shader/types';
 
 export type WebGL2TranslationInput = Parameters<WebGL2ShaderTranslationPort['translate']>[0];
 
 /** Configuration options for the generic cooked artifact WebGL2 translator adapter. */
 export interface CookedArtifactWebGL2TranslatorOptions {
-  readonly translatorId: string;
-  readonly version: number;
   readonly artifact: CookedShaderRuntimeArtifact;
-  /** Optional restriction on allowed entry point names. */
+  readonly translatorId?: string;
+  readonly version?: number;
+  /** Optional restriction on allowed entry point names. Defaults to all entry points in artifact. */
   readonly supportedEntryPoints?: readonly string[];
   /** Optional target ABI fingerprint or generator function. */
   readonly targetAbiFingerprint?: string | ((input: WebGL2TranslationInput) => string);
@@ -39,28 +39,49 @@ const EMPTY_LIST: readonly string[] = Object.freeze([]);
 const EMPTY_SOURCE_MAP: readonly Readonly<{ generatedLine: number; authoredLine: number }>[] =
   Object.freeze([]);
 
+function isCookedArtifactOptions(
+  input: CookedShaderRuntimeArtifact | CookedArtifactWebGL2TranslatorOptions
+): input is CookedArtifactWebGL2TranslatorOptions {
+  return typeof input === 'object' && input !== null && 'artifact' in input;
+}
+
+function deriveShaderStem(sourceUri: string): string {
+  const match = /\/([^/]+)\.wgsl$/.exec(sourceUri);
+  return match ? match[1]! : 'shader';
+}
+
 /**
  * Creates a standard WebGL2 translation port adapter from a validated cooked runtime artifact.
  * Encapsulates binding translation, GLSL header stripping, physical/program slot assignment,
  * and deterministic ABI fingerprints.
  *
+ * Can accept either a CookedShaderRuntimeArtifact directly (inferring ID, version, and entry points)
+ * or explicit CookedArtifactWebGL2TranslatorOptions.
+ *
  * @throws When requested entry points or bindings are missing or unsupported.
  */
 export function createCookedArtifactWebGL2Translator(
-  options: CookedArtifactWebGL2TranslatorOptions
+  artifactOrOptions: CookedShaderRuntimeArtifact | CookedArtifactWebGL2TranslatorOptions
 ): WebGL2ShaderTranslationPort {
-  const validated = decodeCookedShaderRuntimeArtifact(options.artifact);
-  const supportedEntryPoints = options.supportedEntryPoints
+  const isOptions = isCookedArtifactOptions(artifactOrOptions);
+  const artifact = isOptions ? artifactOrOptions.artifact : artifactOrOptions;
+  const options = isOptions ? artifactOrOptions : undefined;
+
+  const validated = decodeCookedShaderRuntimeArtifact(artifact);
+  const stem = deriveShaderStem(validated.source.sourceUri);
+  const translatorId = options?.translatorId ?? `aether.${stem}.naga-glsl`;
+  const version = options?.version ?? validated.schemaVersion;
+  const supportedEntryPoints = options?.supportedEntryPoints
     ? new Set(options.supportedEntryPoints)
     : undefined;
 
   return Object.freeze({
-    translatorId: options.translatorId,
-    version: options.version,
+    translatorId,
+    version,
     translate(input: WebGL2TranslationInput) {
       if (supportedEntryPoints && !supportedEntryPoints.has(input.entryPoint)) {
         throw new Error(
-          `Unsupported entry point "${input.entryPoint}" for translator "${options.translatorId}".`
+          `Unsupported entry point "${input.entryPoint}" for translator "${translatorId}".`
         );
       }
 
@@ -72,7 +93,7 @@ export function createCookedArtifactWebGL2Translator(
 
       if (!emitted || !entryPoint) {
         throw new Error(
-          `Missing cooked module for "${input.entryPoint}" (stage: "${input.stage}") in translator "${options.translatorId}".`
+          `Missing cooked module for "${input.entryPoint}" (stage: "${input.stage}") in translator "${translatorId}".`
         );
       }
 
@@ -96,7 +117,7 @@ export function createCookedArtifactWebGL2Translator(
         })
       );
 
-      const physicalBindings: readonly WebGL2PhysicalBinding[] = options.mapPhysicalBindings
+      const physicalBindings: readonly WebGL2PhysicalBinding[] = options?.mapPhysicalBindings
         ? Object.freeze(options.mapPhysicalBindings(activeBindings, emitted, input))
         : Object.freeze(
             activeBindings.map((binding) =>
@@ -109,7 +130,7 @@ export function createCookedArtifactWebGL2Translator(
             )
           );
 
-      const programBindings: readonly WebGL2ProgramBinding[] = options.mapProgramBindings
+      const programBindings: readonly WebGL2ProgramBinding[] = options?.mapProgramBindings
         ? Object.freeze(options.mapProgramBindings(emitted, input))
         : Object.freeze(
             emitted.bindings.map((binding) =>
@@ -128,14 +149,14 @@ export function createCookedArtifactWebGL2Translator(
           );
 
       const targetAbiFingerprint =
-        typeof options.targetAbiFingerprint === 'function'
+        typeof options?.targetAbiFingerprint === 'function'
           ? options.targetAbiFingerprint(input)
-          : (options.targetAbiFingerprint ?? `${options.translatorId}-v${options.version}`);
+          : (options?.targetAbiFingerprint ?? `${stem}-v${version}`);
 
       const requiredExtensions =
-        typeof options.requiredExtensions === 'function'
+        typeof options?.requiredExtensions === 'function'
           ? Object.freeze(options.requiredExtensions(input))
-          : Object.freeze(options.requiredExtensions ?? EMPTY_LIST);
+          : Object.freeze(options?.requiredExtensions ?? EMPTY_LIST);
 
       return Object.freeze({
         source: emitted.source.replace(/^#version 300 es\s*/, ''),
@@ -145,7 +166,7 @@ export function createCookedArtifactWebGL2Translator(
         targetAbiFingerprint,
         requiredExtensions,
         sourceMap: EMPTY_SOURCE_MAP,
-        translatorFingerprint: `${input.entryPoint}:v${options.version}`
+        translatorFingerprint: `${input.entryPoint}:v${version}`
       });
     }
   });
