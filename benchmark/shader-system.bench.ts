@@ -8,6 +8,11 @@ import {
 import { ShaderCompiler } from '../src/shader/experimental/flux/compiler';
 import { runBindingLayoutScenario } from './shader-system/binding-layout-scenario';
 import { runShaderGraphScenario } from './shader-system/shader-graph-scenario';
+import {
+  BUILT_IN_WEBGL2_TRANSLATOR,
+  STANDARD_LIT_SHADER_MODULE,
+  STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE
+} from '../src';
 
 const structFields = Array.from({ length: 64 }, (_, index) => `field${index}: vec4<f32>`).join(
   ', '
@@ -82,3 +87,30 @@ for (const chainLength of [16, 64]) {
     { iterations: 1, warmupIterations: 0 }
   );
 }
+
+bench(
+  'translate built-in shaders to WebGL2 via router',
+  () => {
+    const v = BUILT_IN_WEBGL2_TRANSLATOR.translate({
+      wgsl: STANDARD_LIT_SHADER_MODULE,
+      stage: 'vertex',
+      entryPoint: 'standardLitVertex',
+      constants: {},
+      capabilities: [],
+      approvedExtensions: [],
+      clipDepthMode: 'vertex-remap'
+    });
+    const f = BUILT_IN_WEBGL2_TRANSLATOR.translate({
+      wgsl: STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE,
+      stage: 'fragment',
+      entryPoint: 'standardLitFragment',
+      constants: {},
+      capabilities: [],
+      approvedExtensions: [],
+      clipDepthMode: 'vertex-remap'
+    });
+    expect(v.source).toBeTruthy();
+    expect(f.source).toBeTruthy();
+  },
+  { iterations: 1, warmupIterations: 0 }
+);
