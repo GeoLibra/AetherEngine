@@ -47,17 +47,19 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
     []
   );
 
-  // Sync Leva control updates into the 3D scene
+  // Sync Leva control updates into the 3D scene in real-time without unmounting
   useEffect(() => {
     if (!sceneRef.current) return;
     sceneRef.current.setCastsShadow(castsShadow);
     sceneRef.current.setSunlight(sunlight);
     sceneRef.current.setShadowDistance(shadowDistance);
+    sceneRef.current.setMetallic(metallic);
+    sceneRef.current.setRoughness(roughness);
     const rad = (lightAngle * Math.PI) / 180;
     sceneRef.current.setLightDirection([Math.cos(rad) * -0.7, -1, Math.sin(rad) * -0.7]);
-  }, [castsShadow, sunlight, lightAngle, shadowDistance]);
+  }, [castsShadow, sunlight, shadowDistance, metallic, roughness, lightAngle]);
 
-  // Mount Aether scene via serialized lifecycle host
+  // Mount Aether scene via serialized lifecycle host (only remounts on environment change)
   useEffect(() => {
     if (!mountScene) return;
     const target = canvas.current;
@@ -95,7 +97,7 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
       sceneRef.current = null;
       void host.unmount();
     };
-  }, [mountScene, environmentMode, metallic, roughness]);
+  }, [mountScene, environmentMode]);
 
   return (
     <main>

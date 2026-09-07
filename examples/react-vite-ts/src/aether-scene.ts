@@ -24,6 +24,7 @@ import {
   defineTagComponent,
   selectShadowRequests,
   BaselineRenderDiagnosticsResource,
+  StandardLitMaterialSchema,
   type BaselineRenderDiagnostics,
   type BrowserGraphicsSession,
   type DirectionalLightSourceView,
@@ -69,6 +70,8 @@ export interface MountedAetherScene {
   setRotation(angleRadians: number): Promise<void> | void;
   setCastsShadow(enabled: boolean): void;
   setSunlight(enabled: boolean): void;
+  setRoughness(roughness: number): void;
+  setMetallic(metallic: number): void;
   setLightDirection(direction: readonly [number, number, number]): void;
   setShadowDistance(distance: number): void;
   resize(width: number, height: number): Promise<void> | void;
@@ -158,14 +161,41 @@ export async function mountAetherScene(
     surface: { ...size, alphaMode: 'opaque' },
     webgl2ClipControl: false
   });
-  const metallic = options.metallic ?? 0.85;
-  const roughness = options.roughness ?? 0.15;
+  let liveMetallic = options.metallic ?? 0.85;
+  let liveRoughness = options.roughness ?? 0.15;
   let sunlight = options.sunlight !== false;
   const mesh = createBoxMeshData();
-  const material = createStandardLitMaterial({
+  const baseMaterial = createStandardLitMaterial({
     baseColor: [0.18, 0.48, 0.92, 1],
-    metallic,
-    roughness
+    metallic: liveMetallic,
+    roughness: liveRoughness
+  });
+
+  const liveParameters = new Proxy(baseMaterial.instance.parameters, {
+    get(target, prop, receiver) {
+      if (prop === 'get') {
+        return (field: unknown) => {
+          if (field === StandardLitMaterialSchema.fields.metallic) return liveMetallic;
+          if (field === StandardLitMaterialSchema.fields.roughness) return liveRoughness;
+          return Reflect.apply(target.get, target, [field]);
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+
+  const liveInstance = new Proxy(baseMaterial.instance, {
+    get(target, prop, receiver) {
+      if (prop === 'parameters') return liveParameters;
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+
+  const material = new Proxy(baseMaterial, {
+    get(target, prop, receiver) {
+      if (prop === 'instance') return liveInstance;
+      return Reflect.get(target, prop, receiver);
+    }
   });
   const meshHandle = createAssetHandle(MeshAssetType, 'example.mesh.box');
   const materialHandle = createAssetHandle(MaterialAssetType, 'example.material.standard-lit');
@@ -436,6 +466,18 @@ export async function mountAetherScene(
     setSunlight(enabled: boolean) {
       sunlight = enabled;
       castsShadow = includeGround && sunlight;
+    },
+    setRoughness(value: number) {
+      if (Number.isFinite(value)) {
+        liveRoughness = Math.max(0, Math.min(1, value));
+        demandRunner?.frame();
+      }
+    },
+    setMetallic(value: number) {
+      if (Number.isFinite(value)) {
+        liveMetallic = Math.max(0, Math.min(1, value));
+        demandRunner?.frame();
+      }
     },
     setLightDirection(direction: readonly [number, number, number]) {
       lightDirection = Vec3Math.normalize(direction as Vec3, 'Light direction');
