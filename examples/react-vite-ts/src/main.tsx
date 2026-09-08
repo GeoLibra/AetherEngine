@@ -54,16 +54,18 @@ async function mountForAcceptance(): Promise<void> {
   const scene: MountedAetherScene = await mountAetherScene(canvas, {
     preference,
     animate: false,
-    ground: false,
-    environment: 'synthetic',
-    background: 'none',
-    metallic: 0.08,
-    roughness: 0.42
+    ground: true,
+    environment: 'hdr',
+    background: 'hdr',
+    metallic: 0.85,
+    roughness: 0.15
   });
   const gl = canvas.getContext('webgl2');
   window.__AETHER_EXAMPLE__ = Object.freeze({
     state: () => ({
       backend: scene.backend,
+      environmentMode: scene.environmentMode,
+      backgroundMode: scene.backgroundMode,
       diagnostics: scene.diagnostics(),
       nativeMetrics: scene.nativeMetrics(),
       nativeError: gl?.getError(),
