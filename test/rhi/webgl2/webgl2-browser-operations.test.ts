@@ -494,6 +494,7 @@ class FakeOperationsGL {
   readonly TEXTURE_MAG_FILTER = 0x2800;
   readonly TEXTURE_WRAP_S = 0x2802;
   readonly TEXTURE_WRAP_T = 0x2803;
+  readonly TEXTURE_WRAP_R = 0x8072;
   readonly CLAMP_TO_EDGE = 0x812f;
   readonly LINEAR = 0x2601;
   readonly NEAREST = 0x2600;

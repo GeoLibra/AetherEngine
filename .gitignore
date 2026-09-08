@@ -18,3 +18,4 @@ graphify-out
 target/
 tools/naga-shader-validator/target/
 test-results/
+.playwright-cli

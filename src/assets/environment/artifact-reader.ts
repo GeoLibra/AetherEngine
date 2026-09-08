@@ -1,5 +1,5 @@
 /**
- * @file VFS reader for cooked EnvironmentArtifact@1 packages.
+ * @file VFS reader for cooked EnvironmentArtifact@1 and EnvironmentArtifact@2 packages.
  * Validates manifest schemas and verifies blob integrity digests.
  */
 
@@ -9,7 +9,7 @@ import {
   deserializeEnvironmentManifest,
   validateEnvironmentArtifact,
   validateBrdfLutArtifact
-} from '../../../tools/asset-cook/environment/artifact/manifest-codec';
+} from './artifact/manifest-codec';
 import type { EnvironmentAsset, EnvironmentHandle } from './types';
 
 export interface ReadEnvironmentOptions {
@@ -81,12 +81,29 @@ export async function readEnvironmentFromVfs(
     throw new Error(`Failed to read BRDF LUT blob "${lutBlobUri}": ${lutBlobResult.kind}`);
   }
 
+  // 5. Optional panorama blob if schema @2 declares background panorama
+  let panoramaBytes: Uint8Array | undefined;
+  if (artifact.schema === 'EnvironmentArtifact@2' && artifact.background.kind === 'panorama') {
+    const panoramaPayload = artifact.background.payload;
+    const panoramaUri = `${baseUri}/blobs/${panoramaPayload.blobHash}.bin`;
+    const panoramaResult = await vfs.read({
+      uri: panoramaUri,
+      expectedLength: panoramaPayload.byteLength,
+      expectedIntegrity: `sha256:${panoramaPayload.blobHash}`
+    });
+    if (panoramaResult.kind !== 'success') {
+      throw new Error(`Failed to read panorama blob "${panoramaUri}": ${panoramaResult.kind}`);
+    }
+    panoramaBytes = panoramaResult.bytes;
+  }
+
   return Object.freeze({
     assetId: handle.assetId,
     artifact,
     irradianceBytes: irradianceResult.bytes,
     radianceBytes: radianceResult.bytes,
     brdfLutArtifact,
-    brdfLutBytes: lutBlobResult.bytes
+    brdfLutBytes: lutBlobResult.bytes,
+    ...(panoramaBytes ? { panoramaBytes } : {})
   }) as unknown as EnvironmentAsset;
 }

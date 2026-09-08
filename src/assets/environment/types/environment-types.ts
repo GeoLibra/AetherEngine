@@ -6,8 +6,18 @@
 import type { AssetHandle, AssetId } from '../../types';
 import type {
   BrdfLutArtifactV1,
-  EnvironmentArtifactV1
-} from '../../../../tools/asset-cook/environment/artifact/types';
+  EnvironmentArtifact,
+  EnvironmentArtifactV1,
+  EnvironmentArtifactV2,
+  BackgroundPayload
+} from '../artifact/types';
+
+export type {
+  BackgroundPayload,
+  EnvironmentArtifact,
+  EnvironmentArtifactV1,
+  EnvironmentArtifactV2
+};
 
 declare const environmentAssetBrand: unique symbol;
 
@@ -19,11 +29,12 @@ declare const environmentAssetBrand: unique symbol;
 export interface EnvironmentAsset {
   readonly [environmentAssetBrand]: true;
   readonly assetId: AssetId;
-  readonly artifact: EnvironmentArtifactV1;
+  readonly artifact: EnvironmentArtifact;
   readonly irradianceBytes: Uint8Array;
   readonly radianceBytes: Uint8Array;
   readonly brdfLutArtifact: BrdfLutArtifactV1;
   readonly brdfLutBytes: Uint8Array;
+  readonly panoramaBytes?: Uint8Array;
 }
 
 /** Strongly typed handle to an environment asset. */

@@ -120,14 +120,43 @@ export function createCookedArtifactWebGL2Translator(
       const physicalBindings: readonly WebGL2PhysicalBinding[] = options?.mapPhysicalBindings
         ? Object.freeze(options.mapPhysicalBindings(activeBindings, emitted, input))
         : Object.freeze(
-            activeBindings.map((binding) =>
-              Object.freeze({
-                group: binding.group,
-                binding: binding.binding,
-                kind: binding.kind,
-                slot: binding.kind === 'uniform-buffer' ? binding.group : binding.binding
-              })
-            )
+            activeBindings.flatMap((binding) => {
+              if (binding.kind !== 'sampler') {
+                return [
+                  Object.freeze({
+                    group: binding.group,
+                    binding: binding.binding,
+                    kind: binding.kind,
+                    slot: binding.kind === 'uniform-buffer' ? binding.group : binding.binding
+                  })
+                ];
+              }
+              const matchingCombined = emitted.bindings.flatMap((programBinding) =>
+                programBinding.kind === 'combined-sampler' &&
+                programBinding.sampler?.group === binding.group &&
+                programBinding.sampler.binding === binding.binding
+                  ? [programBinding]
+                  : []
+              );
+              if (matchingCombined.length > 0) {
+                return matchingCombined.map((programBinding) =>
+                  Object.freeze({
+                    group: binding.group,
+                    binding: binding.binding,
+                    kind: binding.kind,
+                    slot: programBinding.texture.binding
+                  })
+                );
+              }
+              return [
+                Object.freeze({
+                  group: binding.group,
+                  binding: binding.binding,
+                  kind: binding.kind,
+                  slot: binding.binding
+                })
+              ];
+            })
           );
 
       const programBindings: readonly WebGL2ProgramBinding[] = options?.mapProgramBindings

@@ -1,7 +1,12 @@
+import { spawnSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+
+const cargo = process.env.CARGO ?? 'cargo';
+const pinnedCargo = spawnSync(cargo, ['+1.95.0', '--version'], { encoding: 'utf8' });
+const hasPinnedCargo = pinnedCargo.status === 0;
 
 import {
   composeWgslFragments,
@@ -152,52 +157,56 @@ describe('WGSL source composer and diagnostic remapping', () => {
     expect(cookerError.message).toContain('[src/shader/shading.wgsl:2:4]');
   });
 
-  test('live Naga compilation error localization maps to the second fragment', async () => {
-    const tempDir = await mkdtemp(join(tmpdir(), 'aether-test-composer-'));
-
-    try {
-      const fragments: readonly SourceFragmentInput[] = [
-        {
-          path: 'src/shader/builtins/standard-lit-list/webgpu/light-access.wgsl',
-          content: ['struct PackedHeader {', '  offset: u32,', '  count: u32,', '};'].join('\n')
-        },
-        {
-          path: 'src/shader/builtins/standard-lit-list/shading.wgsl',
-          content: [
-            '@vertex',
-            'fn standardLitVertex( -> @builtin(position) vec4f {',
-            '  return vec4f(0.0);',
-            '}'
-          ].join('\n')
-        }
-      ];
-
-      const { composedSource, segments } = composeWgslFragments(fragments);
-      const composedFile = join(tempDir, 'composed.wgsl');
-      await writeFile(composedFile, composedSource, 'utf8');
-
-      const cooker = new NativeWgslCooker();
-      let caughtError: unknown;
+  test.skipIf(!hasPinnedCargo)(
+    'live Naga compilation error localization maps to the second fragment',
+    async () => {
+      const tempDir = await mkdtemp(join(tmpdir(), 'aether-test-composer-'));
 
       try {
-        await cooker.cook({
-          sourcePath: composedFile,
-          sourceUri: 'asset://test/composed.wgsl'
-        });
-      } catch (err: unknown) {
-        caughtError = err;
+        const fragments: readonly SourceFragmentInput[] = [
+          {
+            path: 'src/shader/builtins/standard-lit-list/webgpu/light-access.wgsl',
+            content: ['struct PackedHeader {', '  offset: u32,', '  count: u32,', '};'].join('\n')
+          },
+          {
+            path: 'src/shader/builtins/standard-lit-list/shading.wgsl',
+            content: [
+              '@vertex',
+              'fn standardLitVertex( -> @builtin(position) vec4f {',
+              '  return vec4f(0.0);',
+              '}'
+            ].join('\n')
+          }
+        ];
+
+        const { composedSource, segments } = composeWgslFragments(fragments);
+        const composedFile = join(tempDir, 'composed.wgsl');
+        await writeFile(composedFile, composedSource, 'utf8');
+
+        const cooker = new NativeWgslCooker();
+        let caughtError: unknown;
+
+        try {
+          await cooker.cook({
+            sourcePath: composedFile,
+            sourceUri: 'asset://test/composed.wgsl'
+          });
+        } catch (err: unknown) {
+          caughtError = err;
+        }
+
+        expect(caughtError).toBeInstanceOf(NativeCookerError);
+
+        const remapped = remapCookerError(caughtError, segments) as NativeCookerError;
+
+        // The error in shading.wgsl is on line 2 (`fn standardLitVertex( -> ...`)
+        expect(remapped.sourceUri).toBe('src/shader/builtins/standard-lit-list/shading.wgsl');
+        expect(remapped.line).toBe(2);
+        expect(remapped.message).toContain('src/shader/builtins/standard-lit-list/shading.wgsl:2');
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
       }
-
-      expect(caughtError).toBeInstanceOf(NativeCookerError);
-
-      const remapped = remapCookerError(caughtError, segments) as NativeCookerError;
-
-      // The error in shading.wgsl is on line 2 (`fn standardLitVertex( -> ...`)
-      expect(remapped.sourceUri).toBe('src/shader/builtins/standard-lit-list/shading.wgsl');
-      expect(remapped.line).toBe(2);
-      expect(remapped.message).toContain('src/shader/builtins/standard-lit-list/shading.wgsl:2');
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-  });
+    },
+    120_000
+  );
 });

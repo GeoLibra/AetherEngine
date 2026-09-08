@@ -21,8 +21,18 @@ import type {
 import type { PreparedDrawPacket } from '../../phase';
 import type { RenderView } from '../../visibility';
 import type { BaselinePostColorPreparation } from '../baseline-post-color';
+import type { PreparedBackgroundFrame } from '../../background/prepare';
+import type { ViewBackground } from '../../background/types';
 
-/** Submission-scoped LightList inputs and environment resources consumed by forward shading. */
+/** Environment resources consumed by forward IBL shading. */
+export interface BaselineEnvironmentFrame {
+  readonly buffer: RHIBuffer;
+  readonly irradianceMap: RHITexture;
+  readonly prefilteredRadianceMap: RHITexture;
+  readonly environmentBrdfLut: RHITexture;
+}
+
+/** Submission-scoped LightList inputs consumed by forward shading. */
 export type BaselineLightListFrame =
   | Readonly<{
       source: 'gpu-compute';
@@ -32,10 +42,6 @@ export type BaselineLightListFrame =
       recorder: PreparedWebGpuLightListRecorder;
       forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
       forwardBindGroupLayout: RHIBindGroupLayout;
-      environmentBuffer: RHIBuffer;
-      irradianceMap: RHITexture;
-      prefilteredRadianceMap: RHITexture;
-      environmentBrdfLut: RHITexture;
       release(): void;
       retain(submission: RHISubmission): void;
     }>
@@ -48,10 +54,6 @@ export type BaselineLightListFrame =
       recorder: PreparedWebGlLightListRecorder;
       forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
       forwardBindGroupLayout: RHIBindGroupLayout;
-      environmentBuffer: RHIBuffer;
-      irradianceMap: RHITexture;
-      prefilteredRadianceMap: RHITexture;
-      environmentBrdfLut: RHITexture;
       release(): void;
       retain(submission: RHISubmission): void;
     }>;
@@ -104,12 +106,39 @@ export type BaselinePreparedFrame =
       status: 'ready';
       view: RenderView;
       packets: readonly PreparedDrawPacket[];
+      /** Environment resources consumed by forward IBL shading. */
+      environment?: BaselineEnvironmentFrame;
+      /** Prepared fullscreen background (skybox/solid/panorama). */
+      background?: PreparedBackgroundFrame;
       /** Prepared LightList input for standard-lit packets; legacy/custom packets may omit it. */
       lightList?: BaselineLightListFrame;
       postColor?: BaselinePostColorPreparation;
       deviceGeneration: number;
       surfaceGeneration: number;
     }>;
+
+/** Shared environment lighting parameters consumed consistently by forward IBL and Skybox background. */
+export interface BaselineEnvironmentLighting {
+  /** Overall radiance multiplier. Defaults to 1.0. */
+  readonly intensity?: number;
+  /** Linear RGB radiance tint for specular IBL and skybox. Defaults to [1, 1, 1]. */
+  readonly radianceTint?: readonly [number, number, number];
+  /** Linear RGB diffuse irradiance tint. Defaults to [1, 1, 1]. */
+  readonly diffuseIrradiance?: readonly [number, number, number];
+}
+
+/** Structured environment configuration combining an asset with explicit lighting options. */
+export interface BaselineEnvironmentOptions {
+  readonly asset: EnvironmentAsset;
+  readonly lighting?: BaselineEnvironmentLighting | undefined;
+}
+
+/** Fully normalized environment lighting configuration with defaults applied. */
+export interface NormalizedBaselineEnvironmentLighting {
+  readonly intensity: number;
+  readonly radianceTint: readonly [number, number, number];
+  readonly diffuseIrradiance: readonly [number, number, number];
+}
 
 /** Dependencies for the opt-in single-surface baseline renderer. */
 export interface BaselineRenderingOptions {
@@ -130,6 +159,12 @@ export interface BaselineRenderingOptions {
     payloadVersion: number;
     material: StandardLitMaterial;
   }>;
-  /** Optional pre-cooked real environment asset; if omitted, defaults to synthetic fallback. */
-  readonly environment?: EnvironmentAsset | undefined;
+  /** Optional pre-cooked real environment asset or full environment configuration; if omitted, defaults to synthetic fallback. */
+  readonly environment?: EnvironmentAsset | BaselineEnvironmentOptions | undefined;
+  /** Optional shared environment lighting configuration overriding defaults for both IBL and Skybox. */
+  readonly environmentLighting?: BaselineEnvironmentLighting | undefined;
+  /** Optional view background configuration (skybox/solid/none). */
+  readonly background?: ViewBackground | undefined;
+  /** Optional toggle to force separate physical passes instead of merging. */
+  readonly forceSeparatePasses?: boolean | undefined;
 }

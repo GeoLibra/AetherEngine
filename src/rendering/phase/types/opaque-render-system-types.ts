@@ -2,6 +2,7 @@ import type {
   BufferHandle,
   PreparedBindGroupLayoutToken,
   PreparedDrawResourceBindings,
+  PreparedRenderPipelineToken,
   RenderSystemDescriptor,
   SurfaceFrameToken,
   TextureDescriptor
@@ -23,7 +24,17 @@ export interface OpaqueRenderSystemInput {
     prefilteredRadianceMap: import('../../../render-graph').TextureHandle;
     environmentBrdfLut: import('../../../render-graph').TextureHandle;
   }>;
-  readonly colorTarget?: import('../../../render-graph').TextureHandle;
+  readonly background?: Readonly<{
+    pipelineToken: PreparedRenderPipelineToken;
+    uniformLayoutToken: PreparedBindGroupLayoutToken;
+    textureLayoutToken: PreparedBindGroupLayoutToken;
+    uniformBuffer: BufferHandle;
+    skyTexture: import('../../../render-graph').TextureHandle;
+  }>;
+  readonly colorLoadOp?: 'clear' | 'load';
+  readonly colorTarget?:
+    | import('../../../render-graph').TextureHandle
+    | (() => import('../../../render-graph').TextureHandle);
   readonly present?: boolean;
   readonly publishColor?: (color: import('../../../render-graph').TextureHandle) => void;
 }

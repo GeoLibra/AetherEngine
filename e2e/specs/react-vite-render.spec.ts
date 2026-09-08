@@ -17,7 +17,9 @@ test('renders the public React example and survives surface suspension', async (
     .poll(() => page.evaluate(() => window.__AETHER_EXAMPLE__?.state()), { timeout: 20_000 })
     .toMatchObject({
       backend,
-      diagnostics: { status: 'rendered', indexedDrawCalls: 1, indexCount: 36 }
+      environmentMode: 'hdr',
+      backgroundMode: 'hdr',
+      diagnostics: { status: 'rendered', indexedDrawCalls: 2, indexCount: 72 }
     });
   const initial = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
   expectBackendClean(initial, backend);

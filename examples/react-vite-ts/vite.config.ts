@@ -66,7 +66,10 @@ function autoCookBuiltinShaderPlugin(): Plugin {
       };
 
       server.watcher.on('change', (file) => {
-        if (file.endsWith('.wgsl') || file.endsWith('.wgsl.meta.json')) {
+        if (
+          (file.endsWith('.wgsl') || file.endsWith('.wgsl.meta.json')) &&
+          !file.endsWith('standard-lit-list.wgsl')
+        ) {
           void triggerCook();
         }
       });

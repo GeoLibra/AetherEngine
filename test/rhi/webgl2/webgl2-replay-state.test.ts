@@ -7,6 +7,8 @@ import {
   type WebGL2PhysicalBinding,
   type WebGL2NativeContextLostInfo
 } from '../../../src';
+import { WebGL2Metrics } from '../../../src/rhi/webgl2/metrics';
+import { WebGL2StateVM } from '../../../src/rhi/webgl2/state/state';
 
 interface NativeObject {
   readonly kind: string;
@@ -178,6 +180,21 @@ async function createFixture(
 }
 
 describe('WebGL2 ordered replay and state VM', () => {
+  test('clears a stale filtering sampler before an integer texture fetch', () => {
+    const native = new ReplayContext();
+    const state = new WebGL2StateVM(native, new WebGL2Metrics());
+    const sampler = native.createSampler();
+
+    state.applySampler(0, sampler);
+    state.clearSampler(0);
+    state.clearSampler(0);
+
+    expect(native.calls.filter((call) => call.name === 'bindSampler')).toEqual([
+      { name: 'bindSampler', args: [0, sampler] },
+      { name: 'bindSampler', args: [0, null] }
+    ]);
+  });
+
   test('replays both buffer-texture copy directions in order', async () => {
     const { device, native } = await createFixture();
     const upload = device.createBuffer({ size: 1024, usage: 1 << 2 });
@@ -397,7 +414,10 @@ describe('WebGL2 ordered replay and state VM', () => {
       native.calls.find((call) => call.name === 'bindUniformBuffer')?.args.slice(0, 4)
     ).toEqual([0, expect.any(Object), 256, 256]);
     expect(native.calls.filter((call) => call.name === 'bindTexture')).toHaveLength(1);
-    expect(native.calls.filter((call) => call.name === 'bindSampler')).toHaveLength(1);
+    expect(native.calls.filter((call) => call.name === 'bindSampler')).toEqual([
+      { name: 'bindSampler', args: [1, null] },
+      { name: 'bindSampler', args: [2, expect.any(Object)] }
+    ]);
   });
 
   test('fans one logical texture out to every fused sampler unit', async () => {

@@ -77,6 +77,8 @@ export function prepareWebGlLightListRecorder(device: RHIDevice): PreparedWebGlL
         ]
       });
       pass.setPipeline(pipeline);
+      pass.setViewport(0, 0, output.packing.width, output.packing.height, 0, 1);
+      pass.setScissorRect(0, 0, output.packing.width, output.packing.height);
       pass.setBindGroup(0, group);
       pass.draw(3);
       pass.end();

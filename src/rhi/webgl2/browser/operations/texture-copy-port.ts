@@ -26,7 +26,9 @@ export function createBrowserWebGL2TextureCopyPort(
       const upload =
         copy.format === 'rgba32uint'
           ? new Uint32Array(data.buffer, data.byteOffset + offset, byteLength / 4)
-          : new Uint8Array(data.buffer, data.byteOffset + offset, byteLength);
+          : copy.format === 'rgba16float'
+            ? new Uint16Array(data.buffer, data.byteOffset + offset, byteLength / 2)
+            : new Uint8Array(data.buffer, data.byteOffset + offset, byteLength);
       texSubImage(gl, copy, extent, upload);
       setRowLength(gl, 'UNPACK_ROW_LENGTH', 0, 4);
     },
@@ -49,16 +51,37 @@ export function createBrowserWebGL2TextureCopyPort(
       requireBaselineExtent(extent);
       const buffer = requiredObject(destination, 'buffer');
       withReadFramebuffer(gl, copy.texture, copy.mipLevel, () => {
+        // EXT_color_buffer_float guarantees FLOAT readback, not HALF_FLOAT.
+        // A direct PBO copy must preserve the RHI's eight-byte RGBA16F layout;
+        // silently reading FLOAT would overrun it, and CPU repacking would hide a stall.
+        if (
+          copy.format === 'rgba16float' &&
+          (glCall(gl, 'getParameter', [constant(gl, 'IMPLEMENTATION_COLOR_READ_FORMAT')]) !==
+            constant(gl, 'RGBA') ||
+            glCall(gl, 'getParameter', [constant(gl, 'IMPLEMENTATION_COLOR_READ_TYPE')]) !==
+              constant(gl, 'HALF_FLOAT'))
+        ) {
+          throw new Error(
+            'WebGL2 native RGBA16F buffer readback is unsupported: HALF_FLOAT read type is required.'
+          );
+        }
         glCall(gl, 'bindBuffer', [constant(gl, 'PIXEL_PACK_BUFFER'), buffer]);
         setAlignment(gl, 'PACK_ALIGNMENT', 4);
         setRowLength(gl, 'PACK_ROW_LENGTH', destination.bytesPerRow, bytesPerPixel(copy.format));
+        const format = copy.format === 'rgba32uint' ? 'RGBA_INTEGER' : 'RGBA';
+        const type =
+          copy.format === 'rgba32uint'
+            ? 'UNSIGNED_INT'
+            : copy.format === 'rgba16float'
+              ? 'HALF_FLOAT'
+              : 'UNSIGNED_BYTE';
         glCall(gl, 'readPixels', [
           copy.x,
           copy.y,
           extent.width,
           extent.height,
-          constant(gl, copy.format === 'rgba32uint' ? 'RGBA_INTEGER' : 'RGBA'),
-          constant(gl, copy.format === 'rgba32uint' ? 'UNSIGNED_INT' : 'UNSIGNED_BYTE'),
+          constant(gl, format),
+          constant(gl, type),
           numberField(destination, 'offset', 0)
         ]);
         setRowLength(gl, 'PACK_ROW_LENGTH', 0, 4);
@@ -108,9 +131,13 @@ function textureCopy(
   const textureFacts = facts.get(texture);
   if (
     textureFacts === undefined ||
-    (textureFacts.format !== 'rgba8unorm' && textureFacts.format !== 'rgba32uint')
+    (textureFacts.format !== 'rgba8unorm' &&
+      textureFacts.format !== 'rgba32uint' &&
+      textureFacts.format !== 'rgba16float')
   )
-    throw new Error('WebGL2 texture copy supports owned RGBA8Unorm and RGBA32Uint textures only.');
+    throw new Error(
+      'WebGL2 texture copy supports owned RGBA8Unorm, RGBA16Float and RGBA32Uint textures only.'
+    );
   const origin =
     typeof value.origin === 'object' && value.origin !== null
       ? (value.origin as Readonly<Record<string, unknown>>)
@@ -143,6 +170,13 @@ function texSubImage(
   extent: CopyExtent,
   data: unknown
 ): void {
+  const format = copy.format === 'rgba32uint' ? 'RGBA_INTEGER' : 'RGBA';
+  const type =
+    copy.format === 'rgba32uint'
+      ? 'UNSIGNED_INT'
+      : copy.format === 'rgba16float'
+        ? 'HALF_FLOAT'
+        : 'UNSIGNED_BYTE';
   glCall(gl, 'texSubImage2D', [
     constant(gl, 'TEXTURE_2D'),
     copy.mipLevel,
@@ -150,8 +184,8 @@ function texSubImage(
     copy.y,
     extent.width,
     extent.height,
-    constant(gl, copy.format === 'rgba32uint' ? 'RGBA_INTEGER' : 'RGBA'),
-    constant(gl, copy.format === 'rgba32uint' ? 'UNSIGNED_INT' : 'UNSIGNED_BYTE'),
+    constant(gl, format),
+    constant(gl, type),
     data
   ]);
 }
@@ -210,5 +244,7 @@ function setRowLength(
 }
 
 function bytesPerPixel(format: string): number {
-  return format === 'rgba32uint' ? 16 : 4;
+  if (format === 'rgba32uint') return 16;
+  if (format === 'rgba16float') return 8;
+  return 4;
 }

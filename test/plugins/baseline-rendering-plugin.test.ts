@@ -15,6 +15,8 @@ import {
   createBaselineRenderingPlugin,
   createBoxMeshData,
   createStandardLitMaterial,
+  BaselineBackgroundControlResource,
+  BaselineBackgroundService,
   type BrowserGraphicsSession,
   type Plugin
 } from '../../src';
@@ -290,6 +292,66 @@ describe('baseline rendering plugin', () => {
       renderPasses: 2,
       indexedDrawCalls: 1
     });
+
+    await app.destroy();
+  });
+
+  test('allows updating background configuration at runtime via typed resource, service, and plugin', async () => {
+    const { graphics } = fixture(true);
+    const renderingPlugin = createBaselineRenderingPlugin({
+      graphics,
+      background: { kind: 'solid', colorLinear: [0, 0, 0] }
+    });
+
+    expect(typeof renderingPlugin.setBackground).toBe('function');
+    expect(renderingPlugin.backgroundControl).toBeDefined();
+
+    const app = new App().addPlugin(renderingPlugin);
+    await app.startup();
+
+    // Verify resource and service registration
+    const resourceControl = app.getResource(BaselineBackgroundControlResource);
+    const serviceControl = app.getService(BaselineBackgroundService);
+    expect(resourceControl).toBe(renderingPlugin.backgroundControl);
+    expect(serviceControl).toBe(renderingPlugin.backgroundControl);
+
+    const runner = {
+      async run(context: import('../../src/app/runner').RunnerContext) {
+        context.frame(0);
+        // 1. Update via plugin ergonomic method
+        renderingPlugin.setBackground({ kind: 'solid', colorLinear: [0.5, 0.5, 0.5] });
+        expect(resourceControl?.isDirty).toBe(true);
+        expect(resourceControl?.current).toEqual({ kind: 'solid', colorLinear: [0.5, 0.5, 0.5] });
+
+        context.frame(1 / 60);
+        expect(resourceControl?.isDirty).toBe(false);
+
+        // 2. Update via service
+        serviceControl.setBackground({ kind: 'none' });
+        expect(resourceControl?.isDirty).toBe(true);
+
+        context.frame(2 / 60);
+        expect(resourceControl?.isDirty).toBe(false);
+
+        // 3. Clear via resource
+        resourceControl?.clearBackground();
+        expect(resourceControl?.isDirty).toBe(true);
+        expect(resourceControl?.current).toBeUndefined();
+
+        context.frame(3 / 60);
+        expect(resourceControl?.isDirty).toBe(false);
+
+        return { reason: 'completed', frames: 4 };
+      },
+      requestStop() {}
+    };
+
+    const exit = await app.run(runner);
+    expect(exit.frames).toBe(4);
+
+    // Validates invalid background and throws error fail-fast
+    expect(() => renderingPlugin.setBackground({ kind: 'invalid' } as any)).toThrow();
+    expect(() => resourceControl?.setBackground({ kind: 'invalid' } as any)).toThrow();
 
     await app.destroy();
   });

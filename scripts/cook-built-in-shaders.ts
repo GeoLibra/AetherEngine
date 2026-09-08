@@ -48,6 +48,16 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     targetBackend: 'both'
   },
   {
+    id: 'skybox',
+    exportName: 'SKYBOX_SHADER_ARTIFACT',
+    exportAliases: ['SKYBOX_SHADER_GENERATED_ARTIFACT'],
+    sourcePath: 'src/shader/builtins/skybox/skybox.wgsl',
+    metadataPath: 'src/shader/builtins/skybox/skybox.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/skybox/skybox.generated.ts',
+    sourceUri: 'asset://aether/builtins/skybox.wgsl',
+    targetBackend: 'both'
+  },
+  {
     id: 'light-list-webgpu',
     exportName: 'LIGHT_LIST_SHADER_ARTIFACT',
     exportAliases: ['LIGHT_LIST_SHADER_GENERATED_ARTIFACT'],
@@ -178,8 +188,11 @@ try {
             );
           }
         } else {
-          await mkdir(dirname(composedOutFullPath), { recursive: true });
-          await writeFile(composedOutFullPath, composed.composedSource, 'utf8');
+          const currentContent = await readFile(composedOutFullPath, 'utf8').catch(() => '');
+          if (currentContent !== composed.composedSource) {
+            await mkdir(dirname(composedOutFullPath), { recursive: true });
+            await writeFile(composedOutFullPath, composed.composedSource, 'utf8');
+          }
         }
       }
 
@@ -248,8 +261,11 @@ ${aliasLines}`,
         );
       }
     } else {
-      await mkdir(dirname(outputPath), { recursive: true });
-      await writeFile(outputPath, generated, 'utf8');
+      const published = await readFile(outputPath, 'utf8').catch(() => '');
+      if (published !== generated) {
+        await mkdir(dirname(outputPath), { recursive: true });
+        await writeFile(outputPath, generated, 'utf8');
+      }
     }
   }
 } finally {

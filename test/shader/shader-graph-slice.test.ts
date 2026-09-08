@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
@@ -9,6 +10,10 @@ import {
 } from '../../src/shader/experimental/graph';
 import { loadCookedShaderModule } from '../../src/shader/pipeline';
 import { NativeWgslCooker } from '../../tools/shader-cooker/native-wgsl-cooker';
+
+const cargo = process.env.CARGO ?? 'cargo';
+const pinnedCargo = spawnSync(cargo, ['+1.95.0', '--version'], { encoding: 'utf8' });
+const nativeSuite = pinnedCargo.status === 0 ? describe : describe.skip;
 
 describe('ShaderGraph minimal vertical slice', () => {
   const fixtureDir = join(process.cwd(), 'test/fixtures/shader-graph');
@@ -72,43 +77,45 @@ describe('ShaderGraph minimal vertical slice', () => {
     }
   });
 
-  test('end-to-end: lowers graph, cooks with Native Naga cooker, and loads into runtime', async () => {
-    const lowered = lowerVerticalSliceGraph(minimalSliceGraph);
-    expect(lowered.ok).toBe(true);
-    if (!lowered.ok) return;
+  nativeSuite('end-to-end with Native Naga cooker', { timeout: 120_000 }, () => {
+    test('lowers graph, cooks with Native Naga cooker, and loads into runtime', async () => {
+      const lowered = lowerVerticalSliceGraph(minimalSliceGraph);
+      expect(lowered.ok).toBe(true);
+      if (!lowered.ok) return;
 
-    writeFileSync(wgslPath, lowered.wgsl, 'utf8');
-    writeFileSync(metaPath, lowered.metadataJson, 'utf8');
+      writeFileSync(wgslPath, lowered.wgsl, 'utf8');
+      writeFileSync(metaPath, lowered.metadataJson, 'utf8');
 
-    const cooker = new NativeWgslCooker();
-    const artifact = await cooker.cook({
-      sourcePath: wgslPath,
-      sourceUri: 'asset://fixtures/shader-graph/slice.wgsl',
-      metadataPath: metaPath
-    });
+      const cooker = new NativeWgslCooker();
+      const artifact = await cooker.cook({
+        sourcePath: wgslPath,
+        sourceUri: 'asset://fixtures/shader-graph/slice.wgsl',
+        metadataPath: metaPath
+      });
 
-    expect(artifact.schemaVersion).toBe(2);
-    expect(artifact.bindings.length).toBeGreaterThanOrEqual(3);
-    expect(artifact.modules.wgsl).toBe(lowered.wgsl);
-    expect(artifact.modules.glslEs300['fragment:fragmentMain']).toBeDefined();
-    expect(artifact.modules.glslEs300['vertex:vertexMain']).toBeDefined();
+      expect(artifact.schemaVersion).toBe(2);
+      expect(artifact.bindings.length).toBeGreaterThanOrEqual(3);
+      expect(artifact.modules.wgsl).toBe(lowered.wgsl);
+      expect(artifact.modules.glslEs300['fragment:fragmentMain']).toBeDefined();
+      expect(artifact.modules.glslEs300['vertex:vertexMain']).toBeDefined();
 
-    // Verify runtime module loading for both targets
-    const wgslModule = loadCookedShaderModule(artifact, {
-      target: 'wgsl',
-      entry: 'fragmentMain',
-      stage: 'fragment'
-    });
-    expect(wgslModule.target).toBe('wgsl');
-    expect(wgslModule.source).toContain('fragmentMain');
+      // Verify runtime module loading for both targets
+      const wgslModule = loadCookedShaderModule(artifact, {
+        target: 'wgsl',
+        entry: 'fragmentMain',
+        stage: 'fragment'
+      });
+      expect(wgslModule.target).toBe('wgsl');
+      expect(wgslModule.source).toContain('fragmentMain');
 
-    const glslModule = loadCookedShaderModule(artifact, {
-      target: 'glsl300es',
-      entry: 'fragmentMain',
-      stage: 'fragment'
-    });
-    expect(glslModule.target).toBe('glsl300es');
-    expect(glslModule.source).toContain('main');
+      const glslModule = loadCookedShaderModule(artifact, {
+        target: 'glsl300es',
+        entry: 'fragmentMain',
+        stage: 'fragment'
+      });
+      expect(glslModule.target).toBe('glsl300es');
+      expect(glslModule.source).toContain('main');
+    }, 120_000);
   });
 
   test('rejects unknown node types not supported in vertical slice', () => {
@@ -248,7 +255,7 @@ describe('ShaderGraph minimal vertical slice', () => {
     if (!result.ok) expect(result.diagnostics[0]?.code).toBe('GRAPH_STAGE_MISMATCH');
   });
 
-  test('adapts scalar f32 fragment output to vec4f and cooks with Native Naga', async () => {
+  test('adapts scalar f32 fragment output to vec4f', () => {
     const scalarGraph: ShaderGraph = {
       revision: 1,
       nodes: [{ id: 'val', kind: 'constant', outputType: 'f32', value: 0.75 }],
@@ -259,26 +266,39 @@ describe('ShaderGraph minimal vertical slice', () => {
     if (!result.ok) return;
 
     expect(result.wgsl).toContain('vec4f(val, val, val, 1.0)');
-
-    const scalarWgslPath = join(fixtureDir, 'scalar.wgsl');
-    const scalarMetaPath = join(fixtureDir, 'scalar.wgsl.meta.json');
-    writeFileSync(scalarWgslPath, result.wgsl, 'utf8');
-    writeFileSync(scalarMetaPath, result.metadataJson, 'utf8');
-    try {
-      const cooker = new NativeWgslCooker();
-      const artifact = await cooker.cook({
-        sourcePath: scalarWgslPath,
-        sourceUri: 'asset://fixtures/shader-graph/scalar.wgsl',
-        metadataPath: scalarMetaPath
-      });
-      expect(artifact.modules.wgsl).toBe(result.wgsl);
-    } finally {
-      if (existsSync(scalarWgslPath)) unlinkSync(scalarWgslPath);
-      if (existsSync(scalarMetaPath)) unlinkSync(scalarMetaPath);
-    }
   });
 
-  test('lowers compute graph and cooks with Native Naga without graphics scaffolding', async () => {
+  nativeSuite('scalar f32 fragment output cooking', { timeout: 120_000 }, () => {
+    test('adapts scalar f32 fragment output to vec4f and cooks with Native Naga', async () => {
+      const scalarGraph: ShaderGraph = {
+        revision: 1,
+        nodes: [{ id: 'val', kind: 'constant', outputType: 'f32', value: 0.75 }],
+        outputs: { fragment: 'val' }
+      };
+      const result = lowerVerticalSliceGraph(scalarGraph);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const scalarWgslPath = join(fixtureDir, 'scalar.wgsl');
+      const scalarMetaPath = join(fixtureDir, 'scalar.wgsl.meta.json');
+      writeFileSync(scalarWgslPath, result.wgsl, 'utf8');
+      writeFileSync(scalarMetaPath, result.metadataJson, 'utf8');
+      try {
+        const cooker = new NativeWgslCooker();
+        const artifact = await cooker.cook({
+          sourcePath: scalarWgslPath,
+          sourceUri: 'asset://fixtures/shader-graph/scalar.wgsl',
+          metadataPath: scalarMetaPath
+        });
+        expect(artifact.modules.wgsl).toBe(result.wgsl);
+      } finally {
+        if (existsSync(scalarWgslPath)) unlinkSync(scalarWgslPath);
+        if (existsSync(scalarMetaPath)) unlinkSync(scalarMetaPath);
+      }
+    }, 120_000);
+  });
+
+  test('lowers compute graph without graphics scaffolding', () => {
     const computeGraph: ShaderGraph = {
       revision: 1,
       nodes: [
@@ -298,23 +318,40 @@ describe('ShaderGraph minimal vertical slice', () => {
 
     const meta = JSON.parse(result.metadataJson);
     expect(meta.entryPoints).toEqual([{ name: 'computeMain', stage: 'compute' }]);
+  });
 
-    const computeWgslPath = join(fixtureDir, 'compute.wgsl');
-    const computeMetaPath = join(fixtureDir, 'compute.wgsl.meta.json');
-    writeFileSync(computeWgslPath, result.wgsl, 'utf8');
-    writeFileSync(computeMetaPath, result.metadataJson, 'utf8');
-    try {
-      const cooker = new NativeWgslCooker();
-      const artifact = await cooker.cook({
-        sourcePath: computeWgslPath,
-        sourceUri: 'asset://fixtures/shader-graph/compute.wgsl',
-        metadataPath: computeMetaPath
-      });
-      expect(artifact.modules.wgsl).toBe(result.wgsl);
-    } finally {
-      if (existsSync(computeWgslPath)) unlinkSync(computeWgslPath);
-      if (existsSync(computeMetaPath)) unlinkSync(computeMetaPath);
-    }
+  nativeSuite('compute graph cooking', { timeout: 120_000 }, () => {
+    test('lowers compute graph and cooks with Native Naga without graphics scaffolding', async () => {
+      const computeGraph: ShaderGraph = {
+        revision: 1,
+        nodes: [
+          { id: 'c1', kind: 'constant', outputType: 'f32', value: 1.0 },
+          { id: 'c2', kind: 'constant', outputType: 'f32', value: 2.0 },
+          { id: 'res', kind: 'add', inputs: { left: 'c1', right: 'c2' } }
+        ],
+        outputs: { compute: 'res' }
+      };
+      const result = lowerVerticalSliceGraph(computeGraph);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const computeWgslPath = join(fixtureDir, 'compute.wgsl');
+      const computeMetaPath = join(fixtureDir, 'compute.wgsl.meta.json');
+      writeFileSync(computeWgslPath, result.wgsl, 'utf8');
+      writeFileSync(computeMetaPath, result.metadataJson, 'utf8');
+      try {
+        const cooker = new NativeWgslCooker();
+        const artifact = await cooker.cook({
+          sourcePath: computeWgslPath,
+          sourceUri: 'asset://fixtures/shader-graph/compute.wgsl',
+          metadataPath: computeMetaPath
+        });
+        expect(artifact.modules.wgsl).toBe(result.wgsl);
+      } finally {
+        if (existsSync(computeWgslPath)) unlinkSync(computeWgslPath);
+        if (existsSync(computeMetaPath)) unlinkSync(computeMetaPath);
+      }
+    }, 120_000);
   });
 
   test('rejects connection referencing non-existent output portId', () => {

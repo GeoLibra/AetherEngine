@@ -103,16 +103,37 @@ export function createBrowserWebGL2ResourcePort(
     },
     createSampler(descriptor) {
       const sampler = glObject(gl, 'createSampler');
-      glCall(gl, 'samplerParameteri', [
-        sampler,
-        constant(gl, 'TEXTURE_MIN_FILTER'),
-        filter(gl, descriptor.minFilter)
-      ]);
+      const min =
+        descriptor.mipmapFilter !== undefined
+          ? samplerMinFilter(gl, descriptor.minFilter, descriptor.mipmapFilter)
+          : filter(gl, descriptor.minFilter);
+      glCall(gl, 'samplerParameteri', [sampler, constant(gl, 'TEXTURE_MIN_FILTER'), min]);
       glCall(gl, 'samplerParameteri', [
         sampler,
         constant(gl, 'TEXTURE_MAG_FILTER'),
         filter(gl, descriptor.magFilter)
       ]);
+      {
+        glCall(gl, 'samplerParameteri', [
+          sampler,
+          constant(gl, 'TEXTURE_WRAP_S'),
+          wrapMode(gl, descriptor.addressModeU)
+        ]);
+      }
+      {
+        glCall(gl, 'samplerParameteri', [
+          sampler,
+          constant(gl, 'TEXTURE_WRAP_T'),
+          wrapMode(gl, descriptor.addressModeV)
+        ]);
+      }
+      {
+        glCall(gl, 'samplerParameteri', [
+          sampler,
+          constant(gl, 'TEXTURE_WRAP_R'),
+          wrapMode(gl, descriptor.addressModeW)
+        ]);
+      }
       return sampler;
     },
     deleteSampler(sampler): void {
@@ -137,6 +158,22 @@ function textureFormat(
 
 function filter(gl: BrowserWebGL2Object, value: unknown): number {
   return constant(gl, value === 'linear' ? 'LINEAR' : 'NEAREST');
+}
+
+function wrapMode(gl: BrowserWebGL2Object, value: unknown): number {
+  if (value === 'repeat') return constant(gl, 'REPEAT');
+  if (value === 'mirror-repeat') return constant(gl, 'MIRRORED_REPEAT');
+  return constant(gl, 'CLAMP_TO_EDGE');
+}
+
+function samplerMinFilter(gl: BrowserWebGL2Object, min: unknown, mipmap: unknown): number {
+  if (mipmap === 'linear') {
+    return constant(gl, min === 'linear' ? 'LINEAR_MIPMAP_LINEAR' : 'NEAREST_MIPMAP_LINEAR');
+  }
+  if (mipmap === 'nearest') {
+    return constant(gl, min === 'linear' ? 'LINEAR_MIPMAP_NEAREST' : 'NEAREST_MIPMAP_NEAREST');
+  }
+  return constant(gl, min === 'linear' ? 'LINEAR' : 'NEAREST');
 }
 
 export function requiredRecord(

@@ -258,8 +258,19 @@ export class WebGL2ReplayExecutor {
           `WebGL2 pipeline has no physical slot for group ${index} binding ${entry.binding}.`
         );
       }
-      for (const mapping of physical)
+      for (const mapping of physical) {
+        if (
+          manifest.kind === 'texture' &&
+          !pipeline.physicalBindings.some(
+            (candidate) => candidate.kind === 'sampler' && candidate.slot === mapping.slot
+          )
+        ) {
+          // Sampler bindings are context state and survive pipeline changes. Integer textures
+          // must not inherit a filtering sampler left by an earlier combined-sampler draw.
+          this.state.clearSampler(mapping.slot);
+        }
         this.applyBinding(mapping.slot, entry.resource, dynamicOffsets.get(entry.binding) ?? 0);
+      }
     }
   }
 

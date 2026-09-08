@@ -2,6 +2,7 @@ import type { WebGL2NativeContextPort } from '../types';
 import { WEBGL2_CLIP_CONTROL_EXTENSION } from '../pipeline/clip-depth';
 import {
   COLOR_BUFFER_FLOAT_EXTENSION,
+  TEXTURE_FLOAT_LINEAR_EXTENSION,
   queryWebGL2Extensions,
   queryWebGL2Formats,
   queryWebGL2Limits,
@@ -36,6 +37,9 @@ export function createBrowserWebGL2ContextPort(
   const extensions = queryWebGL2Extensions(gl);
   if (extensions.has(COLOR_BUFFER_FLOAT_EXTENSION)) {
     gl.getExtension?.(COLOR_BUFFER_FLOAT_EXTENSION);
+  }
+  if (extensions.has(TEXTURE_FLOAT_LINEAR_EXTENSION)) {
+    gl.getExtension?.(TEXTURE_FLOAT_LINEAR_EXTENSION);
   }
   if (options.clipControl === false) extensions.delete(WEBGL2_CLIP_CONTROL_EXTENSION);
   const clipControl = extensions.has(WEBGL2_CLIP_CONTROL_EXTENSION)

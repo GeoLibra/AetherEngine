@@ -112,26 +112,20 @@ export class FileSystemCookArtifactStore implements CookArtifactStore {
     try {
       const publishedOnDisk = new Map<CookNodeId, CookArtifactManifest>();
       const transactionsOnDisk = new Map<string, CookTransactionRecord>();
-      for (const name of await readdir(join(this.root, 'transactions')).catch(() => [])) {
-        try {
-          const text = await readFile(this.#path('transactions', name), 'utf8');
-          const record = copyTransaction(JSON.parse(text) as CookTransactionRecord);
+      const loadState = async (): Promise<void> => {
+        await this.#loadJsonDirectory('transactions', (val) => {
+          const record = copyTransaction(val as CookTransactionRecord);
           transactionsOnDisk.set(record.transactionId, record);
           this.#transactions.set(record.transactionId, record);
-        } catch (error) {
-          if (!isFileSystemError(error, 'ENOENT')) throw error;
-        }
-      }
-      for (const name of await readdir(join(this.root, 'published')).catch(() => [])) {
-        try {
-          const text = await readFile(this.#path('published', name), 'utf8');
-          const manifest = copyManifest(JSON.parse(text) as CookArtifactManifest);
+        });
+        await this.#loadJsonDirectory('published', (val) => {
+          const manifest = copyManifest(val as CookArtifactManifest);
           publishedOnDisk.set(manifest.nodeId, manifest);
           this.#published.set(manifest.nodeId, manifest);
-        } catch (error) {
-          if (!isFileSystemError(error, 'ENOENT')) throw error;
-        }
-      }
+        });
+      };
+
+      await loadState();
 
       const objectNames = await readdir(join(this.root, 'objects')).catch(() => []);
       const objects: { hash: string; length: number; createdAtMs: number }[] = [];
@@ -157,6 +151,11 @@ export class FileSystemCookArtifactStore implements CookArtifactStore {
         options
       );
 
+      // Re-scan transactions and published pointers right before deleting objects to ensure
+      // that any concurrent publication or rollback that appeared while computing the plan
+      // has its output closure protected from deletion.
+      await loadState();
+
       const retainedHashes = new Set(options.retainedHashes);
       for (const manifest of publishedOnDisk.values()) {
         for (const output of manifest.outputs) retainedHashes.add(output.hash);
@@ -167,12 +166,22 @@ export class FileSystemCookArtifactStore implements CookArtifactStore {
         }
       }
 
+      const finalizedDeleteHashes: string[] = [];
+      let finalizedDeleteBytes = 0;
       for (const hash of plan.deleteHashes) {
         if (retainedHashes.has(hash)) continue;
+        const objectPath = this.#path('objects', hash);
         try {
-          await unlink(this.#path('objects', hash));
+          const currentStat = await stat(objectPath);
+          if (currentStat.mtimeMs > options.nowMs - options.minimumAgeMs) {
+            continue;
+          }
+          await unlink(objectPath);
+          finalizedDeleteHashes.push(hash);
+          finalizedDeleteBytes += currentStat.size;
         } catch (error) {
           if (!isFileSystemError(error, 'ENOENT')) throw error;
+          finalizedDeleteHashes.push(hash);
         }
         this.#objects.delete(hash);
       }
@@ -187,11 +196,8 @@ export class FileSystemCookArtifactStore implements CookArtifactStore {
             try {
               const fileStat = await stat(path);
               if (fileStat.mtimeMs <= temporaryCutoff) {
-                if (fileStat.isDirectory()) {
-                  await rm(path, { recursive: true, force: true });
-                } else {
-                  await unlink(path);
-                }
+                if (fileStat.isDirectory()) await rm(path, { recursive: true, force: true });
+                else await unlink(path);
               }
             } catch (error) {
               if (!isFileSystemError(error, 'ENOENT')) throw error;
@@ -199,7 +205,11 @@ export class FileSystemCookArtifactStore implements CookArtifactStore {
           }
         }
       }
-      return plan;
+      return Object.freeze({
+        deleteHashes: Object.freeze(finalizedDeleteHashes),
+        deleteBytes: finalizedDeleteBytes,
+        retainedObjects: objects.length - finalizedDeleteHashes.length
+      });
     } finally {
       await releaseLock(gcLockPath, gcLock);
     }
@@ -207,8 +217,8 @@ export class FileSystemCookArtifactStore implements CookArtifactStore {
 
   async #initialize(): Promise<void> {
     await Promise.all(
-      ['objects', 'transactions', 'published', 'locks'].map((name) =>
-        mkdir(join(this.root, name), { recursive: true })
+      ['objects', 'transactions', 'published', 'locks'].map((dir) =>
+        mkdir(join(this.root, dir), { recursive: true })
       )
     );
     for (const name of await readdir(join(this.root, 'objects')).catch(() => [])) {
