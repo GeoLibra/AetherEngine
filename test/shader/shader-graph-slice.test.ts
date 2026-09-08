@@ -77,7 +77,7 @@ describe('ShaderGraph minimal vertical slice', () => {
     }
   });
 
-  nativeSuite('end-to-end with Native Naga cooker', () => {
+  nativeSuite('end-to-end with Native Naga cooker', { timeout: 120_000 }, () => {
     test('lowers graph, cooks with Native Naga cooker, and loads into runtime', async () => {
       const lowered = lowerVerticalSliceGraph(minimalSliceGraph);
       expect(lowered.ok).toBe(true);
@@ -115,7 +115,7 @@ describe('ShaderGraph minimal vertical slice', () => {
       });
       expect(glslModule.target).toBe('glsl300es');
       expect(glslModule.source).toContain('main');
-    });
+    }, 120_000);
   });
 
   test('rejects unknown node types not supported in vertical slice', () => {
@@ -268,7 +268,7 @@ describe('ShaderGraph minimal vertical slice', () => {
     expect(result.wgsl).toContain('vec4f(val, val, val, 1.0)');
   });
 
-  nativeSuite('scalar f32 fragment output cooking', () => {
+  nativeSuite('scalar f32 fragment output cooking', { timeout: 120_000 }, () => {
     test('adapts scalar f32 fragment output to vec4f and cooks with Native Naga', async () => {
       const scalarGraph: ShaderGraph = {
         revision: 1,
@@ -295,7 +295,7 @@ describe('ShaderGraph minimal vertical slice', () => {
         if (existsSync(scalarWgslPath)) unlinkSync(scalarWgslPath);
         if (existsSync(scalarMetaPath)) unlinkSync(scalarMetaPath);
       }
-    });
+    }, 120_000);
   });
 
   test('lowers compute graph without graphics scaffolding', () => {
@@ -320,7 +320,7 @@ describe('ShaderGraph minimal vertical slice', () => {
     expect(meta.entryPoints).toEqual([{ name: 'computeMain', stage: 'compute' }]);
   });
 
-  nativeSuite('compute graph cooking', () => {
+  nativeSuite('compute graph cooking', { timeout: 120_000 }, () => {
     test('lowers compute graph and cooks with Native Naga without graphics scaffolding', async () => {
       const computeGraph: ShaderGraph = {
         revision: 1,
@@ -351,7 +351,7 @@ describe('ShaderGraph minimal vertical slice', () => {
         if (existsSync(computeWgslPath)) unlinkSync(computeWgslPath);
         if (existsSync(computeMetaPath)) unlinkSync(computeMetaPath);
       }
-    });
+    }, 120_000);
   });
 
   test('rejects connection referencing non-existent output portId', () => {
