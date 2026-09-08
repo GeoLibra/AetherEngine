@@ -76,7 +76,7 @@ export interface WebGL2NativeContextPort {
     size: number
   ): void;
   bindTexture?(unit: number, texture: WebGL2NativeObject): void;
-  bindSampler?(unit: number, sampler: WebGL2NativeObject): void;
+  bindSampler?(unit: number, sampler: WebGL2NativeObject | null): void;
   draw?(
     vertexCount: number,
     instanceCount: number,

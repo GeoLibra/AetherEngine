@@ -13,8 +13,8 @@ export const SKYBOX_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/skybox.wgsl',
-    contentHash: 'fc1abf2fa43eb91ab80433c7e5537aea3a891bafc5050d4fea15e59439c23a08',
-    byteLength: 3321
+    contentHash: '47cd05de04f3fe567a083bae14dee47fc45df1dcaa74cfc0996aa134ee41492f',
+    byteLength: 3359
   },
   entryPoints: [
     {
@@ -125,7 +125,7 @@ export const SKYBOX_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
           typeName: 'vec4<f32>'
         },
         {
-          path: 'padding0',
+          path: 'radianceTint',
           offset: 48,
           size: 16,
           alignment: 16,
@@ -182,7 +182,7 @@ export const SKYBOX_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   ray0: vec4<f32>,
   ray1: vec4<f32>,
   ray2: vec4<f32>,
-  padding0: vec4<f32>,
+  radianceTint: vec4<f32>,
   invProj: mat4x4<f32>,
   envRot: mat4x4<f32>,
   params: vec4<f32>,
@@ -303,7 +303,7 @@ fn skyboxFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
   }
 
   let sampled = textureSampleLevel(skyTexture, skySampler, uv, lod).rgb;
-  let radiance = sampled * skyboxUniforms.params.x;
+  let radiance = sampled * skyboxUniforms.params.x * skyboxUniforms.radianceTint.rgb;
   return vec4<f32>(radiance, 1.0);
 }
 `,
@@ -318,7 +318,7 @@ struct SkyboxUniforms {
     vec4 ray0_;
     vec4 ray1_;
     vec4 ray2_;
-    vec4 padding0_;
+    vec4 radianceTint;
     mat4x4 invProj;
     mat4x4 envRot;
     vec4 params;
@@ -448,7 +448,8 @@ void main() {
     vec4 _e122 = textureLod(_group_1_binding_0_fs, vec2(_e25), _e121);
     vec3 sampled = _e122.xyz;
     float _e127 = _group_0_binding_0_fs.params.x;
-    vec3 radiance = (sampled * _e127);
+    vec4 _e131 = _group_0_binding_0_fs.radianceTint;
+    vec3 radiance = ((sampled * _e127) * _e131.xyz);
     _fs2p_location0 = vec4(radiance, 1.0);
     return;
 }
@@ -487,7 +488,7 @@ struct SkyboxUniforms {
     vec4 ray0_;
     vec4 ray1_;
     vec4 ray2_;
-    vec4 padding0_;
+    vec4 radianceTint;
     mat4x4 invProj;
     mat4x4 envRot;
     vec4 params;

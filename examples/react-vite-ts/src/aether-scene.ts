@@ -79,6 +79,8 @@ export interface MountedAetherScene {
   setMetallic(metallic: number): void;
   setLightDirection(direction: readonly [number, number, number]): void;
   setShadowDistance(distance: number): void;
+  /** Updates the HDR background multiplier without rebuilding the scene. */
+  setBackgroundMultiplier(value: number): void;
   resize(width: number, height: number): Promise<void> | void;
   destroy(): Promise<void>;
 }
@@ -244,24 +246,26 @@ export async function mountAetherScene(
     } else if (bgMode === 'solid') {
       activeBackground = {
         kind: 'solid',
-        colorLinear: [0.03, 0.04, 0.06]
+        // In the baseline HDR pipeline with exposure 0.005, multiply by 200 (1/0.005)
+        // so that [0.03, 0.04, 0.06] linear color is preserved after exposure
+        colorLinear: [6, 8, 12]
       };
     } else {
       activeBackground = { kind: 'none' };
     }
   }
 
+  const renderingPlugin = createBaselineRenderingPlugin({
+    graphics,
+    mesh: { handle: meshHandle, payloadVersion: 1, data: mesh },
+    material: { handle: materialHandle, payloadVersion: 1, material },
+    ...(environmentAsset ? { environment: environmentAsset } : {}),
+    background: activeBackground
+  });
+
   const app = new App()
     .addPlugin(TimePlugin)
-    .addPlugin(
-      createBaselineRenderingPlugin({
-        graphics,
-        mesh: { handle: meshHandle, payloadVersion: 1, data: mesh },
-        material: { handle: materialHandle, payloadVersion: 1, material },
-        ...(environmentAsset ? { environment: environmentAsset } : {}),
-        background: activeBackground
-      })
-    )
+    .addPlugin(renderingPlugin)
     .addPlugin(
       definePlugin({
         id: 'example.standard-lit-scene',
@@ -517,6 +521,17 @@ export async function mountAetherScene(
     },
     setShadowDistance(distance: number) {
       if (Number.isFinite(distance) && distance > 0.5) shadowDistance = distance;
+    },
+    setBackgroundMultiplier(value: number) {
+      if (!Number.isFinite(value) || value < 0) return;
+      if (activeBgMode === 'hdr' && environmentAsset !== undefined) {
+        renderingPlugin.setBackground({
+          kind: 'environment',
+          source: 'view-environment',
+          representation: 'radiance-level-zero',
+          multiplier: value
+        });
+      }
     },
     async resize(width: number, height: number) {
       graphics.resize({ width, height });

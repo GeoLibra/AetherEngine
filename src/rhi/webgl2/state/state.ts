@@ -23,7 +23,7 @@ export class WebGL2StateVM {
   private readonly vertexBuffers = new Map<number, BufferState>();
   private readonly uniformBuffers = new Map<number, BufferState>();
   private readonly textures = new Map<number, WebGL2NativeObject>();
-  private readonly samplers = new Map<number, WebGL2NativeObject>();
+  private readonly samplers = new Map<number, WebGL2NativeObject | null>();
 
   constructor(
     private readonly native: WebGL2NativeContextPort,
@@ -137,6 +137,13 @@ export class WebGL2StateVM {
     if (this.samplers.get(unit) === handle) return this.skip();
     this.call('bindSampler', unit, handle);
     this.samplers.set(unit, handle);
+  }
+
+  /** Restores the texture object's sampling state when the active shader has no authored sampler. */
+  clearSampler(unit: number): void {
+    if (this.samplers.get(unit) === null) return this.skip();
+    this.call('bindSampler', unit, null);
+    this.samplers.set(unit, null);
   }
 
   private call(name: keyof WebGL2NativeContextPort, ...args: unknown[]): void {

@@ -1,8 +1,11 @@
 export type {
   BaselineEnvironmentFrame,
+  BaselineEnvironmentLighting,
+  BaselineEnvironmentOptions,
   BaselineLightListFrame,
   BaselinePreparedFrame,
   BaselineRenderDiagnostics,
   BaselineRenderingOptions,
-  BaselineRenderSkipReason
+  BaselineRenderSkipReason,
+  NormalizedBaselineEnvironmentLighting
 } from './baseline-types';

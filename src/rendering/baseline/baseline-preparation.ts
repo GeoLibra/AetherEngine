@@ -78,8 +78,10 @@ export const BASELINE_LIGHT_LIST_CAPACITY: CpuLightListCapacity = Object.freeze(
   maxLightIndices: 4096
 });
 
-type RegisteredOptions = BaselineRenderingOptions &
-  Required<Pick<BaselineRenderingOptions, 'mesh' | 'material' | 'featurePolicyKey'>>;
+import type { NormalizedBaselineRenderingOptions } from './baseline-options';
+
+type RegisteredOptions = NormalizedBaselineRenderingOptions &
+  Required<Pick<NormalizedBaselineRenderingOptions, 'mesh' | 'material' | 'featurePolicyKey'>>;
 
 /** Preparation-owned standard-lit GPU resources shared across immutable frame packets. */
 export class BaselineStandardLitPreparation {
@@ -147,13 +149,24 @@ export class BaselineStandardLitPreparation {
       label: 'aether-standard-lit',
       code: shaderModule
     });
+    const { diffuseIrradiance, intensity, radianceTint } = options.environmentLighting;
     if (options.environment !== undefined) {
       this.environmentBundle = sharedEnvironmentTextureCache.acquire(device, options.environment);
       this.environmentTextures = this.environmentBundle.textures;
       const maxLod = this.environmentBundle.maxValidRadianceLod;
-      this.environmentBuffer = uniformBuffer(device, [300, 350, 500, 1, 100, 120, 180, maxLod]);
+      this.environmentBuffer = uniformBuffer(device, [
+        ...diffuseIrradiance,
+        intensity,
+        ...radianceTint,
+        maxLod
+      ]);
     } else {
-      this.environmentBuffer = uniformBuffer(device, [300, 350, 500, 1, 100, 120, 180, 2.0]);
+      this.environmentBuffer = uniformBuffer(device, [
+        ...diffuseIrradiance,
+        intensity,
+        ...radianceTint,
+        2.0
+      ]);
       this.environmentTextures = createDefaultEnvironmentTextures(device);
     }
     const postColor = prepareBaselinePostColor(
@@ -290,6 +303,7 @@ export class BaselineStandardLitPreparation {
     const bg = background ?? this.options.background;
     if (bg === undefined || bg.kind === 'none') return undefined;
     const { device } = this.options.graphics;
+    const environmentIntensity = this.options.environmentLighting.intensity;
     return prepareBackground({
       device,
       view,
@@ -298,6 +312,8 @@ export class BaselineStandardLitPreparation {
       depthFormat: 'depth24plus',
       environmentAsset: this.options.environment,
       environmentCache: sharedEnvironmentTextureCache,
+      environmentIntensity,
+      environmentRadianceTint: this.options.environmentLighting.radianceTint,
       depthMode: 'standard',
       reconstructionMode: 'vertex'
     });

@@ -5,10 +5,31 @@ import { sharedEnvironmentTextureCache } from '../lighting';
 import { prepareBackground, type PreparedBackgroundFrame } from '../background';
 import type { ViewBackground } from '../background/types';
 import type { RHIDevice } from '../../rhi/contracts';
-import type { BaselineRenderingOptions } from './types';
+import type {
+  BaselineEnvironmentLighting,
+  BaselineRenderingOptions,
+  NormalizedBaselineEnvironmentLighting
+} from './types';
+import type { EnvironmentAsset } from '../../assets';
 
-export type NormalizedBaselineRenderingOptions = BaselineRenderingOptions &
-  Readonly<{ viewId: string; featurePolicyKey: string }>;
+const DEFAULT_ENVIRONMENT_RADIANCE_TINT = Object.freeze([100, 120, 180] as [
+  number,
+  number,
+  number
+]);
+const DEFAULT_ENVIRONMENT_DIFFUSE_IRRADIANCE = Object.freeze([300, 350, 500] as [
+  number,
+  number,
+  number
+]);
+
+export type NormalizedBaselineRenderingOptions = Omit<BaselineRenderingOptions, 'environment'> &
+  Readonly<{
+    viewId: string;
+    featurePolicyKey: string;
+    environment: EnvironmentAsset | undefined;
+    environmentLighting: NormalizedBaselineEnvironmentLighting;
+  }>;
 
 export function validateOptions(
   options: BaselineRenderingOptions
@@ -45,13 +66,18 @@ export function validateOptions(
           material: options.material.material
         });
   const background = validateBackgroundOption(options.background);
+  const { environment, environmentLighting } = normalizeEnvironment(
+    options.environment,
+    options.environmentLighting
+  );
   return Object.freeze({
     graphics: options.graphics,
     viewId,
     featurePolicyKey,
     ...(mesh === undefined ? {} : { mesh }),
     ...(material === undefined ? {} : { material }),
-    ...(options.environment === undefined ? {} : { environment: options.environment }),
+    environment,
+    environmentLighting,
     ...(background === undefined ? {} : { background }),
     ...(options.forceSeparatePasses === undefined
       ? {}
@@ -59,12 +85,80 @@ export function validateOptions(
   });
 }
 
+function normalizeEnvironment(
+  rawEnv: BaselineRenderingOptions['environment'],
+  rawLighting: BaselineEnvironmentLighting | undefined
+): Readonly<{
+  environment: EnvironmentAsset | undefined;
+  environmentLighting: NormalizedBaselineEnvironmentLighting;
+}> {
+  const asset: EnvironmentAsset | undefined =
+    rawEnv !== undefined && 'asset' in rawEnv ? rawEnv.asset : rawEnv;
+  const envLighting = rawEnv !== undefined && 'lighting' in rawEnv ? rawEnv.lighting : undefined;
+  const lighting = rawLighting ?? envLighting;
+  if (lighting !== undefined) {
+    if (
+      lighting.intensity !== undefined &&
+      (!Number.isFinite(lighting.intensity) || lighting.intensity < 0)
+    ) {
+      throw new TypeError('Environment intensity must be a non-negative finite number.');
+    }
+    for (const tint of [lighting.radianceTint, lighting.diffuseIrradiance]) {
+      if (
+        tint !== undefined &&
+        (!Array.isArray(tint) ||
+          tint.length !== 3 ||
+          tint.some((channel) => !Number.isFinite(channel) || channel < 0))
+      ) {
+        throw new TypeError('Environment tint must contain three non-negative finite numbers.');
+      }
+    }
+  }
+
+  if (asset !== undefined) {
+    const intensity = lighting?.intensity ?? 1.0;
+    const radianceTint = lighting?.radianceTint
+      ? Object.freeze([...lighting.radianceTint] as [number, number, number])
+      : DEFAULT_ENVIRONMENT_RADIANCE_TINT;
+    const diffuseIrradiance = lighting?.diffuseIrradiance
+      ? Object.freeze([...lighting.diffuseIrradiance] as [number, number, number])
+      : DEFAULT_ENVIRONMENT_DIFFUSE_IRRADIANCE;
+
+    return Object.freeze({
+      environment: asset,
+      environmentLighting: Object.freeze({
+        intensity,
+        radianceTint,
+        diffuseIrradiance
+      })
+    });
+  }
+
+  const intensity = lighting?.intensity ?? 1.0;
+  const radianceTint = lighting?.radianceTint
+    ? Object.freeze([...lighting.radianceTint] as [number, number, number])
+    : DEFAULT_ENVIRONMENT_RADIANCE_TINT;
+  const diffuseIrradiance = lighting?.diffuseIrradiance
+    ? Object.freeze([...lighting.diffuseIrradiance] as [number, number, number])
+    : DEFAULT_ENVIRONMENT_DIFFUSE_IRRADIANCE;
+
+  return Object.freeze({
+    environment: undefined,
+    environmentLighting: Object.freeze({
+      intensity,
+      radianceTint,
+      diffuseIrradiance
+    })
+  });
+}
+
 export function createBaselineBackgroundFrame(
   device: RHIDevice,
   view: ExtractedView,
-  options: NormalizedBaselineRenderingOptions
+  options: NormalizedBaselineRenderingOptions,
+  backgroundOverride?: ViewBackground
 ): PreparedBackgroundFrame | undefined {
-  const bg = options.background;
+  const bg = backgroundOverride ?? options.background;
   if (bg === undefined || bg.kind === 'none') return undefined;
   return prepareBackground({
     device,
@@ -74,6 +168,8 @@ export function createBaselineBackgroundFrame(
     depthFormat: 'depth24plus',
     ...(options.environment === undefined ? {} : { environmentAsset: options.environment }),
     environmentCache: sharedEnvironmentTextureCache,
+    environmentIntensity: options.environmentLighting.intensity,
+    environmentRadianceTint: options.environmentLighting.radianceTint,
     depthMode: 'standard',
     reconstructionMode: 'vertex'
   });

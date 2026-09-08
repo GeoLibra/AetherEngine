@@ -1,4 +1,5 @@
 import { bench, expect } from 'vitest';
+import { measureBackgroundPipelineResidency } from './skybox-background/pipeline-residency';
 import {
   BENCHMARK_VIEWPORTS,
   createPerspectiveCameraFixture,
@@ -10,6 +11,17 @@ import {
 } from './skybox-background/scenarios';
 
 const profile = process.env.AETHER_BENCH_PROFILE ?? 'smoke';
+const residencyFrames = profile === 'smoke' ? 8 : 64;
+
+bench('actual warm background pipeline residency', () => {
+  expect(measureBackgroundPipelineResidency(residencyFrames, true).pipelineAllocations).toBe(1);
+});
+
+bench('cold background pipeline allocation reference', () => {
+  expect(measureBackgroundPipelineResidency(residencyFrames, false).pipelineAllocations).toBe(
+    residencyFrames
+  );
+});
 
 const viewport =
   profile === 'nightly'

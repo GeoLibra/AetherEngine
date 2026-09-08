@@ -188,8 +188,11 @@ try {
             );
           }
         } else {
-          await mkdir(dirname(composedOutFullPath), { recursive: true });
-          await writeFile(composedOutFullPath, composed.composedSource, 'utf8');
+          const currentContent = await readFile(composedOutFullPath, 'utf8').catch(() => '');
+          if (currentContent !== composed.composedSource) {
+            await mkdir(dirname(composedOutFullPath), { recursive: true });
+            await writeFile(composedOutFullPath, composed.composedSource, 'utf8');
+          }
         }
       }
 
@@ -258,8 +261,11 @@ ${aliasLines}`,
         );
       }
     } else {
-      await mkdir(dirname(outputPath), { recursive: true });
-      await writeFile(outputPath, generated, 'utf8');
+      const published = await readFile(outputPath, 'utf8').catch(() => '');
+      if (published !== generated) {
+        await mkdir(dirname(outputPath), { recursive: true });
+        await writeFile(outputPath, generated, 'utf8');
+      }
     }
   }
 } finally {

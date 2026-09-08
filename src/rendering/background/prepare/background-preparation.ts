@@ -26,6 +26,7 @@ import { computeFullscreenVertexDirections, extractCameraRotationMatrix } from '
 import { BackgroundDiagnosticCodes, BackgroundDiagnosticError } from '../diagnostics';
 import type { ViewBackground } from '../types';
 import { prepareBackgroundPipeline } from './background-pipeline';
+import { SubmissionRetainedValue } from '../../world/submission-retained-value';
 import { packSkyboxUniforms, SKYBOX_UNIFORM_BYTE_SIZE } from './background-uniforms';
 
 const UNIFORM_BUFFER_USAGE = (1 << 3) | (1 << 6); // UNIFORM | COPY_DST
@@ -63,6 +64,9 @@ export interface PrepareBackgroundOptions {
   readonly environmentAsset?: EnvironmentAsset | undefined;
   readonly environmentCache: EnvironmentTextureCache;
   readonly environmentRotation?: Quaternion | undefined;
+  readonly environmentIntensity?: number | undefined;
+  /** Non-negative linear RGB gain shared with specular IBL. Defaults to white. */
+  readonly environmentRadianceTint?: readonly [number, number, number] | undefined;
   readonly depthMode?: 'standard' | 'reverse' | undefined;
   readonly reconstructionMode?: 'vertex' | 'fragment' | undefined;
 }
@@ -125,135 +129,145 @@ export function prepareBackground(options: PrepareBackgroundOptions): PreparedBa
   let multiplier = 1.0;
   let bundleRelease: (() => void) | undefined;
   let bundleRetain: ((sub?: RHISubmission) => void) | undefined;
+  let releasePipeline: (() => void) | undefined;
+  const frameResources: RHIResource[] = [];
 
-  if (background.kind === 'solid') {
-    texture = getOrCreateDummyTexture(device);
-  } else if (background.kind === 'environment') {
-    if (environmentAsset === undefined) {
-      throw new BackgroundDiagnosticError(
-        'background-environment-missing',
-        'Environment background requested but no environment asset is selected.',
-        { viewId: view.viewId }
+  try {
+    if (background.kind === 'solid') {
+      texture = getOrCreateDummyTexture(device);
+    } else if (background.kind === 'environment') {
+      if (environmentAsset === undefined) {
+        throw new BackgroundDiagnosticError(
+          'background-environment-missing',
+          'Environment background requested but no environment asset is selected.',
+          { viewId: view.viewId }
+        );
+      }
+      const bundle = environmentCache.acquireBackground(
+        device,
+        environmentAsset,
+        background.representation
       );
-    }
-    const bundle = environmentCache.acquireBackground(
-      device,
-      environmentAsset,
-      background.representation
-    );
-    texture = bundle.texture;
-    maxLod = bundle.maxLod;
-    intensity = 1.0;
-    multiplier = background.multiplier;
-    bundleRelease = () => bundle.release();
-    bundleRetain = (sub?: RHISubmission) => bundle.retain(sub);
+      texture = bundle.texture;
+      maxLod = bundle.maxLod;
+      intensity = options.environmentIntensity ?? 1.0;
+      multiplier = background.multiplier;
+      bundleRelease = () => bundle.release();
+      bundleRetain = (sub?: RHISubmission) => bundle.retain(sub);
 
-    if (background.representation === 'panorama') {
-      if (
-        environmentAsset.artifact.schema === 'EnvironmentArtifact@2' &&
-        environmentAsset.artifact.background.kind === 'panorama'
-      ) {
-        const base = environmentAsset.artifact.background.payload.levels[0]!;
+      if (background.representation === 'panorama') {
+        if (
+          environmentAsset.artifact.schema === 'EnvironmentArtifact@2' &&
+          environmentAsset.artifact.background.kind === 'panorama'
+        ) {
+          const base = environmentAsset.artifact.background.payload.levels[0]!;
+          textureWidth = base.width;
+          textureHeight = base.height;
+        }
+      } else {
+        const base = environmentAsset.artifact.radiance.levels[0]!;
         textureWidth = base.width;
         textureHeight = base.height;
       }
     } else {
-      const base = environmentAsset.artifact.radiance.levels[0]!;
-      textureWidth = base.width;
-      textureHeight = base.height;
+      return {
+        status: 'none',
+        retain: () => {},
+        release: () => {}
+      };
     }
-  } else {
-    return {
-      status: 'none',
-      retain: () => {},
-      release: () => {}
-    };
-  }
 
-  // 1. Pipeline and layout compilation
-  const { prepared: pipelinePrep, ownedResources } = prepareBackgroundPipeline(device, {
-    colorFormat,
-    depthFormat,
-    label: `skybox-${view.viewId}`
-  });
+    // 1. Pipeline and layout compilation
+    const pipelineLease = prepareBackgroundPipeline(device, {
+      colorFormat,
+      depthFormat,
+      label: `skybox-${view.viewId}`
+    });
+    const pipelinePrep = pipelineLease.prepared;
+    releasePipeline = pipelineLease.release;
 
-  // 2. Compute vertex rays & camera matrices
-  const vertexRays = computeFullscreenVertexDirections({
-    viewMatrix: view.view,
-    projectionMatrix: view.projection,
-    projectionKind: view.projectionKind,
-    depthMode,
-    environmentRotation
-  });
+    // 2. Compute vertex rays & camera matrices
+    const vertexRays = computeFullscreenVertexDirections({
+      viewMatrix: view.view,
+      projectionMatrix: view.projection,
+      projectionKind: view.projectionKind,
+      depthMode,
+      environmentRotation
+    });
 
-  const invProj = Mat4.invert(view.projection);
-  const camRot = extractCameraRotationMatrix(view.view);
-  let envRot = camRot;
-  if (environmentRotation !== undefined) {
-    const invEnv = Quat.invert(environmentRotation);
-    const envMat = Mat4.fromTRS([0, 0, 0], invEnv, [1, 1, 1]);
-    envRot = Mat4.multiply(envMat, camRot);
-  }
-
-  // 3. Pack uniforms
-  const packedData = packSkyboxUniforms({
-    vertexRays,
-    invProj,
-    envRot,
-    intensity,
-    multiplier,
-    maxLod,
-    textureWidth,
-    textureHeight,
-    reconstructionMode,
-    representation: background.kind === 'solid' ? 'solid' : background.representation,
-    depthMode,
-    projectionKind: view.projectionKind,
-    solidColor: background.kind === 'solid' ? background.colorLinear : undefined
-  });
-
-  const uniformBuffer = device.createBuffer({
-    label: `skybox-uniforms-${view.viewId}`,
-    size: SKYBOX_UNIFORM_BYTE_SIZE,
-    usage: UNIFORM_BUFFER_USAGE
-  });
-  device.queue.writeBuffer(uniformBuffer, 0, packedData);
-
-  let released = false;
-  let retained = false;
-  const pendingSubmissions = new Set<Promise<unknown>>();
-
-  return Object.freeze({
-    status: 'ready',
-    representation: background.kind === 'solid' ? 'solid' : background.representation,
-    pipelineToken: pipelinePrep.pipelineToken,
-    uniformLayoutToken: pipelinePrep.uniformLayoutToken,
-    textureLayoutToken: pipelinePrep.textureLayoutToken,
-    pipeline: pipelinePrep.pipeline,
-    uniformLayout: pipelinePrep.uniformLayout,
-    textureLayout: pipelinePrep.textureLayout,
-    uniformBuffer,
-    texture,
-    sampler: pipelinePrep.sampler,
-    ownedResources: Object.freeze([uniformBuffer]),
-    retain(submission?: RHISubmission) {
-      bundleRetain?.(submission);
-      if (submission !== undefined && !retained) {
-        retained = true;
-        const pending = submission.done.finally(() => {
-          uniformBuffer.dispose();
-          pendingSubmissions.delete(pending);
-        });
-        pendingSubmissions.add(pending);
-      }
-    },
-    release() {
-      if (released) return;
-      released = true;
-      if (!retained) {
-        uniformBuffer.dispose();
-      }
-      bundleRelease?.();
+    const invProj = Mat4.invert(view.projection);
+    const camRot = extractCameraRotationMatrix(view.view);
+    let envRot = camRot;
+    if (environmentRotation !== undefined) {
+      const invEnv = Quat.invert(environmentRotation);
+      const envMat = Mat4.fromTRS([0, 0, 0], invEnv, [1, 1, 1]);
+      envRot = Mat4.multiply(envMat, camRot);
     }
-  });
+
+    // 3. Pack uniforms
+    const packedData = packSkyboxUniforms({
+      vertexRays,
+      invProj,
+      envRot,
+      intensity,
+      radianceTint: options.environmentRadianceTint,
+      multiplier,
+      maxLod,
+      textureWidth,
+      textureHeight,
+      reconstructionMode,
+      representation: background.kind === 'solid' ? 'solid' : background.representation,
+      depthMode,
+      projectionKind: view.projectionKind,
+      solidColor: background.kind === 'solid' ? background.colorLinear : undefined
+    });
+
+    const uniformBuffer = device.createBuffer({
+      label: `skybox-uniforms-${view.viewId}`,
+      size: SKYBOX_UNIFORM_BYTE_SIZE,
+      usage: UNIFORM_BUFFER_USAGE
+    });
+    frameResources.push(uniformBuffer);
+    device.queue.writeBuffer(uniformBuffer, 0, packedData);
+
+    let released = false;
+    const uniformOwner = new SubmissionRetainedValue(uniformBuffer, (buffer) => buffer.dispose());
+    const uniformLease = uniformOwner.acquire()!;
+    uniformOwner.retire();
+
+    return Object.freeze({
+      status: 'ready',
+      representation: background.kind === 'solid' ? 'solid' : background.representation,
+      pipelineToken: pipelinePrep.pipelineToken,
+      uniformLayoutToken: pipelinePrep.uniformLayoutToken,
+      textureLayoutToken: pipelinePrep.textureLayoutToken,
+      pipeline: pipelinePrep.pipeline,
+      uniformLayout: pipelinePrep.uniformLayout,
+      textureLayout: pipelinePrep.textureLayout,
+      uniformBuffer,
+      texture,
+      sampler: pipelinePrep.sampler,
+      ownedResources: Object.freeze([uniformBuffer]),
+      retain(submission?: RHISubmission) {
+        if (released) throw new Error('Cannot retain a released background frame.');
+        bundleRetain?.(submission);
+        if (submission !== undefined) {
+          pipelineLease.retain(submission);
+          uniformLease.retain(submission);
+        }
+      },
+      release() {
+        if (released) return;
+        released = true;
+        uniformLease.release();
+        pipelineLease.release();
+        bundleRelease?.();
+      }
+    });
+  } catch (error) {
+    for (const resource of frameResources) resource.dispose();
+    releasePipeline?.();
+    bundleRelease?.();
+    throw error;
+  }
 }

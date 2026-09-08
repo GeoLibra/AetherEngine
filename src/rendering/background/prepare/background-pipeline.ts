@@ -11,6 +11,8 @@ import type {
   RHIResource,
   RHISampler
 } from '../../../rhi/contracts';
+import type { RHISubmission } from '../../../rhi/contracts';
+import { SubmissionRetainedValue } from '../../world/submission-retained-value';
 import {
   createPreparedBindGroupLayoutToken,
   createPreparedRenderPipelineToken,
@@ -39,25 +41,30 @@ interface CachedBackgroundPipeline {
   readonly deviceGeneration: number;
   readonly prepared: PreparedBackgroundPipeline;
   readonly ownedResources: readonly RHIResource[];
+  readonly retention: SubmissionRetainedValue<readonly RHIResource[]>;
 }
 
-const pipelineCache = new Map<string, CachedBackgroundPipeline>();
+const devicePipelineCaches = new WeakMap<RHIDevice, Map<string, CachedBackgroundPipeline>>();
 
 /**
- * Disposes all cached background pipeline resources across all devices.
+ * Disposes all cached background pipeline resources associated with the specified device.
+ * Enforces targeted lifecycle management so one device's teardown does not affect
+ * other concurrently active devices.
+ *
+ * @param device The device whose background pipeline cache should be cleared.
  */
-export function clearBackgroundPipelineCache(): void {
-  for (const cached of pipelineCache.values()) {
-    for (const resource of [...cached.ownedResources].reverse()) {
-      resource.dispose();
-    }
+export function clearBackgroundPipelineCache(device: RHIDevice): void {
+  const cache = devicePipelineCaches.get(device);
+  if (cache === undefined) return;
+  for (const cached of cache.values()) {
+    cached.retention.retire();
   }
-  pipelineCache.clear();
+  cache.clear();
 }
 
 /**
  * Creates or retrieves the cached Skybox fullscreen pipeline, sampler, and layouts
- * matching the attached color & depth formats for the current device generation.
+ * matching the attached color & depth formats scoped to the specified RHIDevice.
  */
 export function prepareBackgroundPipeline(
   device: RHIDevice,
@@ -65,23 +72,29 @@ export function prepareBackgroundPipeline(
 ): Readonly<{
   prepared: PreparedBackgroundPipeline;
   ownedResources: readonly RHIResource[];
+  retain(submission: RHISubmission): void;
+  release(): void;
 }> {
-  const cacheKey = `${device.generation}:${options.colorFormat}:${options.depthFormat ?? 'none'}`;
-  const existing = pipelineCache.get(cacheKey);
-  if (existing !== undefined && existing.deviceGeneration === device.generation) {
-    return Object.freeze({
-      prepared: existing.prepared,
-      ownedResources: existing.ownedResources
-    });
+  let deviceCache = devicePipelineCaches.get(device);
+  if (deviceCache === undefined) {
+    deviceCache = new Map<string, CachedBackgroundPipeline>();
+    devicePipelineCaches.set(device, deviceCache);
+    void device.lost.then(() => clearBackgroundPipelineCache(device));
   }
 
-  // Purge stale device generation records
-  for (const [key, record] of pipelineCache.entries()) {
-    if (record.deviceGeneration !== device.generation) {
-      for (const res of [...record.ownedResources].reverse()) {
-        res.dispose();
+  const cacheKey = `${options.colorFormat}:${options.depthFormat ?? 'none'}`;
+  const existing = deviceCache.get(cacheKey);
+  if (existing !== undefined && existing.deviceGeneration === device.generation) {
+    return leasePipeline(existing);
+  }
+
+  // Purge stale records on this device if device generation changed
+  if (existing !== undefined && existing.deviceGeneration !== device.generation) {
+    for (const [key, record] of deviceCache.entries()) {
+      if (record.deviceGeneration !== device.generation) {
+        record.retention.retire();
+        deviceCache.delete(key);
       }
-      pipelineCache.delete(key);
     }
   }
 
@@ -177,17 +190,25 @@ export function prepareBackgroundPipeline(
     pipeline
   ]);
 
-  pipelineCache.set(
-    cacheKey,
-    Object.freeze({
-      deviceGeneration: device.generation,
-      prepared,
-      ownedResources
-    })
-  );
-
-  return Object.freeze({
+  const entry = Object.freeze({
+    deviceGeneration: device.generation,
     prepared,
-    ownedResources
+    ownedResources,
+    retention: new SubmissionRetainedValue<readonly RHIResource[]>(ownedResources, (resources) => {
+      for (const resource of [...resources].reverse()) resource.dispose();
+    })
+  });
+  deviceCache.set(cacheKey, entry);
+  return leasePipeline(entry);
+}
+
+function leasePipeline(entry: CachedBackgroundPipeline) {
+  const lease = entry.retention.acquire();
+  if (lease === undefined) throw new Error('Background pipeline cache contains a retired entry.');
+  return Object.freeze({
+    prepared: entry.prepared,
+    ownedResources: entry.ownedResources,
+    retain: (submission: RHISubmission) => lease.retain(submission),
+    release: () => lease.release()
   });
 }

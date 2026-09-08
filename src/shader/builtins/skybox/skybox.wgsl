@@ -2,7 +2,7 @@ struct SkyboxUniforms {
   ray0: vec4<f32>,
   ray1: vec4<f32>,
   ray2: vec4<f32>,
-  padding0: vec4<f32>,
+  radianceTint: vec4<f32>,
   invProj: mat4x4<f32>,
   envRot: mat4x4<f32>,
   params: vec4<f32>,
@@ -123,6 +123,6 @@ fn skyboxFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
   }
 
   let sampled = textureSampleLevel(skyTexture, skySampler, uv, lod).rgb;
-  let radiance = sampled * skyboxUniforms.params.x;
+  let radiance = sampled * skyboxUniforms.params.x * skyboxUniforms.radianceTint.rgb;
   return vec4<f32>(radiance, 1.0);
 }

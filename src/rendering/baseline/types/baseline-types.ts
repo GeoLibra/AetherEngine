@@ -117,6 +117,29 @@ export type BaselinePreparedFrame =
       surfaceGeneration: number;
     }>;
 
+/** Shared environment lighting parameters consumed consistently by forward IBL and Skybox background. */
+export interface BaselineEnvironmentLighting {
+  /** Overall radiance multiplier. Defaults to 1.0. */
+  readonly intensity?: number;
+  /** Linear RGB radiance tint for specular IBL and skybox. Defaults to [1, 1, 1]. */
+  readonly radianceTint?: readonly [number, number, number];
+  /** Linear RGB diffuse irradiance tint. Defaults to [1, 1, 1]. */
+  readonly diffuseIrradiance?: readonly [number, number, number];
+}
+
+/** Structured environment configuration combining an asset with explicit lighting options. */
+export interface BaselineEnvironmentOptions {
+  readonly asset: EnvironmentAsset;
+  readonly lighting?: BaselineEnvironmentLighting | undefined;
+}
+
+/** Fully normalized environment lighting configuration with defaults applied. */
+export interface NormalizedBaselineEnvironmentLighting {
+  readonly intensity: number;
+  readonly radianceTint: readonly [number, number, number];
+  readonly diffuseIrradiance: readonly [number, number, number];
+}
+
 /** Dependencies for the opt-in single-surface baseline renderer. */
 export interface BaselineRenderingOptions {
   readonly graphics: BrowserGraphicsSession;
@@ -136,8 +159,10 @@ export interface BaselineRenderingOptions {
     payloadVersion: number;
     material: StandardLitMaterial;
   }>;
-  /** Optional pre-cooked real environment asset; if omitted, defaults to synthetic fallback. */
-  readonly environment?: EnvironmentAsset | undefined;
+  /** Optional pre-cooked real environment asset or full environment configuration; if omitted, defaults to synthetic fallback. */
+  readonly environment?: EnvironmentAsset | BaselineEnvironmentOptions | undefined;
+  /** Optional shared environment lighting configuration overriding defaults for both IBL and Skybox. */
+  readonly environmentLighting?: BaselineEnvironmentLighting | undefined;
   /** Optional view background configuration (skybox/solid/none). */
   readonly background?: ViewBackground | undefined;
   /** Optional toggle to force separate physical passes instead of merging. */

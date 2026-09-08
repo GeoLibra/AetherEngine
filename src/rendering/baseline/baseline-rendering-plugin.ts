@@ -1,4 +1,5 @@
-import { definePlugin } from '../../app/utils';
+import type { Plugin, AppBuilder } from '../../app/types';
+import { serviceValue } from '../../app/utils';
 import { defineResource } from '../../ecs/resource';
 import type { Entity } from '../../ecs/types';
 import type { World } from '../../ecs/world';
@@ -39,9 +40,17 @@ import type {
 import {
   assertGraphicsReady,
   createBaselineBackgroundFrame,
+  validateBackgroundOption,
   validateOptions,
   type NormalizedBaselineRenderingOptions
 } from './baseline-options';
+import type { ViewBackground } from '../background/types';
+import {
+  BaselineBackgroundControlImpl,
+  BaselineBackgroundControlResource,
+  BaselineBackgroundService,
+  type BaselineBackgroundControl
+} from './baseline-background-control';
 
 const EMPTY_PACKETS = Object.freeze([]);
 
@@ -50,15 +59,41 @@ export const BaselineRenderDiagnosticsResource = defineResource<BaselineRenderDi
   'aether.rendering.baseline.diagnostics'
 );
 
+/**
+ * Formal plugin interface for baseline rendering exposing typed runtime controls.
+ */
+export interface BaselineRenderingPlugin extends Plugin {
+  /** Strongly typed background runtime control resource registered in App. */
+  readonly backgroundControl: BaselineBackgroundControl;
+  /**
+   * Replaces the view background configuration at runtime.
+   * Delegates to `backgroundControl.setBackground(bg)`.
+   */
+  setBackground(bg: ViewBackground): void;
+}
+
 /** Creates the opt-in owner for the single-view baseline rendering composition. */
-export function createBaselineRenderingPlugin(options: BaselineRenderingOptions) {
+export function createBaselineRenderingPlugin(
+  options: BaselineRenderingOptions
+): BaselineRenderingPlugin {
   const validated = validateOptions(options);
   const runtime = new BaselineRenderingRuntime(validated);
+  const backgroundControl = new BaselineBackgroundControlImpl();
   let unsubscribe: (() => boolean) | undefined;
-  return definePlugin({
+
+  const plugin: BaselineRenderingPlugin = {
     id: 'aether.baseline-rendering',
+    backgroundControl,
+    setBackground(bg: ViewBackground): void {
+      backgroundControl.setBackground(bg);
+    },
     build(builder) {
       builder.insertResource(BaselineRenderDiagnosticsResource, runtime.diagnostics);
+      builder.insertResource(BaselineBackgroundControlResource, backgroundControl);
+      builder.provideService(
+        BaselineBackgroundService,
+        serviceValue<BaselineBackgroundControl>(backgroundControl)
+      );
       builder.addSystem('PreStartup', {
         id: 'aether.baseline-rendering.register-components',
         run(world) {
@@ -71,8 +106,14 @@ export function createBaselineRenderingPlugin(options: BaselineRenderingOptions)
       });
       builder.addSystem('PreRender', {
         id: 'aether.baseline-rendering.prepare',
-        writes: [BaselineRenderDiagnosticsResource],
+        writes: [BaselineRenderDiagnosticsResource, BaselineBackgroundControlResource],
         run(world) {
+          const control = world.getResource(BaselineBackgroundControlResource);
+          if (control === undefined)
+            throw new Error('Baseline background control resource is missing.');
+          if (control.consumeDirty()) {
+            runtime.updateBackground(control.current);
+          }
           runtime.prepare(world);
         }
       });
@@ -90,11 +131,14 @@ export function createBaselineRenderingPlugin(options: BaselineRenderingOptions)
       unsubscribe = validated.graphics.subscribe(() => runtime.invalidate());
     },
     shutdown() {
+      backgroundControl.dispose();
       unsubscribe?.();
       unsubscribe = undefined;
       return runtime.dispose();
     }
-  });
+  };
+
+  return Object.freeze(plugin);
 }
 
 class BaselineRenderingRuntime {
@@ -108,6 +152,7 @@ class BaselineRenderingRuntime {
   private standalonePostColorResources: readonly RHIResource[] = [];
   private prepared: BaselinePreparedFrame | undefined;
   private preparedSkip: BaselineRenderSkipReason | undefined;
+  private backgroundOverride: ViewBackground | undefined;
   private sourceTick = 0;
   private disposed = false;
   diagnostics: BaselineRenderDiagnostics;
@@ -152,14 +197,15 @@ class BaselineRenderingRuntime {
           ];
     const camera = this.cameraExtraction!.extract({ sourceTick, transforms, bindings });
     const view = camera.visibilityViews[0];
-    this.discardPrepared();
     if (suspended) {
+      this.discardPrepared();
       this.preparedSkip = 'surface-suspended';
       this.prepared = undefined;
       camera.revision.release();
       return;
     }
     if (view === undefined) {
+      this.discardPrepared();
       this.prepared = undefined;
       camera.revision.release();
       return;
@@ -176,8 +222,12 @@ class BaselineRenderingRuntime {
       const background = createBaselineBackgroundFrame(
         this.options.graphics.device,
         camera.views[0]!,
-        this.options
+        this.options,
+        this.backgroundOverride
       );
+      // Acquire the replacement's texture lease before retiring the previous frame.
+      // This keeps unchanged environment textures resident across warm frames.
+      this.discardPrepared();
       this.prepared = Object.freeze({
         status: 'ready',
         view,
@@ -238,7 +288,11 @@ class BaselineRenderingRuntime {
       lights,
       receivers
     });
-    const background = this.standardLit.createBackgroundFrame(camera.views[0]!);
+    const background = this.standardLit.createBackgroundFrame(
+      camera.views[0]!,
+      this.backgroundOverride
+    );
+    this.discardPrepared();
     this.prepared = Object.freeze({
       status: 'ready',
       view,
@@ -289,6 +343,11 @@ class BaselineRenderingRuntime {
 
   invalidate(): void {
     this.discardPrepared();
+  }
+
+  /** Replaces the active background without rebuilding the rendering pipeline. */
+  updateBackground(bg: ViewBackground | undefined): void {
+    this.backgroundOverride = bg;
   }
 
   async dispose(): Promise<void> {

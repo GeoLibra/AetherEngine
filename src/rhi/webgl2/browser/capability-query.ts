@@ -28,6 +28,7 @@ export function queryWebGL2Precision(gl: BrowserWebGL2Context): Readonly<Record<
 }
 
 export const COLOR_BUFFER_FLOAT_EXTENSION = 'EXT_color_buffer_float';
+export const TEXTURE_FLOAT_LINEAR_EXTENSION = 'OES_texture_float_linear';
 
 export function queryWebGL2Formats(
   gl: BrowserWebGL2Context,
@@ -41,6 +42,8 @@ export function queryWebGL2Formats(
   formats.set('rgba32uint', format(true, false, true, false, [1]));
   formats.set('depth24plus', format(false, false, true, false, sampleCounts));
   if (extensions.has(COLOR_BUFFER_FLOAT_EXTENSION)) {
+    // Half-float linear filtering is core in WebGL2; OES_texture_float_linear
+    // controls 32-bit floating-point filtering, not RGBA16F.
     formats.set('rgba16float', format(true, true, true, false, sampleCounts));
   }
   return formats;

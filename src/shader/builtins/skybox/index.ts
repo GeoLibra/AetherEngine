@@ -1,7 +1,7 @@
 import type { ShaderAuthoringSource } from '../../types';
 import { SKYBOX_SHADER_ARTIFACT } from './skybox.generated';
 
-export const SKYBOX_SHADER_ABI_VERSION = 1;
+export const SKYBOX_SHADER_ABI_VERSION = 2;
 
 /** Authored WGSL source identity for skybox background processing. */
 export const SKYBOX_SHADER_SOURCE: ShaderAuthoringSource = Object.freeze({

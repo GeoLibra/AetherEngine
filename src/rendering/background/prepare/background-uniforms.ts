@@ -11,6 +11,7 @@ export interface SkyboxUniformOptions {
   readonly invProj: ArrayLike<number>;
   readonly envRot: ArrayLike<number>;
   readonly intensity: number;
+  readonly radianceTint?: readonly [number, number, number] | undefined;
   readonly multiplier: number;
   readonly maxLod: number;
   readonly textureWidth: number;
@@ -47,9 +48,9 @@ export function packSkyboxUniforms(options: SkyboxUniformOptions): Float32Array 
   data[10] = options.vertexRays.ray2[2];
   data[11] = 0.0;
 
-  data[12] = 0.0;
-  data[13] = 0.0;
-  data[14] = 0.0;
+  data[12] = options.radianceTint?.[0] ?? 1.0;
+  data[13] = options.radianceTint?.[1] ?? 1.0;
+  data[14] = options.radianceTint?.[2] ?? 1.0;
   data[15] = 0.0;
 
   // 16..31: invProj mat4x4<f32>

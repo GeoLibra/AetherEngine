@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Leva, useControls, folder } from 'leva';
 import type { MountedAetherScene } from './aether-scene';
 import { AetherSceneHost } from './scene-host';
@@ -7,6 +7,16 @@ type Status =
   | Readonly<{ kind: 'loading'; message: string }>
   | Readonly<{ kind: 'ready'; message: string }>
   | Readonly<{ kind: 'error'; message: string }>;
+
+const VALID_BACKENDS = new Set(['webgpu', 'webgl2'] as const);
+
+// Read backend preference once from URL query parameter (?backend=webgl2 or ?backend=webgpu)
+const STATIC_BACKEND_PREFERENCE = (() => {
+  if (typeof window === 'undefined') return undefined;
+  const requested = new URLSearchParams(window.location.search).get('backend');
+  const hasPreference = VALID_BACKENDS.has(requested as any);
+  return hasPreference ? ([requested as 'webgpu' | 'webgl2'] as const) : undefined;
+})();
 
 export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -19,15 +29,6 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
     kind: 'loading',
     message: 'Starting Aether Engine…'
   });
-
-  // Read backend preference from URL query parameter (?backend=webgl2 or ?backend=webgpu)
-  const backendPreference = (() => {
-    if (typeof window === 'undefined') return undefined;
-    const requested = new URLSearchParams(window.location.search).get('backend');
-    const valid = new Set(['webgpu', 'webgl2'] as const);
-    const hasPreference = valid.has(requested as any);
-    return hasPreference ? [requested as 'webgpu' | 'webgl2'] : undefined;
-  })();
 
   // Leva controls
   const [
@@ -90,16 +91,26 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
     sceneRef.current.setShadowDistance(shadowDistance);
     sceneRef.current.setMetallic(metallic);
     sceneRef.current.setRoughness(roughness);
+    sceneRef.current.setBackgroundMultiplier(backgroundMultiplier);
     const rad = (lightAngle * Math.PI) / 180;
     sceneRef.current.setLightDirection([Math.cos(rad) * -0.7, -1, Math.sin(rad) * -0.7]);
-  }, [castsShadow, sunlight, shadowDistance, metallic, roughness, lightAngle]);
+  }, [
+    castsShadow,
+    sunlight,
+    shadowDistance,
+    metallic,
+    roughness,
+    lightAngle,
+    backgroundMultiplier
+  ]);
 
-  // Mount Aether scene via serialized lifecycle host (only remounts on environment change)
+  // Mount Aether scene via serialized lifecycle host (only remounts on environment/background change)
   useEffect(() => {
     if (!mountScene) return;
     const target = canvas.current;
     if (target === null) return;
     const host = hostRef.current!;
+    let cancelled = false;
 
     setStatus({
       kind: 'loading',
@@ -108,7 +119,7 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
 
     void host
       .mount(target, {
-        preference: backendPreference,
+        ...(STATIC_BACKEND_PREFERENCE ? { preference: STATIC_BACKEND_PREFERENCE } : {}),
         environment: environmentMode as 'hdr' | 'synthetic',
         background: backgroundMode as 'hdr' | 'solid' | 'none',
         backgroundMultiplier,
@@ -117,6 +128,7 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
         sunlight
       })
       .then((scene) => {
+        if (cancelled) return;
         sceneRef.current = scene;
         (window as unknown as Record<string, unknown>).__aetherScene = scene;
         const envLabel = scene.environmentMode === 'hdr' ? 'Venice Sunset HDR' : 'Synthetic IBL';
@@ -127,6 +139,7 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
         });
       })
       .catch((error: unknown) => {
+        if (cancelled) return;
         const isCancelled = error instanceof Error && error.message.includes('cancelled');
         if (!isCancelled) {
           setStatus({
@@ -137,10 +150,11 @@ export function App({ mountScene = true }: Readonly<{ mountScene?: boolean }>) {
       });
 
     return () => {
+      cancelled = true;
       sceneRef.current = null;
       void host.unmount();
     };
-  }, [mountScene, environmentMode, backgroundMode, backgroundMultiplier, backendPreference]);
+  }, [mountScene, environmentMode, backgroundMode]);
 
   return (
     <main>

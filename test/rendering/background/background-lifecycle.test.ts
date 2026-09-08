@@ -143,7 +143,7 @@ describe('background selective residency, complete key identity, and submission-
     layerMask: 1
   } as unknown as ExtractedView;
 
-  it('caches static background pipeline and purges cache across device generations', () => {
+  it('caches static background pipeline per-device and isolates concurrent devices', () => {
     const device1 = new NullDevice();
     const p1 = prepareBackgroundPipeline(device1, {
       colorFormat: 'rgba16float',
@@ -156,7 +156,7 @@ describe('background selective residency, complete key identity, and submission-
     expect(p1.prepared.pipeline).toBe(p2.prepared.pipeline);
     expect(p1.prepared.uniformLayout).toBe(p2.prepared.uniformLayout);
 
-    // New device instance has a different generation, purging old cache
+    // Concurrent second device has its own isolated pipeline cache
     const device2 = new NullDevice();
     const p3 = prepareBackgroundPipeline(device2, {
       colorFormat: 'rgba16float',
@@ -164,7 +164,32 @@ describe('background selective residency, complete key identity, and submission-
     });
     expect(p3.prepared.pipeline).not.toBe(p1.prepared.pipeline);
 
-    clearBackgroundPipelineCache();
+    // Device 1's cache is still intact and not purged by device 2's creation
+    const p4 = prepareBackgroundPipeline(device1, {
+      colorFormat: 'rgba16float',
+      depthFormat: 'depth24plus'
+    });
+    expect(p4.prepared.pipeline).toBe(p1.prepared.pipeline);
+
+    // Targeted clearing for device1 disposes device1's resources only
+    clearBackgroundPipelineCache(device1);
+
+    // Device 2's cache is still valid
+    const p5 = prepareBackgroundPipeline(device2, {
+      colorFormat: 'rgba16float',
+      depthFormat: 'depth24plus'
+    });
+    expect(p5.prepared.pipeline).toBe(p3.prepared.pipeline);
+
+    // Device 1 now re-creates a new pipeline
+    const p6 = prepareBackgroundPipeline(device1, {
+      colorFormat: 'rgba16float',
+      depthFormat: 'depth24plus'
+    });
+    expect(p6.prepared.pipeline).not.toBe(p1.prepared.pipeline);
+
+    clearBackgroundPipelineCache(device1);
+    clearBackgroundPipelineCache(device2);
   });
 
   it('retains uniform buffer until GPU submission completes and disposes immediately if un-retained', async () => {

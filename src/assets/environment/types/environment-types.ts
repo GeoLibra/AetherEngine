@@ -10,7 +10,7 @@ import type {
   EnvironmentArtifactV1,
   EnvironmentArtifactV2,
   BackgroundPayload
-} from '../../../../tools/asset-cook/environment/artifact/types';
+} from '../artifact/types';
 
 export type {
   BackgroundPayload,

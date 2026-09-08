@@ -9,7 +9,7 @@ import {
   deserializeEnvironmentManifest,
   validateEnvironmentArtifact,
   validateBrdfLutArtifact
-} from '../../../tools/asset-cook/environment/artifact/manifest-codec';
+} from './artifact/manifest-codec';
 import type { EnvironmentAsset, EnvironmentHandle } from './types';
 
 export interface ReadEnvironmentOptions {
