@@ -199,11 +199,11 @@ function validatePipelineAttachments(
   }
   const attachmentSampleCount =
     colors.length > 0
-      ? (snapshot.resources[colors[0]!.resourceId]?.descriptor as { sampleCount?: number })
-          .sampleCount ?? 1
+      ? ((snapshot.resources[colors[0]!.resourceId]?.descriptor as { sampleCount?: number })
+          .sampleCount ?? 1)
       : depth !== undefined
-        ? (snapshot.resources[depth.resourceId]?.descriptor as { sampleCount?: number }).sampleCount ??
-          1
+        ? ((snapshot.resources[depth.resourceId]?.descriptor as { sampleCount?: number })
+            .sampleCount ?? 1)
         : 1;
   if ((pipeline.descriptor.multisample?.count ?? 1) !== attachmentSampleCount) {
     throw new Error(

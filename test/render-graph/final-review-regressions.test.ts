@@ -297,10 +297,14 @@ describe('RenderGraph final-review regressions', () => {
         );
       }
     });
-    const execution = new RenderGraphExecutor().execute(compile(secondGraph), {
-      device,
-      histories: new Map([[secondHistory, { ...second, registry, identity: historyIdentity }]])
-    }, { captureDebug: true });
+    const execution = new RenderGraphExecutor().execute(
+      compile(secondGraph),
+      {
+        device,
+        histories: new Map([[secondHistory, { ...second, registry, identity: historyIdentity }]])
+      },
+      { captureDebug: true }
+    );
 
     expect(execution.commandBuffer.getCommandStream()).toContainEqual(
       expect.objectContaining({

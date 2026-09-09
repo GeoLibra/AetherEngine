@@ -228,10 +228,14 @@ describe('RenderGraphExecutor', () => {
     });
 
     const imported = device.createBuffer({ label: 'constants', size: 64, usage: 76 });
-    const execution = new RenderGraphExecutor().execute(compile(graph), {
-      device,
-      resources: new Map([[buffer, imported]])
-    }, { captureDebug: true });
+    const execution = new RenderGraphExecutor().execute(
+      compile(graph),
+      {
+        device,
+        resources: new Map([[buffer, imported]])
+      },
+      { captureDebug: true }
+    );
 
     expect(execution.commandStats).toMatchObject({ renderPasses: 1 });
     expect(execution.debug.commandStats).toEqual(execution.commandStats);

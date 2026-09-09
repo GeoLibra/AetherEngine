@@ -38,10 +38,10 @@ class SubmissionContext implements WebGL2NativeContextPort {
   constructor(withFence = true) {
     if (withFence) {
       this.createSubmissionFence = () => {
-          this.calls.push('fence');
-          const fence = deferred<void>();
-          this.fences.push(fence);
-          return fence.promise;
+        this.calls.push('fence');
+        const fence = deferred<void>();
+        this.fences.push(fence);
+        return fence.promise;
       };
     }
   }

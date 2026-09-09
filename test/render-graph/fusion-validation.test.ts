@@ -29,9 +29,9 @@ describe('render graph raster declaration validation', () => {
       },
       run() {}
     });
-    expect(graph.build().passes[0]?.rasterDetails?.colorAttachments.map(({ slot }) => slot)).toEqual([
-      0, 1
-    ]);
+    expect(
+      graph.build().passes[0]?.rasterDetails?.colorAttachments.map(({ slot }) => slot)
+    ).toEqual([0, 1]);
 
     const sparseGraph = new RenderGraphBuilder();
     const sparse = sparseGraph.createTexture(colorTexture());

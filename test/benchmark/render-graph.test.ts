@@ -164,7 +164,10 @@ describe('render graph benchmark oracle', () => {
       'linear-chain',
       'fan-out-fan-in',
       'culled-branch',
-      'aliasable-lifetimes'
+      'aliasable-lifetimes',
+      'fusion-compatible-chain',
+      'fusion-compute-cut',
+      'fusion-late-depth'
     ]);
     expect(result.report.coverage.largeScale).toMatchObject({
       passCount: 1024,
@@ -190,6 +193,8 @@ describe('render graph fusion benchmark scenarios', () => {
     const observation = runFusionSubject(workload);
     expect(observation.semantic.checksum).toBe(runFusionSemanticOracle(workload).checksum);
     expect(observation.counters.logicalPassCount).toBe(10);
+    expect(observation.counters.physicalGroupCount).toBe(1);
+    expect(observation.counters.fusedBoundariesCount).toBe(9);
     expect(observation.counters.scheduledSteps).toBeGreaterThan(0);
   });
 

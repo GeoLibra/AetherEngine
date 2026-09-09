@@ -4,6 +4,7 @@ import { compileRenderGraph } from '../../src/render-graph/compiler';
 import { partitionRasterGroups } from '../../src/render-graph/compiler/fusion/partition';
 import { SplitReasonCode } from '../../src/render-graph/compiler/fusion/constants';
 import type { TextureDescriptor } from '../../src/render-graph/types';
+import type { BufferDescriptor } from '../../src/render-graph/types';
 
 function createColorDesc(): TextureDescriptor {
   return {
@@ -27,6 +28,10 @@ function createDepthDesc(): TextureDescriptor {
     format: 'depth24plus',
     usage: ['depth-stencil-attachment', 'sampled']
   };
+}
+
+function createTransientBufferDesc(): BufferDescriptor {
+  return { size: 256, usage: ['storage-write'] };
 }
 
 describe('RenderGraph Pass Fusion Partitioning', () => {
@@ -384,5 +389,40 @@ describe('RenderGraph Pass Fusion Partitioning', () => {
     expect(result.groups[0]?.retainedPassIndices).toEqual([0, 1]);
     expect(result.groups[1]?.retainedPassIndices).toEqual([2]);
     expect(result.splitRecords[0]?.reason).toBe(SplitReasonCode.GroupPassLimit);
+  });
+
+  test('reports physical lifetime expansion and peak transient bytes for a fused group', () => {
+    const builder = new RenderGraphBuilder();
+    const color = builder.createTexture(createColorDesc());
+    const firstBuffer = builder.createBuffer(createTransientBufferDesc());
+    const secondBuffer = builder.createBuffer(createTransientBufferDesc());
+    let currentColor = color;
+
+    builder.addRasterPass({
+      id: 'first',
+      setup(pass) {
+        currentColor = pass.colorAttachment(0, currentColor, { load: 'clear', store: 'auto' });
+        pass.writeBuffer(firstBuffer, 'storage-write');
+        pass.sideEffect('first');
+        return {};
+      },
+      run() {}
+    });
+    builder.addRasterPass({
+      id: 'second',
+      setup(pass) {
+        currentColor = pass.colorAttachment(0, currentColor, { load: 'load', store: 'store' });
+        pass.writeBuffer(secondBuffer, 'storage-write');
+        pass.sideEffect('second');
+        return {};
+      },
+      run() {}
+    });
+
+    const snapshot = builder.build();
+    const result = partitionRasterGroups(snapshot, compileRenderGraph(snapshot));
+
+    expect(result.counters.physicalLifetimeExpansionBytes).toBe(256);
+    expect(result.counters.peakTransientBytes).toBe(64 * 64 * 4 + 256 + 256);
   });
 });

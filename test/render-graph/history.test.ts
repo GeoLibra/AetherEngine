@@ -133,19 +133,23 @@ describe('HistoryRegistry', () => {
     const snapshot = graph.build();
     const plan = createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot));
 
-    const execution = new RenderGraphExecutor().execute(plan, {
-      device,
-      histories: new Map([
-        [
-          history,
-          {
-            ...acquired,
-            registry,
-            identity: historyIdentity
-          }
-        ]
-      ])
-    }, { captureDebug: true });
+    const execution = new RenderGraphExecutor().execute(
+      plan,
+      {
+        device,
+        histories: new Map([
+          [
+            history,
+            {
+              ...acquired,
+              registry,
+              identity: historyIdentity
+            }
+          ]
+        ])
+      },
+      { captureDebug: true }
+    );
 
     expect(registry.debugState(historyIdentity)[0]).toMatchObject({
       producerSubmissionId: execution.submission.id,

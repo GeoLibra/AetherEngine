@@ -34,12 +34,8 @@ export interface OpaqueRenderSystemInput {
   }>;
   readonly colorLoadOp?: 'clear' | 'load';
   readonly depthLoadOp?: 'clear' | 'load';
-  readonly colorTarget?:
-    | TextureHandle
-    | (() => TextureHandle);
-  readonly depthTarget?:
-    | TextureHandle
-    | (() => TextureHandle);
+  readonly colorTarget?: TextureHandle | (() => TextureHandle);
+  readonly depthTarget?: TextureHandle | (() => TextureHandle);
   readonly present?: boolean;
   readonly publishColor?: (color: TextureHandle) => void;
 }

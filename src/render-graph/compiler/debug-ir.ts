@@ -1,6 +1,11 @@
 import { fnv1a32Hex } from '../../core';
 import type { RenderGraphSnapshot } from '../builder/builder';
-import type { CompiledRenderGraph, CompiledRenderGraphEdge } from '../types';
+import type {
+  CompiledRenderGraph,
+  CompiledRenderGraphEdge,
+  GroupPartitionResult,
+  RasterGroupPlan
+} from '../types';
 import { createRenderGraphExecutionSchedule } from '../executor/execution-plan';
 import type { RenderGraphExecutionStep } from '../types';
 import {
@@ -40,6 +45,28 @@ export interface RenderGraphDebugIROptions extends AliasPlanningOptions {
   readonly submissionIndex?: number;
   readonly schedule?: readonly RenderGraphExecutionStep[];
   readonly historyStates?: ReadonlyMap<number, RenderGraphHistoryDebugBinding>;
+  /** Physical raster grouping produced for this exact compiled graph. */
+  readonly fusion?: GroupPartitionResult;
+}
+
+/** Serializable evidence for compiler-selected physical raster grouping. */
+export interface RenderGraphDebugFusion {
+  readonly groups: readonly RenderGraphDebugRasterGroup[];
+  readonly splitRecords: GroupPartitionResult['splitRecords'];
+  readonly counters: GroupPartitionResult['counters'];
+}
+
+/** Serializable representation of one physical raster pass and its logical members. */
+export interface RenderGraphDebugRasterGroup {
+  readonly groupIndex: number;
+  readonly retainedPassIndices: readonly number[];
+  readonly passIds: readonly number[];
+  readonly attachments: RasterGroupPlan['attachments'];
+  readonly usageScope: {
+    readonly textures: readonly { readonly resourceId: number; readonly usages: readonly string[] }[];
+    readonly buffers: readonly { readonly resourceId: number; readonly usages: readonly string[] }[];
+  };
+  readonly boundaryStates: RasterGroupPlan['boundaryStates'];
 }
 
 export interface RenderGraphDebugPass {
@@ -73,6 +100,7 @@ export interface RenderGraphDebugIR {
   readonly lifetimes: readonly ResourceLifetime[];
   readonly aliasDecisions: readonly AliasDecision[];
   readonly transitions: readonly PortableTransition[];
+  readonly fusion?: RenderGraphDebugFusion;
   readonly counters: CompiledRenderGraph['counters'] & {
     readonly aliasGroups: number;
     readonly allocations: number;
@@ -88,7 +116,11 @@ export function createRenderGraphDebugIR(
   compiled: CompiledRenderGraph,
   options: RenderGraphDebugIROptions = {}
 ): RenderGraphDebugIR {
-  const lifetimes = analyzeResourceLifetimes(snapshot, compiled);
+  const logicalLifetimes = analyzeResourceLifetimes(snapshot, compiled);
+  const lifetimes =
+    options.fusion === undefined
+      ? logicalLifetimes
+      : analyzeResourceLifetimes(snapshot, compiled, options.fusion.groups);
   const aliasPlan = planResourceAliases(snapshot, lifetimes, options);
   const transitions = derivePortableTransitions(snapshot, compiled, {
     submissionIndex: options.submissionIndex ?? 0
@@ -142,6 +174,7 @@ export function createRenderGraphDebugIR(
   const schedule = cloneDebugSchedule(
     options.schedule ?? createRenderGraphExecutionSchedule(compiled)
   );
+  const fusion = options.fusion === undefined ? undefined : cloneDebugFusion(options.fusion);
   const logical = Object.freeze({
     schemaVersion: 1 as const,
     passes: Object.freeze(passes),
@@ -150,7 +183,7 @@ export function createRenderGraphDebugIR(
     order,
     rootPassIds,
     schedule,
-    lifetimes,
+    lifetimes: logicalLifetimes,
     transitions,
     compilerCounters: compiled.counters
   });
@@ -180,10 +213,61 @@ export function createRenderGraphDebugIR(
     lifetimes,
     aliasDecisions: aliasPlan.decisions,
     transitions,
+    ...(fusion === undefined ? {} : { fusion }),
     counters,
     logicalChecksum
   });
   return deepFreeze({ ...withoutChecksum, checksum: checksum(JSON.stringify(withoutChecksum)) });
+}
+
+function cloneDebugFusion(fusion: GroupPartitionResult): RenderGraphDebugFusion {
+  return Object.freeze({
+    groups: Object.freeze(fusion.groups.map(cloneDebugRasterGroup)),
+    splitRecords: Object.freeze(
+      fusion.splitRecords.map((record) =>
+        Object.freeze({
+          predecessorPassId: record.predecessorPassId,
+          candidatePassId: record.candidatePassId,
+          reason: record.reason,
+          ...(record.detail === undefined ? {} : { detail: record.detail })
+        })
+      )
+    ),
+    counters: Object.freeze({ ...fusion.counters })
+  });
+}
+
+function cloneDebugRasterGroup(group: RasterGroupPlan): RenderGraphDebugRasterGroup {
+  return Object.freeze({
+    groupIndex: group.groupIndex,
+    retainedPassIndices: Object.freeze([...group.retainedPassIndices]),
+    passIds: Object.freeze([...group.passIds]),
+    attachments: Object.freeze({
+      colorAttachments: Object.freeze(
+        group.attachments.colorAttachments.map((attachment) => Object.freeze({ ...attachment }))
+      ),
+      ...(group.attachments.depthStencilAttachment === undefined
+        ? {}
+        : { depthStencilAttachment: Object.freeze({ ...group.attachments.depthStencilAttachment }) })
+    }),
+    usageScope: Object.freeze({
+      textures: cloneUsageScope(group.usageScope.textures),
+      buffers: cloneUsageScope(group.usageScope.buffers)
+    }),
+    boundaryStates: Object.freeze(group.boundaryStates.map((state) => Object.freeze({ ...state })))
+  });
+}
+
+function cloneUsageScope(
+  values: ReadonlyMap<number, readonly string[]>
+): readonly { readonly resourceId: number; readonly usages: readonly string[] }[] {
+  return Object.freeze(
+    [...values.entries()]
+      .sort(([first], [second]) => first - second)
+      .map(([resourceId, usages]) =>
+        Object.freeze({ resourceId, usages: Object.freeze([...usages]) })
+      )
+  );
 }
 
 export function toRenderGraphDebugJSON(plan: RenderGraphDebugIR): string {

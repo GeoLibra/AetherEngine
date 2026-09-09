@@ -14,7 +14,10 @@ interface NativeObject {
   readonly kind: string;
 }
 type TranslationInput = Parameters<WebGL2ShaderTranslationPort['translate']>[0];
-type TranslationCall = Pick<TranslationInput, 'stage' | 'entryPoint' | 'constants' | 'clipDepthMode'>;
+type TranslationCall = Pick<
+  TranslationInput,
+  'stage' | 'entryPoint' | 'constants' | 'clipDepthMode'
+>;
 
 class Translator implements WebGL2ShaderTranslationPort {
   readonly translatorId = 'test';

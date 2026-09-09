@@ -1,6 +1,6 @@
 import type { GraphPassDeclaration, RenderGraphSnapshot } from '../../builder/builder';
 import type { GraphResourceRecord } from '../../builder/resources';
-import type { CompiledRenderGraph, TextureDescriptor } from '../../types';
+import type { CompiledRenderGraph, RasterGroupPlan, TextureDescriptor } from '../../types';
 import { TEXTURE_FORMAT_BYTES } from './constants';
 
 /**
@@ -115,13 +115,56 @@ function computePeakLiveBytes(intervals: readonly ResourceInterval[]): number {
 }
 
 /**
+ * Summarizes the physical transient residency implied by the final raster partition.
+ * A fused group widens every member resource to the group's physical encoder scope.
+ * Returns null when a transient descriptor cannot be sized deterministically.
+ */
+export function summarizeFusionResidency(
+  snapshot: RenderGraphSnapshot,
+  compiled: CompiledRenderGraph,
+  groups: readonly RasterGroupPlan[]
+): { readonly peakTransientBytes: number; readonly physicalLifetimeExpansionBytes: number } | null {
+  const singletonIntervals = buildResourceIntervals(compiled.retainedPasses, snapshot, compiled);
+  if (singletonIntervals.length === 0 && hasTransientResources(compiled.retainedPasses, snapshot)) {
+    return null;
+  }
+  const physicalIntervals = singletonIntervals.map((interval) => ({ ...interval }));
+  const passIndices = new Map(
+    compiled.retainedPasses.map((pass, index) => [pass.token.passId, index])
+  );
+
+  for (const group of groups) {
+    if (group.passIds.length <= 1) continue;
+    const groupStart = group.retainedPassIndices[0]!;
+    const groupEnd = group.retainedPassIndices[group.retainedPassIndices.length - 1]!;
+    const touchedResources = new Set<number>();
+    for (const passId of group.passIds) {
+      const pass = compiled.retainedPasses[passIndices.get(passId)!]!;
+      for (const access of pass.accesses) touchedResources.add(access.handle.resourceId);
+    }
+    for (const interval of physicalIntervals) {
+      if (!touchedResources.has(interval.resourceId)) continue;
+      interval.startPassIndex = Math.min(interval.startPassIndex, groupStart);
+      interval.endPassIndex = Math.max(interval.endPassIndex, groupEnd);
+    }
+  }
+
+  const singletonPeak = computePeakLiveBytes(singletonIntervals);
+  const physicalPeak = computePeakLiveBytes(physicalIntervals);
+  return Object.freeze({
+    peakTransientBytes: physicalPeak,
+    physicalLifetimeExpansionBytes: Math.max(0, physicalPeak - singletonPeak)
+  });
+}
+
+/**
  * Evaluates residency budget for merging a candidate pass into an existing group.
- * 
+ *
  * Returns:
  * - null if the merge is within budget
  * - 'residency-estimate-unavailable' if sizes cannot be estimated
  * - 'residency-budget' if the merge exceeds the budget
- * 
+ *
  * Algorithm per §13.8:
  * 1. Compute peak live transient bytes for merged group (existing + candidate)
  * 2. Compute peak live transient bytes for singleton execution (each pass independent)

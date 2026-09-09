@@ -4,6 +4,12 @@ import {
   compileRenderGraph,
   planResourceAliases
 } from '../../src/render-graph/compiler';
+import {
+  createCompatibleRasterWorkload,
+  createComputeCutWorkload,
+  createLateDepthWorkload,
+  runFusionSubject
+} from './fusion-scenarios';
 
 export interface RenderGraphCoverageEvidence {
   readonly scaleAxes: {
@@ -18,7 +24,10 @@ export interface RenderGraphCoverageEvidence {
       | 'linear-chain'
       | 'fan-out-fan-in'
       | 'culled-branch'
-      | 'aliasable-lifetimes';
+      | 'aliasable-lifetimes'
+      | 'fusion-compatible-chain'
+      | 'fusion-compute-cut'
+      | 'fusion-late-depth';
     status: 'pass';
     counters: Readonly<Record<string, number>>;
   }>[];
@@ -53,6 +62,7 @@ export function runRenderGraphCoverageEvidence(): RenderGraphCoverageEvidence {
   const topology = topologyProbe();
   const cull = cullProbe();
   const alias = aliasProbe();
+  const fusion = fusionProbes();
   const largeScale = largeScaleProbe();
   return Object.freeze({
     scaleAxes: Object.freeze({
@@ -66,9 +76,50 @@ export function runRenderGraphCoverageEvidence(): RenderGraphCoverageEvidence {
       family('linear-chain', { edges: topology.linearEdges }),
       family('fan-out-fan-in', { edges: topology.fanEdges }),
       family('culled-branch', cull),
-      family('aliasable-lifetimes', alias)
+      family('aliasable-lifetimes', alias),
+      family('fusion-compatible-chain', fusion.compatible),
+      family('fusion-compute-cut', fusion.computeCut),
+      family('fusion-late-depth', fusion.lateDepth)
     ]),
     largeScale
+  });
+}
+
+function fusionProbes(): {
+  compatible: Readonly<Record<string, number>>;
+  computeCut: Readonly<Record<string, number>>;
+  lateDepth: Readonly<Record<string, number>>;
+} {
+  const compatible = runFusionSubject(createCompatibleRasterWorkload(10));
+  assert(
+    compatible.counters.physicalGroupCount === 1 && compatible.counters.fusedBoundariesCount === 9,
+    'compatible fusion workload must produce one group and nine fused boundaries'
+  );
+  const computeCut = runFusionSubject(createComputeCutWorkload(10));
+  assert(
+    computeCut.counters.physicalGroupCount === 2,
+    'compute cut workload must produce two physical raster groups'
+  );
+  const lateDepth = runFusionSubject(createLateDepthWorkload(10));
+  assert(
+    lateDepth.counters.physicalGroupCount === 1 && lateDepth.counters.fusedBoundariesCount === 9,
+    'late depth workload must prove a single physical raster group'
+  );
+  return {
+    compatible: fusionCounters(compatible),
+    computeCut: fusionCounters(computeCut),
+    lateDepth: fusionCounters(lateDepth)
+  };
+}
+
+function fusionCounters(
+  observation: ReturnType<typeof runFusionSubject>
+): Readonly<Record<string, number>> {
+  return Object.freeze({
+    logicalPassCount: observation.counters.logicalPassCount,
+    physicalGroupCount: observation.counters.physicalGroupCount,
+    fusedBoundariesCount: observation.counters.fusedBoundariesCount,
+    scheduledSteps: observation.counters.scheduledSteps
   });
 }
 

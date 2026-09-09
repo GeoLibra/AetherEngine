@@ -37,7 +37,8 @@ export function createRenderGraphExecutionPlan(
       analyzeResourceLifetimes(snapshot, compiled, partition.groups)
     ),
     schedule: createRenderGraphExecutionSchedule(compiled, partition.groups),
-    rasterGroups: partition.groups
+    rasterGroups: partition.groups,
+    fusion: partition
   });
   CANONICAL_EXECUTION_PLANS.add(plan);
   return plan;
@@ -95,6 +96,7 @@ export function assertRenderGraphExecutionPlan(
     !('aliases' in value) ||
     !('schedule' in value) ||
     !('rasterGroups' in value) ||
+    !('fusion' in value) ||
     !Array.isArray(value.schedule) ||
     !CANONICAL_EXECUTION_PLANS.has(value)
   ) {
@@ -146,6 +148,9 @@ export function validateRenderGraphExecutionPlan(plan: RenderGraphExecutionPlan)
   }
 
   const groups = plan.rasterGroups ?? [];
+  if (plan.fusion.groups !== plan.rasterGroups) {
+    throw nonCanonical('fusion groups do not match the physical raster group schedule');
+  }
   const groupById = new Map<number, RasterGroupPlan>();
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i]!;

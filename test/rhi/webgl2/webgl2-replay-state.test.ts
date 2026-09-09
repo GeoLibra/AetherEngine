@@ -129,10 +129,7 @@ class ReplayContext implements WebGL2NativeContextPort {
 class Translator implements WebGL2ShaderTranslationPort {
   readonly translatorId = 'test';
   readonly version = 1;
-  readonly bindingsByEntryPoint = new Map<
-    string,
-    readonly WebGL2BindingManifestEntry[]
-  >();
+  readonly bindingsByEntryPoint = new Map<string, readonly WebGL2BindingManifestEntry[]>();
   constructor(
     private readonly bindings: readonly WebGL2BindingManifestEntry[] = [],
     private readonly physicalBindings: readonly WebGL2PhysicalBinding[] = bindings.map(

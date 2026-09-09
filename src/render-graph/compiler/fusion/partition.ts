@@ -16,7 +16,7 @@ import type {
   RasterGroupPlan
 } from '../../types';
 import { GroupUsageAccumulator } from './usage';
-import { evaluateResidencyBudget } from './residency';
+import { evaluateResidencyBudget, summarizeFusionResidency } from './residency';
 
 /** Validates and normalizes pass fusion options according to RenderGraph §13.8. */
 export function validateFusionOptions(options?: PassFusionOptions): NormalizedFusionOptions {
@@ -364,6 +364,12 @@ export function partitionRasterGroups(
   }
 
   flushActiveGroup();
+
+  const residency = summarizeFusionResidency(snapshot, compiled, groups);
+  if (residency !== null) {
+    counters.peakTransientBytes = residency.peakTransientBytes;
+    counters.physicalLifetimeExpansionBytes = residency.physicalLifetimeExpansionBytes;
+  }
 
   return Object.freeze({
     groups: Object.freeze(groups),

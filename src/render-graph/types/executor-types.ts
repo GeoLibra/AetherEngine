@@ -1,7 +1,7 @@
 import type { GPUBufferDescriptor, GPUTextureDescriptor } from '../../rhi/contracts';
 import type { CompiledRenderGraph, ResourceAliasPlan } from './compiler-types';
 import type { RenderGraphSnapshot } from '../builder/builder';
-import type { RasterGroupPlan } from './fusion-types';
+import type { GroupPartitionResult, RasterGroupPlan } from './fusion-types';
 
 /** Identifies a transient texture derived from one surface configuration. */
 export interface SurfaceTransientScope {
@@ -39,4 +39,6 @@ export interface RenderGraphExecutionPlan {
   readonly aliases: ResourceAliasPlan;
   readonly schedule: readonly RenderGraphExecutionStep[];
   readonly rasterGroups: readonly RasterGroupPlan[];
+  /** Immutable fusion partition and diagnostics used to create this physical schedule. */
+  readonly fusion: GroupPartitionResult;
 }

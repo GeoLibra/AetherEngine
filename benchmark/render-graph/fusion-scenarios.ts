@@ -193,7 +193,7 @@ export function createLateDepthWorkload(passCount: number): FusionWorkload {
 /** Executes the workload on NullDevice using the real RenderGraph pipeline. */
 export function runFusionSubject(
   workload: FusionWorkload,
-  _options?: { readonly forceSeparate?: boolean }
+  options?: { readonly forceSeparate?: boolean }
 ): FusionScenarioObservation {
   const device = new NullDevice();
   const graph = new RenderGraphBuilder();
@@ -230,78 +230,67 @@ export function runFusionSubject(
     usage: ['storage-write']
   });
 
-  let currentColor = colorTextures[0]!;
+  let currentColors = [...colorTextures];
   let currentDepth = depthTexture;
+  let depthInitialized = false;
 
   for (let i = 0; i < workload.passes.length; i++) {
     const pass = workload.passes[i]!;
     if (pass.kind === 'compute') {
-      graph.addPass({
+      graph.addComputePass({
         id: pass.id,
         setup(builder) {
           builder.writeBuffer(buffer, 'storage-write');
+          builder.sideEffect(pass.id);
           return undefined;
         },
         run() {}
       });
     } else {
-      graph.addPass({
+      graph.addRasterPass({
         id: pass.id,
         setup(builder) {
-          currentColor = builder.writeTexture(currentColor, 'color-attachment');
-          let passDepth: TextureHandle | undefined;
-          if (pass.hasDepth) {
-            currentDepth = builder.writeTexture(currentDepth, 'depth-stencil-attachment');
-            passDepth = currentDepth;
+          for (let slot = 0; slot < pass.colorSlots; slot++) {
+            const color = currentColors[slot];
+            if (color === undefined) throw new Error(`Fusion workload requested unavailable color slot ${slot}.`);
+            currentColors[slot] = builder.colorAttachment(slot, color, {
+              load: pass.loadColor,
+              clearValue: [pass.clearColorValue, 0, 0, 1],
+              store: 'store'
+            });
           }
-          return { color: currentColor, depth: passDepth };
+          if (pass.hasDepth) {
+            currentDepth = builder.depthStencilAttachment(currentDepth, {
+              depthLoad: depthInitialized ? 'load' : 'clear',
+              depthClearValue: 1.0,
+              depthStore: 'store'
+            });
+            depthInitialized = true;
+          }
+          builder.sideEffect(pass.id);
+          return undefined;
         },
-        run(context: any, resources: any) {
-          const passEnc = context.beginRaster({
-            label: pass.id,
-            colorAttachments: [
-              {
-                texture: resources.color,
-                loadOp: pass.loadColor,
-                storeOp: 'store',
-                clearValue: [0, 0, 0, 1]
-              }
-            ],
-            depthStencilAttachment:
-              resources.depth !== undefined
-                ? {
-                    texture: resources.depth,
-                    depthLoadOp: 'clear',
-                    depthStoreOp: 'store',
-                    depthClearValue: 1.0
-                  }
-                : undefined
-          });
-          passEnc.end();
-        }
+        run() {}
       });
     }
   }
 
   const snapshot = graph.build();
   const compiled = compileRenderGraph(snapshot);
-  const plan = createRenderGraphExecutionPlan(snapshot, compiled);
+  const plan = createRenderGraphExecutionPlan(snapshot, compiled, {
+    enablePassFusion: options?.forceSeparate !== true
+  });
   const executor = new RenderGraphExecutor();
   const execution = executor.execute(plan, { device });
 
   const semantic = runFusionSemanticOracle(workload);
 
-  const rasterGroups = plan.schedule.filter((step: any) => step.kind === 'raster-group').length;
-  const legacyPasses = plan.schedule.filter((step: any) => step.kind === 'pass').length;
-  const physicalGroupCount = rasterGroups > 0 ? rasterGroups : legacyPasses;
-  const fusedBoundariesCount = Math.max(0, workload.passes.length - physicalGroupCount);
-
   return Object.freeze({
     semantic,
     counters: Object.freeze({
       logicalPassCount: workload.passes.length,
-      physicalGroupCount,
-      fusedBoundariesCount,
+      physicalGroupCount: plan.fusion.counters.physicalRasterGroups,
+      fusedBoundariesCount: plan.fusion.counters.fusedBoundariesCount,
       scheduledSteps: execution.executionCounters.scheduledSteps
     })
   });

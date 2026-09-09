@@ -267,7 +267,12 @@ describe('fusion execution and state isolation', () => {
           vertex: {
             module: context.device.createShaderModule({ code: '@vertex fn main() {}' }),
             entryPoint: 'main',
-            buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }] }]
+            buffers: [
+              {
+                arrayStride: 16,
+                attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }]
+              }
+            ]
           },
           primitive: { topology: 'triangle-list' },
           fragment: {
@@ -296,7 +301,12 @@ describe('fusion execution and state isolation', () => {
           vertex: {
             module: context.device.createShaderModule({ code: '@vertex fn main() {}' }),
             entryPoint: 'main',
-            buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }] }]
+            buffers: [
+              {
+                arrayStride: 16,
+                attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }]
+              }
+            ]
           },
           primitive: { topology: 'triangle-list' },
           fragment: {
@@ -573,6 +583,9 @@ describe('fusion execution and state isolation', () => {
     });
     const fusedResult = executor.execute(fusedPlan, { device });
     expect(fusedResult.commandStats.renderPasses).toBe(1);
+    const capturedFusion = executor.execute(fusedPlan, { device }, { captureDebug: true });
+    expect(capturedFusion.debug.fusion?.groups).toMatchObject([{ passIds: [0, 1] }]);
+    expect(capturedFusion.debug.fusion?.counters.fusedBoundariesCount).toBe(1);
 
     // With fusion disabled
     const unfusedPlan = createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot), {

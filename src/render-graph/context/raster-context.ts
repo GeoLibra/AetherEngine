@@ -107,9 +107,10 @@ export class RasterCommandsImpl implements RasterCommands {
   constructor(
     private readonly pass: UnderlyingRenderPass,
     private readonly scope: RasterPassScope,
-    private readonly pipelineRequirements: (
-      pipeline: RestrictedRenderPipeline
-    ) => { readonly bindGroupSlots: readonly number[]; readonly vertexBufferSlots: readonly number[] }
+    private readonly pipelineRequirements: (pipeline: RestrictedRenderPipeline) => {
+      readonly bindGroupSlots: readonly number[];
+      readonly vertexBufferSlots: readonly number[];
+    }
   ) {}
 
   setPipeline = (pipeline: RestrictedRenderPipeline): void => {

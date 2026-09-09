@@ -153,10 +153,7 @@ describe('CompositionPlan RenderGraph consumer', () => {
       ]
     });
     const rasterRecorder = {
-      record(
-        context: RestrictedPassContext,
-        resources: CompositionSlotResources
-      ) {
+      record(context: RestrictedPassContext, resources: CompositionSlotResources) {
         context
           .beginRaster({
             colorAttachments: [{ texture: resources.color, loadOp: 'clear', storeOp: 'store' }]

@@ -227,6 +227,7 @@ export class RenderGraphExecutor {
           ? Object.freeze({
               ...createRenderGraphDebugIR(plan.snapshot, plan.compiled, {
                 schedule: plan.schedule,
+                fusion: plan.fusion,
                 historyStates: historyDebugStates(plan, inputs)
               }),
               commandStats,
