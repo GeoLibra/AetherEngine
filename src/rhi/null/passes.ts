@@ -81,7 +81,6 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     this.ensureActive();
     assertResourceOwnedBy(pipeline, this.encoderOwner);
     assertResourceLive(pipeline);
-    this.validateBoundGroups(pipeline.layout, false);
     this.pipeline = pipeline;
     this.encoder.lease(pipeline);
     this.encoder.record({ kind: 'setRenderPipeline', pipeline: toResourceRef(pipeline) });
@@ -93,13 +92,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     dynamicOffsets: readonly number[] = []
   ): void {
     this.ensureActive();
-    validateBindGroupSlot(
-      index,
-      bindGroup,
-      dynamicOffsets,
-      this.encoderOwner,
-      this.pipeline?.layout
-    );
+    validateBindGroupSlot(index, bindGroup, dynamicOffsets, this.encoderOwner);
     this.bindGroups.set(index, { bindGroup, dynamicOffsets: [...dynamicOffsets] });
     this.encoder.lease(bindGroup);
     for (const resource of getBindGroupResources(bindGroup)) this.encoder.lease(resource);
@@ -174,7 +167,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
   draw(vertexCount: number, instanceCount = 1, firstVertex = 0, firstInstance = 0): void {
     this.ensureActive();
     const pipeline = this.requirePipeline();
-    this.validateBoundGroups(this.pipeline?.layout, true);
+    this.validateBoundGroups(pipeline.layout);
     this.validateBoundBuffers();
     this.encoder.record({ kind: 'draw', vertexCount, instanceCount, firstVertex, firstInstance });
     this.encoder.recordDraw(vertexCount, instanceCount, pipeline.topology);
@@ -189,7 +182,7 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
   ): void {
     this.ensureActive();
     const pipeline = this.requirePipeline();
-    this.validateBoundGroups(this.pipeline?.layout, true);
+    this.validateBoundGroups(pipeline.layout);
     this.validateBoundBuffers();
     if (this.indexBuffer === undefined) {
       throw new Error(
@@ -210,8 +203,8 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
   drawIndirect(indirectBuffer: RHIBuffer, indirectOffset: number): void {
     this.ensureActive();
     assertRHIFeature(this.encoder.ownerToken, 'indirect-draw', 'draw-indirect');
-    this.requirePipeline();
-    this.validateBoundGroups(this.pipeline?.layout, true);
+    const pipeline = this.requirePipeline();
+    this.validateBoundGroups(pipeline.layout);
     this.validateBoundBuffers();
     assertResourceOwnedBy(indirectBuffer, this.encoderOwner);
     assertResourceLive(indirectBuffer);
@@ -261,28 +254,21 @@ export class NullRenderPassEncoder implements RHIRenderPassEncoder {
     return this.pipeline;
   }
 
-  private validateBoundGroups(
-    pipelineLayout: RHIPipelineLayout | undefined,
-    requireComplete: boolean
-  ): void {
-    if (pipelineLayout !== undefined && requireComplete) {
-      pipelineLayout.bindGroupLayouts.forEach((_, index) => {
-        if (!this.bindGroups.has(index)) {
-          throw new Error(
-            `Bind group slot ${index} required by the current pipeline layout is not bound.`
-          );
-        }
-      });
-    }
-    for (const [index, binding] of this.bindGroups) {
-      validateBindGroupSlot(
-        index,
-        binding.bindGroup,
-        binding.dynamicOffsets,
-        this.encoderOwner,
-        pipelineLayout
-      );
-    }
+  private validateBoundGroups(pipelineLayout: RHIPipelineLayout | undefined): void {
+    if (pipelineLayout === undefined) return;
+    pipelineLayout.bindGroupLayouts.forEach((expectedLayout, index) => {
+      const binding = this.bindGroups.get(index);
+      if (binding === undefined) {
+        throw new Error(
+          `Bind group slot ${index} required by the current pipeline layout is not bound.`
+        );
+      }
+      if (binding.bindGroup.layout !== expectedLayout) {
+        throw new Error(
+          `Bind group layout at slot ${index} is not compatible with the current pipeline layout.`
+        );
+      }
+    });
   }
 
   private validateBoundBuffers(): void {
@@ -336,7 +322,6 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
     this.ensureActive();
     assertResourceOwnedBy(pipeline, this.encoderOwner);
     assertResourceLive(pipeline);
-    this.validateBoundGroups(pipeline.layout, false);
     this.pipeline = pipeline;
     this.encoder.lease(pipeline);
     this.encoder.record({ kind: 'setComputePipeline', pipeline: toResourceRef(pipeline) });
@@ -348,13 +333,7 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
     dynamicOffsets: readonly number[] = []
   ): void {
     this.ensureActive();
-    validateBindGroupSlot(
-      index,
-      bindGroup,
-      dynamicOffsets,
-      this.encoderOwner,
-      this.pipeline?.layout
-    );
+    validateBindGroupSlot(index, bindGroup, dynamicOffsets, this.encoderOwner);
     this.bindGroups.set(index, { bindGroup, dynamicOffsets: [...dynamicOffsets] });
     this.encoder.lease(bindGroup);
     for (const resource of getBindGroupResources(bindGroup)) this.encoder.lease(resource);
@@ -369,8 +348,8 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
 
   dispatchWorkgroups(x: number, y = 1, z = 1): void {
     this.ensureActive();
-    this.requirePipeline();
-    this.validateBoundGroups(this.pipeline?.layout, true);
+    const pipeline = this.requirePipeline();
+    this.validateBoundGroups(pipeline.layout);
     this.encoder.record({ kind: 'dispatchWorkgroups', x, y, z });
     this.encoder.recordDispatchWorkgroups();
   }
@@ -378,8 +357,8 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
   dispatchWorkgroupsIndirect(indirectBuffer: RHIBuffer, indirectOffset: number): void {
     this.ensureActive();
     assertRHIFeature(this.encoder.ownerToken, 'indirect-draw', 'draw-indirect');
-    this.requirePipeline();
-    this.validateBoundGroups(this.pipeline?.layout, true);
+    const pipeline = this.requirePipeline();
+    this.validateBoundGroups(pipeline.layout);
     assertResourceOwnedBy(indirectBuffer, this.encoderOwner);
     assertResourceLive(indirectBuffer);
     assertBufferUnmapped(indirectBuffer);
@@ -424,28 +403,21 @@ export class NullComputePassEncoder implements RHIComputePassEncoder {
     return this.pipeline;
   }
 
-  private validateBoundGroups(
-    pipelineLayout: RHIPipelineLayout | undefined,
-    requireComplete: boolean
-  ): void {
-    if (pipelineLayout !== undefined && requireComplete) {
-      pipelineLayout.bindGroupLayouts.forEach((_, index) => {
-        if (!this.bindGroups.has(index)) {
-          throw new Error(
-            `Bind group slot ${index} required by the current pipeline layout is not bound.`
-          );
-        }
-      });
-    }
-    for (const [index, binding] of this.bindGroups) {
-      validateBindGroupSlot(
-        index,
-        binding.bindGroup,
-        binding.dynamicOffsets,
-        this.encoderOwner,
-        pipelineLayout
-      );
-    }
+  private validateBoundGroups(pipelineLayout: RHIPipelineLayout | undefined): void {
+    if (pipelineLayout === undefined) return;
+    pipelineLayout.bindGroupLayouts.forEach((expectedLayout, index) => {
+      const binding = this.bindGroups.get(index);
+      if (binding === undefined) {
+        throw new Error(
+          `Bind group slot ${index} required by the current pipeline layout is not bound.`
+        );
+      }
+      if (binding.bindGroup.layout !== expectedLayout) {
+        throw new Error(
+          `Bind group layout at slot ${index} is not compatible with the current pipeline layout.`
+        );
+      }
+    });
   }
 
   private get encoderOwner(): NullDeviceOwner {
