@@ -35,7 +35,7 @@ const COLOR_DESC: TextureDescriptor = Object.freeze({
 
 const BUFFER_DESC: BufferDescriptor = Object.freeze({
   size: 64,
-  usage: Object.freeze(['vertex', 'index', 'copy-dst'] as const)
+  usage: Object.freeze(['uniform', 'vertex', 'index', 'copy-dst'] as const)
 });
 
 describe('fusion execution and state isolation', () => {
@@ -138,6 +138,289 @@ describe('fusion execution and state isolation', () => {
     );
   });
 
+  test('prevents cross-logical-pass bind group leaks in fused physical pass', () => {
+    const builder = new RenderGraphBuilder();
+    const color = builder.createTexture(COLOR_DESC);
+    const buffer = builder.createBuffer(BUFFER_DESC, {
+      origin: {
+        kind: 'imported',
+        initialState: 'uniform',
+        acquire: { kind: 'external-acquire', id: 'bind-buffer' }
+      }
+    });
+
+    let member2Error: Error | undefined;
+
+    let currentColor = color;
+    builder.addRasterPass({
+      id: 'member-1-bind',
+      setup(pass) {
+        currentColor = pass.colorAttachment(0, currentColor, { load: 'clear', store: 'auto' });
+        pass.readBuffer(buffer, 'uniform');
+        pass.sideEffect('bind-1');
+        return {};
+      },
+      run(context) {
+        const layout = context.device.createBindGroupLayout({
+          entries: [{ binding: 0, visibility: 1, buffer: { type: 'uniform' } }]
+        });
+        const bindGroup = context.device.createBindGroup({
+          layout,
+          entries: [{ binding: 0, resource: context.buffer(buffer, 'uniform') }]
+        });
+        const pipeline = context.device.createRenderPipeline({
+          layout: context.device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+          vertex: {
+            module: context.device.createShaderModule({ code: '@vertex fn main() {}' }),
+            entryPoint: 'main'
+          },
+          primitive: { topology: 'triangle-list' },
+          fragment: {
+            module: context.device.createShaderModule({ code: '@fragment fn main() {}' }),
+            entryPoint: 'main',
+            targets: [{ format: 'rgba8unorm' }]
+          }
+        });
+        context.raster.setPipeline(pipeline);
+        context.raster.setBindGroup(0, bindGroup);
+        context.raster.draw(3);
+      }
+    });
+
+    builder.addRasterPass({
+      id: 'member-2-leaked-bind',
+      setup(pass) {
+        currentColor = pass.colorAttachment(0, currentColor, { load: 'load', store: 'store' });
+        pass.readBuffer(buffer, 'uniform');
+        pass.sideEffect('bind-2');
+        return {};
+      },
+      run(context) {
+        const layout = context.device.createBindGroupLayout({
+          entries: [{ binding: 0, visibility: 1, buffer: { type: 'uniform' } }]
+        });
+        const pipeline = context.device.createRenderPipeline({
+          layout: context.device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+          vertex: {
+            module: context.device.createShaderModule({ code: '@vertex fn main() {}' }),
+            entryPoint: 'main'
+          },
+          primitive: { topology: 'triangle-list' },
+          fragment: {
+            module: context.device.createShaderModule({ code: '@fragment fn main() {}' }),
+            entryPoint: 'main',
+            targets: [{ format: 'rgba8unorm' }]
+          }
+        });
+        // Set pipeline starts new logical pass epoch
+        context.raster.setPipeline(pipeline);
+        // Attempt to draw without setting bind group in current logical pass
+        try {
+          context.raster.draw(3);
+        } catch (err) {
+          member2Error = err as Error;
+        }
+      }
+    });
+
+    const snapshot = builder.build();
+    const plan = createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot));
+    const executor = new RenderGraphExecutor();
+    const device = new NullDevice();
+
+    executor.execute(plan, {
+      device,
+      resources: new Map([[buffer, device.createBuffer({ size: 64, usage: 120 })]])
+    });
+
+    expect(member2Error).toBeDefined();
+    expect(member2Error!.message).toContain('setBindGroup(0)');
+    expect(member2Error!.message).toContain('after the most recent setPipeline()');
+    expect(member2Error!.message).toContain('logical pass');
+  });
+
+  test('prevents cross-logical-pass vertex buffer leaks in fused physical pass', () => {
+    const builder = new RenderGraphBuilder();
+    const color = builder.createTexture(COLOR_DESC);
+    const buffer = builder.createBuffer(BUFFER_DESC, {
+      origin: {
+        kind: 'imported',
+        initialState: 'vertex',
+        acquire: { kind: 'external-acquire', id: 'vertex-buffer' }
+      }
+    });
+
+    let member2Error: Error | undefined;
+
+    let currentColor = color;
+    builder.addRasterPass({
+      id: 'member-1-vb',
+      setup(pass) {
+        currentColor = pass.colorAttachment(0, currentColor, { load: 'clear', store: 'auto' });
+        pass.readBuffer(buffer, 'vertex');
+        pass.sideEffect('vb-1');
+        return {};
+      },
+      run(context) {
+        const pipeline = context.device.createRenderPipeline({
+          layout: context.device.createPipelineLayout({ bindGroupLayouts: [] }),
+          vertex: {
+            module: context.device.createShaderModule({ code: '@vertex fn main() {}' }),
+            entryPoint: 'main',
+            buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }] }]
+          },
+          primitive: { topology: 'triangle-list' },
+          fragment: {
+            module: context.device.createShaderModule({ code: '@fragment fn main() {}' }),
+            entryPoint: 'main',
+            targets: [{ format: 'rgba8unorm' }]
+          }
+        });
+        context.raster.setPipeline(pipeline);
+        context.raster.setVertexBuffer(0, context.buffer(buffer, 'vertex'));
+        context.raster.draw(3);
+      }
+    });
+
+    builder.addRasterPass({
+      id: 'member-2-leaked-vb',
+      setup(pass) {
+        currentColor = pass.colorAttachment(0, currentColor, { load: 'load', store: 'store' });
+        pass.readBuffer(buffer, 'vertex');
+        pass.sideEffect('vb-2');
+        return {};
+      },
+      run(context) {
+        const pipeline = context.device.createRenderPipeline({
+          layout: context.device.createPipelineLayout({ bindGroupLayouts: [] }),
+          vertex: {
+            module: context.device.createShaderModule({ code: '@vertex fn main() {}' }),
+            entryPoint: 'main',
+            buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }] }]
+          },
+          primitive: { topology: 'triangle-list' },
+          fragment: {
+            module: context.device.createShaderModule({ code: '@fragment fn main() {}' }),
+            entryPoint: 'main',
+            targets: [{ format: 'rgba8unorm' }]
+          }
+        });
+        context.raster.setPipeline(pipeline);
+        // Attempt to draw without setting vertex buffer in current logical pass
+        try {
+          context.raster.draw(3);
+        } catch (err) {
+          member2Error = err as Error;
+        }
+      }
+    });
+
+    const snapshot = builder.build();
+    const plan = createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot));
+    const executor = new RenderGraphExecutor();
+    const device = new NullDevice();
+
+    executor.execute(plan, {
+      device,
+      resources: new Map([[buffer, device.createBuffer({ size: 64, usage: 120 })]])
+    });
+
+    expect(member2Error).toBeDefined();
+    expect(member2Error!.message).toContain('setVertexBuffer(0)');
+    expect(member2Error!.message).toContain('after the most recent setPipeline()');
+    expect(member2Error!.message).toContain('logical pass');
+  });
+
+  test('prevents cross-logical-pass index buffer leaks in fused physical pass', () => {
+    const builder = new RenderGraphBuilder();
+    const color = builder.createTexture(COLOR_DESC);
+    const buffer = builder.createBuffer(BUFFER_DESC, {
+      origin: {
+        kind: 'imported',
+        initialState: 'index',
+        acquire: { kind: 'external-acquire', id: 'index-buffer' }
+      }
+    });
+
+    let member2Error: Error | undefined;
+
+    let currentColor = color;
+    builder.addRasterPass({
+      id: 'member-1-ib',
+      setup(pass) {
+        currentColor = pass.colorAttachment(0, currentColor, { load: 'clear', store: 'auto' });
+        pass.readBuffer(buffer, 'index');
+        pass.sideEffect('ib-1');
+        return {};
+      },
+      run(context) {
+        const pipeline = context.device.createRenderPipeline({
+          layout: context.device.createPipelineLayout({ bindGroupLayouts: [] }),
+          vertex: {
+            module: context.device.createShaderModule({ code: '@vertex fn main() {}' }),
+            entryPoint: 'main'
+          },
+          primitive: { topology: 'triangle-list' },
+          fragment: {
+            module: context.device.createShaderModule({ code: '@fragment fn main() {}' }),
+            entryPoint: 'main',
+            targets: [{ format: 'rgba8unorm' }]
+          }
+        });
+        context.raster.setPipeline(pipeline);
+        context.raster.setIndexBuffer(context.buffer(buffer, 'index'), 'uint16');
+        context.raster.drawIndexed(6);
+      }
+    });
+
+    builder.addRasterPass({
+      id: 'member-2-leaked-ib',
+      setup(pass) {
+        currentColor = pass.colorAttachment(0, currentColor, { load: 'load', store: 'store' });
+        pass.readBuffer(buffer, 'index');
+        pass.sideEffect('ib-2');
+        return {};
+      },
+      run(context) {
+        const pipeline = context.device.createRenderPipeline({
+          layout: context.device.createPipelineLayout({ bindGroupLayouts: [] }),
+          vertex: {
+            module: context.device.createShaderModule({ code: '@vertex fn main() {}' }),
+            entryPoint: 'main'
+          },
+          primitive: { topology: 'triangle-list' },
+          fragment: {
+            module: context.device.createShaderModule({ code: '@fragment fn main() {}' }),
+            entryPoint: 'main',
+            targets: [{ format: 'rgba8unorm' }]
+          }
+        });
+        context.raster.setPipeline(pipeline);
+        // Attempt drawIndexed without setting index buffer in current logical pass
+        try {
+          context.raster.drawIndexed(6);
+        } catch (err) {
+          member2Error = err as Error;
+        }
+      }
+    });
+
+    const snapshot = builder.build();
+    const plan = createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot));
+    const executor = new RenderGraphExecutor();
+    const device = new NullDevice();
+
+    executor.execute(plan, {
+      device,
+      resources: new Map([[buffer, device.createBuffer({ size: 64, usage: 120 })]])
+    });
+
+    expect(member2Error).toBeDefined();
+    expect(member2Error!.message).toContain('setIndexBuffer()');
+    expect(member2Error!.message).toContain('after the most recent setPipeline()');
+    expect(member2Error!.message).toContain('logical pass');
+  });
+
   test('enforces index buffer requirement for drawIndexed', () => {
     const builder = new RenderGraphBuilder();
     const color = builder.createTexture(COLOR_DESC);
@@ -183,7 +466,7 @@ describe('fusion execution and state isolation', () => {
 
     expect(drawIndexedError).toBeDefined();
     expect(drawIndexedError!.message).toContain(
-      'DrawIndexed requires setIndexBuffer() to be called within the logical pass scope.'
+      'DrawIndexed requires setIndexBuffer() to be called after the most recent setPipeline() within the logical pass scope.'
     );
   });
 

@@ -250,11 +250,57 @@ export class RasterPassBuilderImpl extends BaseGraphResourceBuilder implements R
     }
     assertGraphHandle(source, this.graph.graphId, 'texture');
     assertGraphHandle(destination, this.graph.graphId, 'texture');
-    this.accesses.push(this.graph.declareRead(this.passId, source, 'sampled', 'texture'));
-    const access = this.graph.declareWrite(this.passId, destination, 'color-attachment', 'texture');
+    const color = this.colorAttachmentsMap.get(slot);
+    if (color === undefined || color.output !== source) {
+      throw new Error(
+        `Resolve attachment slot ${slot} source must be the output returned by colorAttachment(${slot}, ...).`
+      );
+    }
+    if (source.resourceId === destination.resourceId) {
+      throw new Error('Resolve source and destination must be distinct texture resources.');
+    }
+    const sourceDescriptor = this.graph.descriptorFor(source) as TextureDescriptor;
+    const destinationDescriptor = this.graph.descriptorFor(destination) as TextureDescriptor;
+    if (sourceDescriptor.sampleCount <= 1 || destinationDescriptor.sampleCount !== 1) {
+      throw new Error('Resolve requires a multisampled source and a single-sampled destination.');
+    }
+    if (sourceDescriptor.format !== destinationDescriptor.format) {
+      throw new Error('Resolve source and destination formats must match.');
+    }
+    const sourceRange = this.graph.normalizeRange(source, color.options.range) as TextureRange;
+    const destinationRange = this.graph.normalizeRange(destination) as TextureRange;
+    const sourceWidth = Math.max(1, sourceDescriptor.width >> sourceRange.baseMipLevel);
+    const sourceHeight = Math.max(1, sourceDescriptor.height >> sourceRange.baseMipLevel);
+    const destinationWidth = Math.max(
+      1,
+      destinationDescriptor.width >> destinationRange.baseMipLevel
+    );
+    const destinationHeight = Math.max(
+      1,
+      destinationDescriptor.height >> destinationRange.baseMipLevel
+    );
+    if (
+      sourceRange.mipLevelCount !== 1 ||
+      destinationRange.mipLevelCount !== 1 ||
+      sourceRange.arrayLayerCount !== destinationRange.arrayLayerCount ||
+      sourceWidth !== destinationWidth ||
+      sourceHeight !== destinationHeight
+    ) {
+      throw new Error('Resolve source and destination subresource extents must match.');
+    }
+    const access = this.graph.declareWrite(
+      this.passId,
+      destination,
+      'color-attachment',
+      'texture',
+      destinationRange
+    );
     this.accesses.push(access);
     const output = access.handle as TextureHandle;
-    this.resolveAttachmentsMap.set(slot, Object.freeze({ slot, source, destination, output }));
+    this.resolveAttachmentsMap.set(
+      slot,
+      Object.freeze({ slot, source, destination, output, sourceRange, destinationRange })
+    );
     return output;
   }
 
@@ -269,8 +315,16 @@ export class RasterPassBuilderImpl extends BaseGraphResourceBuilder implements R
   }
 
   declarationDetails(): RasterPassDeclarationDetails {
+    const colorAttachments = [...this.colorAttachmentsMap.values()].sort(
+      (first, second) => first.slot - second.slot
+    );
+    colorAttachments.forEach((attachment, index) => {
+      if (attachment.slot !== index) {
+        throw new Error('Raster color attachment slots must be contiguous and start at slot 0.');
+      }
+    });
     return Object.freeze({
-      colorAttachments: Object.freeze([...this.colorAttachmentsMap.values()]),
+      colorAttachments: Object.freeze(colorAttachments),
       depthStencilAttachment: this.depthStencilAttachmentDecl,
       resolveAttachments: Object.freeze([...this.resolveAttachmentsMap.values()]),
       preparedRenderPipelines: Object.freeze([...this.renderPipelines]),

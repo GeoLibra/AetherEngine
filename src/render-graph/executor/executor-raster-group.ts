@@ -56,7 +56,15 @@ export function executeRasterGroup(
 
   // 1. Resolve color attachments
   const groupViews: RHITextureView[] = [];
-  const colorAttachments = group.attachments.colorAttachments.map((colorPlan) => {
+  const orderedColorPlans = [...group.attachments.colorAttachments].sort(
+    (first, second) => first.slot - second.slot
+  );
+  orderedColorPlans.forEach((colorPlan, index) => {
+    if (colorPlan.slot !== index) {
+      throw new Error('Physical raster color attachment slots must be contiguous from slot 0.');
+    }
+  });
+  const colorAttachments = orderedColorPlans.map((colorPlan) => {
     const texture = getPhysicalTexture(colorPlan.resourceId);
     const record = resourceRecords.get(colorPlan.resourceId)!;
     const normalizedRange = normalizeTextureRange(
@@ -171,7 +179,13 @@ export function executeRasterGroup(
         inputs.preparedDrawResources ?? new Map(),
         encoder,
         () => {},
-        () => {}
+        () => {},
+        pass.rasterDetails === undefined
+          ? undefined
+          : {
+              renderPipelines: pass.rasterDetails.preparedRenderPipelines,
+              drawResources: pass.rasterDetails.preparedDrawResources
+            }
       );
       restrictedContexts.push(restrictedContext);
 
@@ -183,10 +197,16 @@ export function executeRasterGroup(
         restrictedContext.close();
       }
     }
-  } finally {
-    renderPass.end();
+  } catch (error) {
+    // Cleanup must preserve the callback failure as the primary diagnostic.
     onActivePass(undefined);
+    try {
+      renderPass.end();
+    } catch {}
+    throw error;
   }
+  onActivePass(undefined);
+  renderPass.end();
 
   return group.retainedPassIndices.length;
 }

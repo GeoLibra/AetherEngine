@@ -5,7 +5,13 @@ import type { CompiledRenderGraph } from '../types';
 import type { RenderGraphExecutionPlan } from '../types';
 import type { AcquiredHistorySlot, HistoryIdentity, HistoryRegistry } from '../compiler/history';
 import type { RenderGraphHistoryDebugBinding } from '../compiler/debug-ir';
-import type { RHIBuffer, RHIDevice, RHISubmission, RHITexture } from '../../rhi/contracts';
+import type {
+  RHIBuffer,
+  RHIDevice,
+  RHIRenderPipeline,
+  RHISubmission,
+  RHITexture
+} from '../../rhi/contracts';
 import type { RHISurface, RHISurfaceFrame } from '../../rhi/contracts/surface';
 import { allocationFor } from './executor-resource-utils';
 import { TransientResourcePool, type TransientResource } from './transient-pool';
@@ -122,6 +128,87 @@ export function validatePreparedDrawResources(inputs: RenderGraphExecutionInputs
           `Prepared draw resources "${token.name}" belong to another device generation.`
         );
     }
+  }
+}
+
+/** Validates declared prepared tokens and their attachment compatibility before surface acquire. */
+export function validateRasterGroupBindings(
+  plan: RenderGraphExecutionPlan,
+  inputs: RenderGraphExecutionInputs
+): void {
+  for (const group of plan.rasterGroups) {
+    for (const retainedPassIndex of group.retainedPassIndices) {
+      const pass = plan.compiled.retainedPasses[retainedPassIndex]!;
+      const details = pass.rasterDetails!;
+      for (const token of details.preparedRenderPipelines) {
+        const pipeline = inputs.preparedRenderPipelines?.get(token);
+        if (pipeline === undefined) {
+          throw new Error(`Prepared render pipeline "${token.name}" is not bound.`);
+        }
+        validatePipelineAttachments(pass.id, pipeline, group, plan.snapshot);
+      }
+      for (const token of details.preparedDrawResources) {
+        const packet = inputs.preparedDrawResources?.get(token);
+        if (packet === undefined) {
+          throw new Error(`Prepared draw resources "${token.name}" are not bound.`);
+        }
+        validatePipelineAttachments(pass.id, packet.pipeline, group, plan.snapshot);
+      }
+    }
+  }
+}
+
+function validatePipelineAttachments(
+  passId: string,
+  pipeline: RHIRenderPipeline,
+  group: RenderGraphExecutionPlan['rasterGroups'][number],
+  snapshot: RenderGraphSnapshot
+): void {
+  const colors = [...group.attachments.colorAttachments].sort(
+    (first, second) => first.slot - second.slot
+  );
+  const targets = pipeline.descriptor.fragment?.targets;
+  if (targets !== undefined && targets.length !== colors.length) {
+    throw new Error(
+      `Raster pass "${passId}" pipeline color target count is incompatible with its physical attachments.`
+    );
+  }
+  for (let index = 0; targets !== undefined && index < colors.length; index++) {
+    const color = colors[index]!;
+    const resource = snapshot.resources[color.resourceId];
+    if (resource?.kind !== 'texture' || targets[index]?.format !== resource.descriptor.format) {
+      throw new Error(
+        `Raster pass "${passId}" pipeline color target ${index} is incompatible with its physical attachment.`
+      );
+    }
+  }
+  const depth = group.attachments.depthStencilAttachment;
+  const pipelineDepth = pipeline.descriptor.depthStencil;
+  if (depth === undefined && pipelineDepth !== undefined) {
+    throw new Error(
+      `Raster pass "${passId}" pipeline depth/stencil state is incompatible with its physical attachments.`
+    );
+  }
+  if (depth !== undefined && pipelineDepth !== undefined) {
+    const resource = snapshot.resources[depth.resourceId];
+    if (resource?.kind !== 'texture' || pipelineDepth?.format !== resource.descriptor.format) {
+      throw new Error(
+        `Raster pass "${passId}" pipeline depth/stencil format is incompatible with its physical attachment.`
+      );
+    }
+  }
+  const attachmentSampleCount =
+    colors.length > 0
+      ? (snapshot.resources[colors[0]!.resourceId]?.descriptor as { sampleCount?: number })
+          .sampleCount ?? 1
+      : depth !== undefined
+        ? (snapshot.resources[depth.resourceId]?.descriptor as { sampleCount?: number }).sampleCount ??
+          1
+        : 1;
+  if ((pipeline.descriptor.multisample?.count ?? 1) !== attachmentSampleCount) {
+    throw new Error(
+      `Raster pass "${passId}" pipeline sample count is incompatible with its physical attachments.`
+    );
   }
 }
 

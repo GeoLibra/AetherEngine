@@ -74,7 +74,7 @@ export function lowerPhysicalAttachmentOperations(
           clearValue,
           storeOp,
           resolveDestinationId: resolve?.destination.resourceId,
-          resolveDestinationRange: resolve !== undefined ? range : undefined
+          resolveDestinationRange: resolve?.destinationRange
         })
       );
     }

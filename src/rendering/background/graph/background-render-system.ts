@@ -23,6 +23,7 @@ export interface BackgroundRenderSystemInput {
   readonly width: number;
   readonly height: number;
   readonly publishColor?: (color: TextureHandle) => void;
+  readonly publishDepth?: (depth: TextureHandle) => void;
 }
 
 export interface BackgroundPassResources {
@@ -44,6 +45,9 @@ export function createBackgroundRenderSystem(
     scope: 'per-view',
     runIf: ({ view }: RenderSystemConditionContext) => view?.id === input.viewId,
     setup(pass: RasterPassBuilder): BackgroundPassResources {
+      if (input.prepared.status === 'ready' && input.prepared.pipelineToken !== undefined) {
+        pass.useRenderPipeline(input.prepared.pipelineToken);
+      }
       const color = pass.colorAttachment(0, input.colorTarget, {
         load: 'clear',
         store: 'auto',
@@ -58,6 +62,7 @@ export function createBackgroundRenderSystem(
               depthClearValue: 1.0
             })
           : undefined;
+      if (depth !== undefined) input.publishDepth?.(depth);
       const uniform = pass.readBuffer(input.uniformBuffer, 'uniform');
       const skyTexture = pass.readTexture(input.skyTexture, 'sampled');
       return Object.freeze({ color, depth, uniform, skyTexture });

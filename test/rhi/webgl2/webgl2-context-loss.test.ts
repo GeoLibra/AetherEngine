@@ -3,7 +3,10 @@ import { describe, expect, test } from 'vitest';
 import {
   WebGL2Adapter,
   WebGL2ContextControlExtension,
-  type WebGL2NativeContextLostInfo
+  type WebGL2NativeContextLostInfo,
+  type WebGL2NativeContextPort,
+  type WebGL2ShaderTranslationPort,
+  type WebGL2TranslatedShader
 } from '../../../src';
 
 interface Deferred<T> {
@@ -24,7 +27,7 @@ interface NativeObject {
   readonly id: number;
 }
 
-class ContextLossPort {
+class ContextLossPort implements WebGL2NativeContextPort {
   readonly info = { name: 'Context loss WebGL2' };
   readonly extensions = new Set<string>();
   readonly limits = { maxUniformBufferBindings: 4, maxTextureUnits: 4 };
@@ -109,10 +112,12 @@ class ContextLossPort {
   }
 }
 
-class Translator {
+class Translator implements WebGL2ShaderTranslationPort {
   readonly translatorId = 'test';
   readonly version = 1;
-  translate(input: { entryPoint: string }) {
+  translate(
+    input: Parameters<WebGL2ShaderTranslationPort['translate']>[0]
+  ): WebGL2TranslatedShader {
     return {
       source: `void ${input.entryPoint}() {}`,
       bindings: [],
@@ -127,11 +132,7 @@ class Translator {
 }
 
 async function createFixture(native = new ContextLossPort()) {
-  const Adapter = WebGL2Adapter as unknown as new (
-    context: ContextLossPort,
-    translator: Translator
-  ) => WebGL2Adapter;
-  const device = await new Adapter(native, new Translator()).requestDevice({
+  const device = await new WebGL2Adapter(native, new Translator()).requestDevice({
     requiredFeatures: [],
     optionalFeatures: []
   });

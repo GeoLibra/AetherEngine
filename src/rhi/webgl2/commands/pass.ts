@@ -85,7 +85,8 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
 
   setBindGroup(index: number, group: RHIBindGroup, dynamicOffsets: readonly number[] = []): void {
     this.ensureActive();
-    validateWebGL2BindGroupSlot(index, group, dynamicOffsets, this.owner);
+    // Validate basic bind group slot without pipeline layout (defer layout compatibility to draw)
+    validateWebGL2BindGroupSlot(index, group, dynamicOffsets, this.owner, undefined);
     const offsets = [...dynamicOffsets];
     this.bindGroups.set(index, { group, offsets });
     this.encoder.lease(group);
@@ -229,6 +230,8 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
 
   private validateBoundGroups(layout: RHIPipelineLayout | undefined): void {
     if (layout === undefined) return;
+    // Only validate bind group slots that the pipeline layout actually requires
+    // This allows multiple logical passes to share one physical pass with different pipelines
     layout.bindGroupLayouts.forEach((expected, index) => {
       const bound = this.bindGroups.get(index);
       if (bound === undefined) {

@@ -73,6 +73,8 @@ export interface DeclaredResolveAttachment {
   readonly source: TextureHandle;
   readonly destination: TextureHandle;
   readonly output: TextureHandle;
+  readonly sourceRange: TextureRange;
+  readonly destinationRange: TextureRange;
 }
 
 export interface RasterCommands {

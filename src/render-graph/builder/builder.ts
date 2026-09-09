@@ -149,6 +149,16 @@ export class RenderGraphBuilder implements RenderGraphPassContextDelegate {
     return this.resources.createBuffer(descriptor, options);
   }
 
+  descriptorFor(handle: GraphHandle): TextureDescriptor | BufferDescriptor {
+    assertGraphHandle(handle, this.graphId, handle.kind);
+    return this.resources.descriptorFor(handle);
+  }
+
+  normalizeRange(handle: GraphHandle, range?: TextureRange | BufferRange): GraphRange {
+    assertGraphHandle(handle, this.graphId, handle.kind);
+    return this.resources.normalizeRange(handle, range);
+  }
+
   addPass<TResources, TContext = unknown>(
     descriptor: GraphPassDescriptor<TResources, TContext>
   ): PassToken {

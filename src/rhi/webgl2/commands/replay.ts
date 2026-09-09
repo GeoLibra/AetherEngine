@@ -4,7 +4,7 @@ import { WebGL2FramebufferCache } from '../state/framebuffer-cache';
 import { WebGL2RenderPipeline } from '../pipeline/pipeline';
 import { WebGL2Buffer, getWebGL2Handle } from '../resources/resource';
 import type { WebGL2DeviceOwner } from '../types';
-import type { WebGL2ImageCopyTexture, WebGL2ReplayCommand } from '../types';
+import type { WebGL2ImageCopyBuffer, WebGL2ImageCopyTexture, WebGL2ReplayCommand } from '../types';
 import type { WebGL2Metrics } from '../metrics';
 import type { WebGL2NativeContextPort } from '../types';
 import { WebGL2StateVM } from '../state/state';
@@ -215,7 +215,14 @@ export class WebGL2ReplayExecutor {
         ? Object.freeze({ enabled: false })
         : Object.freeze({ enabled: true, ...depthStencil })
     );
-    for (const [index, group] of this.groups) this.applyGroup(index, group, pipeline);
+    for (const [index, group] of this.groups) {
+      const expectedLayout = pipeline.layout?.bindGroupLayouts[index];
+      if (expectedLayout === undefined || group.group.layout !== expectedLayout) {
+        this.groups.delete(index);
+        continue;
+      }
+      this.applyGroup(index, group, pipeline);
+    }
   }
 
   private applyVertexArray(): void {
@@ -308,7 +315,7 @@ export class WebGL2ReplayExecutor {
   }
 }
 
-function lowerBufferCopy(copy: import('../types').WebGL2ImageCopyBuffer, owner: WebGL2DeviceOwner) {
+function lowerBufferCopy(copy: WebGL2ImageCopyBuffer, owner: WebGL2DeviceOwner) {
   return Object.freeze({
     buffer: getWebGL2Handle(copy.buffer, owner),
     offset: copy.offset,

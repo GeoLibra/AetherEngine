@@ -5,7 +5,8 @@ import type {
   PreparedRenderPipelineToken,
   RenderSystemDescriptor,
   SurfaceFrameToken,
-  TextureDescriptor
+  TextureDescriptor,
+  TextureHandle
 } from '../../../render-graph';
 import type { WebGlFragmentLightListBuildOutput, WebGpuLightListBuildOutput } from '../../lighting';
 import type { PreparedDrawPhaseSnapshot } from './prepared-draw-phase-types';
@@ -20,23 +21,27 @@ export interface OpaqueRenderSystemInput {
   readonly lightList?: OpaqueLightListInput;
   readonly environment?: Readonly<{
     buffer: BufferHandle;
-    irradianceMap: import('../../../render-graph').TextureHandle;
-    prefilteredRadianceMap: import('../../../render-graph').TextureHandle;
-    environmentBrdfLut: import('../../../render-graph').TextureHandle;
+    irradianceMap: TextureHandle;
+    prefilteredRadianceMap: TextureHandle;
+    environmentBrdfLut: TextureHandle;
   }>;
   readonly background?: Readonly<{
     pipelineToken: PreparedRenderPipelineToken;
     uniformLayoutToken: PreparedBindGroupLayoutToken;
     textureLayoutToken: PreparedBindGroupLayoutToken;
     uniformBuffer: BufferHandle;
-    skyTexture: import('../../../render-graph').TextureHandle;
+    skyTexture: TextureHandle;
   }>;
   readonly colorLoadOp?: 'clear' | 'load';
+  readonly depthLoadOp?: 'clear' | 'load';
   readonly colorTarget?:
-    | import('../../../render-graph').TextureHandle
-    | (() => import('../../../render-graph').TextureHandle);
+    | TextureHandle
+    | (() => TextureHandle);
+  readonly depthTarget?:
+    | TextureHandle
+    | (() => TextureHandle);
   readonly present?: boolean;
-  readonly publishColor?: (color: import('../../../render-graph').TextureHandle) => void;
+  readonly publishColor?: (color: TextureHandle) => void;
 }
 
 /** Backend-specific LightList resources consumed by the standard forward group at index three. */
@@ -49,7 +54,7 @@ export type OpaqueLightListInput =
     }>
   | Readonly<{
       source: 'webgl-fragment';
-      packedLights: import('../../../render-graph').TextureHandle;
+      packedLights: TextureHandle;
       output: WebGlFragmentLightListBuildOutput;
       bindGroupLayout: PreparedBindGroupLayoutToken;
     }>;

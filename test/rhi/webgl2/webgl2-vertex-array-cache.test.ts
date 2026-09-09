@@ -1,13 +1,19 @@
 import { describe, expect, test } from 'vitest';
 
-import { WebGL2Adapter, type WebGL2NativeContextLostInfo } from '../../../src';
+import {
+  WebGL2Adapter,
+  type WebGL2NativeContextLostInfo,
+  type WebGL2NativeContextPort,
+  type WebGL2ShaderTranslationPort,
+  type WebGL2TranslatedShader
+} from '../../../src';
 
 interface NativeObject {
   readonly kind: string;
   readonly id: number;
 }
 
-class VertexArrayContext {
+class VertexArrayContext implements WebGL2NativeContextPort {
   readonly info = { name: 'VertexArray WebGL2' };
   readonly extensions = new Set<string>();
   readonly limits = { maxUniformBufferBindings: 4, maxTextureUnits: 4 };
@@ -65,10 +71,12 @@ class VertexArrayContext {
   }
 }
 
-class Translator {
+class Translator implements WebGL2ShaderTranslationPort {
   readonly translatorId = 'test';
   readonly version = 1;
-  translate(input: { entryPoint: string }) {
+  translate(
+    input: Parameters<WebGL2ShaderTranslationPort['translate']>[0]
+  ): WebGL2TranslatedShader {
     return {
       source: `void ${input.entryPoint}() {}`,
       bindings: [],
@@ -84,11 +92,7 @@ class Translator {
 
 async function createFixture() {
   const native = new VertexArrayContext();
-  const Adapter = WebGL2Adapter as unknown as new (
-    native: VertexArrayContext,
-    translator: Translator
-  ) => WebGL2Adapter;
-  const device = await new Adapter(native, new Translator()).requestDevice({
+  const device = await new WebGL2Adapter(native, new Translator()).requestDevice({
     requiredFeatures: [],
     optionalFeatures: []
   });

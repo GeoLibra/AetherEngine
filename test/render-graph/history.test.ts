@@ -145,13 +145,13 @@ describe('HistoryRegistry', () => {
           }
         ]
       ])
-    });
+    }, { captureDebug: true });
 
     expect(registry.debugState(historyIdentity)[0]).toMatchObject({
       producerSubmissionId: execution.submission.id,
       pendingSubmissionIds: [execution.submission.id]
     });
-    expect(execution.debug.resources[history.resourceId]?.history).toMatchObject({
+    expect(execution.debug?.resources[history.resourceId]?.history).toMatchObject({
       writableSlot: acquired.writable.slot,
       versionSlots: [{ version: 0 }, { version: 1, slot: acquired.writable.slot }],
       slots: expect.arrayContaining([

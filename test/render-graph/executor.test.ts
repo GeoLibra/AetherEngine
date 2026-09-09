@@ -231,7 +231,7 @@ describe('RenderGraphExecutor', () => {
     const execution = new RenderGraphExecutor().execute(compile(graph), {
       device,
       resources: new Map([[buffer, imported]])
-    });
+    }, { captureDebug: true });
 
     expect(execution.commandStats).toMatchObject({ renderPasses: 1 });
     expect(execution.debug.commandStats).toEqual(execution.commandStats);
@@ -254,6 +254,28 @@ describe('RenderGraphExecutor', () => {
       'createCommandEncoder'
     );
     expect((context as unknown as Record<string, unknown>).queue).toBeUndefined();
+  });
+
+  test('omits detailed Debug IR by default and captures it only when requested', () => {
+    const graph = new RenderGraphBuilder();
+    graph.addPass({
+      id: 'side-effect',
+      setup(pass) {
+        pass.sideEffect('test capture boundary');
+      },
+      run() {}
+    });
+    const plan = compile(graph);
+    const executor = new RenderGraphExecutor();
+
+    const normal = executor.execute(plan, { device: new NullDevice() });
+    expect(normal.debug).toBeUndefined();
+    expect(normal.debugIR).toBeUndefined();
+    expect(normal.executionCounters).toEqual({ scheduledSteps: 3, passResolutions: 1 });
+
+    const captured = executor.execute(plan, { device: new NullDevice() }, { captureDebug: true });
+    expect(captured.debug).toMatchObject({ schemaVersion: 1, commandStats: captured.commandStats });
+    expect(captured.debugIR).toBe(captured.debug);
   });
 
   test('rejects undeclared, wrong-usage, and out-of-range resource access', () => {

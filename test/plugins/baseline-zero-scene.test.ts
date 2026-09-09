@@ -16,6 +16,7 @@ import {
   createBoxMeshData,
   createStandardLitMaterial,
   type BrowserGraphicsSession,
+  type BaselineRenderDiagnostics,
   type DirectionalLightSourceView,
   type Plugin
 } from '../../src';
@@ -219,7 +220,7 @@ describe('baseline rendering: zero lights and zero meshes', () => {
     const meshHandle = createAssetHandle(MeshAssetType, 'test.mesh.box');
     const materialHandle = createAssetHandle(MaterialAssetType, 'test.material.standard-lit');
 
-    const history: import('../../src').BaselineRenderDiagnostics[] = [];
+    const history: BaselineRenderDiagnostics[] = [];
     let updateCount = 0;
 
     const scene: Plugin = {

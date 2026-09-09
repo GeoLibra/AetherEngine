@@ -9,7 +9,9 @@ import type { TextureDescriptor } from '../../render-graph';
 import { buildPreparedDrawPhase, createOpaqueRenderSystem } from '../phase';
 import {
   createWebGlFragmentLightListImplementation,
-  createWebGpuComputeLightListImplementation
+  createWebGpuComputeLightListImplementation,
+  type WebGlFragmentLightListBuildOutput,
+  type WebGpuLightListBuildOutput
 } from '../lighting';
 import { BASELINE_LIGHT_LIST_CAPACITY } from './baseline-preparation';
 import type {
@@ -99,16 +101,29 @@ export class BaselineRenderer {
             }
           : undefined
       );
+    const depthTarget = graph.createTexture(
+      attachment(
+        configuration.width,
+        configuration.height,
+        'depth24plus',
+        'depth-stencil-attachment'
+      )
+    );
 
     let activeColorTarget = colorTarget;
+    let activeDepthTarget = depthTarget;
     const bgSystem =
       bgContribution !== undefined && bgFrame !== undefined && bgFrame.status === 'ready'
         ? createBackgroundRenderSystem({
             viewId: prepared.view.id,
             prepared: bgFrame,
             colorTarget,
+            depthTarget,
             publishColor(color) {
               activeColorTarget = color;
+            },
+            publishDepth(depth) {
+              activeDepthTarget = depth;
             },
             uniformBuffer: bgContribution.uniformBuffer,
             skyTexture: bgContribution.skyTexture,
@@ -133,7 +148,9 @@ export class BaselineRenderer {
         'depth-stencil-attachment'
       ),
       colorLoadOp: bgSystem !== undefined ? 'load' : 'clear',
+      depthLoadOp: bgSystem !== undefined ? 'load' : 'clear',
       colorTarget: () => activeColorTarget,
+      depthTarget: () => activeDepthTarget,
       present: post === undefined,
       ...(post === undefined ? {} : { publishColor: post.publishSource }),
       ...(lightList === undefined || prepared.lightList === undefined
@@ -341,7 +358,7 @@ function contributeLightList(
         origin: { ...origin, acquire: { ...origin.acquire, id: `${origin.acquire.id}:receivers` } }
       }
     );
-    let output: import('../lighting').WebGpuLightListBuildOutput | undefined;
+    let output: WebGpuLightListBuildOutput | undefined;
     createWebGpuComputeLightListImplementation({
       capacity: BASELINE_LIGHT_LIST_CAPACITY,
       estimatedBudget: ZERO_RESOURCE_BUDGET
@@ -372,7 +389,7 @@ function contributeLightList(
     );
   const lights = textureHandle(prepared.lightList.lights, `${origin.acquire.id}:lights`);
   const receivers = textureHandle(prepared.lightList.receivers, `${origin.acquire.id}:receivers`);
-  let output: import('../lighting').WebGlFragmentLightListBuildOutput | undefined;
+  let output: WebGlFragmentLightListBuildOutput | undefined;
   createWebGlFragmentLightListImplementation({
     capacity: BASELINE_LIGHT_LIST_CAPACITY,
     estimatedBudget: ZERO_RESOURCE_BUDGET,

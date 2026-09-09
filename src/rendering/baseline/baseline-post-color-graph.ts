@@ -1,4 +1,5 @@
 import type {
+  BufferHandle,
   PassBuilder,
   RenderGraphBuilder,
   RenderSystemConditionContext,
@@ -75,7 +76,7 @@ export function createPostColorContribution(
           context: RestrictedPassContext,
           resources: {
             sceneColor: TextureHandle;
-            uniform: import('../../render-graph').BufferHandle;
+            uniform: BufferHandle;
             output: TextureHandle;
           }
         ) {

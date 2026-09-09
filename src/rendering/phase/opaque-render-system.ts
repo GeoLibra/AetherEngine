@@ -1,4 +1,5 @@
 import type {
+  BufferHandle,
   RasterPassBuilder,
   RasterPassContext,
   RasterRenderSystemDescriptor,
@@ -33,6 +34,7 @@ export function createOpaqueRenderSystem(
     scope: 'per-view',
     runIf: ({ view }) => view?.id === input.phase.viewId,
     setup(pass: RasterPassBuilder) {
+      for (const [token] of entries) pass.useDrawResources(token);
       const target =
         typeof input.colorTarget === 'function' ? input.colorTarget() : input.colorTarget;
       const surface =
@@ -44,14 +46,16 @@ export function createOpaqueRenderSystem(
             acquire: { kind: 'external-acquire', id: input.surfaceFrame.id }
           }
         });
-      const depth = pass.createTexture(input.depth);
+      const depthTarget =
+        typeof input.depthTarget === 'function' ? input.depthTarget() : input.depthTarget;
+      const depth = depthTarget ?? pass.createTexture(input.depth);
       const color = pass.colorAttachment(0, surface, {
         load: input.colorLoadOp ?? 'clear',
         store: 'store',
         clearValue: { r: 0, g: 0, b: 0, a: 1 }
       });
       const depthAttachment = pass.depthStencilAttachment(depth, {
-        depthLoad: 'clear',
+        depthLoad: input.depthLoadOp ?? 'clear',
         depthStore: 'store',
         depthClearValue: 1
       });
@@ -79,7 +83,7 @@ export function createOpaqueRenderSystem(
         depth: TextureHandle;
         lightList?: ReturnType<typeof declareLightList>;
         environment?: {
-          buffer: import('../../render-graph').BufferHandle;
+          buffer: BufferHandle;
           irradianceMap: TextureHandle;
           prefilteredRadianceMap: TextureHandle;
           environmentBrdfLut: TextureHandle;
@@ -145,7 +149,7 @@ function createLightListGroup(
   input: NonNullable<OpaqueRenderSystemInput['lightList']>,
   resources: ReturnType<typeof declareLightList>,
   environment: {
-    buffer: import('../../render-graph').BufferHandle;
+    buffer: BufferHandle;
     irradianceMap: TextureHandle;
     prefilteredRadianceMap: TextureHandle;
     environmentBrdfLut: TextureHandle;
@@ -167,7 +171,7 @@ function createLightListGroup(
         binding,
         resource:
           resources.source === 'gpu-compute'
-            ? context.buffer(handle as import('../../render-graph').BufferHandle, 'uniform')
+            ? context.buffer(handle as BufferHandle, 'uniform')
             : context.texture(handle as TextureHandle, 'sampled')
       })),
       { binding: 5, resource: context.buffer(environment.buffer, 'uniform') },

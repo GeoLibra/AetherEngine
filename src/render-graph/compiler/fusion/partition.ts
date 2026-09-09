@@ -16,6 +16,7 @@ import type {
   RasterGroupPlan
 } from '../../types';
 import { GroupUsageAccumulator } from './usage';
+import { evaluateResidencyBudget } from './residency';
 
 /** Validates and normalizes pass fusion options according to RenderGraph §13.8. */
 export function validateFusionOptions(options?: PassFusionOptions): NormalizedFusionOptions {
@@ -316,7 +317,11 @@ export function partitionRasterGroups(
         activeGroup.members,
         currentPass,
         snapshot,
-        normalizedOptions.maxResidencyExpansionBytes
+        compiled,
+        normalizedOptions.maxResidencyExpansionBytes,
+        groups.map((group) =>
+          group.retainedPassIndices.map((index) => compiled.retainedPasses[index]!)
+        )
       );
       if (budgetResult !== null) {
         splitReason = budgetResult;
@@ -365,96 +370,4 @@ export function partitionRasterGroups(
     splitRecords: Object.freeze(splitRecords),
     counters: Object.freeze(counters)
   });
-}
-
-function evaluateResidencyBudget(
-  existingMembers: readonly GraphPassDeclaration[],
-  candidate: GraphPassDeclaration,
-  snapshot: RenderGraphSnapshot,
-  maxExpansionBytes: number
-): SplitReasonCode | null {
-  const resourceMap = new Map(snapshot.resources.map((r) => [r.resourceId, r]));
-
-  // Find transient resources in group
-  let candidateSize = 0;
-  for (const access of candidate.accesses) {
-    const resource = resourceMap.get(access.handle.resourceId);
-    if (resource === undefined || resource.origin.kind !== 'transient') continue;
-    const size = estimateResourceSize(resource);
-    if (size === null) {
-      return SplitReasonCode.ResidencyEstimateUnavailable;
-    }
-    candidateSize += size;
-  }
-
-  if (candidateSize > maxExpansionBytes) {
-    return SplitReasonCode.ResidencyBudget;
-  }
-  return null;
-}
-
-function estimateResourceSize(
-  resource: import('../../builder/resources').GraphResourceRecord
-): number | null {
-  if (resource.kind === 'buffer') {
-    const desc = resource.descriptor as { size: number };
-    return desc.size;
-  }
-  if (resource.kind === 'texture') {
-    const desc = resource.descriptor as TextureDescriptor;
-    const bpp = formatBytes(desc.format);
-    if (bpp === null) return null;
-    return (
-      desc.width * desc.height * (desc.depthOrArrayLayers ?? 1) * bpp * (desc.sampleCount ?? 1)
-    );
-  }
-  return null;
-}
-
-function formatBytes(format: string): number | null {
-  switch (format) {
-    case 'r8unorm':
-    case 'r8snorm':
-    case 'r8uint':
-    case 'r8sint':
-    case 'stencil8':
-      return 1;
-    case 'rg8unorm':
-    case 'rg8snorm':
-    case 'rg8uint':
-    case 'rg8sint':
-    case 'r16uint':
-    case 'r16sint':
-    case 'r16float':
-    case 'depth16unorm':
-      return 2;
-    case 'rgba8unorm':
-    case 'rgba8unorm-srgb':
-    case 'bgra8unorm':
-    case 'bgra8unorm-srgb':
-    case 'rg16uint':
-    case 'rg16sint':
-    case 'rg16float':
-    case 'r32uint':
-    case 'r32sint':
-    case 'r32float':
-    case 'depth32float':
-    case 'depth24plus':
-    case 'depth24plus-stencil8':
-      return 4;
-    case 'rgba16uint':
-    case 'rgba16sint':
-    case 'rgba16float':
-    case 'rg32uint':
-    case 'rg32sint':
-    case 'rg32float':
-    case 'depth32float-stencil8':
-      return 8;
-    case 'rgba32uint':
-    case 'rgba32sint':
-    case 'rgba32float':
-      return 16;
-    default:
-      return null;
-  }
 }

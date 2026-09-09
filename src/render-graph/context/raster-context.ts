@@ -1,4 +1,4 @@
-import type { GPUColor } from '../../rhi/contracts';
+import type { GPUColor, RHIRenderPassEncoder } from '../../rhi/contracts';
 import type {
   BufferHandle,
   BufferRange,
@@ -90,18 +90,36 @@ export interface UnderlyingRenderPass {
 
 export class RasterCommandsImpl implements RasterCommands {
   private currentPipeline?: RestrictedRenderPipeline | undefined;
-  private readonly boundBindGroups = new Set<number>();
-  private readonly boundVertexBuffers = new Set<number>();
   private hasIndexBuffer = false;
+
+  /**
+   * Epoch identity for logical pass state isolation.
+   * Incremented each time setPipeline is called, ensuring bindings
+   * cannot leak across logical pass boundaries within a fused physical pass.
+   */
+  private logicalPassEpoch = 0;
+  private readonly bindGroupEpochs = new Map<number, number>();
+  private readonly vertexBufferEpochs = new Map<number, number>();
+  private indexBufferEpoch = -1;
+  private requiredBindGroupSlots: readonly number[] = [];
+  private requiredVertexBufferSlots: readonly number[] = [];
 
   constructor(
     private readonly pass: UnderlyingRenderPass,
-    private readonly scope: RasterPassScope
+    private readonly scope: RasterPassScope,
+    private readonly pipelineRequirements: (
+      pipeline: RestrictedRenderPipeline
+    ) => { readonly bindGroupSlots: readonly number[]; readonly vertexBufferSlots: readonly number[] }
   ) {}
 
   setPipeline = (pipeline: RestrictedRenderPipeline): void => {
     this.scope.assertActive();
+    // Start a new logical pass epoch: previous bindings are no longer valid
+    this.logicalPassEpoch++;
     this.currentPipeline = pipeline;
+    const requirements = this.pipelineRequirements(pipeline);
+    this.requiredBindGroupSlots = requirements.bindGroupSlots;
+    this.requiredVertexBufferSlots = requirements.vertexBufferSlots;
     this.pass.setPipeline(pipeline);
   };
 
@@ -111,7 +129,7 @@ export class RasterCommandsImpl implements RasterCommands {
     dynamicOffsets?: readonly number[]
   ): void => {
     this.scope.assertActive();
-    this.boundBindGroups.add(index);
+    this.bindGroupEpochs.set(index, this.logicalPassEpoch);
     this.pass.setBindGroup(index, bindGroup, dynamicOffsets);
   };
 
@@ -122,7 +140,7 @@ export class RasterCommandsImpl implements RasterCommands {
     size?: number
   ): void => {
     this.scope.assertActive();
-    this.boundVertexBuffers.add(slot);
+    this.vertexBufferEpochs.set(slot, this.logicalPassEpoch);
     this.pass.setVertexBuffer(slot, buffer, offset, size);
   };
 
@@ -134,6 +152,7 @@ export class RasterCommandsImpl implements RasterCommands {
   ): void => {
     this.scope.assertActive();
     this.hasIndexBuffer = true;
+    this.indexBufferEpoch = this.logicalPassEpoch;
     this.pass.setIndexBuffer(buffer, format, offset, size);
   };
 
@@ -169,6 +188,7 @@ export class RasterCommandsImpl implements RasterCommands {
     if (this.currentPipeline === undefined) {
       throw new Error('Draw requires setPipeline() to be called within the logical pass scope.');
     }
+    this.validateLogicalBindings('draw');
     this.pass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
   };
 
@@ -187,9 +207,15 @@ export class RasterCommandsImpl implements RasterCommands {
     }
     if (!this.hasIndexBuffer) {
       throw new Error(
-        'DrawIndexed requires setIndexBuffer() to be called within the logical pass scope.'
+        'DrawIndexed requires setIndexBuffer() to be called after the most recent setPipeline() within the logical pass scope.'
       );
     }
+    if (this.indexBufferEpoch !== this.logicalPassEpoch) {
+      throw new Error(
+        'DrawIndexed requires setIndexBuffer() to be called after the most recent setPipeline() within the logical pass scope.'
+      );
+    }
+    this.validateLogicalBindings('drawIndexed');
     this.pass.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
   };
 
@@ -200,8 +226,37 @@ export class RasterCommandsImpl implements RasterCommands {
         'DrawIndirect requires setPipeline() to be called within the logical pass scope.'
       );
     }
+    this.validateLogicalBindings('drawIndirect');
     this.pass.drawIndirect?.(indirectBuffer, indirectOffset);
   };
+
+  /**
+   * Validates that bind groups and vertex buffers were set in the current logical pass epoch.
+   * Prevents cross-logical-pass state leaks in fused physical passes.
+   */
+  private validateLogicalBindings(operation: string): void {
+    // Validate bind groups
+    for (const index of this.requiredBindGroupSlots) {
+      const epoch = this.bindGroupEpochs.get(index);
+      if (epoch !== this.logicalPassEpoch) {
+        throw new Error(
+          `${operation} requires setBindGroup(${index}) to be called after the most recent setPipeline() within the logical pass scope. ` +
+            `Bindings from previous logical passes cannot satisfy current pass requirements.`
+        );
+      }
+    }
+
+    // Validate vertex buffers
+    for (const slot of this.requiredVertexBufferSlots) {
+      const epoch = this.vertexBufferEpochs.get(slot);
+      if (epoch !== this.logicalPassEpoch) {
+        throw new Error(
+          `${operation} requires setVertexBuffer(${slot}) to be called after the most recent setPipeline() within the logical pass scope. ` +
+            `Vertex buffers from previous logical passes cannot satisfy current pass requirements.`
+        );
+      }
+    }
+  }
 }
 
 export class RasterPassContextImpl implements RasterPassContext {
@@ -210,11 +265,13 @@ export class RasterPassContextImpl implements RasterPassContext {
 
   constructor(
     private readonly restrictedContext: RestrictedContext,
-    renderPass: import('../../rhi/contracts').RHIRenderPassEncoder
+    renderPass: RHIRenderPassEncoder
   ) {
     this.scope = new RasterPassScope();
     const proxy = restrictedContext.createRenderPassProxy(renderPass) as UnderlyingRenderPass;
-    this.raster = new RasterCommandsImpl(proxy, this.scope);
+    this.raster = new RasterCommandsImpl(proxy, this.scope, (pipeline) =>
+      restrictedContext.renderPipelineRequirements(pipeline)
+    );
   }
 
   get device(): RestrictedPortableDevice {

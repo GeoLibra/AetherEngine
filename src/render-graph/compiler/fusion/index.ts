@@ -5,3 +5,4 @@ export * from './operations';
 export * from './diagnostics';
 export * from './partition';
 export * from './lifetimes';
+export * from './residency';

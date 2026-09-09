@@ -1,4 +1,4 @@
-import type { RHITexture } from '../../../rhi/contracts';
+import type { RHISubmission, RHITexture } from '../../../rhi/contracts';
 
 /** Selects the content behind world geometry in a View's scene-linear target. */
 export type ViewBackground =
@@ -28,6 +28,6 @@ export interface PreparedBackgroundBundle {
   readonly maxLod: number;
   readonly representation: 'panorama' | 'radiance-level-zero';
   readonly blobHash: string;
-  retain(submission?: import('../../../rhi/contracts').RHISubmission): void;
+  retain(submission?: RHISubmission): void;
   release(): void;
 }
