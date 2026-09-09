@@ -63,8 +63,14 @@ export interface RenderGraphDebugRasterGroup {
   readonly passIds: readonly number[];
   readonly attachments: RasterGroupPlan['attachments'];
   readonly usageScope: {
-    readonly textures: readonly { readonly resourceId: number; readonly usages: readonly string[] }[];
-    readonly buffers: readonly { readonly resourceId: number; readonly usages: readonly string[] }[];
+    readonly textures: readonly {
+      readonly resourceId: number;
+      readonly usages: readonly string[];
+    }[];
+    readonly buffers: readonly {
+      readonly resourceId: number;
+      readonly usages: readonly string[];
+    }[];
   };
   readonly boundaryStates: RasterGroupPlan['boundaryStates'];
 }
@@ -248,7 +254,9 @@ function cloneDebugRasterGroup(group: RasterGroupPlan): RenderGraphDebugRasterGr
       ),
       ...(group.attachments.depthStencilAttachment === undefined
         ? {}
-        : { depthStencilAttachment: Object.freeze({ ...group.attachments.depthStencilAttachment }) })
+        : {
+            depthStencilAttachment: Object.freeze({ ...group.attachments.depthStencilAttachment })
+          })
     }),
     usageScope: Object.freeze({
       textures: cloneUsageScope(group.usageScope.textures),

@@ -252,7 +252,8 @@ export function runFusionSubject(
         setup(builder) {
           for (let slot = 0; slot < pass.colorSlots; slot++) {
             const color = currentColors[slot];
-            if (color === undefined) throw new Error(`Fusion workload requested unavailable color slot ${slot}.`);
+            if (color === undefined)
+              throw new Error(`Fusion workload requested unavailable color slot ${slot}.`);
             currentColors[slot] = builder.colorAttachment(slot, color, {
               load: pass.loadColor,
               clearValue: [pass.clearColorValue, 0, 0, 1],

@@ -89,10 +89,12 @@ describe('render graph Debug IR', () => {
       physicalRasterGroups: 1,
       fusedBoundariesCount: 1
     });
-    expect(debug.lifetimes.find((lifetime) => lifetime.resourceId === firstBuffer.resourceId))
-      .toMatchObject({ firstUse: 0, lastUse: 1 });
-    expect(debug.lifetimes.find((lifetime) => lifetime.resourceId === secondBuffer.resourceId))
-      .toMatchObject({ firstUse: 0, lastUse: 1 });
+    expect(
+      debug.lifetimes.find((lifetime) => lifetime.resourceId === firstBuffer.resourceId)
+    ).toMatchObject({ firstUse: 0, lastUse: 1 });
+    expect(
+      debug.lifetimes.find((lifetime) => lifetime.resourceId === secondBuffer.resourceId)
+    ).toMatchObject({ firstUse: 0, lastUse: 1 });
   });
 
   test('is deeply immutable, deterministic, serializable, and explainable', () => {
