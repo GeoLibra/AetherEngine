@@ -8,6 +8,7 @@ import {
   createPreparedRenderPipelineToken,
   RenderSystemRegistry,
   compileRenderSystems,
+  createBackgroundRenderSystem,
   createOpaqueRenderSystem,
   type GraphHandle,
   type PreparedDrawPacket,
@@ -88,7 +89,7 @@ describe('createOpaqueRenderSystem', () => {
     ).toThrow(/color-attachment usage/i);
   });
 
-  test('records merged background draw when background descriptor is provided in opaque pass', () => {
+  test('records fused background and opaque draw when registered adjacently', () => {
     const device = new NullDevice();
     const graph = new RenderGraphBuilder();
     const skyTextureHandle = graph.createTexture(
@@ -144,22 +145,47 @@ describe('createOpaqueRenderSystem', () => {
       packets: Object.freeze([])
     });
 
+    const surfaceTexture = graph.createTexture(COLOR, {
+      origin: {
+        kind: 'imported',
+        initialState: 'undefined',
+        acquire: { kind: 'external-acquire', id: 'main' }
+      }
+    });
+    let currentColor = surfaceTexture;
+    const bgSystem = createBackgroundRenderSystem({
+      viewId: 'view:main',
+      prepared: {
+        status: 'ready',
+        pipelineToken,
+        uniformLayoutToken: uniformToken,
+        textureLayoutToken: textureToken
+      } as never,
+      colorTarget: surfaceTexture,
+      publishColor(color) {
+        currentColor = color;
+      },
+      uniformBuffer: uniformBufferHandle,
+      skyTexture: skyTextureHandle,
+      width: 4,
+      height: 4
+    });
+
     const prepared = createOpaqueRenderSystem({
       phase: emptyPhase,
       surfaceFrame: { kind: 'surface-frame', id: 'main' },
       color: COLOR,
       depth: DEPTH,
-      background: {
-        pipelineToken,
-        uniformLayoutToken: uniformToken,
-        textureLayoutToken: textureToken,
-        skyTexture: skyTextureHandle,
-        uniformBuffer: uniformBufferHandle
-      }
+      colorLoadOp: 'load',
+      colorTarget: () => currentColor
     });
 
     const registry = new RenderSystemRegistry();
-    registry.add(prepared.descriptor);
+    const bgToken = registry.add(bgSystem);
+    registry.add({
+      ...prepared.descriptor,
+      after: [bgToken]
+    });
     const compiled = compileRenderSystems(registry, { views: [view()], graph });
 
     const physicalSky = device.createTexture({

@@ -19,12 +19,7 @@ import type {
   BaselineRenderingOptions
 } from './types';
 import type { RHITexture } from '../../rhi/contracts';
-import { NullDevice } from '../../rhi';
-import {
-  contributeBackground,
-  createBackgroundRenderSystem,
-  evaluatePassMerging
-} from '../background/graph';
+import { contributeBackground, createBackgroundRenderSystem } from '../background/graph';
 import { createPostColorContribution } from './baseline-post-color-graph';
 
 /** Executes immutable ready snapshots without compiling or creating draw resources in the frame loop. */
@@ -85,26 +80,6 @@ export class BaselineRenderer {
       bgFrame !== undefined && bgFrame.status === 'ready'
         ? contributeBackground(graph, bgFrame, prepared.view.id)
         : undefined;
-    const mergeDecision =
-      bgFrame !== undefined && bgFrame.status === 'ready'
-        ? evaluatePassMerging({
-            backgroundEnabled: true,
-            backgroundRepresentation: bgFrame.representation ?? 'solid',
-            colorFormat: post === undefined ? configuration.format : 'rgba16float',
-            depthFormat: 'depth24plus',
-            width: configuration.width,
-            height: configuration.height,
-            // Pass merging is enabled on WebGPU (which validates bind groups at draw time)
-            // or when there are no mesh draw calls in the pass (e.g. background-only scenes).
-            // On NullDevice/WebGL2 with mesh draws, pipeline layout switching requires separate passes.
-            hasInterveningDependency:
-              (this.options.graphics.backend !== 'webgpu' ||
-                this.options.graphics.device instanceof NullDevice) &&
-              prepared.packets.length > 0,
-            forceSeparate: this.options.forceSeparatePasses
-          })
-        : undefined;
-    const merged = mergeDecision?.canMerge === true;
     const colorTarget =
       post?.hdrTarget ??
       graph.createTexture(
@@ -127,7 +102,7 @@ export class BaselineRenderer {
 
     let activeColorTarget = colorTarget;
     const bgSystem =
-      !merged && bgContribution !== undefined && bgFrame !== undefined && bgFrame.status === 'ready'
+      bgContribution !== undefined && bgFrame !== undefined && bgFrame.status === 'ready'
         ? createBackgroundRenderSystem({
             viewId: prepared.view.id,
             prepared: bgFrame,
@@ -180,21 +155,7 @@ export class BaselineRenderer {
               prefilteredRadianceMap: environment.prefilteredRadianceMap,
               environmentBrdfLut: environment.environmentBrdfLut
             }
-          }),
-      ...(merged &&
-      bgContribution !== undefined &&
-      bgFrame !== undefined &&
-      bgFrame.status === 'ready'
-        ? {
-            background: {
-              pipelineToken: bgFrame.pipelineToken!,
-              uniformLayoutToken: bgFrame.uniformLayoutToken!,
-              textureLayoutToken: bgFrame.textureLayoutToken!,
-              uniformBuffer: bgContribution.uniformBuffer,
-              skyTexture: bgContribution.skyTexture
-            }
-          }
-        : {})
+          })
     });
     const systems = new RenderSystemRegistry();
     const bgToken = bgSystem !== undefined ? systems.add(bgSystem) : undefined;
@@ -203,7 +164,13 @@ export class BaselineRenderer {
       after: bgToken !== undefined ? [bgToken] : []
     });
     if (post !== undefined) systems.add(post.descriptor(opaqueToken));
-    const compiled = compileRenderSystems(systems, { views: [prepared.view], graph });
+    const compiled = compileRenderSystems(systems, {
+      views: [prepared.view],
+      graph,
+      executionPlanOptions: {
+        enablePassFusion: this.options.forceSeparatePasses !== true
+      }
+    });
     let execution: ReturnType<RenderGraphExecutor['execute']>;
     try {
       const lightFrame = prepared.lightList;

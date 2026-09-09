@@ -1,10 +1,15 @@
-import type { PassBuilder, RestrictedPassContext, TextureHandle } from '../../render-graph';
+import type {
+  RasterPassBuilder,
+  RasterPassContext,
+  RasterRenderSystemDescriptor,
+  TextureHandle
+} from '../../render-graph';
 import { createPreparedDrawResourcesToken } from '../../render-graph';
 import type { OpaqueRenderSystemInput, OpaqueRenderSystemPreparation } from './types';
 import { ReadonlyMapSnapshot } from '../world/readonly-collection-snapshot';
 
 /**
- * Creates one per-view opaque RenderSystem that records prepared indexed draws and presents.
+ * Creates one per-view opaque RenderSystem that records prepared indexed draws.
  *
  * Pipeline compilation, material resolution, resource creation, queue submission, and ownership
  * retention remain outside the pass callback.
@@ -22,11 +27,12 @@ export function createOpaqueRenderSystem(
     ])
   );
   const entries = [...bindings];
-  const descriptor: OpaqueRenderSystemPreparation['descriptor'] = {
+  const descriptor: RasterRenderSystemDescriptor<unknown> = {
+    kind: 'raster',
     id: input.id ?? 'opaque-draw',
     scope: 'per-view',
     runIf: ({ view }) => view?.id === input.phase.viewId,
-    setup(pass) {
+    setup(pass: RasterPassBuilder) {
       const target =
         typeof input.colorTarget === 'function' ? input.colorTarget() : input.colorTarget;
       const surface =
@@ -39,10 +45,18 @@ export function createOpaqueRenderSystem(
           }
         });
       const depth = pass.createTexture(input.depth);
-      const color = pass.writeTexture(surface, 'color-attachment');
-      const depthAttachment = pass.writeTexture(depth, 'depth-stencil-attachment');
+      const color = pass.colorAttachment(0, surface, {
+        load: input.colorLoadOp ?? 'clear',
+        store: 'store',
+        clearValue: { r: 0, g: 0, b: 0, a: 1 }
+      });
+      const depthAttachment = pass.depthStencilAttachment(depth, {
+        depthLoad: 'clear',
+        depthStore: 'store',
+        depthClearValue: 1
+      });
       input.publishColor?.(color);
-      if (input.present !== false) pass.presentTexture(color, input.surfaceFrame);
+      if (input.present !== false) pass.present(color, input.surfaceFrame);
       const lightList =
         input.lightList === undefined ? undefined : declareLightList(pass, input.lightList);
       const environment =
@@ -57,16 +71,9 @@ export function createOpaqueRenderSystem(
               ),
               environmentBrdfLut: pass.readTexture(input.environment.environmentBrdfLut, 'sampled')
             });
-      const background =
-        input.background === undefined
-          ? undefined
-          : Object.freeze({
-              uniformBuffer: pass.readBuffer(input.background.uniformBuffer, 'uniform'),
-              skyTexture: pass.readTexture(input.background.skyTexture, 'sampled')
-            });
-      return Object.freeze({ color, depth: depthAttachment, lightList, environment, background });
+      return Object.freeze({ color, depth: depthAttachment, lightList, environment });
     },
-    run(context, resources) {
+    run(context: RasterPassContext, resources) {
       const attachments = resources as {
         color: TextureHandle;
         depth: TextureHandle;
@@ -76,10 +83,6 @@ export function createOpaqueRenderSystem(
           irradianceMap: TextureHandle;
           prefilteredRadianceMap: TextureHandle;
           environmentBrdfLut: TextureHandle;
-        };
-        background?: {
-          uniformBuffer: import('../../render-graph').BufferHandle;
-          skyTexture: TextureHandle;
         };
       };
       const draws = entries.map(([token]) => context.drawResources(token));
@@ -92,78 +95,19 @@ export function createOpaqueRenderSystem(
               attachments.lightList,
               attachments.environment
             );
-      const backgroundBindings =
-        input.background === undefined || attachments.background === undefined
-          ? undefined
-          : {
-              pipeline: context.renderPipeline(input.background.pipelineToken),
-              uniformGroup: context.device.createBindGroup({
-                label: 'aether-skybox-uniforms',
-                layout: context.bindGroupLayout(input.background.uniformLayoutToken),
-                entries: [
-                  {
-                    binding: 0,
-                    resource: context.buffer(attachments.background.uniformBuffer, 'uniform')
-                  }
-                ]
-              }),
-              textureGroup: context.device.createBindGroup({
-                label: 'aether-skybox-texture',
-                layout: context.bindGroupLayout(input.background.textureLayoutToken),
-                entries: [
-                  {
-                    binding: 0,
-                    resource: context.texture(attachments.background.skyTexture, 'sampled')
-                  },
-                  {
-                    binding: 1,
-                    resource: context.device.createSampler({
-                      minFilter: 'linear',
-                      magFilter: 'linear',
-                      mipmapFilter: 'linear',
-                      addressModeU: 'repeat',
-                      addressModeV: 'clamp-to-edge'
-                    })
-                  }
-                ]
-              })
-            };
-      const raster = context.beginRaster({
-        label: 'opaque-draw',
-        colorAttachments: [
-          {
-            texture: attachments.color,
-            loadOp: input.colorLoadOp ?? 'clear',
-            storeOp: 'store',
-            clearValue: { r: 0, g: 0, b: 0, a: 1 }
-          }
-        ],
-        depthStencilAttachment: {
-          texture: attachments.depth,
-          depthLoadOp: 'clear',
-          depthStoreOp: 'store',
-          depthClearValue: 1
-        }
-      });
-      raster.setViewport(0, 0, input.color.width, input.color.height, 0, 1);
-      raster.setScissorRect(0, 0, input.color.width, input.color.height);
-      if (backgroundBindings !== undefined) {
-        raster.setPipeline(backgroundBindings.pipeline);
-        raster.setBindGroup(0, backgroundBindings.uniformGroup);
-        raster.setBindGroup(1, backgroundBindings.textureGroup);
-        raster.draw(3);
-      }
+
       for (const draw of draws) {
-        raster.setPipeline(draw.pipeline);
+        context.raster.setPipeline(draw.pipeline);
         draw.bindGroups.forEach((group, index) =>
-          raster.setBindGroup(index, group, draw.dynamicOffsetsByGroup[index])
+          context.raster.setBindGroup(index, group, draw.dynamicOffsetsByGroup[index])
         );
-        if (lightListGroup !== undefined) raster.setBindGroup(3, lightListGroup);
-        draw.vertexBuffers.forEach((buffer, index) => raster.setVertexBuffer(index, buffer));
-        raster.setIndexBuffer(draw.indexBuffer, draw.indexFormat);
-        raster.drawIndexed(draw.indexCount, 1, draw.firstIndex);
+        if (lightListGroup !== undefined) context.raster.setBindGroup(3, lightListGroup);
+        draw.vertexBuffers.forEach((buffer, index) =>
+          context.raster.setVertexBuffer(index, buffer)
+        );
+        context.raster.setIndexBuffer(draw.indexBuffer, draw.indexFormat);
+        context.raster.drawIndexed(draw.indexCount, 1, draw.firstIndex);
       }
-      raster.end();
     }
   };
   return Object.freeze({
@@ -173,7 +117,7 @@ export function createOpaqueRenderSystem(
 }
 
 function declareLightList(
-  pass: PassBuilder,
+  pass: RasterPassBuilder,
   input: NonNullable<OpaqueRenderSystemInput['lightList']>
 ) {
   if (input.source === 'gpu-compute') {
@@ -197,7 +141,7 @@ function declareLightList(
 }
 
 function createLightListGroup(
-  context: RestrictedPassContext,
+  context: RasterPassContext,
   input: NonNullable<OpaqueRenderSystemInput['lightList']>,
   resources: ReturnType<typeof declareLightList>,
   environment: {

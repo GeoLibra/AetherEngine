@@ -5,9 +5,10 @@
 
 import type {
   BufferHandle,
-  PassBuilder,
+  RasterPassBuilder,
+  RasterPassContext,
+  RasterRenderSystemDescriptor,
   RenderSystemConditionContext,
-  RestrictedPassContext,
   TextureHandle
 } from '../../../render-graph';
 import type { PreparedBackgroundFrame } from '../prepare/background-preparation';
@@ -24,34 +25,44 @@ export interface BackgroundRenderSystemInput {
   readonly publishColor?: (color: TextureHandle) => void;
 }
 
+export interface BackgroundPassResources {
+  readonly color: TextureHandle;
+  readonly depth: TextureHandle | undefined;
+  readonly uniform: BufferHandle;
+  readonly skyTexture: TextureHandle;
+}
+
 /**
  * Creates one per-view Background RenderSystem that draws a fullscreen triangle before opaque geometry.
  */
-export function createBackgroundRenderSystem(input: BackgroundRenderSystemInput) {
+export function createBackgroundRenderSystem(
+  input: BackgroundRenderSystemInput
+): RasterRenderSystemDescriptor<BackgroundPassResources> {
   return {
+    kind: 'raster',
     id: `background-${input.viewId}`,
-    scope: 'per-view' as const,
+    scope: 'per-view',
     runIf: ({ view }: RenderSystemConditionContext) => view?.id === input.viewId,
-    setup(pass: PassBuilder) {
-      const color = pass.writeTexture(input.colorTarget, 'color-attachment');
+    setup(pass: RasterPassBuilder): BackgroundPassResources {
+      const color = pass.colorAttachment(0, input.colorTarget, {
+        load: 'clear',
+        store: 'auto',
+        clearValue: { r: 0, g: 0, b: 0, a: 1 }
+      });
       input.publishColor?.(color);
       const depth =
         input.depthTarget !== undefined
-          ? pass.writeTexture(input.depthTarget, 'depth-stencil-attachment')
+          ? pass.depthStencilAttachment(input.depthTarget, {
+              depthLoad: 'clear',
+              depthStore: 'store',
+              depthClearValue: 1.0
+            })
           : undefined;
       const uniform = pass.readBuffer(input.uniformBuffer, 'uniform');
       const skyTexture = pass.readTexture(input.skyTexture, 'sampled');
       return Object.freeze({ color, depth, uniform, skyTexture });
     },
-    run(
-      context: RestrictedPassContext,
-      resources: {
-        color: TextureHandle;
-        depth: TextureHandle | undefined;
-        uniform: BufferHandle;
-        skyTexture: TextureHandle;
-      }
-    ) {
+    run(context: RasterPassContext, resources: BackgroundPassResources) {
       if (
         input.prepared.status !== 'ready' ||
         input.prepared.pipelineToken === undefined ||
@@ -86,25 +97,10 @@ export function createBackgroundRenderSystem(input: BackgroundRenderSystemInput)
       });
 
       const pipeline = context.renderPipeline(input.prepared.pipelineToken);
-      const raster = context.beginRaster({
-        label: 'background-pass',
-        colorAttachments: [
-          {
-            texture: resources.color,
-            loadOp: 'clear',
-            storeOp: 'store',
-            clearValue: { r: 0, g: 0, b: 0, a: 1 }
-          }
-        ]
-      });
-
-      raster.setViewport(0, 0, input.width, input.height, 0, 1);
-      raster.setScissorRect(0, 0, input.width, input.height);
-      raster.setPipeline(pipeline);
-      raster.setBindGroup(0, uniformGroup);
-      raster.setBindGroup(1, textureGroup);
-      raster.draw(3);
-      raster.end();
+      context.raster.setPipeline(pipeline);
+      context.raster.setBindGroup(0, uniformGroup);
+      context.raster.setBindGroup(1, textureGroup);
+      context.raster.draw(3);
     }
   };
 }
