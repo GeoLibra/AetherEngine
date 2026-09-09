@@ -8,7 +8,7 @@ RenderGraph separates declarative render work from physical RHI execution. Syste
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `types/`    | Shared logical resource, restricted capability, compiler result, and execution-plan types.                                                |
 | `builder/`  | Logical handles, versioned resource declarations, pass setup, prepared-resource tokens, and RenderSystem contribution.                    |
-| `compiler/` | Range normalization, hazard analysis, culling, lifetime and alias planning, history state, and Debug IR.                                  |
+| `compiler/` | Range normalization, hazard analysis, culling, lifetime and alias planning, raster pass fusion partitioning, history state, and Debug IR. |
 | `context/`  | Internal pass-local capability resolution, encoder proxies, descriptor lowering, and owned-resource retirement.                           |
 | `executor/` | Canonical plan validation, surface-frame ownership, physical resource binding, transient pooling, encoding, submission, and presentation. |
 | `index.ts`  | Stable public RenderGraph exports. Internal `context` and executor helper modules are intentionally excluded.                             |
@@ -55,6 +55,7 @@ sequenceDiagram
 5. An acquired surface frame reaches one terminal state exactly once.
 6. Failed or device-lost transient resources are destroyed instead of returning to the reusable pool.
 7. History read and write slots remain distinct; publication occurs only after successful submission completion.
+8. Raster pass fusion preserves logical pass context isolation, attachment clearing, draw validation, and error boundaries while sharing one physical render pass encoder.
 
 ## Public API Boundary
 

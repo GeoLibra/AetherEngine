@@ -81,3 +81,8 @@ export type GraphResourceOrigin =
       readonly acquire: ExternalAcquireToken;
     }
   | { readonly kind: 'history'; readonly key: string; readonly slots: number };
+
+export interface GraphResourceCreateOptions {
+  readonly origin?: GraphResourceOrigin;
+  readonly historyValid?: boolean;
+}

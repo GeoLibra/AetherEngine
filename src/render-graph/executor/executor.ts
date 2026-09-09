@@ -10,10 +10,12 @@ import {
   type EndableRenderPass
 } from './executor-cleanup';
 import {
+  requiredRasterGroup,
   requiredScheduledPass,
   validateRenderGraphExecutionPlan,
   type RenderGraphExecutionPlan
 } from './execution-plan';
+import { executeRasterGroup } from './executor-raster-group';
 import { freezeCommandStats } from './executor-resource-utils';
 import { TransientResourcePool, type TransientResource } from './transient-pool';
 import { RestrictedContext } from '../context/restricted-context';
@@ -107,6 +109,24 @@ export class RenderGraphExecutor {
         if (step.kind === 'prelude') {
           resources = resolveResources(plan, inputs, frames, pool, transientResources);
           encoder = inputs.device.createCommandEncoder({ label: 'render-graph' });
+          continue;
+        }
+        if (step.kind === 'raster-group') {
+          if (encoder === undefined || resources === undefined) {
+            throw new Error('Render graph pass execution requires its prelude boundary.');
+          }
+          const group = requiredRasterGroup(plan, step);
+          passResolutions += executeRasterGroup(
+            group,
+            plan,
+            inputs,
+            resources,
+            encoder,
+            restrictedContexts,
+            (next) => {
+              activePass = next;
+            }
+          );
           continue;
         }
         if (step.kind === 'pass') {

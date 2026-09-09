@@ -296,6 +296,17 @@ export class RestrictedContext implements RestrictedPassContext {
     );
   }
 
+  /** Creates an unwrapping tracked proxy for an externally managed physical render pass. */
+  createRenderPassProxy(pass: import('../../rhi/contracts').RHIRenderPassEncoder): unknown {
+    return createTrackedPassProxy(pass, {
+      bindGroups: this.bindGroups,
+      renderPipelines: this.renderPipelines,
+      computePipelines: this.computePipelines,
+      bufferCapabilities: this.bufferCapabilities,
+      onEnd: () => {}
+    });
+  }
+
   /** Transfers pass-local object cleanup to the accepted submission's terminal boundary. */
   retireResources(submission: RHISubmission): void {
     this.resourceOwner.retire(submission);

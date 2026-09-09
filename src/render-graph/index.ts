@@ -11,9 +11,17 @@ export type {
   ExternalAcquireToken,
   ExternalResourceState,
   GraphHandle,
+  GraphResourceBuilder,
+  GraphResourceCreateOptions,
   GraphResourceKind,
   GraphResourceOrigin,
+  PassKind,
   PassToken,
+  RasterCommands,
+  RasterGroupPlan,
+  RasterPassBuilder,
+  RasterPassContext,
+  RasterPassDescriptor,
   RestrictedBindGroup,
   RestrictedBindGroupDescriptor,
   RestrictedBindGroupEntry,
@@ -38,7 +46,17 @@ export type {
   TextureRange,
   TextureReadUsage,
   TextureUsage,
-  TextureWriteUsage
+  TextureWriteUsage,
+  ColorAttachmentOptions,
+  DepthStencilAttachmentOptions,
+  ComputeCommands,
+  ComputePassBuilder,
+  ComputePassContext,
+  ComputePassDescriptor,
+  CopyCommands,
+  CopyPassBuilder,
+  CopyPassContext,
+  CopyPassDescriptor
 } from './types';
 export * from './builder';
 export * from './compiler';

@@ -1,9 +1,19 @@
 import { RenderGraphBuilder, type PassBuilder } from './builder';
 import { compileRenderGraph } from '../compiler/compiler';
 import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../compiler/debug-ir';
-import { createRenderGraphExecutionPlan } from '../executor/execution-plan';
-import type { RenderGraphExecutionPlan, RenderGraphExecutionStep } from '../types';
-import type { RestrictedPassContext } from '../types';
+import {
+  createRenderGraphExecutionPlan,
+  type ExecutionPlanOptions
+} from '../executor/execution-plan';
+import type {
+  ComputePassBuilder,
+  ComputePassContext,
+  RasterPassBuilder,
+  RasterPassContext,
+  RenderGraphExecutionPlan,
+  RenderGraphExecutionStep,
+  RestrictedPassContext
+} from '../types';
 import type { RenderPhaseSnapshot } from '../../rendering/phase';
 import type {
   RenderFieldToken,
@@ -34,13 +44,38 @@ export interface RenderSystemSetupContext<TItem> extends RenderSystemConditionCo
   readonly phases: readonly RenderPhaseSnapshot[];
 }
 
-export interface RenderSystemDescriptor<TResources, TItem = never> {
+export interface BaseRenderSystemDescriptor<TItem = never> {
   readonly id: string;
   readonly scope: RenderSystemScope;
   readonly query?: RenderQuerySpec<TItem>;
   readonly before?: readonly RenderSystemToken[];
   readonly after?: readonly RenderSystemToken[];
   readonly runIf?: RenderSystemCondition;
+}
+
+export interface RasterRenderSystemDescriptor<
+  TResources,
+  TItem = never
+> extends BaseRenderSystemDescriptor<TItem> {
+  readonly kind: 'raster';
+  setup(builder: RasterPassBuilder, context: RenderSystemSetupContext<TItem>): TResources;
+  run(context: RasterPassContext, resources: TResources, query: RenderQuerySnapshot<TItem>): void;
+}
+
+export interface ComputeRenderSystemDescriptor<
+  TResources,
+  TItem = never
+> extends BaseRenderSystemDescriptor<TItem> {
+  readonly kind: 'compute';
+  setup(builder: ComputePassBuilder, context: RenderSystemSetupContext<TItem>): TResources;
+  run(context: ComputePassContext, resources: TResources, query: RenderQuerySnapshot<TItem>): void;
+}
+
+export interface LegacyRenderSystemDescriptor<
+  TResources,
+  TItem = never
+> extends BaseRenderSystemDescriptor<TItem> {
+  readonly kind?: 'legacy';
   setup(builder: PassBuilder, context: RenderSystemSetupContext<TItem>): TResources;
   run(
     context: RestrictedPassContext,
@@ -48,6 +83,11 @@ export interface RenderSystemDescriptor<TResources, TItem = never> {
     query: RenderQuerySnapshot<TItem>
   ): void;
 }
+
+export type RenderSystemDescriptor<TResources, TItem = never> =
+  | LegacyRenderSystemDescriptor<TResources, TItem>
+  | RasterRenderSystemDescriptor<TResources, TItem>
+  | ComputeRenderSystemDescriptor<TResources, TItem>;
 
 export interface RenderSystemSnapshotSource {
   query(spec: RenderQuerySpec<unknown>): RenderQuerySnapshot<unknown>;
@@ -59,6 +99,8 @@ export interface RenderSystemCompileOptions {
   readonly phaseSnapshots?: readonly RenderPhaseSnapshot[];
   /** Existing graph containing feature passes that the systems consume. */
   readonly graph?: RenderGraphBuilder;
+  /** Optional execution plan options, including fusion configuration. */
+  readonly executionPlanOptions?: ExecutionPlanOptions;
 }
 
 export interface CompiledRenderSystemInstance<TItem = unknown> {
@@ -160,25 +202,57 @@ export function compileRenderSystems(
     const setupContext = setupContextFor(instance);
     const token = passTokens.get(instance.instanceId);
     if (token === undefined) throw new Error('Render system pass reservation is missing.');
-    graph.definePass<unknown, RestrictedPassContext>(token, {
-      id: instance.instanceId,
-      setup(pass) {
-        for (const predecessor of incoming.get(instance.instanceId) ?? []) {
-          const passToken = passTokens.get(predecessor);
-          if (passToken === undefined) throw new Error('Render system semantic token is missing.');
-          pass.after(passToken);
-        }
-        return instance.descriptor.setup(pass, setupContext);
-      },
-      run(context, resources) {
-        instance.descriptor.run(context, resources, instance.query);
+
+    const applyPredecessors = () => {
+      for (const predecessor of incoming.get(instance.instanceId) ?? []) {
+        const passToken = passTokens.get(predecessor);
+        if (passToken === undefined) throw new Error('Render system semantic token is missing.');
+        graph.declareAfter(passToken, token.passId);
       }
-    });
+    };
+
+    if (instance.descriptor.kind === 'raster') {
+      const desc = instance.descriptor;
+      graph.defineRasterPass(token, {
+        id: instance.instanceId,
+        setup(pass) {
+          applyPredecessors();
+          return desc.setup(pass, setupContext);
+        },
+        run(context, resources) {
+          desc.run(context, resources, instance.query);
+        }
+      });
+    } else if (instance.descriptor.kind === 'compute') {
+      const desc = instance.descriptor;
+      graph.defineComputePass(token, {
+        id: instance.instanceId,
+        setup(pass) {
+          applyPredecessors();
+          return desc.setup(pass, setupContext);
+        },
+        run(context, resources) {
+          desc.run(context, resources, instance.query);
+        }
+      });
+    } else {
+      const desc = instance.descriptor;
+      graph.definePass<unknown, RestrictedPassContext>(token, {
+        id: instance.instanceId,
+        setup(pass) {
+          applyPredecessors();
+          return desc.setup(pass, setupContext);
+        },
+        run(context, resources) {
+          desc.run(context, resources, instance.query);
+        }
+      });
+    }
   }
 
   const snapshot = graph.build();
   const compiled = compileRenderGraph(snapshot);
-  const plan = createRenderGraphExecutionPlan(snapshot, compiled);
+  const plan = createRenderGraphExecutionPlan(snapshot, compiled, options.executionPlanOptions);
   const instances = Object.freeze(
     active.map((instance) =>
       Object.freeze({

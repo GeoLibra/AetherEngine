@@ -278,6 +278,13 @@ function cloneDebugSchedule(value: unknown): readonly RenderGraphExecutionStep[]
       });
       continue;
     }
+    if (record.kind === 'raster-group') {
+      steps.push({
+        kind: 'raster-group',
+        groupIndex: requiredDebugNumber(record.groupIndex, 'render graph debug group index')
+      });
+      continue;
+    }
     throw new Error('Render graph debug schedule step kind is invalid.');
   }
   return Object.freeze(steps);

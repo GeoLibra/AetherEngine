@@ -9,8 +9,15 @@ import {
   subtractGraphRange,
   type GraphRange
 } from './ranges';
+import { widenLifetimesForRasterGroups } from './fusion';
 import type { GraphResourceRecord } from '../builder/resources';
-import type { BufferUsage, ExternalResourceState, GraphResourceKind, TextureUsage } from '../types';
+import type {
+  BufferUsage,
+  ExternalResourceState,
+  GraphResourceKind,
+  RasterGroupPlan,
+  TextureUsage
+} from '../types';
 import type {
   AliasDecision,
   AliasRejection,
@@ -75,7 +82,8 @@ interface UsageRecord {
 /** Computes physical-resource intervals after culling, in compiled schedule coordinates. */
 export function analyzeResourceLifetimes(
   snapshot: RenderGraphSnapshot,
-  compiled: CompiledRenderGraph
+  compiled: CompiledRenderGraph,
+  rasterGroups?: readonly RasterGroupPlan[]
 ): readonly ResourceLifetime[] {
   const byResource = new Map<number, MutableLifetime>();
   compiled.retainedPasses.forEach((pass, scheduleIndex) => {
@@ -101,6 +109,10 @@ export function analyzeResourceLifetimes(
       );
     }
   });
+
+  if (rasterGroups !== undefined && rasterGroups.length > 0) {
+    widenLifetimesForRasterGroups(byResource, compiled, rasterGroups);
+  }
 
   return Object.freeze(
     [...byResource.values()]

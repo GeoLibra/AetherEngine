@@ -20,17 +20,32 @@ import type {
   BufferRange,
   BufferReadUsage,
   BufferWriteUsage,
+  ComputePassDescriptor,
+  CopyPassDescriptor,
   ExternalResourceState,
   GraphHandle,
+  PassKind,
   PassToken,
+  RasterPassDescriptor,
   TextureDescriptor,
   TextureHandle,
   TextureRange,
   TextureReadUsage,
   TextureWriteUsage
 } from '../types';
+import {
+  ComputePassBuilderImpl,
+  CopyPassBuilderImpl,
+  RasterPassBuilderImpl,
+  type ComputePassDeclarationDetails,
+  type RasterPassDeclarationDetails
+} from './typed-pass-builder';
 
 export type { PassBuilder, SurfaceFrameToken } from './pass-builder';
+export type {
+  RasterPassDeclarationDetails,
+  ComputePassDeclarationDetails
+} from './typed-pass-builder';
 
 export interface GraphReadAccess {
   readonly kind: 'read';
@@ -81,9 +96,12 @@ export interface GraphPassDeclaration {
   readonly id: string;
   readonly token: PassToken;
   readonly registrationIndex: number;
+  readonly passKind: PassKind;
   readonly accesses: readonly GraphAccess[];
   readonly terminals: readonly GraphTerminal[];
   readonly sideEffects: readonly string[];
+  readonly rasterDetails?: RasterPassDeclarationDetails;
+  readonly computeDetails?: ComputePassDeclarationDetails;
   readonly resources: unknown;
   readonly run: (context: unknown) => void;
 }
@@ -138,9 +156,37 @@ export class RenderGraphBuilder implements RenderGraphPassContextDelegate {
     try {
       return this.definePass(token, descriptor);
     } catch (error) {
-      this.passTokens.delete(token.passId);
-      this.passNamesById.delete(token.passId);
-      this.passNames.delete(descriptor.id);
+      this.cancelReservation(token, descriptor.id);
+      throw error;
+    }
+  }
+
+  addRasterPass<TResources>(descriptor: RasterPassDescriptor<TResources>): PassToken {
+    const token = this.reservePass(descriptor.id);
+    try {
+      return this.defineRasterPass(token, descriptor);
+    } catch (error) {
+      this.cancelReservation(token, descriptor.id);
+      throw error;
+    }
+  }
+
+  addComputePass<TResources>(descriptor: ComputePassDescriptor<TResources>): PassToken {
+    const token = this.reservePass(descriptor.id);
+    try {
+      return this.defineComputePass(token, descriptor);
+    } catch (error) {
+      this.cancelReservation(token, descriptor.id);
+      throw error;
+    }
+  }
+
+  addCopyPass<TResources>(descriptor: CopyPassDescriptor<TResources>): PassToken {
+    const token = this.reservePass(descriptor.id);
+    try {
+      return this.defineCopyPass(token, descriptor);
+    } catch (error) {
+      this.cancelReservation(token, descriptor.id);
       throw error;
     }
   }
@@ -165,8 +211,72 @@ export class RenderGraphBuilder implements RenderGraphPassContextDelegate {
     token: PassToken,
     descriptor: GraphPassDescriptor<TResources, TContext>
   ): PassToken {
+    return this.defineGenericPass<PassBuilderState, TResources>(
+      token,
+      descriptor,
+      (passId) => new PassBuilderState(this, passId),
+      'legacy-opaque'
+    );
+  }
+
+  defineRasterPass<TResources>(
+    token: PassToken,
+    descriptor: RasterPassDescriptor<TResources>
+  ): PassToken {
+    return this.defineGenericPass<RasterPassBuilderImpl, TResources>(
+      token,
+      descriptor,
+      (passId) => new RasterPassBuilderImpl(this, passId),
+      'raster',
+      (b) => ({ rasterDetails: b.declarationDetails() })
+    );
+  }
+
+  defineComputePass<TResources>(
+    token: PassToken,
+    descriptor: ComputePassDescriptor<TResources>
+  ): PassToken {
+    return this.defineGenericPass<ComputePassBuilderImpl, TResources>(
+      token,
+      descriptor,
+      (passId) => new ComputePassBuilderImpl(this, passId),
+      'compute',
+      (b) => ({ computeDetails: b.declarationDetails() })
+    );
+  }
+
+  defineCopyPass<TResources>(
+    token: PassToken,
+    descriptor: CopyPassDescriptor<TResources>
+  ): PassToken {
+    return this.defineGenericPass<CopyPassBuilderImpl, TResources>(
+      token,
+      descriptor,
+      (passId) => new CopyPassBuilderImpl(this, passId),
+      'copy'
+    );
+  }
+
+  private defineGenericPass<
+    TBuilder extends {
+      complete(): void;
+      frozenAccesses(): readonly GraphAccess[];
+      frozenTerminals(): readonly GraphTerminal[];
+      frozenSideEffects(): readonly string[];
+    },
+    TResources
+  >(
+    token: PassToken,
+    descriptor: { readonly id: string; setup: (builder: any) => TResources; run: unknown },
+    createBuilder: (passId: number) => TBuilder,
+    passKind: PassKind,
+    getDetails?: (builder: TBuilder) => {
+      rasterDetails?: RasterPassDeclarationDetails;
+      computeDetails?: ComputePassDeclarationDetails;
+    }
+  ): PassToken {
     this.assertAuthoring();
-    validatePassDescriptor(descriptor);
+    validatePassDescriptor(descriptor as any);
     if (token.graphId !== this.graphId || this.passTokens.get(token.passId) !== token) {
       throw new Error('Render graph pass definition references a foreign or unknown reservation.');
     }
@@ -176,9 +286,9 @@ export class RenderGraphBuilder implements RenderGraphPassContextDelegate {
     if (this.definedPassIds.has(token.passId)) {
       throw new Error(`Render graph pass id "${descriptor.id}" is already defined.`);
     }
-    const run = descriptor.run;
+    const run = descriptor.run as (context: unknown, resources: unknown) => void;
     const passId = token.passId;
-    const passBuilder = new PassBuilderState(this, passId);
+    const passBuilder = createBuilder(passId);
     const resourceCheckpoint = this.resources.checkpoint();
     const terminalCheckpoint = [...this.terminals];
     const semanticEdgeCount = this.semanticEdges.length;
@@ -199,19 +309,29 @@ export class RenderGraphBuilder implements RenderGraphPassContextDelegate {
       passBuilder.complete();
     }
 
+    const details = getDetails?.(passBuilder);
     const declaration = Object.freeze({
       id: descriptor.id,
       token,
       registrationIndex: passId,
+      passKind,
       accesses: passBuilder.frozenAccesses(),
       terminals: passBuilder.frozenTerminals(),
       sideEffects: passBuilder.frozenSideEffects(),
+      ...(details?.rasterDetails ? { rasterDetails: details.rasterDetails } : {}),
+      ...(details?.computeDetails ? { computeDetails: details.computeDetails } : {}),
       resources: frozenResources,
-      run: (context: unknown) => run(context as TContext, frozenResources as TResources)
+      run: (context: unknown) => run(context, frozenResources)
     });
     this.passes.push(declaration);
     this.definedPassIds.add(passId);
     return token;
+  }
+
+  private cancelReservation(token: PassToken, id: string): void {
+    this.passTokens.delete(token.passId);
+    this.passNamesById.delete(token.passId);
+    this.passNames.delete(id);
   }
 
   build(): RenderGraphSnapshot {
