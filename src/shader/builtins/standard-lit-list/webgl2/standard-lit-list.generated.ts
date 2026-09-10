@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl',
-    contentHash: '962c6a954e29a751dadf77ca3cae2083967a239c2dde187dd4685f154d372bc7',
-    byteLength: 17310
+    contentHash: '1bf7c753889db9ac286d082dbdea87340ac757a90eaeba2fddf369b1447b1525',
+    byteLength: 17459
   },
   entryPoints: [
     {
@@ -964,9 +964,11 @@ vec3 evaluateIbl(vec3 normal_5, vec3 viewDirection_3, StandardLitSurface surface
     vec4 _e51 = texture(_group_3_binding_8_fs, vec2(vec2(max(dot(normal_5, viewDirection_3), 0.0), roughness_3)));
     vec2 brdf = _e51.xy;
     vec3 diffuse_1 = (((((vec3(1.0) - _e17) * (1.0 - metallic_1)) * surface_1.baseColor.xyz) * irradiance) / vec3(3.1415927));
-    vec3 specular_1 = (prefiltered * ((f0_2 * brdf.x) + vec3(brdf.y)));
-    float _e75 = _group_3_binding_5_fs.intensity;
-    return (((diffuse_1 + specular_1) * _e75) * surface_1.occlusion);
+    vec3 singleScattering = (prefiltered * ((f0_2 * brdf.x) + vec3(brdf.y)));
+    vec3 energyCompensation = (vec3(1.0) + (f0_2 * ((1.0 / max(brdf.x, 1e-5)) - 1.0)));
+    vec3 specular_1 = (singleScattering * energyCompensation);
+    float _e87 = _group_3_binding_5_fs.intensity;
+    return (((diffuse_1 + specular_1) * _e87) * surface_1.occlusion);
 }
 
 void main() {

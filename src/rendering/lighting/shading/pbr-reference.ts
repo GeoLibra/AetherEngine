@@ -15,6 +15,37 @@ export interface CookTorranceDirectInput {
   readonly lightRadianceLinear: Vec3;
 }
 
+/** Inputs for the Fdez-Aguera split-sum multiple-scattering compensation profile. */
+export interface MultipleScatteringIblInput {
+  readonly singleScattering: Vec3;
+  readonly f0: Vec3;
+  /** Directional albedo stored in the first channel of the StandardLit BRDF LUT. */
+  readonly directionalAlbedo: number;
+}
+
+/**
+ * Restores energy lost by the single-scattering microfacet IBL approximation.
+ *
+ * The zero-albedo boundary is evaluated with the same finite floor used by the shader. A zero
+ * single-scattering input therefore remains finite and black.
+ */
+export function compensateMultipleScatteringIbl(input: MultipleScatteringIblInput): Vec3 {
+  const singleScattering = nonNegativeColor(input.singleScattering, 'singleScattering');
+  const f0 = normalizedColor(input.f0, 'f0');
+  if (
+    !Number.isFinite(input.directionalAlbedo) ||
+    input.directionalAlbedo < 0 ||
+    input.directionalAlbedo > 1
+  ) {
+    throw new Error('PBR directionalAlbedo must be finite and normalized.');
+  }
+  const inverseAlbedoMinusOne = 1 / Math.max(input.directionalAlbedo, 1e-5) - 1;
+  return Vec3Math.multiply(
+    singleScattering,
+    Vec3Math.add(WHITE, Vec3Math.scale(f0, inverseAlbedoMinusOne))
+  );
+}
+
 /**
  * Evaluates one GGX/Smith/Schlick direct-light sample in scene-linear space.
  *

@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl',
-    contentHash: '1f23296d69a33f87dc3cb7664008b0ac45d47c8cac6ad4842e4f6d1377b1818d',
-    byteLength: 17160
+    contentHash: '837102480ec42dfefd8765ffbdcfe7338f004c535622cc7f2fa71e7e90f41ac2',
+    byteLength: 17309
   },
   entryPoints: [
     {
@@ -1111,7 +1111,9 @@ fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>, surface: StandardLit
   ).rg;
   let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
     surface.baseColor.rgb * irradiance / 3.14159265359;
-  let specular = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
+  let singleScattering = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
+  let energyCompensation = vec3<f32>(1.0) + f0 * (1.0 / max(brdf.x, 0.00001) - 1.0);
+  let specular = singleScattering * energyCompensation;
   return (diffuse + specular) * environmentData.intensity * surface.occlusion;
 }
 

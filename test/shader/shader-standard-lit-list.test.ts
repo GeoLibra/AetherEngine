@@ -74,5 +74,7 @@ describe('standard-lit LightList built-in shader', () => {
     expect(webgpu).not.toContain('fn geometrySchlickGgxDirect');
     expect(webgl).toContain('geometrySmithGgx');
     expect(webgl).not.toContain('geometrySchlickGgxDirect');
+    expect(webgpu).toContain('let energyCompensation =');
+    expect(webgl).toContain('energyCompensation');
   });
 });

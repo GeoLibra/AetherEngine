@@ -1,4 +1,7 @@
-import { evaluateCookTorranceDirect } from '../../src/rendering/lighting';
+import {
+  compensateMultipleScatteringIbl,
+  evaluateCookTorranceDirect
+} from '../../src/rendering/lighting';
 
 export interface PbrEvaluationObservation {
   readonly evaluations: number;
@@ -26,6 +29,14 @@ export function runPbrEvaluationWorkload(count: number): PbrEvaluationObservatio
     sums[0] += value[0];
     sums[1] += value[1];
     sums[2] += value[2];
+    const compensated = compensateMultipleScatteringIbl({
+      singleScattering: value,
+      f0: [0.04, 0.04, 0.04],
+      directionalAlbedo: 0.2 + 0.8 * ((index % 11) / 10)
+    });
+    sums[0] += compensated[0];
+    sums[1] += compensated[1];
+    sums[2] += compensated[2];
   }
   return Object.freeze({
     evaluations: count,

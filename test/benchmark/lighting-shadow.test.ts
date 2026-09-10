@@ -21,11 +21,11 @@ describe('lighting-shadow benchmark oracle', () => {
   test('keeps the standard PBR workload checksum stable across its scale axis', () => {
     expect(runPbrEvaluationWorkload(64)).toEqual({
       evaluations: 64,
-      checksum: 'e6b48921'
+      checksum: 'cbc77cfe'
     });
     expect(runPbrEvaluationWorkload(1_024)).toEqual({
       evaluations: 1_024,
-      checksum: 'a461aa10'
+      checksum: '85cbc19c'
     });
   });
 

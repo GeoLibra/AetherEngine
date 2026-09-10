@@ -388,7 +388,9 @@ fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>, surface: StandardLit
   ).rg;
   let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
     surface.baseColor.rgb * irradiance / 3.14159265359;
-  let specular = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
+  let singleScattering = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
+  let energyCompensation = vec3<f32>(1.0) + f0 * (1.0 / max(brdf.x, 0.00001) - 1.0);
+  let specular = singleScattering * energyCompensation;
   return (diffuse + specular) * environmentData.intensity * surface.occlusion;
 }
 
