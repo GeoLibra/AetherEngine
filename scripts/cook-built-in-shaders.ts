@@ -80,11 +80,7 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
   {
     id: 'light-list-webgl2',
     exportName: 'LIGHT_LIST_WEBGL2_SHADER_ARTIFACT',
-    exportAliases: [
-      'LIGHT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT',
-      'LIGHT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT',
-      'LIGHT_LIST_WEBGL_SHADER_ARTIFACT'
-    ],
+    exportAliases: ['LIGHT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT'],
     sourcePath: 'src/shader/builtins/light-list/webgl2/light-list.wgsl',
     metadataPath: 'src/shader/builtins/light-list/webgl2/light-list.wgsl.meta.json',
     outputPath: 'src/shader/builtins/light-list/webgl2/light-list.generated.ts',
@@ -108,11 +104,7 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
   {
     id: 'standard-lit-list-webgl2',
     exportName: 'STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT',
-    exportAliases: [
-      'STANDARD_LIT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT',
-      'STANDARD_LIT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT',
-      'STANDARD_LIT_LIST_WEBGL_SHADER_ARTIFACT'
-    ],
+    exportAliases: ['STANDARD_LIT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT'],
     sourcePaths: [
       'src/shader/builtins/standard-lit-list/webgl2/light-access.wgsl',
       'src/shader/builtins/standard-lit-list/shading.wgsl'

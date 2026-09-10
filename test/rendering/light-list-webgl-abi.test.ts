@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import {
   BUILT_IN_WEBGL2_TRANSLATOR,
   LIGHT_LIST_WEBGL2_SHADER_ARTIFACT,
-  LIGHT_LIST_WEBGL_SHADER_ARTIFACT,
   decodeWebGlLightListOutput,
   packWebGlLightListInput,
   type RenderEntityId
@@ -16,17 +15,16 @@ const capacity = Object.freeze({
 
 describe('WebGL2 light-list ABI', () => {
   test('publishes cooked integer-texture inputs and four unsigned outputs', () => {
-    const fragment = LIGHT_LIST_WEBGL_SHADER_ARTIFACT.entryPoints.find(
+    const fragment = LIGHT_LIST_WEBGL2_SHADER_ARTIFACT.entryPoints.find(
       (entry) => entry.name === 'lightListFragment'
     );
     expect(fragment?.bindings.map(({ binding, kind }) => ({ binding, kind }))).toEqual([
       { binding: 0, kind: 'texture' },
       { binding: 1, kind: 'texture' }
     ]);
-    expect(LIGHT_LIST_WEBGL_SHADER_ARTIFACT.fragmentOutputs).toHaveLength(4);
-    expect(LIGHT_LIST_WEBGL2_SHADER_ARTIFACT).toBe(LIGHT_LIST_WEBGL_SHADER_ARTIFACT);
+    expect(LIGHT_LIST_WEBGL2_SHADER_ARTIFACT.fragmentOutputs).toHaveLength(4);
     const translated = BUILT_IN_WEBGL2_TRANSLATOR.translate({
-      wgsl: LIGHT_LIST_WEBGL_SHADER_ARTIFACT.modules.wgsl,
+      wgsl: LIGHT_LIST_WEBGL2_SHADER_ARTIFACT.modules.wgsl,
       stage: 'fragment',
       entryPoint: 'lightListFragment',
       constants: {},
