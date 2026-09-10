@@ -10,6 +10,7 @@ export type {
   GraphHandle,
   GraphResourceKind,
   GraphResourceOrigin,
+  GraphResourceCreateOptions,
   PassToken,
   TextureDescriptor,
   TextureHandle,
@@ -71,3 +72,41 @@ export type {
   RenderGraphExecutionStep,
   RenderGraphExecutionPlan
 } from './executor-types';
+
+export type {
+  PassKind,
+  ColorAttachmentOptions,
+  DepthStencilAttachmentOptions,
+  DeclaredColorAttachment,
+  DeclaredDepthStencilAttachment,
+  DeclaredResolveAttachment,
+  RasterCommands,
+  ComputeCommands,
+  CopyCommands,
+  DeclaredResourceResolver,
+  RasterPassContext,
+  ComputePassContext,
+  CopyPassContext,
+  GraphResourceBuilder,
+  RasterPassBuilder,
+  ComputePassBuilder,
+  CopyPassBuilder,
+  RasterPassDescriptor,
+  ComputePassDescriptor,
+  CopyPassDescriptor
+} from './typed-pass-types';
+
+export type {
+  SplitReasonCode,
+  PassFusionOptions,
+  NormalizedFusionOptions,
+  PhysicalColorAttachmentPlan,
+  PhysicalDepthStencilAttachmentPlan,
+  PhysicalAttachmentPlan,
+  ValidatedGroupUsage,
+  LogicalRasterBoundaryState,
+  RasterGroupPlan,
+  BoundarySplitRecord,
+  FusionCounters,
+  GroupPartitionResult
+} from './fusion-types';

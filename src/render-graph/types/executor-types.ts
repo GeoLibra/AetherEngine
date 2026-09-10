@@ -1,6 +1,7 @@
 import type { GPUBufferDescriptor, GPUTextureDescriptor } from '../../rhi/contracts';
 import type { CompiledRenderGraph, ResourceAliasPlan } from './compiler-types';
 import type { RenderGraphSnapshot } from '../builder/builder';
+import type { GroupPartitionResult, RasterGroupPlan } from './fusion-types';
 
 /** Identifies a transient texture derived from one surface configuration. */
 export interface SurfaceTransientScope {
@@ -28,6 +29,7 @@ export type TransientAllocationDescriptor =
 
 export type RenderGraphExecutionStep =
   | { readonly kind: 'prelude' }
+  | { readonly kind: 'raster-group'; readonly groupIndex: number }
   | { readonly kind: 'pass'; readonly passId: number; readonly retainedPassIndex: number }
   | { readonly kind: 'submission' };
 
@@ -36,4 +38,7 @@ export interface RenderGraphExecutionPlan {
   readonly compiled: CompiledRenderGraph;
   readonly aliases: ResourceAliasPlan;
   readonly schedule: readonly RenderGraphExecutionStep[];
+  readonly rasterGroups: readonly RasterGroupPlan[];
+  /** Immutable fusion partition and diagnostics used to create this physical schedule. */
+  readonly fusion: GroupPartitionResult;
 }

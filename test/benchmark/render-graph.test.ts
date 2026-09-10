@@ -15,6 +15,13 @@ import {
   runRenderSystemReference,
   runRenderSystemSubject
 } from '../../benchmark/render-graph/integrity-scenarios';
+import {
+  createCompatibleRasterWorkload,
+  createComputeCutWorkload,
+  createLateDepthWorkload,
+  runFusionSemanticOracle,
+  runFusionSubject
+} from '../../benchmark/render-graph/fusion-scenarios';
 
 describe('render graph benchmark oracle', () => {
   test('is deterministic for the same versioned seed', () => {
@@ -157,7 +164,10 @@ describe('render graph benchmark oracle', () => {
       'linear-chain',
       'fan-out-fan-in',
       'culled-branch',
-      'aliasable-lifetimes'
+      'aliasable-lifetimes',
+      'fusion-compatible-chain',
+      'fusion-compute-cut',
+      'fusion-late-depth'
     ]);
     expect(result.report.coverage.largeScale).toMatchObject({
       passCount: 1024,
@@ -165,5 +175,36 @@ describe('render graph benchmark oracle', () => {
       accessesExamined: 1024,
       status: 'pass'
     });
+  });
+});
+
+describe('render graph fusion benchmark scenarios', () => {
+  test('independent semantic oracle is deterministic', () => {
+    const workload = createCompatibleRasterWorkload(10, 1);
+    const first = runFusionSemanticOracle(workload);
+    const second = runFusionSemanticOracle(workload);
+    expect(first).toEqual(second);
+    expect(first.checksum).toMatch(/^[0-9a-f]{8}$/);
+    expect(first.totalDraws).toBe(10);
+  });
+
+  test('runs compatible raster workload with stable subject execution', () => {
+    const workload = createCompatibleRasterWorkload(10, 1);
+    const observation = runFusionSubject(workload);
+    expect(observation.semantic.checksum).toBe(runFusionSemanticOracle(workload).checksum);
+    expect(observation.counters.logicalPassCount).toBe(10);
+    expect(observation.counters.physicalGroupCount).toBe(1);
+    expect(observation.counters.fusedBoundariesCount).toBe(9);
+    expect(observation.counters.scheduledSteps).toBeGreaterThan(0);
+  });
+
+  test('runs compute cut and late depth workloads with matching oracle checksums', () => {
+    const cutWorkload = createComputeCutWorkload(10);
+    const cutObs = runFusionSubject(cutWorkload);
+    expect(cutObs.semantic.checksum).toBe(runFusionSemanticOracle(cutWorkload).checksum);
+
+    const depthWorkload = createLateDepthWorkload(10);
+    const depthObs = runFusionSubject(depthWorkload);
+    expect(depthObs.semantic.checksum).toBe(runFusionSemanticOracle(depthWorkload).checksum);
   });
 });

@@ -6,6 +6,7 @@ import {
   toRenderGraphDebugJSON,
   type RenderGraphHistoryDebugBinding
 } from '../../src/render-graph/compiler';
+import { partitionRasterGroups } from '../../src/render-graph/compiler/fusion';
 import type { BufferDescriptor } from '../../src/render-graph/types';
 
 const BUFFER: BufferDescriptor = Object.freeze({
@@ -39,6 +40,63 @@ function createFixture(aliasing: boolean) {
 }
 
 describe('render graph Debug IR', () => {
+  test('captures fusion membership, split decisions, and counters from the physical plan', () => {
+    const graph = new RenderGraphBuilder();
+    const color = graph.createTexture({
+      width: 4,
+      height: 4,
+      depthOrArrayLayers: 1,
+      mipLevelCount: 1,
+      sampleCount: 1,
+      format: 'rgba8unorm',
+      usage: ['color-attachment']
+    });
+    const firstBuffer = graph.createBuffer(BUFFER);
+    const secondBuffer = graph.createBuffer(BUFFER);
+    let current = color;
+    graph.addRasterPass({
+      id: 'clear',
+      setup(pass) {
+        current = pass.colorAttachment(0, current, { load: 'clear', store: 'auto' });
+        pass.writeBuffer(firstBuffer, 'copy-dst');
+        pass.sideEffect('clear');
+        return {};
+      },
+      run() {}
+    });
+    graph.addRasterPass({
+      id: 'draw',
+      setup(pass) {
+        current = pass.colorAttachment(0, current, { load: 'load', store: 'store' });
+        pass.writeBuffer(secondBuffer, 'copy-dst');
+        pass.sideEffect('draw');
+        return {};
+      },
+      run() {}
+    });
+
+    const snapshot = graph.build();
+    const compiled = compileRenderGraph(snapshot);
+    const fusion = partitionRasterGroups(snapshot, compiled);
+    const debug = createRenderGraphDebugIR(snapshot, compiled, { fusion });
+    expect(debug.fusion).toBeDefined();
+    const debugFusion = debug.fusion!;
+
+    expect(debugFusion.groups).toMatchObject([{ passIds: [0, 1] }]);
+    expect(debugFusion.splitRecords).toEqual([]);
+    expect(debugFusion.counters).toMatchObject({
+      retainedLogicalRasterPasses: 2,
+      physicalRasterGroups: 1,
+      fusedBoundariesCount: 1
+    });
+    expect(
+      debug.lifetimes.find((lifetime) => lifetime.resourceId === firstBuffer.resourceId)
+    ).toMatchObject({ firstUse: 0, lastUse: 1 });
+    expect(
+      debug.lifetimes.find((lifetime) => lifetime.resourceId === secondBuffer.resourceId)
+    ).toMatchObject({ firstUse: 0, lastUse: 1 });
+  });
+
   test('is deeply immutable, deterministic, serializable, and explainable', () => {
     const first = createFixture(true);
     const second = createFixture(true);

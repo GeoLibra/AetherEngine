@@ -75,7 +75,6 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
   setPipeline(pipeline: RHIRenderPipeline): void {
     this.ensureActive();
     assertWebGL2Resource(pipeline, this.owner);
-    this.validateBoundGroups(pipeline.layout, false);
     this.pipeline = pipeline;
     this.encoder.lease(pipeline);
     this.encoder.record(
@@ -86,7 +85,8 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
 
   setBindGroup(index: number, group: RHIBindGroup, dynamicOffsets: readonly number[] = []): void {
     this.ensureActive();
-    validateWebGL2BindGroupSlot(index, group, dynamicOffsets, this.owner, this.pipeline?.layout);
+    // Validate basic bind group slot without pipeline layout (defer layout compatibility to draw)
+    validateWebGL2BindGroupSlot(index, group, dynamicOffsets, this.owner, undefined);
     const offsets = [...dynamicOffsets];
     this.bindGroups.set(index, { group, offsets });
     this.encoder.lease(group);
@@ -222,27 +222,29 @@ export class WebGL2RenderPassEncoder implements RHIRenderPassEncoder {
     if (this.pipeline === undefined)
       throw new Error(`${this.passName} requires a render pipeline before drawing.`);
     assertWebGL2Resource(this.pipeline, this.owner);
-    this.validateBoundGroups(this.pipeline.layout, true);
+    this.validateBoundGroups(this.pipeline.layout);
     for (const buffer of this.vertexBuffers.values()) assertWebGL2Resource(buffer, this.owner);
     if (this.indexBuffer !== undefined) assertWebGL2Resource(this.indexBuffer, this.owner);
     return this.pipeline;
   }
 
-  private validateBoundGroups(
-    layout: RHIPipelineLayout | undefined,
-    requireComplete: boolean
-  ): void {
-    if (layout !== undefined && requireComplete) {
-      layout.bindGroupLayouts.forEach((_, index) => {
-        if (!this.bindGroups.has(index))
-          throw new Error(
-            `Bind group slot ${index} required by the current pipeline layout is not bound.`
-          );
-      });
-    }
-    for (const [index, binding] of this.bindGroups) {
-      validateWebGL2BindGroupSlot(index, binding.group, binding.offsets, this.owner, layout);
-    }
+  private validateBoundGroups(layout: RHIPipelineLayout | undefined): void {
+    if (layout === undefined) return;
+    // Only validate bind group slots that the pipeline layout actually requires
+    // This allows multiple logical passes to share one physical pass with different pipelines
+    layout.bindGroupLayouts.forEach((expected, index) => {
+      const bound = this.bindGroups.get(index);
+      if (bound === undefined) {
+        throw new Error(
+          `Bind group slot ${index} required by the current pipeline layout is not bound.`
+        );
+      }
+      if (bound.group.layout !== expected) {
+        throw new Error(
+          `Bind group slot ${index} is incompatible with the current pipeline layout.`
+        );
+      }
+    });
   }
 
   private ensureActive(): void {

@@ -398,7 +398,8 @@ function executeCompiledFixture(
       device,
       resources: imported,
       transientPool: pool
-    }
+    },
+    { captureDebug: true }
   );
   return Object.freeze({ execution, physicalAcquisitions });
 }

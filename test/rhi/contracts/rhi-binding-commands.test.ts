@@ -103,7 +103,8 @@ describe('RHI pass bind group commands', () => {
     expect(() => pass.setBindGroup(0, bindGroup)).toThrow(
       'Bind group at slot 0 requires 1 dynamic offsets, received 0.'
     );
-    expect(() => pass.setBindGroup(0, incompatible)).toThrow(
+    pass.setBindGroup(0, incompatible);
+    expect(() => pass.draw(3)).toThrow(
       'Bind group layout at slot 0 is not compatible with the current pipeline layout.'
     );
   });
@@ -249,14 +250,19 @@ describe('RHI pass bind group commands', () => {
     const { pass } = createPass(device);
 
     pass.setBindGroup(0, bindGroup, [16]);
-
-    expect(() =>
-      pass.setPipeline(
-        device.createRenderPipeline({
-          layout: device.createPipelineLayout({ bindGroupLayouts: [incompatibleLayout] })
-        })
-      )
-    ).toThrow('Bind group layout at slot 0 is not compatible with the current pipeline layout.');
+    const incompatiblePipeline = device.createRenderPipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [incompatibleLayout] })
+    });
+    pass.setPipeline(incompatiblePipeline);
+    expect(() => pass.draw(3)).toThrow(
+      'Bind group layout at slot 0 is not compatible with the current pipeline layout.'
+    );
+    const compatibleBg = device.createBindGroup({
+      layout: incompatibleLayout,
+      entries: [{ binding: 0, resource: { buffer } }]
+    });
+    pass.setBindGroup(0, compatibleBg);
+    expect(() => pass.draw(3)).not.toThrow();
 
     expect(() => pass.setBindGroup(0, bindGroup, [40])).toThrow(
       'Buffer range 40..72 is outside buffer size 64.'

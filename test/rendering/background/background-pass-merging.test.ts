@@ -1,78 +1,255 @@
 import { describe, expect, it } from 'vitest';
 import {
-  evaluatePassMerging,
+  createBackgroundRenderSystem,
   packSkyboxUniforms,
   SKYBOX_UNIFORM_BYTE_SIZE
 } from '../../../src/rendering/background';
+import {
+  NullDevice,
+  NullSurface,
+  RenderGraphBuilder,
+  RenderGraphExecutor,
+  RenderSystemRegistry,
+  compileRenderSystems,
+  createPreparedBindGroupLayoutToken,
+  createPreparedRenderPipelineToken,
+  createOpaqueRenderSystem,
+  type TextureDescriptor,
+  type PreparedDrawPhaseSnapshot,
+  type RenderView,
+  type RenderEntityId,
+  type GraphHandle
+} from '../../../src';
+import type { RHIBuffer, RHITexture } from '../../../src/rhi/contracts';
+import type { SurfaceTarget } from '../../../src/platform/types';
 
-describe('background pass merging and structural metrics', () => {
-  it('selects 1 physical render pass when background and opaque are adjacent and compatible', () => {
-    const decision = evaluatePassMerging({
-      backgroundEnabled: true,
-      backgroundRepresentation: 'panorama',
-      colorFormat: 'rgba16float',
-      depthFormat: 'depth24plus',
-      width: 1920,
-      height: 1080
+const COLOR: TextureDescriptor = {
+  width: 4,
+  height: 4,
+  depthOrArrayLayers: 1,
+  mipLevelCount: 1,
+  sampleCount: 1,
+  format: 'rgba8unorm',
+  usage: ['color-attachment']
+};
+
+const DEPTH: TextureDescriptor = {
+  ...COLOR,
+  format: 'depth24plus',
+  usage: ['depth-stencil-attachment']
+};
+
+function view(): RenderView {
+  return Object.freeze({
+    id: 'view:main',
+    camera: 1 as RenderEntityId,
+    surface: 'main',
+    viewport: Object.freeze({ x: 0, y: 0, width: 4, height: 4 }),
+    layerMask: 1,
+    featurePolicyKey: 'policy',
+    historyKey: 'history'
+  });
+}
+
+function surface(device: NullDevice): NullSurface {
+  const target: SurfaceTarget = { id: Symbol('background'), kind: 'offscreen' };
+  const result = new NullSurface(target);
+  result.configure(
+    device,
+    {
+      format: 'rgba8unorm',
+      colorSpace: 'srgb',
+      alphaMode: 'opaque',
+      width: 4,
+      height: 4,
+      presentMode: 'fifo'
+    },
+    1
+  );
+  return result;
+}
+
+describe('background render system and compiler pass fusion', () => {
+  it('creates a raster pass descriptor with clear and auto store semantics', () => {
+    const graph = new RenderGraphBuilder();
+    const color = graph.createTexture(COLOR);
+    const uniform = graph.createBuffer({ size: 64, usage: ['uniform'] });
+    const sky = graph.createTexture({ ...COLOR, usage: ['sampled'] });
+
+    const system = createBackgroundRenderSystem({
+      viewId: 'view:main',
+      prepared: { status: 'ready' } as never,
+      colorTarget: color,
+      uniformBuffer: uniform,
+      skyTexture: sky,
+      width: 4,
+      height: 4
     });
 
-    expect(decision.canMerge).toBe(true);
-    expect(decision.reason).toBe('adjacent-compatible-attachments');
-    expect(decision.physicalPassCount).toBe(1);
-    expect(decision.colorAttachmentOperations).toBe(2); // 1 clear/load, 1 store
-    expect(decision.depthAttachmentOperations).toBe(2); // 1 clear/load, 1 store
-    expect(decision.totalAttachmentOperations).toBe(4);
+    expect(system.kind).toBe('raster');
+    expect(system.id).toBe('background-view:main');
   });
 
-  it('selects 2 physical passes when separate execution is explicitly forced', () => {
-    const decision = evaluatePassMerging({
-      backgroundEnabled: true,
-      backgroundRepresentation: 'panorama',
-      colorFormat: 'rgba16float',
-      depthFormat: 'depth24plus',
-      width: 1920,
-      height: 1080,
-      forceSeparate: true
+  it('fuses background and opaque into 1 physical pass by default', () => {
+    const device = new NullDevice();
+    const graph = new RenderGraphBuilder();
+    const color = graph.createTexture(COLOR, {
+      origin: {
+        kind: 'imported',
+        initialState: 'undefined',
+        acquire: { kind: 'external-acquire', id: 'main' }
+      }
+    });
+    const uniform = graph.createBuffer(
+      { size: 64, usage: ['uniform'] },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'uniform',
+          acquire: { kind: 'external-acquire', id: 'u' }
+        }
+      }
+    );
+    const sky = graph.createTexture(
+      { ...COLOR, usage: ['sampled'] },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'sampled',
+          acquire: { kind: 'external-acquire', id: 's' }
+        }
+      }
+    );
+
+    let activeColor = color;
+    const bg = createBackgroundRenderSystem({
+      viewId: 'view:main',
+      prepared: { status: 'ready' } as never,
+      colorTarget: color,
+      publishColor(c) {
+        activeColor = c;
+      },
+      uniformBuffer: uniform,
+      skyTexture: sky,
+      width: 4,
+      height: 4
     });
 
-    expect(decision.canMerge).toBe(false);
-    expect(decision.reason).toBe('forced-separate');
-    expect(decision.physicalPassCount).toBe(2);
-    expect(decision.colorAttachmentOperations).toBe(4); // Pass 1: clear+store, Pass 2: load+store
-    expect(decision.depthAttachmentOperations).toBe(2); // Pass 2: clear+store
-    expect(decision.totalAttachmentOperations).toBe(6);
+    const emptyPhase: PreparedDrawPhaseSnapshot = Object.freeze({
+      viewId: 'view:main',
+      phase: 'opaque',
+      packets: Object.freeze([])
+    });
+
+    const opaque = createOpaqueRenderSystem({
+      phase: emptyPhase,
+      surfaceFrame: { kind: 'surface-frame', id: 'main' },
+      color: COLOR,
+      depth: DEPTH,
+      colorLoadOp: 'load',
+      colorTarget: () => activeColor
+    });
+
+    const registry = new RenderSystemRegistry();
+    const bgToken = registry.add(bg);
+    registry.add({ ...opaque.descriptor, after: [bgToken] });
+
+    const compiled = compileRenderSystems(registry, { views: [view()], graph });
+    expect(compiled.plan.rasterGroups).toHaveLength(1);
+    expect(compiled.plan.rasterGroups[0]?.retainedPassIndices).toHaveLength(2);
+
+    const physicalSky = device.createTexture({
+      size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+      mipLevelCount: 1,
+      sampleCount: 1,
+      format: 'rgba8unorm',
+      usage: 1 << 2
+    });
+    const physicalUniform = device.createBuffer({ size: 64, usage: 1 << 6 });
+
+    const execution = new RenderGraphExecutor().execute(compiled.plan, {
+      device,
+      surface: surface(device),
+      preparedDrawResources: opaque.preparedDrawResources,
+      resources: new Map<GraphHandle, RHITexture | RHIBuffer>([
+        [sky, physicalSky],
+        [uniform, physicalUniform]
+      ])
+    });
+
+    expect(execution.commandStats).toMatchObject({ renderPasses: 1 });
   });
 
-  it('rejects merging when an intervening resource dependency exists', () => {
-    const decision = evaluatePassMerging({
-      backgroundEnabled: true,
-      backgroundRepresentation: 'radiance-level-zero',
-      colorFormat: 'rgba16float',
-      depthFormat: 'depth24plus',
-      width: 1920,
-      height: 1080,
-      hasInterveningDependency: true
+  it('separates background and opaque into 2 physical passes when fusion is disabled', () => {
+    const graph = new RenderGraphBuilder();
+    const color = graph.createTexture(COLOR, {
+      origin: {
+        kind: 'imported',
+        initialState: 'undefined',
+        acquire: { kind: 'external-acquire', id: 'main' }
+      }
+    });
+    const uniform = graph.createBuffer(
+      { size: 64, usage: ['uniform'] },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'uniform',
+          acquire: { kind: 'external-acquire', id: 'u2' }
+        }
+      }
+    );
+    const sky = graph.createTexture(
+      { ...COLOR, usage: ['sampled'] },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'sampled',
+          acquire: { kind: 'external-acquire', id: 's2' }
+        }
+      }
+    );
+
+    let activeColor = color;
+    const bg = createBackgroundRenderSystem({
+      viewId: 'view:main',
+      prepared: { status: 'ready' } as never,
+      colorTarget: color,
+      publishColor(c) {
+        activeColor = c;
+      },
+      uniformBuffer: uniform,
+      skyTexture: sky,
+      width: 4,
+      height: 4
     });
 
-    expect(decision.canMerge).toBe(false);
-    expect(decision.reason).toBe('intervening-resource-dependency');
-    expect(decision.physicalPassCount).toBe(2);
-    expect(decision.totalAttachmentOperations).toBe(6);
-  });
-
-  it('handles background representation none with 1 physical pass for opaque only', () => {
-    const decision = evaluatePassMerging({
-      backgroundEnabled: true,
-      backgroundRepresentation: 'none',
-      colorFormat: 'rgba16float',
-      width: 1920,
-      height: 1080
+    const emptyPhase: PreparedDrawPhaseSnapshot = Object.freeze({
+      viewId: 'view:main',
+      phase: 'opaque',
+      packets: Object.freeze([])
     });
 
-    expect(decision.canMerge).toBe(false);
-    expect(decision.reason).toBe('background-none');
-    expect(decision.physicalPassCount).toBe(1);
-    expect(decision.totalAttachmentOperations).toBe(4);
+    const opaque = createOpaqueRenderSystem({
+      phase: emptyPhase,
+      surfaceFrame: { kind: 'surface-frame', id: 'main' },
+      color: COLOR,
+      depth: DEPTH,
+      colorLoadOp: 'load',
+      colorTarget: () => activeColor
+    });
+
+    const registry = new RenderSystemRegistry();
+    const bgToken = registry.add(bg);
+    registry.add({ ...opaque.descriptor, after: [bgToken] });
+
+    const compiled = compileRenderSystems(registry, {
+      views: [view()],
+      graph,
+      executionPlanOptions: { enablePassFusion: false }
+    });
+
+    expect(compiled.plan.rasterGroups).toHaveLength(2);
   });
 
   it('packs skybox uniforms with exact 240-byte WGSL alignment', () => {

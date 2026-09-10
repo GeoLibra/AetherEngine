@@ -27,7 +27,7 @@ import {
 import type { MeshBounds } from '../../geometry';
 import type { RenderVisibilityFact } from '../mesh';
 import { computeVisibility } from '../visibility';
-import { RenderExtractorRegistryBuilder, RenderWorld } from '../world';
+import { RenderExtractorRegistryBuilder, RenderWorld, type RenderEntityId } from '../world';
 import { WorldTransform } from '../../transform';
 import { BaselineRenderer } from './baseline-renderer';
 import { BaselineStandardLitPreparation } from './baseline-preparation';
@@ -395,7 +395,7 @@ class BaselineRenderingRuntime {
 
   private matchesRegistration(
     revision: ReturnType<RenderWorld['snapshot']>,
-    entity: import('../world').RenderEntityId
+    entity: RenderEntityId
   ): boolean {
     const fields = revision.snapshot.get(entity);
     const mesh = fields?.get(MeshAssetField) as RenderMeshFact | undefined;

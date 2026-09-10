@@ -16,6 +16,7 @@ import type {
   MaterialAssetReference,
   MaterialDiagnostic,
   MaterialFieldDefinitions,
+  MaterialField,
   MaterialInstance,
   MaterialInstanceSnapshot,
   MaterialOperationFailure,
@@ -54,7 +55,7 @@ class ImmutableMaterialInstance implements MaterialInstance {
     const nextKeywords = new Map(Object.entries(this.keywords));
     let active = true;
     const draft: MaterialParameterDraft = Object.freeze({
-      set: <T extends MaterialValue>(field: import('./types').MaterialField<T>, value: T) => {
+      set: <T extends MaterialValue>(field: MaterialField<T>, value: T) => {
         assertActive(active);
         this.parameters.get(field);
         changes.set(field.index, value);

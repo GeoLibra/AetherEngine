@@ -1,24 +1,30 @@
 import { describe, expect, test } from 'vitest';
 
-import { WebGL2Adapter, type WebGL2NativeContextLostInfo } from '../../../src';
+import {
+  WebGL2Adapter,
+  type WebGL2NativeContextLostInfo,
+  type WebGL2BindingManifestEntry,
+  type WebGL2NativeContextPort,
+  type WebGL2ShaderTranslationPort,
+  type WebGL2TranslatedShader
+} from '../../../src';
 
 interface NativeObject {
   readonly id: number;
   readonly kind: string;
 }
-interface TranslationInput {
-  readonly stage: 'vertex' | 'fragment';
-  readonly entryPoint: string;
-  readonly constants: Readonly<Record<string, number>>;
-  readonly clipDepthMode: 'zero-to-one' | 'vertex-remap';
-}
+type TranslationInput = Parameters<WebGL2ShaderTranslationPort['translate']>[0];
+type TranslationCall = Pick<
+  TranslationInput,
+  'stage' | 'entryPoint' | 'constants' | 'clipDepthMode'
+>;
 
-class Translator {
+class Translator implements WebGL2ShaderTranslationPort {
   readonly translatorId = 'test';
   readonly version = 1;
-  readonly calls: TranslationInput[] = [];
+  readonly calls: TranslationCall[] = [];
   textureSlot = 0;
-  translate(input: TranslationInput) {
+  translate(input: TranslationInput): WebGL2TranslatedShader {
     this.calls.push({
       stage: input.stage,
       entryPoint: input.entryPoint,
@@ -49,7 +55,7 @@ class Translator {
   }
 }
 
-class PipelineContext {
+class PipelineContext implements WebGL2NativeContextPort {
   readonly info = { name: 'Pipeline WebGL2' };
   readonly extensions = new Set<string>();
   readonly limits = {
@@ -61,7 +67,7 @@ class PipelineContext {
   readonly precision = {};
   readonly lost = new Promise<WebGL2NativeContextLostInfo>(() => {});
   readonly programs: Readonly<Record<string, unknown>>[] = [];
-  reflection: readonly Readonly<Record<string, unknown>>[] | undefined;
+  reflection: readonly WebGL2BindingManifestEntry[] | undefined;
   programError: Error | undefined;
   private nextId = 1;
   createBuffer(): NativeObject {
@@ -78,7 +84,7 @@ class PipelineContext {
     this.programs.push(descriptor);
     return this.object('program');
   }
-  getProgramReflection(): readonly Readonly<Record<string, unknown>>[] {
+  getProgramReflection(): readonly WebGL2BindingManifestEntry[] {
     return this.reflection ?? [];
   }
   deleteBuffer(): void {}
@@ -93,11 +99,7 @@ class PipelineContext {
 async function createDevice() {
   const native = new PipelineContext();
   const translator = new Translator();
-  const Adapter = WebGL2Adapter as unknown as new (
-    native: PipelineContext,
-    translator: Translator
-  ) => WebGL2Adapter;
-  const device = await new Adapter(native, translator).requestDevice({
+  const device = await new WebGL2Adapter(native, translator).requestDevice({
     requiredFeatures: [],
     optionalFeatures: []
   });

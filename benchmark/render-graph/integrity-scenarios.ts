@@ -66,7 +66,8 @@ export function runHistoryDebugSubject(scale: number): RenderGraphIntegrityObser
   const snapshot = graph.build();
   const execution = new RenderGraphExecutor().execute(
     createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot)),
-    { device, histories: bindings }
+    { device, histories: bindings },
+    { captureDebug: true }
   );
   const histories = execution.debug.resources.filter((resource) => resource.history !== undefined);
   const semantic = histories.map((resource) =>

@@ -120,8 +120,7 @@ export function validateBindGroupSlot(
   index: number,
   bindGroup: RHIBindGroup,
   dynamicOffsets: readonly number[],
-  owner: NullDeviceOwner,
-  pipelineLayout: RHIPipelineLayout | undefined
+  owner: NullDeviceOwner
 ): void {
   if (!Number.isInteger(index) || index < 0) {
     throw new Error(`Bind group slot ${index} must be a non-negative integer.`);
@@ -131,16 +130,6 @@ export function validateBindGroupSlot(
   assertResourceOwnedBy(bindGroup.layout, owner);
   assertResourceLive(bindGroup.layout);
   validateBindGroupContentsLive(bindGroup, owner);
-
-  if (pipelineLayout !== undefined) {
-    assertResourceOwnedBy(pipelineLayout, owner);
-    assertResourceLive(pipelineLayout);
-    if (pipelineLayout.bindGroupLayouts[index] !== bindGroup.layout) {
-      throw new Error(
-        `Bind group layout at slot ${index} is not compatible with the current pipeline layout.`
-      );
-    }
-  }
 
   if (dynamicOffsets.length !== bindGroup.dynamicBindingCount) {
     throw new Error(

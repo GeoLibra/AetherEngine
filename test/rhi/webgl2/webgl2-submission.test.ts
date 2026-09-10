@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest';
 
-import { WebGL2Adapter, type WebGL2NativeContextLostInfo } from '../../../src';
+import {
+  WebGL2Adapter,
+  type WebGL2NativeContextLostInfo,
+  type WebGL2NativeContextPort
+} from '../../../src';
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -18,7 +22,7 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve, reject };
 }
 
-class SubmissionContext {
+class SubmissionContext implements WebGL2NativeContextPort {
   readonly info = { name: 'Submission WebGL2' };
   readonly extensions = new Set<string>();
   readonly limits = {};
@@ -29,17 +33,17 @@ class SubmissionContext {
   readonly calls: string[] = [];
   readonly fences: Deferred<void>[] = [];
   readonly deleted: object[] = [];
-  createSubmissionFence: (() => Promise<void>) | undefined;
+  createSubmissionFence?: () => Promise<void>;
 
   constructor(withFence = true) {
-    this.createSubmissionFence = withFence
-      ? () => {
-          this.calls.push('fence');
-          const fence = deferred<void>();
-          this.fences.push(fence);
-          return fence.promise;
-        }
-      : undefined;
+    if (withFence) {
+      this.createSubmissionFence = () => {
+        this.calls.push('fence');
+        const fence = deferred<void>();
+        this.fences.push(fence);
+        return fence.promise;
+      };
+    }
   }
 
   createBuffer(): object {
@@ -74,8 +78,7 @@ class SubmissionContext {
 }
 
 async function createDevice(native = new SubmissionContext()) {
-  const Adapter = WebGL2Adapter as unknown as new (context: SubmissionContext) => WebGL2Adapter;
-  const device = await new Adapter(native).requestDevice({
+  const device = await new WebGL2Adapter(native).requestDevice({
     requiredFeatures: [],
     optionalFeatures: []
   });

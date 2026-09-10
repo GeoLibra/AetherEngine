@@ -53,7 +53,7 @@ describe('background baseline integration', () => {
     const diagnostics = app.getResource(BaselineRenderDiagnosticsResource);
     expect(diagnostics).toMatchObject({
       status: 'rendered',
-      renderPasses: 3, // 1 background + 1 opaque + 1 post-color
+      renderPasses: 2, // 1 fused (background + opaque) + 1 post-color
       indexedDrawCalls: 1
     });
 
@@ -110,7 +110,7 @@ describe('background baseline integration', () => {
     const diagnostics = app.getResource(BaselineRenderDiagnosticsResource);
     expect(diagnostics).toMatchObject({
       status: 'rendered',
-      renderPasses: 3, // 1 background + 1 opaque + 1 post-color
+      renderPasses: 2, // 1 fused (background + opaque) + 1 post-color
       indexedDrawCalls: 1
     });
 

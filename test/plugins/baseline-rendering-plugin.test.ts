@@ -18,7 +18,8 @@ import {
   BaselineBackgroundControlResource,
   BaselineBackgroundService,
   type BrowserGraphicsSession,
-  type Plugin
+  type Plugin,
+  type RunnerContext
 } from '../../src';
 import { cookEnvironmentPanorama, DEFAULT_COOK_RECIPES } from '../../tools/asset-cook/environment';
 import { createConstantHdrFixture } from '../../benchmark/environment-cook/fixtures';
@@ -316,7 +317,7 @@ describe('baseline rendering plugin', () => {
     expect(serviceControl).toBe(renderingPlugin.backgroundControl);
 
     const runner = {
-      async run(context: import('../../src/app/runner').RunnerContext) {
+      async run(context: RunnerContext) {
         context.frame(0);
         // 1. Update via plugin ergonomic method
         renderingPlugin.setBackground({ kind: 'solid', colorLinear: [0.5, 0.5, 0.5] });

@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { compileCompositionPlan, lowerCompositionPlan } from '../../src';
+import {
+  compileCompositionPlan,
+  lowerCompositionPlan,
+  type CompositionSlotResources,
+  type RestrictedPassContext
+} from '../../src';
 import { RenderGraphExecutor } from '../../src/render-graph';
 import { NullDevice } from '../../src/rhi/null/device';
 import { NullSurface } from '../../src/rhi/null/surface';
@@ -148,10 +153,7 @@ describe('CompositionPlan RenderGraph consumer', () => {
       ]
     });
     const rasterRecorder = {
-      record(
-        context: import('../../src').RestrictedPassContext,
-        resources: import('../../src').CompositionSlotResources
-      ) {
+      record(context: RestrictedPassContext, resources: CompositionSlotResources) {
         context
           .beginRaster({
             colorAttachments: [{ texture: resources.color, loadOp: 'clear', storeOp: 'store' }]

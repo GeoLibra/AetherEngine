@@ -1,5 +1,6 @@
 import type { GraphPassDeclaration, RenderGraphSnapshot } from '../builder/builder';
 import { isCompiledRenderGraph, isCompiledRenderGraphForSnapshot } from '../compiler/compiler';
+import { partitionRasterGroups } from '../compiler/fusion/partition';
 import {
   analyzeResourceLifetimes,
   planResourceAliases,
@@ -7,6 +8,8 @@ import {
 } from '../compiler/lifetimes';
 import type {
   CompiledRenderGraph,
+  PassFusionOptions,
+  RasterGroupPlan,
   RenderGraphExecutionPlan,
   RenderGraphExecutionStep
 } from '../types';
@@ -15,33 +18,70 @@ export type { RenderGraphExecutionPlan, RenderGraphExecutionStep } from '../type
 
 const CANONICAL_EXECUTION_PLANS = new WeakSet<object>();
 
+export interface ExecutionPlanOptions extends PassFusionOptions {}
+
 export function createRenderGraphExecutionPlan(
   snapshot: RenderGraphSnapshot,
-  compiled: CompiledRenderGraph
+  compiled: CompiledRenderGraph,
+  options?: ExecutionPlanOptions
 ): RenderGraphExecutionPlan {
   if (!isCompiledRenderGraphForSnapshot(compiled, snapshot)) {
     throw nonCanonical('compiled graph provenance does not match the snapshot');
   }
+  const partition = partitionRasterGroups(snapshot, compiled, options);
   const plan = Object.freeze({
     snapshot,
     compiled,
-    aliases: planResourceAliases(snapshot, analyzeResourceLifetimes(snapshot, compiled)),
-    schedule: createRenderGraphExecutionSchedule(compiled)
+    aliases: planResourceAliases(
+      snapshot,
+      analyzeResourceLifetimes(snapshot, compiled, partition.groups)
+    ),
+    schedule: createRenderGraphExecutionSchedule(compiled, partition.groups),
+    rasterGroups: partition.groups,
+    fusion: partition
   });
   CANONICAL_EXECUTION_PLANS.add(plan);
   return plan;
 }
 
 export function createRenderGraphExecutionSchedule(
-  compiled: CompiledRenderGraph
+  compiled: CompiledRenderGraph,
+  groups: readonly RasterGroupPlan[] = []
 ): readonly RenderGraphExecutionStep[] {
-  return Object.freeze([
-    Object.freeze({ kind: 'prelude' as const }),
-    ...compiled.order.map((passId, retainedPassIndex) =>
-      Object.freeze({ kind: 'pass' as const, passId, retainedPassIndex })
-    ),
-    Object.freeze({ kind: 'submission' as const })
-  ]);
+  const steps: RenderGraphExecutionStep[] = [Object.freeze({ kind: 'prelude' as const })];
+
+  const passToGroup = new Map<number, { group: RasterGroupPlan; isFirst: boolean }>();
+  for (const group of groups) {
+    for (let i = 0; i < group.retainedPassIndices.length; i++) {
+      passToGroup.set(group.retainedPassIndices[i]!, { group, isFirst: i === 0 });
+    }
+  }
+
+  for (let retainedPassIndex = 0; retainedPassIndex < compiled.order.length; retainedPassIndex++) {
+    const passId = compiled.order[retainedPassIndex]!;
+    const groupInfo = passToGroup.get(retainedPassIndex);
+    if (groupInfo !== undefined) {
+      if (groupInfo.isFirst) {
+        steps.push(
+          Object.freeze({
+            kind: 'raster-group' as const,
+            groupIndex: groupInfo.group.groupIndex
+          })
+        );
+      }
+    } else {
+      steps.push(
+        Object.freeze({
+          kind: 'pass' as const,
+          passId,
+          retainedPassIndex
+        })
+      );
+    }
+  }
+
+  steps.push(Object.freeze({ kind: 'submission' as const }));
+  return Object.freeze(steps);
 }
 
 /** Rejects erased or JavaScript callers that attempt to pass an absent/rebuilt frame product. */
@@ -55,6 +95,8 @@ export function assertRenderGraphExecutionPlan(
     !('compiled' in value) ||
     !('aliases' in value) ||
     !('schedule' in value) ||
+    !('rasterGroups' in value) ||
+    !('fusion' in value) ||
     !Array.isArray(value.schedule) ||
     !CANONICAL_EXECUTION_PLANS.has(value)
   ) {
@@ -94,32 +136,72 @@ export function validateRenderGraphExecutionPlan(plan: RenderGraphExecutionPlan)
       throw nonCanonical('retained pass is absent from the graph snapshot');
     }
   }
-  const expectedLength = retainedPasses.length + 2;
-  if (!Array.isArray(plan.schedule) || plan.schedule.length !== expectedLength) {
-    throw nonCanonical('schedule length does not match retained passes');
+
+  if (!Array.isArray(plan.schedule) || plan.schedule.length < 2) {
+    throw nonCanonical('schedule must have at least prelude and submission steps');
   }
-  for (let scheduleIndex = 0; scheduleIndex < expectedLength; scheduleIndex += 1) {
-    if (!Object.hasOwn(plan.schedule, scheduleIndex)) {
+  if (plan.schedule[0]?.kind !== 'prelude') {
+    throw nonCanonical('schedule must begin with prelude');
+  }
+  if (plan.schedule[plan.schedule.length - 1]?.kind !== 'submission') {
+    throw nonCanonical('schedule must end with submission');
+  }
+
+  const groups = plan.rasterGroups ?? [];
+  if (plan.fusion.groups !== plan.rasterGroups) {
+    throw nonCanonical('fusion groups do not match the physical raster group schedule');
+  }
+  const groupById = new Map<number, RasterGroupPlan>();
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i]!;
+    if (group.groupIndex !== i) {
+      throw nonCanonical('raster group index is not sequential');
+    }
+    groupById.set(group.groupIndex, group);
+  }
+
+  const referencedGroups = new Set<number>();
+  const visitedRetainedIndices: number[] = [];
+
+  for (let i = 1; i < plan.schedule.length - 1; i++) {
+    if (!Object.hasOwn(plan.schedule, i)) {
       throw nonCanonical('schedule contains a sparse step');
     }
-    const step = plan.schedule[scheduleIndex];
-    if (scheduleIndex === 0) {
-      if (step?.kind !== 'prelude') throw nonCanonical('schedule must begin with prelude');
-      continue;
+    const step = plan.schedule[i]!;
+    if (step.kind === 'raster-group') {
+      const group = groupById.get(step.groupIndex);
+      if (group === undefined) {
+        throw nonCanonical(`schedule references unknown raster group ${step.groupIndex}`);
+      }
+      if (referencedGroups.has(step.groupIndex)) {
+        throw nonCanonical(`raster group ${step.groupIndex} referenced multiple times in schedule`);
+      }
+      referencedGroups.add(step.groupIndex);
+      for (const passIdx of group.retainedPassIndices) {
+        visitedRetainedIndices.push(passIdx);
+      }
+    } else if (step.kind === 'pass') {
+      const pass = retainedPasses[step.retainedPassIndex];
+      if (pass === undefined || step.passId !== pass.token.passId) {
+        throw nonCanonical('schedule pass does not match its retained pass index');
+      }
+      visitedRetainedIndices.push(step.retainedPassIndex);
+    } else {
+      throw nonCanonical('unknown step kind in schedule');
     }
-    if (scheduleIndex === expectedLength - 1) {
-      if (step?.kind !== 'submission') throw nonCanonical('schedule must end with submission');
-      continue;
-    }
-    const retainedPassIndex = scheduleIndex - 1;
-    const pass = retainedPasses[retainedPassIndex];
-    if (
-      step?.kind !== 'pass' ||
-      pass === undefined ||
-      step.passId !== pass.token.passId ||
-      step.retainedPassIndex !== retainedPassIndex
-    ) {
-      throw nonCanonical('schedule pass does not match its retained pass index');
+  }
+
+  if (referencedGroups.size !== groups.length) {
+    throw nonCanonical('not all raster groups were scheduled');
+  }
+
+  if (visitedRetainedIndices.length !== retainedPasses.length) {
+    throw nonCanonical('scheduled passes count does not match retained passes');
+  }
+
+  for (let i = 0; i < retainedPasses.length; i++) {
+    if (visitedRetainedIndices[i] !== i) {
+      throw nonCanonical('scheduled passes do not reproduce compiled order exactly');
     }
   }
 }
@@ -133,6 +215,17 @@ export function requiredScheduledPass(
     throw nonCanonical('scheduled pass cannot be resolved by retained pass index');
   }
   return pass;
+}
+
+export function requiredRasterGroup(
+  plan: RenderGraphExecutionPlan,
+  step: Extract<RenderGraphExecutionStep, { readonly kind: 'raster-group' }>
+): RasterGroupPlan {
+  const group = plan.rasterGroups?.[step.groupIndex];
+  if (group === undefined || group.groupIndex !== step.groupIndex) {
+    throw nonCanonical('scheduled raster group cannot be resolved by group index');
+  }
+  return group;
 }
 
 function nonCanonical(reason: string): Error {

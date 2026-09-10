@@ -1,4 +1,5 @@
 import type { GraphTerminal } from '../builder/builder';
+import type { GraphHandle } from '../types';
 import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../compiler/debug-ir';
 import {
   releaseTransients,
@@ -10,10 +11,12 @@ import {
   type EndableRenderPass
 } from './executor-cleanup';
 import {
+  requiredRasterGroup,
   requiredScheduledPass,
   validateRenderGraphExecutionPlan,
   type RenderGraphExecutionPlan
 } from './execution-plan';
+import { executeRasterGroup } from './executor-raster-group';
 import { freezeCommandStats } from './executor-resource-utils';
 import { TransientResourcePool, type TransientResource } from './transient-pool';
 import { RestrictedContext } from '../context/restricted-context';
@@ -36,6 +39,7 @@ import {
   validatePreparedComputePipelines,
   validatePreparedDrawResources,
   validatePreparedRenderPipelines,
+  validateRasterGroupBindings,
   type RenderGraphExecutionInputs,
   type RenderGraphHistoryBinding,
   type SurfaceBinding
@@ -57,6 +61,15 @@ export interface RenderGraphExecutionCounters {
   readonly passResolutions: number;
 }
 
+/** Controls optional diagnostic capture for one graph execution. */
+export interface RenderGraphExecutionOptions {
+  /**
+   * Captures a complete, immutable Debug IR snapshot for this execution.
+   * Defaults to false so normal frames retain only bounded execution counters.
+   */
+  readonly captureDebug?: boolean;
+}
+
 export interface RenderGraphExecutionDebug extends RenderGraphDebugIR {
   readonly commandStats: RHICommandStats;
   readonly executionCounters: RenderGraphExecutionCounters;
@@ -67,6 +80,13 @@ export interface RenderGraphExecution {
   readonly submission: RHISubmission;
   readonly commandStats: RHICommandStats;
   readonly executionCounters: RenderGraphExecutionCounters;
+  readonly debug?: RenderGraphExecutionDebug;
+  /** Backward-compatible alias for debug when captureDebug is enabled. */
+  readonly debugIR?: RenderGraphExecutionDebug;
+}
+
+/** Execution result carrying an explicitly requested immutable Debug IR snapshot. */
+export interface RenderGraphExecutionCapture extends RenderGraphExecution {
   readonly debug: RenderGraphExecutionDebug;
   readonly debugIR: RenderGraphExecutionDebug;
 }
@@ -77,7 +97,18 @@ type ActivePass = EndableRenderPass;
 export class RenderGraphExecutor {
   execute(
     plan: RenderGraphExecutionPlan,
-    inputs: RenderGraphExecutionInputs
+    inputs: RenderGraphExecutionInputs,
+    options: Readonly<{ captureDebug: true }>
+  ): RenderGraphExecutionCapture;
+  execute(
+    plan: RenderGraphExecutionPlan,
+    inputs: RenderGraphExecutionInputs,
+    options?: RenderGraphExecutionOptions
+  ): RenderGraphExecution;
+  execute(
+    plan: RenderGraphExecutionPlan,
+    inputs: RenderGraphExecutionInputs,
+    options: RenderGraphExecutionOptions = {}
   ): RenderGraphExecution {
     // Canonical provenance is pure to validate and must precede acquire, allocation, or recording.
     validateRenderGraphExecutionPlan(plan);
@@ -85,6 +116,7 @@ export class RenderGraphExecutor {
     validatePreparedComputePipelines(inputs);
     validatePreparedBindGroupLayouts(inputs);
     validatePreparedDrawResources(inputs);
+    validateRasterGroupBindings(plan, inputs);
     const frames: SurfaceBinding[] = [];
     const transientResources: TransientResource[] = [];
     const restrictedContexts: RestrictedContext[] = [];
@@ -95,7 +127,7 @@ export class RenderGraphExecutor {
     let commandBuffer: RHICommandBuffer | undefined;
     let submission: RHISubmission | undefined;
     let finished = false;
-    let resources: ReadonlyMap<import('../types').GraphHandle, RHITexture | RHIBuffer> | undefined;
+    let resources: ReadonlyMap<GraphHandle, RHITexture | RHIBuffer> | undefined;
     let scheduledSteps = 0;
     let passResolutions = 0;
 
@@ -107,6 +139,24 @@ export class RenderGraphExecutor {
         if (step.kind === 'prelude') {
           resources = resolveResources(plan, inputs, frames, pool, transientResources);
           encoder = inputs.device.createCommandEncoder({ label: 'render-graph' });
+          continue;
+        }
+        if (step.kind === 'raster-group') {
+          if (encoder === undefined || resources === undefined) {
+            throw new Error('Render graph pass execution requires its prelude boundary.');
+          }
+          const group = requiredRasterGroup(plan, step);
+          passResolutions += executeRasterGroup(
+            group,
+            plan,
+            inputs,
+            resources,
+            encoder,
+            restrictedContexts,
+            (next) => {
+              activePass = next;
+            }
+          );
           continue;
         }
         if (step.kind === 'pass') {
@@ -130,7 +180,15 @@ export class RenderGraphExecutor {
             },
             () => {
               activePass = undefined;
-            }
+            },
+            pass.rasterDetails !== undefined
+              ? {
+                  renderPipelines: pass.rasterDetails.preparedRenderPipelines,
+                  drawResources: pass.rasterDetails.preparedDrawResources
+                }
+              : pass.computeDetails !== undefined
+                ? { computePipelines: pass.computeDetails.preparedComputePipelines }
+                : undefined
           );
           restrictedContexts.push(context);
           try {
@@ -164,21 +222,24 @@ export class RenderGraphExecutor {
       }
       const commandStats = freezeCommandStats(commandBuffer.getStats());
       const executionCounters = Object.freeze({ scheduledSteps, passResolutions });
-      const debug = Object.freeze({
-        ...createRenderGraphDebugIR(plan.snapshot, plan.compiled, {
-          schedule: plan.schedule,
-          historyStates: historyDebugStates(plan, inputs)
-        }),
-        commandStats,
-        executionCounters
-      });
+      const debug =
+        options.captureDebug === true
+          ? Object.freeze({
+              ...createRenderGraphDebugIR(plan.snapshot, plan.compiled, {
+                schedule: plan.schedule,
+                fusion: plan.fusion,
+                historyStates: historyDebugStates(plan, inputs)
+              }),
+              commandStats,
+              executionCounters
+            })
+          : undefined;
       return Object.freeze({
         commandBuffer,
         submission,
         commandStats,
         executionCounters,
-        debug,
-        debugIR: debug
+        ...(debug === undefined ? {} : { debug, debugIR: debug })
       });
     } catch (error) {
       // The caller's failure is primary; best-effort shutdown must not mask it.

@@ -4,11 +4,14 @@ import {
   RHIUnsupportedOperationError,
   WebGL2Adapter,
   type RHICommandRecord,
-  type WebGL2NativeContextLostInfo
+  type WebGL2NativeContextLostInfo,
+  type WebGL2NativeContextPort,
+  type WebGL2ShaderTranslationPort,
+  type WebGL2TranslatedShader
 } from '../../../src';
 import type { RHIRenderPassColorAttachment } from '../../../src/rhi/contracts';
 
-class CommandContext {
+class CommandContext implements WebGL2NativeContextPort {
   readonly info = { name: 'Command WebGL2' };
   readonly extensions = new Set<string>();
   readonly limits = {
@@ -47,15 +50,17 @@ class CommandContext {
   }
 }
 
-class Translator {
+class Translator implements WebGL2ShaderTranslationPort {
   readonly translatorId = 'test';
   readonly version = 1;
-  translate(input: { entryPoint: string }) {
+  translate(
+    input: Parameters<WebGL2ShaderTranslationPort['translate']>[0]
+  ): WebGL2TranslatedShader {
     return translated(`void ${input.entryPoint}() {}`);
   }
 }
 
-function translated(source: string) {
+function translated(source: string): WebGL2TranslatedShader {
   return {
     source,
     bindings: [],
@@ -70,11 +75,7 @@ function translated(source: string) {
 
 async function createFixture() {
   const native = new CommandContext();
-  const Adapter = WebGL2Adapter as unknown as new (
-    native: CommandContext,
-    translator: Translator
-  ) => WebGL2Adapter;
-  const device = await new Adapter(native, new Translator()).requestDevice({
+  const device = await new WebGL2Adapter(native, new Translator()).requestDevice({
     requiredFeatures: [],
     optionalFeatures: []
   });

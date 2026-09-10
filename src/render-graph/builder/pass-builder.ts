@@ -1,6 +1,7 @@
 import { assertGraphHandle, isGraphHandle } from './handles';
 import type { GraphResourceCreateOptions } from './resources';
 import type { GraphAccess, GraphTerminal } from './builder';
+import type { GraphRange } from '../compiler/ranges';
 import type {
   BufferDescriptor,
   BufferHandle,
@@ -44,6 +45,8 @@ export interface RenderGraphPassContextDelegate {
   readonly graphId: number;
   createTexture(descriptor: TextureDescriptor, options?: GraphResourceCreateOptions): TextureHandle;
   createBuffer(descriptor: BufferDescriptor, options?: GraphResourceCreateOptions): BufferHandle;
+  descriptorFor(handle: GraphHandle): TextureDescriptor | BufferDescriptor;
+  normalizeRange(handle: GraphHandle, range?: TextureRange | BufferRange): GraphRange;
   declareRead(
     passId: number,
     handle: GraphHandle,

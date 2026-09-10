@@ -5,7 +5,10 @@ import {
   type WebGL2BindingManifestEntry,
   type WebGL2ProgramBinding,
   type WebGL2PhysicalBinding,
-  type WebGL2NativeContextLostInfo
+  type WebGL2NativeContextLostInfo,
+  type WebGL2NativeContextPort,
+  type WebGL2ShaderTranslationPort,
+  type WebGL2TranslatedShader
 } from '../../../src';
 import { WebGL2Metrics } from '../../../src/rhi/webgl2/metrics';
 import { WebGL2StateVM } from '../../../src/rhi/webgl2/state/state';
@@ -15,7 +18,7 @@ interface NativeObject {
   readonly id: number;
 }
 
-class ReplayContext {
+class ReplayContext implements WebGL2NativeContextPort {
   readonly info = { name: 'Replay WebGL2' };
   readonly extensions = new Set<string>();
   readonly limits = {
@@ -123,9 +126,10 @@ class ReplayContext {
   }
 }
 
-class Translator {
+class Translator implements WebGL2ShaderTranslationPort {
   readonly translatorId = 'test';
   readonly version = 1;
+  readonly bindingsByEntryPoint = new Map<string, readonly WebGL2BindingManifestEntry[]>();
   constructor(
     private readonly bindings: readonly WebGL2BindingManifestEntry[] = [],
     private readonly physicalBindings: readonly WebGL2PhysicalBinding[] = bindings.map(
@@ -133,12 +137,18 @@ class Translator {
     ),
     private readonly programBindings: readonly WebGL2ProgramBinding[] = []
   ) {}
-  translate(input: { entryPoint: string }) {
+  translate(
+    input: Parameters<WebGL2ShaderTranslationPort['translate']>[0]
+  ): WebGL2TranslatedShader {
+    const bindings = this.bindingsByEntryPoint.get(input.entryPoint) ?? this.bindings;
     return {
       source: `void ${input.entryPoint}() {}`,
-      bindings: this.bindings,
+      bindings,
       targetAbiFingerprint: 'test-abi',
-      physicalBindings: this.physicalBindings,
+      physicalBindings:
+        bindings === this.bindings
+          ? this.physicalBindings
+          : bindings.map((binding) => ({ ...binding, slot: binding.binding })),
       programBindings: this.programBindings,
       requiredExtensions: [],
       sourceMap: [],
@@ -154,11 +164,7 @@ async function createFixture(
 ) {
   const native = new ReplayContext();
   native.reflection = bindings;
-  const Adapter = WebGL2Adapter as unknown as new (
-    native: ReplayContext,
-    translator: Translator
-  ) => WebGL2Adapter;
-  const device = await new Adapter(
+  const device = await new WebGL2Adapter(
     native,
     new Translator(bindings, physicalBindings, programBindings)
   ).requestDevice({
@@ -180,6 +186,76 @@ async function createFixture(
 }
 
 describe('WebGL2 ordered replay and state VM', () => {
+  test('does not apply stale bind groups when a fused pass switches pipeline layouts', async () => {
+    const native = new ReplayContext();
+    const translator = new Translator();
+    const device = await new WebGL2Adapter(native, translator).requestDevice({
+      requiredFeatures: [],
+      optionalFeatures: []
+    });
+    const shader = device.createShaderModule({ code: 'portable-ir' });
+    const firstBindings = [
+      { group: 0, binding: 0, name: 'FirstA', kind: 'uniform-buffer' },
+      { group: 0, binding: 1, name: 'FirstB', kind: 'uniform-buffer' }
+    ] as const;
+    const secondBindings = [
+      { group: 0, binding: 0, name: 'Second', kind: 'uniform-buffer' }
+    ] as const;
+    translator.bindingsByEntryPoint.set('first', firstBindings);
+    translator.bindingsByEntryPoint.set('second', secondBindings);
+
+    const firstGroupLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: 3, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: 3, buffer: { type: 'uniform' } }
+      ]
+    });
+    const secondGroupLayout = device.createBindGroupLayout({
+      entries: [{ binding: 0, visibility: 3, buffer: { type: 'uniform' } }]
+    });
+    native.reflection = firstBindings;
+    const firstPipeline = device.createRenderPipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [firstGroupLayout] }),
+      vertex: { module: shader, entryPoint: 'first' },
+      fragment: { module: shader, entryPoint: 'first', targets: [{ format: 'rgba8unorm' }] }
+    });
+    native.reflection = secondBindings;
+    const secondPipeline = device.createRenderPipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [secondGroupLayout] }),
+      vertex: { module: shader, entryPoint: 'second' },
+      fragment: { module: shader, entryPoint: 'second', targets: [{ format: 'rgba8unorm' }] }
+    });
+    const firstBuffer = device.createBuffer({ size: 512, usage: 64 });
+    const secondBuffer = device.createBuffer({ size: 256, usage: 64 });
+    const firstGroup = device.createBindGroup({
+      layout: firstGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: firstBuffer, offset: 0, size: 256 } },
+        { binding: 1, resource: { buffer: firstBuffer, offset: 256, size: 256 } }
+      ]
+    });
+    const secondGroup = device.createBindGroup({
+      layout: secondGroupLayout,
+      entries: [{ binding: 0, resource: { buffer: secondBuffer, offset: 0, size: 256 } }]
+    });
+    const color = device.createTexture({ size: [16, 16], format: 'rgba8unorm', usage: 16 });
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{ view: color.createView(), loadOp: 'clear', storeOp: 'store' }]
+    });
+    pass.setPipeline(firstPipeline);
+    pass.setBindGroup(0, firstGroup);
+    pass.draw(3);
+    pass.setPipeline(secondPipeline);
+    pass.setBindGroup(0, secondGroup);
+    pass.draw(3);
+    pass.end();
+
+    const submission = device.queue.submit([encoder.finish()]);
+    await expect(submission.done).resolves.toEqual({ status: 'completed' });
+    expect(native.calls.filter(({ name }) => name === 'draw')).toHaveLength(2);
+  });
+
   test('clears a stale filtering sampler before an integer texture fetch', () => {
     const native = new ReplayContext();
     const state = new WebGL2StateVM(native, new WebGL2Metrics());

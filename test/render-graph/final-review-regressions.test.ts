@@ -297,10 +297,14 @@ describe('RenderGraph final-review regressions', () => {
         );
       }
     });
-    const execution = new RenderGraphExecutor().execute(compile(secondGraph), {
-      device,
-      histories: new Map([[secondHistory, { ...second, registry, identity: historyIdentity }]])
-    });
+    const execution = new RenderGraphExecutor().execute(
+      compile(secondGraph),
+      {
+        device,
+        histories: new Map([[secondHistory, { ...second, registry, identity: historyIdentity }]])
+      },
+      { captureDebug: true }
+    );
 
     expect(execution.commandBuffer.getCommandStream()).toContainEqual(
       expect.objectContaining({
@@ -309,7 +313,7 @@ describe('RenderGraph final-review regressions', () => {
         destination: expect.objectContaining({ id: second.writable.handle.id })
       })
     );
-    expect(execution.debug.resources[secondHistory.resourceId]?.history).toMatchObject({
+    expect(execution.debug?.resources[secondHistory.resourceId]?.history).toMatchObject({
       readableSlot: 0,
       writableSlot: 1,
       versionSlots: [
