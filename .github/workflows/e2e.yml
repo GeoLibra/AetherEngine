@@ -124,7 +124,7 @@ jobs:
           UPDATE_SNAPSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots || false }}
         run: |
           snapshot_args=""
-          if [ "$UPDATE_SNAPSHOTS" = "true" ]; then snapshot_args="--update-snapshots"; fi
+          if [ "$UPDATE_SNAPSHOTS" = "true" ]; then snapshot_args="--update-snapshots=all"; fi
           xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" pnpm e2e --project="$E2E_PROJECT" $snapshot_args
       - name: Upload Playwright artifacts
         if: always()
