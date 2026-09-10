@@ -15,6 +15,7 @@ import type {
   GPUComputePassDescriptor,
   RHIBindGroup,
   RHIBindGroupLayout,
+  RHIComputePassEncoder,
   RHIComputePipeline,
   RHIDevice,
   RHIPipelineLayout,
@@ -332,6 +333,17 @@ export class RestrictedContext implements RestrictedPassContext {
       bufferCapabilities: this.bufferCapabilities,
       onEnd: () => {}
     });
+  }
+
+  /** Creates an unwrapping tracked proxy for an externally managed physical compute pass. */
+  createComputePassProxy(pass: RHIComputePassEncoder): RestrictedComputePassEncoder {
+    return createTrackedPassProxy(pass, {
+      bindGroups: this.bindGroups,
+      renderPipelines: this.renderPipelines,
+      computePipelines: this.computePipelines,
+      bufferCapabilities: this.bufferCapabilities,
+      onEnd: () => {}
+    }) as unknown as RestrictedComputePassEncoder;
   }
 
   renderPipelineRequirements(pipeline: RestrictedRenderPipeline): {

@@ -1,10 +1,10 @@
 import type {
   BufferHandle,
-  PassBuilder,
+  RasterPassBuilder,
+  RasterPassContext,
   RenderGraphBuilder,
   RenderSystemConditionContext,
   RenderSystemToken,
-  RestrictedPassContext,
   TextureDescriptor,
   TextureHandle
 } from '../../render-graph';
@@ -45,12 +45,14 @@ export function createPostColorContribution(
     },
     descriptor(after: RenderSystemToken) {
       return {
+        kind: 'raster' as const,
         id: 'post-color',
         scope: 'per-view' as const,
         after: [after],
         runIf: ({ view }: RenderSystemConditionContext) => view?.id === prepared.view.id,
-        setup(pass: PassBuilder) {
+        setup(pass: RasterPassBuilder) {
           if (source === undefined) throw new Error('Opaque HDR output was not published.');
+          pass.useRenderPipeline(postColor.pipelineToken);
           const sceneColor = pass.readTexture(source, 'sampled');
           const postUniform = pass.readBuffer(uniform, 'uniform');
           const surfaceTarget = pass.createTexture(
@@ -68,12 +70,16 @@ export function createPostColorContribution(
               }
             }
           );
-          const output = pass.writeTexture(surfaceTarget, 'color-attachment');
-          pass.presentTexture(output, { kind: 'surface-frame', id: prepared.view.surface });
+          const output = pass.colorAttachment(0, surfaceTarget, {
+            load: 'clear',
+            store: 'store',
+            clearValue: { r: 0, g: 0, b: 0, a: 1 }
+          });
+          pass.present(output, { kind: 'surface-frame', id: prepared.view.surface });
           return Object.freeze({ sceneColor, uniform: postUniform, output });
         },
         run(
-          context: RestrictedPassContext,
+          context: RasterPassContext,
           resources: {
             sceneColor: TextureHandle;
             uniform: BufferHandle;
@@ -97,24 +103,12 @@ export function createPostColorContribution(
             entries: [{ binding: 0, resource: context.buffer(resources.uniform, 'uniform') }]
           });
           const pipeline = context.renderPipeline(postColor.pipelineToken);
-          const raster = context.beginRaster({
-            label: 'post-color',
-            colorAttachments: [
-              {
-                texture: resources.output,
-                loadOp: 'clear',
-                storeOp: 'store',
-                clearValue: { r: 0, g: 0, b: 0, a: 1 }
-              }
-            ]
-          });
-          raster.setViewport(0, 0, configuration.width, configuration.height, 0, 1);
-          raster.setScissorRect(0, 0, configuration.width, configuration.height);
-          raster.setPipeline(pipeline);
-          raster.setBindGroup(0, textureGroup);
-          raster.setBindGroup(1, uniformGroup);
-          raster.draw(3);
-          raster.end();
+          context.raster.setViewport(0, 0, configuration.width, configuration.height, 0, 1);
+          context.raster.setScissorRect(0, 0, configuration.width, configuration.height);
+          context.raster.setPipeline(pipeline);
+          context.raster.setBindGroup(0, textureGroup);
+          context.raster.setBindGroup(1, uniformGroup);
+          context.raster.draw(3);
         }
       };
     }

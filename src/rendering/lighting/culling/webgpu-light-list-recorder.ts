@@ -5,7 +5,7 @@ import {
   type PreparedBindGroupLayoutToken,
   type PreparedComputePipelineToken
 } from '../../../render-graph';
-import type { RestrictedPassContext } from '../../../render-graph';
+import type { ComputePassContext } from '../../../render-graph';
 import { LIGHT_LIST_SHADER_MODULE } from '../../../shader';
 import type {
   WebGpuLightListBuildInput,
@@ -58,7 +58,7 @@ export function prepareWebGpuLightListRecorder(device: RHIDevice): PreparedWebGp
   const recorder: WebGpuLightListBuildRecorder = Object.freeze({
     pipeline: pipelineToken,
     record(
-      context: RestrictedPassContext,
+      context: ComputePassContext,
       input: WebGpuLightListBuildInput,
       output: WebGpuLightListBuildOutput
     ) {
@@ -76,11 +76,9 @@ export function prepareWebGpuLightListRecorder(device: RHIDevice): PreparedWebGp
         ]
       });
       const pipeline = context.computePipeline(pipelineToken);
-      const compute = context.beginCompute({ label: 'aether-light-list' });
-      compute.setPipeline(pipeline);
-      compute.setBindGroup(0, group);
-      compute.dispatchWorkgroups(1);
-      compute.end();
+      context.compute.setPipeline(pipeline);
+      context.compute.setBindGroup(0, group);
+      context.compute.dispatchWorkgroups(1);
     }
   });
   return Object.freeze({

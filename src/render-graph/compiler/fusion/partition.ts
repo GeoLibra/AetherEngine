@@ -150,19 +150,17 @@ export function partitionRasterGroups(
     if (item === undefined) continue;
     const currentPass = item.pass;
 
-    // Check 1: Command class (raster only)
+    // Check 1: Command class (raster only).
+    // Every retained pass is either raster or a non-raster (compute/copy) boundary; the legacy
+    // opaque command class was removed, so a non-raster pass always splits the active group.
     if (currentPass.passKind !== 'raster' || currentPass.rasterDetails === undefined) {
       if (activeGroup !== undefined) {
         const lastMember = activeGroup.members[activeGroup.members.length - 1]!;
-        const splitReason =
-          currentPass.passKind === 'compute' || currentPass.passKind === 'copy'
-            ? SplitReasonCode.NonRasterBoundary
-            : SplitReasonCode.LegacyOpaque;
         splitRecords.push(
           Object.freeze({
             predecessorPassId: lastMember.token.passId,
             candidatePassId: currentPass.token.passId,
-            reason: splitReason
+            reason: SplitReasonCode.NonRasterBoundary
           })
         );
         flushActiveGroup();

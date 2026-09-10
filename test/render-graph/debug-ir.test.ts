@@ -18,7 +18,7 @@ function createFixture(aliasing: boolean) {
   const graph = new RenderGraphBuilder();
   const first = graph.createBuffer(BUFFER);
   const second = graph.createBuffer(BUFFER);
-  graph.addPass({
+  graph.addCopyPass({
     id: 'first',
     setup(pass) {
       pass.sideEffect('observable first');
@@ -26,11 +26,11 @@ function createFixture(aliasing: boolean) {
     },
     run() {}
   });
-  graph.addPass({
+  graph.addCopyPass({
     id: 'second',
     setup(pass) {
       const output = pass.writeBuffer(second, 'copy-dst');
-      pass.exportBuffer(output, 'copy-src');
+      pass.exportResource(output, 'copy-src');
       return output;
     },
     run() {}
@@ -129,7 +129,7 @@ describe('render graph Debug IR', () => {
   test('snapshots caller-provided history debug values before deeply freezing the IR', () => {
     const graph = new RenderGraphBuilder();
     const buffer = graph.createBuffer(BUFFER);
-    graph.addPass({
+    graph.addCopyPass({
       id: 'history-debug',
       setup(pass) {
         return pass.writeBuffer(buffer, 'copy-dst');
@@ -170,7 +170,7 @@ describe('render graph Debug IR', () => {
   test('omits undeclared Debug IR option fields and rejects malformed declared values before freezing', () => {
     const graph = new RenderGraphBuilder();
     const buffer = graph.createBuffer(BUFFER);
-    graph.addPass({
+    graph.addCopyPass({
       id: 'untrusted-debug-options',
       setup(pass) {
         return pass.writeBuffer(buffer, 'copy-dst');
@@ -249,11 +249,11 @@ describe('render graph Debug IR', () => {
         }
       }
     );
-    graph.addPass({
+    graph.addRasterPass({
       id: 'present',
       setup(pass) {
-        const color = pass.writeTexture(output, 'color-attachment');
-        pass.presentTexture(color, { kind: 'surface-frame', id: 'main' });
+        const color = pass.colorAttachment(0, output, { load: 'clear', store: 'store' });
+        pass.present(color, { kind: 'surface-frame', id: 'main' });
         return color;
       },
       run() {}

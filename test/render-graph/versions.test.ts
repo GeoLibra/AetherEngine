@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { RenderGraphBuilder, type PassBuilder } from '../../src/render-graph/builder';
+import { RenderGraphBuilder } from '../../src/render-graph/builder';
+import type { CopyPassBuilder } from '../../src/render-graph/types';
 import type { TextureDescriptor, TextureRange } from '../../src/render-graph/types';
 
 const textureDescriptor: TextureDescriptor = {
@@ -38,7 +39,7 @@ describe('render graph resource versions', () => {
     const texture = graph.createTexture(textureDescriptor);
     let written = texture;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-whole',
       setup(pass) {
         written = pass.writeTexture(texture, 'color-attachment');
@@ -63,7 +64,7 @@ describe('render graph resource versions', () => {
     let first = texture;
     let second = texture;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-mip-zero',
       setup(pass) {
         first = pass.writeTexture(texture, 'color-attachment', mipRange(0));
@@ -71,7 +72,7 @@ describe('render graph resource versions', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-mip-one',
       setup(pass) {
         second = pass.writeTexture(first, 'color-attachment', mipRange(1));
@@ -80,7 +81,7 @@ describe('render graph resource versions', () => {
       run() {}
     });
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-inherited-mips',
       setup(pass) {
         pass.readTexture(second, 'sampled', mipRange(0, 2));
@@ -107,7 +108,7 @@ describe('render graph resource versions', () => {
     const graph = new RenderGraphBuilder();
     const texture = graph.createTexture(textureDescriptor);
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'first-child',
       setup(pass) {
         return { first: pass.writeTexture(texture, 'color-attachment', mipRange(0)) };
@@ -116,7 +117,7 @@ describe('render graph resource versions', () => {
     });
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'forbidden-sibling',
         setup(pass) {
           return { second: pass.writeTexture(texture, 'color-attachment', mipRange(1)) };
@@ -131,7 +132,7 @@ describe('render graph resource versions', () => {
     const texture = graph.createTexture(textureDescriptor);
     let partial = texture;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'partial-write',
       setup(pass) {
         partial = pass.writeTexture(texture, 'color-attachment', mipRange(0));
@@ -141,7 +142,7 @@ describe('render graph resource versions', () => {
     });
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'uninitialized-read',
         setup(pass) {
           return { texture: pass.readTexture(partial, 'sampled', mipRange(0, 2)) };
@@ -169,7 +170,7 @@ describe('render graph resource versions', () => {
       historyValid: false
     });
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-external-state',
       setup(pass) {
         pass.readTexture(imported, 'sampled');
@@ -180,7 +181,7 @@ describe('render graph resource versions', () => {
     });
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'read-invalid-history',
         setup(pass) {
           return { invalidHistory: pass.readTexture(invalidHistory, 'sampled') };
@@ -204,7 +205,7 @@ describe('render graph resource versions', () => {
     );
     let depthWritten = depthStencil;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-depth',
       setup(pass) {
         depthWritten = pass.writeTexture(depthStencil, 'copy-dst', {
@@ -217,7 +218,7 @@ describe('render graph resource versions', () => {
     });
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'read-inherited-stencil',
         setup(pass) {
           return {
@@ -248,10 +249,10 @@ describe('render graph resource versions', () => {
 
   test('rejects a leaked rolled-back handle after its resource id is reused', () => {
     const graph = new RenderGraphBuilder();
-    let leaked: ReturnType<PassBuilder['createTexture']> | undefined;
+    let leaked: ReturnType<CopyPassBuilder['createTexture']> | undefined;
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'leak-then-fail',
         setup(pass) {
           leaked = pass.createTexture(textureDescriptor, {
@@ -278,7 +279,7 @@ describe('render graph resource versions', () => {
     expect(leaked).not.toBe(replacement);
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'read-leaked-handle',
         setup(pass) {
           return { leaked: pass.readTexture(leaked as typeof replacement, 'sampled') };

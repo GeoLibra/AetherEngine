@@ -128,7 +128,7 @@ function rangeProbe(): Readonly<Record<string, number>> {
   let value = graph.createBuffer(BUFFER, {
     origin: imported('range-buffer', 'storage-read')
   });
-  graph.addPass({
+  graph.addCopyPass({
     id: 'range/read',
     setup(pass) {
       pass.readBuffer(value, 'storage-read', { offset: 0, size: 64 });
@@ -137,7 +137,7 @@ function rangeProbe(): Readonly<Record<string, number>> {
     },
     run() {}
   });
-  graph.addPass({
+  graph.addCopyPass({
     id: 'range/write',
     setup(pass) {
       value = pass.writeBuffer(value, 'storage-write', { offset: 0, size: 64 });
@@ -160,7 +160,7 @@ function rangeProbe(): Readonly<Record<string, number>> {
 function textureProbe(): Readonly<Record<string, number>> {
   const graph = new RenderGraphBuilder();
   let value = graph.createTexture(TEXTURE, { origin: imported('range-texture', 'sampled') });
-  graph.addPass({
+  graph.addCopyPass({
     id: 'texture/mip-write',
     setup(pass) {
       value = pass.writeTexture(value, 'color-attachment', {
@@ -175,7 +175,7 @@ function textureProbe(): Readonly<Record<string, number>> {
     },
     run() {}
   });
-  graph.addPass({
+  graph.addCopyPass({
     id: 'texture/mip-read',
     setup(pass) {
       pass.readTexture(value, 'sampled', {
@@ -201,10 +201,10 @@ function textureProbe(): Readonly<Record<string, number>> {
 
 function topologyProbe(): { linearEdges: number; fanEdges: number } {
   const linear = new RenderGraphBuilder();
-  let predecessor: ReturnType<RenderGraphBuilder['addPass']> | undefined;
+  let predecessor: ReturnType<RenderGraphBuilder['addCopyPass']> | undefined;
   for (let index = 0; index < 16; index += 1) {
     const prior = predecessor;
-    predecessor = linear.addPass({
+    predecessor = linear.addCopyPass({
       id: `linear/${index}`,
       setup(pass) {
         if (prior !== undefined) pass.after(prior);
@@ -218,7 +218,7 @@ function topologyProbe(): { linearEdges: number; fanEdges: number } {
   assert(linearCompiled.counters.semanticEdges === 15, 'linear chain must contain P-1 edges');
 
   const fan = new RenderGraphBuilder();
-  const root = fan.addPass({
+  const root = fan.addCopyPass({
     id: 'fan/root',
     setup(pass) {
       pass.sideEffect('fan root');
@@ -227,7 +227,7 @@ function topologyProbe(): { linearEdges: number; fanEdges: number } {
     run() {}
   });
   const leaves = Array.from({ length: 8 }, (_, index) =>
-    fan.addPass({
+    fan.addCopyPass({
       id: `fan/leaf-${index}`,
       setup(pass) {
         pass.after(root);
@@ -237,7 +237,7 @@ function topologyProbe(): { linearEdges: number; fanEdges: number } {
       run() {}
     })
   );
-  fan.addPass({
+  fan.addCopyPass({
     id: 'fan/join',
     setup(pass) {
       for (const leaf of leaves) pass.after(leaf);
@@ -254,7 +254,7 @@ function topologyProbe(): { linearEdges: number; fanEdges: number } {
 function cullProbe(): Readonly<Record<string, number>> {
   const graph = new RenderGraphBuilder();
   const buffer = graph.createBuffer(BUFFER);
-  graph.addPass({
+  graph.addCopyPass({
     id: 'culled',
     setup(pass) {
       pass.writeBuffer(buffer, 'storage-write');
@@ -262,7 +262,7 @@ function cullProbe(): Readonly<Record<string, number>> {
     },
     run() {}
   });
-  graph.addPass({
+  graph.addCopyPass({
     id: 'root',
     setup(pass) {
       pass.sideEffect('root');
@@ -279,7 +279,7 @@ function aliasProbe(): Readonly<Record<string, number>> {
   const graph = new RenderGraphBuilder();
   for (let index = 0; index < 2; index += 1) {
     const resource = graph.createBuffer(BUFFER);
-    graph.addPass({
+    graph.addCopyPass({
       id: `alias/${index}`,
       setup(pass) {
         pass.writeBuffer(resource, 'storage-write');
@@ -307,7 +307,7 @@ function largeScaleProbe(): RenderGraphCoverageEvidence['largeScale'] {
     graph.createBuffer(BUFFER, { origin: imported(`large/${index}`, 'storage-read') })
   );
   for (let index = 0; index < 1024; index += 1) {
-    graph.addPass({
+    graph.addCopyPass({
       id: `large/${index}`,
       setup(pass) {
         pass.readBuffer(resources[index]!, 'storage-read');

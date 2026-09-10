@@ -6,11 +6,9 @@ import {
 import type { GraphRange } from '../compiler/ranges';
 import { assertGraphHandle } from './handles';
 import {
-  PassBuilderState,
   snapshotSetupValue,
   validatePassDescriptor,
   isPromiseLike,
-  type PassBuilder,
   type RenderGraphPassContextDelegate,
   type SurfaceFrameToken
 } from './pass-builder';
@@ -41,7 +39,7 @@ import {
   type RasterPassDeclarationDetails
 } from './typed-pass-builder';
 
-export type { PassBuilder, SurfaceFrameToken } from './pass-builder';
+export type { SurfaceFrameToken } from './pass-builder';
 export type {
   RasterPassDeclarationDetails,
   ComputePassDeclarationDetails
@@ -84,12 +82,6 @@ export interface SemanticEdge {
   readonly kind: 'after';
   readonly fromPassId: number;
   readonly toPassId: number;
-}
-
-export interface GraphPassDescriptor<TResources, TContext = unknown> {
-  readonly id: string;
-  setup(pass: PassBuilder): TResources;
-  run(context: TContext, resources: TResources): void;
 }
 
 export interface GraphPassDeclaration {
@@ -159,18 +151,6 @@ export class RenderGraphBuilder implements RenderGraphPassContextDelegate {
     return this.resources.normalizeRange(handle, range);
   }
 
-  addPass<TResources, TContext = unknown>(
-    descriptor: GraphPassDescriptor<TResources, TContext>
-  ): PassToken {
-    const token = this.reservePass(descriptor.id);
-    try {
-      return this.definePass(token, descriptor);
-    } catch (error) {
-      this.cancelReservation(token, descriptor.id);
-      throw error;
-    }
-  }
-
   addRasterPass<TResources>(descriptor: RasterPassDescriptor<TResources>): PassToken {
     const token = this.reservePass(descriptor.id);
     try {
@@ -217,18 +197,6 @@ export class RenderGraphBuilder implements RenderGraphPassContextDelegate {
   }
 
   /** Defines one previously reserved node; compilation remains the only topology authority. */
-  definePass<TResources, TContext = unknown>(
-    token: PassToken,
-    descriptor: GraphPassDescriptor<TResources, TContext>
-  ): PassToken {
-    return this.defineGenericPass<PassBuilderState, TResources>(
-      token,
-      descriptor,
-      (passId) => new PassBuilderState(this, passId),
-      'legacy-opaque'
-    );
-  }
-
   defineRasterPass<TResources>(
     token: PassToken,
     descriptor: RasterPassDescriptor<TResources>

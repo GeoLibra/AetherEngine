@@ -12,9 +12,10 @@ import {
 } from '../../src/render-graph/compiler';
 import type {
   BufferDescriptor,
+  ComputePassContext,
+  CopyPassContext,
   GraphHandle,
-  TextureDescriptor,
-  RestrictedPassContext
+  TextureDescriptor
 } from '../../src/render-graph/types';
 import type { RHIBuffer, RHITexture } from '../../src/rhi/contracts';
 import { NullDevice } from '../../src/rhi/null/device';
@@ -49,7 +50,7 @@ describe('RenderGraph final-review regressions', () => {
         acquire: { kind: 'external-acquire', id: 'multi-range-buffer' }
       }
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-disjoint-buffer-ranges',
       setup(pass) {
         pass.readBuffer(logical, 'uniform', { offset: 0, size: 16 });
@@ -57,7 +58,7 @@ describe('RenderGraph final-review regressions', () => {
         pass.sideEffect('resolve the second declaration');
         return { logical };
       },
-      run(context: RestrictedPassContext, resources) {
+      run(context: CopyPassContext, resources) {
         expect(
           context.buffer(resources.logical, 'uniform', { offset: 32, size: 16 })
         ).toMatchObject({ offset: 32, size: 16 });
@@ -80,7 +81,7 @@ describe('RenderGraph final-review regressions', () => {
         acquire: { kind: 'external-acquire', id: 'multi-range-depth' }
       }
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-disjoint-depth-ranges',
       setup(pass) {
         pass.readTexture(logical, 'sampled', {
@@ -100,7 +101,7 @@ describe('RenderGraph final-review regressions', () => {
         pass.sideEffect('resolve the second depth declaration');
         return { logical };
       },
-      run(context: RestrictedPassContext, resources) {
+      run(context: CopyPassContext, resources) {
         expect(
           context.texture(resources.logical, 'sampled', {
             baseMipLevel: 1,
@@ -161,24 +162,17 @@ describe('RenderGraph final-review regressions', () => {
       }
     );
     const destination = graph.createBuffer({ size: 64, usage: ['copy-dst'] });
-    graph.addPass({
-      id: 'compute-and-copy',
+    graph.addComputePass({
+      id: 'compute-slices',
       setup(pass) {
         const input = pass.readBuffer(source, 'storage-read', { offset: 16, size: 16 });
-        const copySource = pass.readBuffer(source, 'copy-src', { offset: 16, size: 16 });
         const sampledView = pass.readTexture(sampled, 'sampled');
-        const output = pass.writeBuffer(destination, 'copy-dst', { offset: 32, size: 16 });
-        pass.sideEffect('bind and copy declared slices');
-        return { input, copySource, sampledView, output };
+        pass.sideEffect('bind declared slices');
+        return { input, sampledView };
       },
-      run(context: RestrictedPassContext, resources) {
+      run(context: ComputePassContext, resources) {
         const input = context.buffer(resources.input, 'storage-read', { offset: 16, size: 16 });
-        const copySource = context.buffer(resources.copySource, 'copy-src', {
-          offset: 16,
-          size: 16
-        });
         const sampledView = context.texture(resources.sampledView, 'sampled');
-        const output = context.buffer(resources.output, 'copy-dst', { offset: 32, size: 16 });
         const layout = context.device.createBindGroupLayout({
           entries: [
             { binding: 0, visibility: 4, buffer: { type: 'read-only-storage' } },
@@ -195,12 +189,26 @@ describe('RenderGraph final-review regressions', () => {
         const pipeline = context.device.createComputePipeline({
           layout: context.device.createPipelineLayout({ bindGroupLayouts: [layout] })
         });
-        const compute = context.beginCompute();
-        compute.setPipeline(pipeline);
-        compute.setBindGroup(0, bindGroup);
-        compute.dispatchWorkgroups(1);
-        compute.end();
-        context.copyBufferToBuffer(copySource, output);
+        context.compute.setPipeline(pipeline);
+        context.compute.setBindGroup(0, bindGroup);
+        context.compute.dispatchWorkgroups(1);
+      }
+    });
+    graph.addCopyPass({
+      id: 'copy-slices',
+      setup(pass) {
+        const copySource = pass.readBuffer(source, 'copy-src', { offset: 16, size: 16 });
+        const output = pass.writeBuffer(destination, 'copy-dst', { offset: 32, size: 16 });
+        pass.sideEffect('copy declared slices');
+        return { copySource, output };
+      },
+      run(context: CopyPassContext, resources) {
+        const copySource = context.buffer(resources.copySource, 'copy-src', {
+          offset: 16,
+          size: 16
+        });
+        const output = context.buffer(resources.output, 'copy-dst', { offset: 32, size: 16 });
+        context.copy.copyBufferToBuffer(copySource, output);
       }
     });
 
@@ -256,7 +264,7 @@ describe('RenderGraph final-review regressions', () => {
         historyValid: false
       }
     );
-    firstGraph.addPass({
+    firstGraph.addCopyPass({
       id: 'first-history-output',
       setup(pass) {
         const output = pass.writeBuffer(firstHistory, 'copy-dst');
@@ -282,7 +290,7 @@ describe('RenderGraph final-review regressions', () => {
         historyValid: true
       }
     );
-    secondGraph.addPass({
+    secondGraph.addCopyPass({
       id: 'temporal-history-copy',
       setup(pass) {
         const previous = pass.readBuffer(secondHistory, 'copy-src');
@@ -290,8 +298,8 @@ describe('RenderGraph final-review regressions', () => {
         pass.sideEffect('publish next history output');
         return { previous, output };
       },
-      run(context: RestrictedPassContext, resources) {
-        context.copyBufferToBuffer(
+      run(context: CopyPassContext, resources) {
+        context.copy.copyBufferToBuffer(
           context.buffer(resources.previous, 'copy-src'),
           context.buffer(resources.output, 'copy-dst')
         );
