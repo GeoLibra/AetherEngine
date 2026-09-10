@@ -193,8 +193,8 @@ function createLightListGroup(
 }
 
 function validateInput(input: OpaqueRenderSystemInput): void {
-  if (input.phase.phase !== 'opaque')
-    throw new Error('Opaque RenderSystem requires an opaque phase.');
+  if (input.phase.phase !== 'opaque' && input.phase.phase !== 'alpha-test')
+    throw new Error('Opaque RenderSystem requires an opaque or alpha-test phase.');
   if (!input.color.usage.includes('color-attachment'))
     throw new Error('Opaque RenderSystem color output requires color-attachment usage.');
   if (!input.depth.usage.includes('depth-stencil-attachment'))

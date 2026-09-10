@@ -457,7 +457,10 @@ export class BaselineStandardLitPreparation {
     const releaseFrameResources = (): void => disposeResources([...bindGroups, ...buffers]);
     return Object.freeze({
       entity,
-      phase: 'opaque',
+      phase:
+        this.options.material.material.asset.renderState.surface === 'alpha-mask'
+          ? 'alpha-test'
+          : 'opaque',
       pipelineKey: this.pipelineKey,
       materialKey: this.options.material.handle.assetId,
       meshKey: this.options.mesh.handle.assetId,

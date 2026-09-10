@@ -67,7 +67,11 @@ export class BaselineRenderer {
       );
     }
 
-    const phase = buildPreparedDrawPhase(prepared.view.id, 'opaque', prepared.packets);
+    const phaseKind = prepared.packets[0]?.phase ?? 'opaque';
+    if (phaseKind !== 'opaque' && phaseKind !== 'alpha-test') {
+      throw new Error('Baseline StandardLit packets require an opaque or alpha-test phase.');
+    }
+    const phase = buildPreparedDrawPhase(prepared.view.id, phaseKind, prepared.packets);
     const graph = new RenderGraphBuilder();
     const post =
       prepared.postColor === undefined
