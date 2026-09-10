@@ -22,13 +22,14 @@ test('renders the public React example and survives surface suspension', async (
       diagnostics: { status: 'rendered', indexedDrawCalls: 10, indexCount: 360 }
     });
   const initial = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
+  const screenshotDiffRatio = backend === 'webgpu' ? 0.05 : 0.01;
   expectBackendClean(initial, backend);
   await page.evaluate(() => window.__AETHER_EXAMPLE__!.setRotation(Math.PI / 6));
   const initialFrame = (initial.diagnostics as { frame: number }).frame;
   await expect.poll(() => cleanFrame(page, backend)).toBeGreaterThan(initialFrame);
   await expect(page.locator('canvas')).toHaveScreenshot('react-vite-standard-lit-box.png', {
     animations: 'disabled',
-    maxDiffPixelRatio: 0.05
+    maxDiffPixelRatio: screenshotDiffRatio
   });
   const firstPose = await page.locator('canvas').screenshot();
   const firstPoseFrame = await page.evaluate(
@@ -60,7 +61,7 @@ test('renders the public React example and survives surface suspension', async (
   expectBackendClean(recovered, backend);
   await expect(page.locator('canvas')).toHaveScreenshot('react-vite-standard-lit-recovered.png', {
     animations: 'disabled',
-    maxDiffPixelRatio: 0.05
+    maxDiffPixelRatio: screenshotDiffRatio
   });
   await info.attach('react-vite-state', {
     body: JSON.stringify({ initial, recovered }, null, 2),
