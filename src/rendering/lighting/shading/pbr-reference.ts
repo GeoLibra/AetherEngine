@@ -3,7 +3,6 @@ import type { Vec3 } from '../../../math/types';
 
 const PI = Math.PI;
 const MIN_PERCEPTUAL_ROUGHNESS = 0.045;
-const MIN_BRDF_DENOMINATOR = 1e-6;
 
 /** Inputs for the deterministic CPU oracle of the direct-light metallic-roughness BRDF. */
 export interface CookTorranceDirectInput {
@@ -43,13 +42,14 @@ export function evaluateCookTorranceDirect(input: CookTorranceDirectInput): Vec3
   const viewDotHalf = Math.max(Vec3Math.dot(view, half), 0);
 
   const alpha = roughness * roughness;
-  const alphaSquared = alpha * alpha;
-  const distributionDenominator = normalDotHalf * normalDotHalf * (alphaSquared - 1) + 1;
-  const distribution =
-    alphaSquared /
-    Math.max(PI * distributionDenominator * distributionDenominator, MIN_BRDF_DENOMINATOR);
-  const geometryK = ((roughness + 1) * (roughness + 1)) / 8;
-  const geometry = smithSchlick(normalDotView, geometryK) * smithSchlick(normalDotLight, geometryK);
+  const normalCrossHalf = Vec3Math.cross(normal, half);
+  const oneMinusNormalDotHalfSquared = Vec3Math.lengthSq(normalCrossHalf);
+  const alphaNormalDotHalf = alpha * normalDotHalf;
+  const distributionDenominator =
+    oneMinusNormalDotHalfSquared + alphaNormalDotHalf * alphaNormalDotHalf;
+  const alphaOverDenominator = alpha / distributionDenominator;
+  const distribution = (alphaOverDenominator * alphaOverDenominator) / PI;
+  const geometry = smithGgx(normalDotView, alpha) * smithGgx(normalDotLight, alpha);
   const f0 = Vec3Math.lerp(DIELECTRIC_F0, baseColor, metallic);
   const fresnelFactor = fifthPower(1 - viewDotHalf);
   const fresnel = Vec3Math.lerp(f0, WHITE, fresnelFactor);
@@ -57,7 +57,7 @@ export function evaluateCookTorranceDirect(input: CookTorranceDirectInput): Vec3
   const diffuse = Vec3Math.scale(Vec3Math.multiply(diffuseWeight, baseColor), 1 / PI);
   const specular = Vec3Math.scale(
     fresnel,
-    (distribution * geometry) / Math.max(4 * normalDotView * normalDotLight, MIN_BRDF_DENOMINATOR)
+    (distribution * geometry) / (4 * normalDotView * normalDotLight)
   );
   return Vec3Math.scale(
     Vec3Math.multiply(Vec3Math.add(diffuse, specular), radiance),
@@ -69,8 +69,12 @@ const BLACK = Vec3Math.zero();
 const WHITE = Vec3Math.one();
 const DIELECTRIC_F0 = Object.freeze([0.04, 0.04, 0.04] as const);
 
-function smithSchlick(normalDotDirection: number, k: number): number {
-  return normalDotDirection / Math.max(normalDotDirection * (1 - k) + k, MIN_BRDF_DENOMINATOR);
+function smithGgx(normalDotDirection: number, alpha: number): number {
+  const alphaSquared = alpha * alpha;
+  const root = Math.sqrt(
+    alphaSquared + (1 - alphaSquared) * normalDotDirection * normalDotDirection
+  );
+  return (2 * normalDotDirection) / (normalDotDirection + root);
 }
 
 function fifthPower(value: number): number {
