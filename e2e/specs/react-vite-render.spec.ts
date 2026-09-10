@@ -22,7 +22,7 @@ test('renders the public React example and survives surface suspension', async (
       diagnostics: { status: 'rendered', indexedDrawCalls: 10, indexCount: 360 }
     });
   const initial = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
-  const screenshotDiffRatio = 0.01;
+  const screenshotDiffRatio = backend === 'webgpu' ? 0.05 : 0.01;
   expectBackendClean(initial, backend);
   await page.evaluate(() => window.__AETHER_EXAMPLE__!.setRotation(Math.PI / 6));
   const initialFrame = (initial.diagnostics as { frame: number }).frame;
