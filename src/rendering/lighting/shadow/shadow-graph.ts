@@ -16,6 +16,11 @@ export interface ShadowGraphDeclaration {
   readonly layerByRequestKey: ReadonlyMap<string, number>;
 }
 
+/** Selects the depth format shared by the shadow texture, pipeline, and receiver view. */
+export function shadowDepthFormat(backend: 'webgpu' | 'webgl2'): 'depth32float' | 'depth24plus' {
+  return backend === 'webgl2' ? 'depth24plus' : 'depth32float';
+}
+
 export interface ShadowDepthPassRecord {
   readonly request: ShadowRequest;
   readonly layer: number;

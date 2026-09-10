@@ -399,7 +399,7 @@ fn directionalShadowVisibility(
   var visibility = 0.0;
   for (var y = -1; y <= 1; y += 1) {
     for (var x = -1; x <= 1; x += 1) {
-      visibility += textureSampleCompare(
+      visibility += textureSampleCompareLevel(
         directionalShadowMap,
         directionalShadowSampler,
         uv + vec2<f32>(f32(x), f32(y)) * texel,

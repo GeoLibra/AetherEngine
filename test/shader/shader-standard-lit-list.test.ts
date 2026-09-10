@@ -53,16 +53,16 @@ describe('standard-lit LightList built-in shader', () => {
         .filter((binding) => binding.kind === 'sampler' && binding.group === 3)
         .map(({ group, binding, slot }) => ({ group, binding, slot }))
     ).toEqual([
-      { group: 3, binding: 9, slot: 6 },
-      { group: 3, binding: 9, slot: 7 },
-      { group: 3, binding: 9, slot: 8 },
-      { group: 3, binding: 12, slot: 11 }
+      { group: 3, binding: 9, slot: 10 },
+      { group: 3, binding: 9, slot: 11 },
+      { group: 3, binding: 9, slot: 12 },
+      { group: 3, binding: 12, slot: 13 }
     ]);
     expect(
       translated.programBindings
         .filter((binding) => binding.kind === 'combined-sampler' && binding.slot >= 6)
         .map(({ slot }) => slot)
-    ).toEqual([11, 6, 7, 8]);
+    ).toEqual([13, 6, 7, 8, 9, 10, 11, 12]);
   });
 
   test('publishes the standard PBR v1 profile for both backend artifacts', () => {

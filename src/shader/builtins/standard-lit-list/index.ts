@@ -24,4 +24,7 @@ export {
   STANDARD_LIT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT
 } from './webgl2/standard-lit-list.generated';
 
-export { mapStandardLitListPhysicalBindings } from './webgl2-bindings';
+export {
+  mapStandardLitListPhysicalBindings,
+  mapStandardLitListProgramBindings
+} from './webgl2-bindings';

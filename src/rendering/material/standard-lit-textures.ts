@@ -25,7 +25,7 @@ const BUILTIN_TEXTURES = Object.freeze({
   'aether.texture.black-srgb': { semantic: 'color', rgba: [0, 0, 0, 255] }
 } as const);
 
-const TEXTURE_USAGE = (1 << 2) | (1 << 4);
+const TEXTURE_USAGE = (1 << 1) | (1 << 2);
 
 /** Resolves and validates the six immutable StandardLit material resources. */
 export function prepareStandardLitTextureBindings(input: {

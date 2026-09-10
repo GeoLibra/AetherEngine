@@ -19,7 +19,7 @@ test('renders the public React example and survives surface suspension', async (
       backend,
       environmentMode: 'hdr',
       backgroundMode: 'hdr',
-      diagnostics: { status: 'rendered', indexedDrawCalls: 2, indexCount: 72 }
+      diagnostics: { status: 'rendered', indexedDrawCalls: 10, indexCount: 360 }
     });
   const initial = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
   expectBackendClean(initial, backend);

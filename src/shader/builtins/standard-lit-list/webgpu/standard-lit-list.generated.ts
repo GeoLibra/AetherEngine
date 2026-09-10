@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl',
-    contentHash: '3ddacaca0ce9d96a715599804c90964c8931355c0b1b99a9a4db5e2051f37a69',
-    byteLength: 19423
+    contentHash: '1ede34c5f026246f5f2c535ded77fdaf927ec6e4dbbaebee09549b18fa318423',
+    byteLength: 19428
   },
   entryPoints: [
     {
@@ -1227,7 +1227,7 @@ fn directionalShadowVisibility(
   var visibility = 0.0;
   for (var y = -1; y <= 1; y += 1) {
     for (var x = -1; x <= 1; x += 1) {
-      visibility += textureSampleCompare(
+      visibility += textureSampleCompareLevel(
         directionalShadowMap,
         directionalShadowSampler,
         uv + vec2<f32>(f32(x), f32(y)) * texel,

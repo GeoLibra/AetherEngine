@@ -13,8 +13,8 @@ export const STANDARD_SHADOW_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-shadow.wgsl',
-    contentHash: 'f8f2ffbd83a741db5784605ed8b87a15a02e72f3c8d523677cb29c7a188cae02',
-    byteLength: 1372
+    contentHash: 'c1874db5991dd58e3d3fc867cdac58762bda9a79b0e0ad0a74cd01b7b2cc7c0c',
+    byteLength: 1234
   },
   entryPoints: [
     {
@@ -207,13 +207,8 @@ export const STANDARD_SHADOW_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact
       typeName: 'vec3<f32>'
     },
     {
-      location: 1,
-      name: 'uv0',
-      typeName: 'vec2<f32>'
-    },
-    {
       location: 2,
-      name: 'uv1',
+      name: 'uv0',
       typeName: 'vec2<f32>'
     }
   ],
@@ -238,7 +233,6 @@ struct ShadowMaterialData {
 struct ShadowVertexOutput {
   @builtin(position) position: vec4<f32>,
   @location(0) uv0: vec2<f32>,
-  @location(1) uv1: vec2<f32>,
 };
 
 @group(0) @binding(0) var<uniform> objectData: ShadowObjectData;
@@ -250,17 +244,16 @@ struct ShadowVertexOutput {
 @vertex
 fn standardShadowVertex(
   @location(0) position: vec3<f32>,
-  @location(1) uv0: vec2<f32>,
-  @location(2) uv1: vec2<f32>
+  @location(2) uv0: vec2<f32>
 ) -> ShadowVertexOutput {
   let worldPosition = objectData.world * vec4<f32>(position, 1.0);
-  return ShadowVertexOutput(shadowViewData.viewProjection * worldPosition, uv0, uv1);
+  return ShadowVertexOutput(shadowViewData.viewProjection * worldPosition, uv0);
 }
 
 @fragment
 fn standardShadowFragment(input: ShadowVertexOutput) {
-  let uv = select(input.uv0, input.uv1, shadowMaterialData.baseColorUvSet == 1u);
-  let alpha = shadowMaterialData.baseColorFactor.a * textureSample(baseColorTexture, surfaceSampler, uv).a;
+  let alpha = shadowMaterialData.baseColorFactor.a *
+    textureSample(baseColorTexture, surfaceSampler, input.uv0).a;
   if (shadowMaterialData.alphaMask != 0u && alpha < shadowMaterialData.alphaCutoff) { discard; }
 }
 `,
@@ -287,32 +280,28 @@ struct ShadowMaterialData {
 struct ShadowVertexOutput {
     vec4 position;
     vec2 uv0_;
-    vec2 uv1_;
 };
 layout(std140) uniform ShadowMaterialData_block_0Fragment { ShadowMaterialData _group_2_binding_0_fs; };
 
 uniform highp sampler2D _group_2_binding_1_fs;
 
 smooth in vec2 _vs2fs_location0;
-smooth in vec2 _vs2fs_location1;
 
 void main() {
-    ShadowVertexOutput input_ = ShadowVertexOutput(gl_FragCoord, _vs2fs_location0, _vs2fs_location1);
+    ShadowVertexOutput input_ = ShadowVertexOutput(gl_FragCoord, _vs2fs_location0);
     bool local = false;
-    uint _e5 = _group_2_binding_0_fs.baseColorUvSet;
-    vec2 uv = ((_e5 == 1u) ? input_.uv1_ : input_.uv0_);
-    float _e12 = _group_2_binding_0_fs.baseColorFactor.w;
-    vec4 _e15 = texture(_group_2_binding_1_fs, vec2(uv));
-    float alpha = (_e12 * _e15.w);
-    uint _e20 = _group_2_binding_0_fs.alphaMask;
-    if ((_e20 != 0u)) {
-        float _e27 = _group_2_binding_0_fs.alphaCutoff;
-        local = (alpha < _e27);
+    float _e4 = _group_2_binding_0_fs.baseColorFactor.w;
+    vec4 _e8 = texture(_group_2_binding_1_fs, vec2(input_.uv0_));
+    float alpha = (_e4 * _e8.w);
+    uint _e13 = _group_2_binding_0_fs.alphaMask;
+    if ((_e13 != 0u)) {
+        float _e20 = _group_2_binding_0_fs.alphaCutoff;
+        local = (alpha < _e20);
     } else {
         local = false;
     }
-    bool _e30 = local;
-    if (_e30) {
+    bool _e23 = local;
+    if (_e23) {
         discard;
     } else {
         return;
@@ -365,29 +354,24 @@ struct ShadowMaterialData {
 struct ShadowVertexOutput {
     vec4 position;
     vec2 uv0_;
-    vec2 uv1_;
 };
 layout(std140) uniform ShadowObjectData_block_0Vertex { ShadowObjectData _group_0_binding_0_vs; };
 
 layout(std140) uniform ShadowViewData_block_1Vertex { ShadowViewData _group_1_binding_0_vs; };
 
 layout(location = 0) in vec3 _p2vs_location0;
-layout(location = 1) in vec2 _p2vs_location1;
 layout(location = 2) in vec2 _p2vs_location2;
 smooth out vec2 _vs2fs_location0;
-smooth out vec2 _vs2fs_location1;
 
 void main() {
     vec3 position = _p2vs_location0;
-    vec2 uv0_ = _p2vs_location1;
-    vec2 uv1_ = _p2vs_location2;
-    mat4x4 _e5 = _group_0_binding_0_vs.world;
-    vec4 worldPosition = (_e5 * vec4(position, 1.0));
-    mat4x4 _e11 = _group_1_binding_0_vs.viewProjection;
-    ShadowVertexOutput _tmp_return = ShadowVertexOutput((_e11 * worldPosition), uv0_, uv1_);
+    vec2 uv0_ = _p2vs_location2;
+    mat4x4 _e4 = _group_0_binding_0_vs.world;
+    vec4 worldPosition = (_e4 * vec4(position, 1.0));
+    mat4x4 _e10 = _group_1_binding_0_vs.viewProjection;
+    ShadowVertexOutput _tmp_return = ShadowVertexOutput((_e10 * worldPosition), uv0_);
     gl_Position = _tmp_return.position;
     _vs2fs_location0 = _tmp_return.uv0_;
-    _vs2fs_location1 = _tmp_return.uv1_;
     gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
     return;
 }

@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl',
-    contentHash: '55d6acd7ec769a1a31ec748f224e8ce0b6bf205646e8166fe9bfaeb107087131',
-    byteLength: 19573
+    contentHash: '2cd8eda941ccf59ec88231437589be20e24c02d63bfa47f98afb57af8e4dc3e3',
+    byteLength: 19578
   },
   entryPoints: [
     {
@@ -1153,7 +1153,7 @@ float directionalShadowVisibility(uint lightIndex, vec3 worldPosition, vec3 norm
                     int _e141 = x;
                     int _e143 = y;
                     uint _e148 = cascade;
-                    float _e152 = texture(_group_3_binding_11_fs, vec4((uv + (vec2(float(_e141), float(_e143)) * texel_2)), int(_e148), (projected.z - bias)));
+                    float _e152 = textureGrad(_group_3_binding_11_fs, vec4((uv + (vec2(float(_e141), float(_e143)) * texel_2)), int(_e148), (projected.z - bias)), vec2(0.0), vec2(0.0));
                     visibility = (_e138 + _e152);
                 }
             }

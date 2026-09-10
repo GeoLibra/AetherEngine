@@ -16,6 +16,7 @@ import {
   buildCpuLightLists,
   createShadowCacheKey,
   declareShadowDepthPasses,
+  shadowDepthFormat,
   selectShadowRequests,
   shadowRequestKey,
   validatePreparedLight,
@@ -223,6 +224,10 @@ describe('CPU light-list fallback', () => {
 });
 
 describe('shadow requests, atlas, cache, and graph', () => {
+  test('selects a depth format supported by each browser backend', () => {
+    expect(shadowDepthFormat('webgpu')).toBe('depth32float');
+    expect(shadowDepthFormat('webgl2')).toBe('depth24plus');
+  });
   const request = (id: number, importance: number, resolutionClass = 32): ShadowRequest => ({
     lightEntity: entity(id),
     viewId: 'main',

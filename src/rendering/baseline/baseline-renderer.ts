@@ -13,6 +13,7 @@ import {
   createWebGpuComputeLightListImplementation,
   declareShadowDepthPasses,
   recordPreparedShadowDraws,
+  shadowDepthFormat,
   shadowRequestKey,
   type WebGlFragmentLightListBuildOutput,
   type WebGpuLightListBuildOutput
@@ -97,6 +98,7 @@ export class BaselineRenderer {
         shadowTokensByRequest.set(key, Object.freeze(tokens));
       }
       shadowMap = declareShadowDepthPasses(graph, prepared.shadow.requests, {
+        format: shadowDepthFormat(this.options.graphics.backend),
         draws: (request) => shadowTokensByRequest.get(shadowRequestKey(request)) ?? [],
         record: recordPreparedShadowDraws
       }).texture;

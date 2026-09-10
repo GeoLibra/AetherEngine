@@ -60,6 +60,7 @@ import {
   type PreparedWebGlLightListRecorder,
   type PreparedWebGpuLightListRecorder
 } from '../lighting';
+import { shadowDepthFormat } from '../lighting/shadow';
 import {
   createDefaultEnvironmentTextures,
   sharedEnvironmentTextureCache,
@@ -129,6 +130,7 @@ export class BaselineStandardLitPreparation {
   private readonly materialTextures: PreparedStandardLitTextureBindings;
   private readonly disabledShadowBuffer: RHIBuffer;
   private readonly disabledShadowTexture: RHITexture;
+  private readonly shadowFormat: 'depth32float' | 'depth24plus';
   readonly postColor: BaselinePostColorPreparation;
   private readonly postColorOwnedResources: readonly RHIResource[];
   private readonly lightListRecorder:
@@ -140,6 +142,7 @@ export class BaselineStandardLitPreparation {
 
   constructor(private readonly options: RegisteredOptions) {
     const { device } = options.graphics;
+    this.shadowFormat = shadowDepthFormat(options.graphics.backend);
     const shaderArtifact =
       options.graphics.backend === 'webgpu'
         ? STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT
@@ -219,7 +222,7 @@ export class BaselineStandardLitPreparation {
     this.disabledShadowBuffer = uniformBuffer(device, new Uint32Array(96));
     this.disabledShadowTexture = device.createTexture({
       size: [1, 1, 1],
-      format: 'depth32float',
+      format: this.shadowFormat,
       usage: (1 << 2) | (1 << 4)
     });
     const { diffuseIrradiance, intensity, radianceTint } = options.environmentLighting;
@@ -308,7 +311,7 @@ export class BaselineStandardLitPreparation {
         cullMode: 'back'
       },
       depthStencil: {
-        format: 'depth32float',
+        format: this.shadowFormat,
         depthWriteEnabled: true,
         depthCompare: 'less'
       },
