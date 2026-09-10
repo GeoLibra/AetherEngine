@@ -80,7 +80,7 @@ describe('HistoryRegistry', () => {
         historyValid: true
       }
     );
-    graph.addPass({
+    graph.addCopyPass({
       id: 'history-reader',
       setup(pass) {
         pass.readBuffer(history, 'copy-src');
@@ -121,7 +121,7 @@ describe('HistoryRegistry', () => {
         historyValid: acquired.readable !== undefined
       }
     );
-    graph.addPass({
+    graph.addCopyPass({
       id: 'history-producer',
       setup(pass) {
         const output = pass.writeBuffer(history, 'copy-dst');
@@ -415,7 +415,7 @@ function cyclicGraph() {
     }
   });
   let written = initial;
-  graph.addPass({
+  graph.addRasterPass({
     id: 'write-new',
     setup(pass) {
       written = pass.writeTexture(initial, 'color-attachment');
@@ -423,7 +423,7 @@ function cyclicGraph() {
     },
     run() {}
   });
-  graph.addPass({
+  graph.addCopyPass({
     id: 'read-old-and-new',
     setup(pass) {
       pass.readTexture(initial, 'sampled');

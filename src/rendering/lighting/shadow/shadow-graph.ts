@@ -1,7 +1,7 @@
 import {
   RenderGraphBuilder,
   type PassToken,
-  type RestrictedPassContext,
+  type RasterPassContext,
   type TextureHandle,
   type TextureRange
 } from '../../../render-graph';
@@ -23,7 +23,7 @@ export interface ShadowDepthPassRecord {
 }
 
 export type ShadowDepthPassRecorder = (
-  context: RestrictedPassContext,
+  context: RasterPassContext,
   pass: ShadowDepthPassRecord
 ) => void;
 
@@ -80,13 +80,15 @@ export function declareShadowDepthPasses(
       arrayLayerCount: 1,
       aspect: 'depth-only'
     });
-    const token = graph.addPass<
-      Readonly<{ texture: TextureHandle; range: TextureRange }>,
-      RestrictedPassContext
-    >({
+    const token = graph.addRasterPass({
       id: `shadow:${key}`,
       setup(pass) {
-        next = pass.writeTexture(source, 'depth-stencil-attachment', range);
+        next = pass.depthStencilAttachment(source, {
+          depthLoad: 'clear',
+          depthStore: 'store',
+          depthClearValue: 1,
+          range
+        });
         return { texture: next, range };
       },
       run(context, resources) {

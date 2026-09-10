@@ -19,20 +19,20 @@ describe('render graph culling', () => {
     const initial = graph.createTexture(descriptor);
     let first = initial;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'stale-export-author',
       setup(pass) {
         first = pass.writeTexture(initial, 'color-attachment');
-        pass.exportTexture(first, 'copy-src');
+        pass.exportResource(first, 'copy-src');
         return { first };
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'active-export-author',
       setup(pass) {
         const final = pass.writeTexture(first, 'color-attachment');
-        pass.exportTexture(final, 'copy-src');
+        pass.exportResource(final, 'copy-src');
         return { final };
       },
       run() {}
@@ -54,7 +54,7 @@ describe('render graph culling', () => {
       }
     });
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'telemetry',
       setup(pass) {
         pass.sideEffect('timestamp resolve');
@@ -62,11 +62,11 @@ describe('render graph culling', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'present',
       setup(pass) {
         const output = pass.writeTexture(surface, 'color-attachment');
-        pass.presentTexture(output, { kind: 'surface-frame', id: 'frame-1' });
+        pass.present(output, { kind: 'surface-frame', id: 'frame-1' });
         return { output };
       },
       run() {}
@@ -89,14 +89,14 @@ describe('render graph culling', () => {
     });
     let written = imported;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-imported',
       setup(pass) {
         return { imported: pass.readTexture(imported, 'sampled') };
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-imported',
       setup(pass) {
         written = pass.writeTexture(imported, 'color-attachment');
@@ -122,7 +122,7 @@ describe('render graph culling', () => {
     let retained = retainedTexture;
     let unused = unusedTexture;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'retained-producer',
       setup(pass) {
         retained = pass.writeTexture(retainedTexture, 'color-attachment');
@@ -130,7 +130,7 @@ describe('render graph culling', () => {
       },
       run() {}
     });
-    const root = graph.addPass({
+    const root = graph.addCopyPass({
       id: 'retained-consumer',
       setup(pass) {
         pass.readTexture(retained, 'sampled');
@@ -139,7 +139,7 @@ describe('render graph culling', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'unused-producer',
       setup(pass) {
         unused = pass.writeTexture(unusedTexture, 'color-attachment');
@@ -147,14 +147,14 @@ describe('render graph culling', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'unused-consumer',
       setup(pass) {
         return { unused: pass.readTexture(unused, 'sampled') };
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'downstream-of-root',
       setup(pass) {
         pass.after(root);

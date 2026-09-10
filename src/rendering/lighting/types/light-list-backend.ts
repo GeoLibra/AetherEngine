@@ -1,9 +1,10 @@
 import type {
   BufferHandle,
+  ComputePassContext,
   PreparedComputePipelineToken,
   PreparedRenderPipelineToken,
+  RasterPassContext,
   RenderGraphBuilder,
-  RestrictedPassContext,
   TextureHandle
 } from '../../../render-graph';
 import type { CpuLightListCapacity } from './light-list';
@@ -29,7 +30,7 @@ export interface WebGpuLightListBuildOutput {
 export interface WebGpuLightListBuildRecorder {
   readonly pipeline: PreparedComputePipelineToken;
   record(
-    context: RestrictedPassContext,
+    context: ComputePassContext,
     input: WebGpuLightListBuildInput,
     output: WebGpuLightListBuildOutput
   ): void;
@@ -74,7 +75,7 @@ export interface WebGlLightListPacking {
 export interface WebGlFragmentLightListBuildRecorder {
   readonly pipeline: PreparedRenderPipelineToken;
   record(
-    context: RestrictedPassContext,
+    context: RasterPassContext,
     input: WebGlFragmentLightListBuildInput,
     output: WebGlFragmentLightListBuildOutput
   ): void;

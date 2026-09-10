@@ -5,7 +5,7 @@ import {
   compileRenderGraph,
   createRenderGraphExecutionPlan,
   NullDevice,
-  type RestrictedPassContext
+  type RasterPassContext
 } from '../../src';
 
 describe('RenderGraph restricted vertex/index bindings', () => {
@@ -32,21 +32,17 @@ describe('RenderGraph restricted vertex/index bindings', () => {
       format: 'rgba8unorm',
       usage: ['color-attachment', 'copy-src']
     });
-    graph.addPass({
+    graph.addRasterPass({
       id: 'indexed',
       setup(pass) {
-        const output = pass.writeTexture(color, 'color-attachment');
+        const output = pass.colorAttachment(0, color, { load: 'clear', store: 'store' });
         const indices = pass.readBuffer(index, 'index');
-        pass.exportTexture(output, 'copy-src');
+        pass.exportResource(output, 'copy-src');
         return { output, indices };
       },
-      run(context: RestrictedPassContext, resources) {
+      run(context: RasterPassContext, resources) {
         const indices = context.buffer(resources.indices, 'index');
-        const pass = context.beginRaster({
-          colorAttachments: [{ texture: resources.output, loadOp: 'clear', storeOp: 'store' }]
-        });
-        pass.setIndexBuffer(indices, 'uint16');
-        pass.end();
+        context.raster.setIndexBuffer(indices, 'uint16');
       }
     });
     const snapshot = graph.build();

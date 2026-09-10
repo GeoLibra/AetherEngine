@@ -3,7 +3,7 @@ import {
   compileCompositionPlan,
   lowerCompositionPlan,
   type CompositionSlotResources,
-  type RestrictedPassContext
+  type RasterPassContext
 } from '../../src';
 import { RenderGraphExecutor } from '../../src/render-graph';
 import { NullDevice } from '../../src/rhi/null/device';
@@ -153,13 +153,7 @@ describe('CompositionPlan RenderGraph consumer', () => {
       ]
     });
     const rasterRecorder = {
-      record(context: RestrictedPassContext, resources: CompositionSlotResources) {
-        context
-          .beginRaster({
-            colorAttachments: [{ texture: resources.color, loadOp: 'clear', storeOp: 'store' }]
-          })
-          .end();
-      }
+      record(_context: RasterPassContext, _resources: CompositionSlotResources) {}
     };
     const lowered = lowerCompositionPlan(
       composition,

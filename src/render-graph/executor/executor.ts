@@ -1,4 +1,4 @@
-import type { GraphTerminal } from '../builder/builder';
+import type { GraphPassDeclaration, GraphTerminal } from '../builder/builder';
 import type { GraphHandle } from '../types';
 import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../compiler/debug-ir';
 import {
@@ -20,7 +20,10 @@ import { executeRasterGroup } from './executor-raster-group';
 import { freezeCommandStats } from './executor-resource-utils';
 import { TransientResourcePool, type TransientResource } from './transient-pool';
 import { RestrictedContext } from '../context/restricted-context';
+import { ComputePassContextImpl } from '../context/compute-context';
+import { CopyPassContextImpl } from '../context/copy-context';
 import type {
+  RHICommandEncoder,
   RHIBuffer,
   RHICommandBuffer,
   RHICommandStats,
@@ -192,7 +195,17 @@ export class RenderGraphExecutor {
           );
           restrictedContexts.push(context);
           try {
-            pass.run(context.publicContext());
+            if (pass.passKind === 'compute') {
+              executeComputePass(pass, context, encoder, (next) => {
+                activePass = next;
+              });
+            } else if (pass.passKind === 'copy') {
+              pass.run(new CopyPassContextImpl(context));
+            } else {
+              throw new Error(
+                `Render graph pass "${pass.id}" must be a compute or copy pass in the schedule.`
+              );
+            }
           } finally {
             context.close();
           }
@@ -304,4 +317,30 @@ export class RenderGraphExecutor {
   private presentFrames(frames: readonly SurfaceBinding[]): void {
     for (const binding of frames) binding.frame.present();
   }
+}
+
+function executeComputePass(
+  pass: GraphPassDeclaration,
+  context: RestrictedContext,
+  encoder: RHICommandEncoder,
+  onActivePass: (next: EndableRenderPass | undefined) => void
+): void {
+  const computePass = encoder.beginComputePass({ label: pass.id });
+  onActivePass(computePass);
+  const computeContext = new ComputePassContextImpl(context, computePass);
+  try {
+    pass.run(computeContext);
+  } catch (error) {
+    computeContext.revoke();
+    onActivePass(undefined);
+    try {
+      computePass.end();
+    } catch {
+      // Preserve the original compute pass failure.
+    }
+    throw error;
+  }
+  computeContext.revoke();
+  onActivePass(undefined);
+  computePass.end();
 }

@@ -30,7 +30,7 @@ describe('render graph lifetime analysis', () => {
     const dead = graph.createBuffer(BUFFER);
     let keptVersion = kept;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'produce-kept',
       setup(pass) {
         keptVersion = pass.writeBuffer(kept, 'copy-dst');
@@ -38,16 +38,16 @@ describe('render graph lifetime analysis', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'consume-kept',
       setup(pass) {
         pass.readBuffer(keptVersion, 'copy-src');
-        pass.exportBuffer(keptVersion, 'copy-src');
+        pass.exportResource(keptVersion, 'copy-src');
         return undefined;
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'dead-producer',
       setup(pass) {
         return pass.writeBuffer(dead, 'copy-dst');
@@ -76,7 +76,7 @@ describe('render graph deterministic alias planning', () => {
     const graph = new RenderGraphBuilder();
     const first = graph.createBuffer(BUFFER);
     const second = graph.createBuffer(BUFFER);
-    graph.addPass({
+    graph.addCopyPass({
       id: 'first',
       setup(pass) {
         pass.sideEffect('keep first');
@@ -84,7 +84,7 @@ describe('render graph deterministic alias planning', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'second',
       setup(pass) {
         pass.sideEffect('keep second');
@@ -116,7 +116,7 @@ describe('render graph deterministic alias planning', () => {
     const candidate = graph.createBuffer(BUFFER);
     let overlappingVersion = overlapping;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'overlap-start',
       setup(pass) {
         pass.sideEffect('retain overlap start');
@@ -125,7 +125,7 @@ describe('render graph deterministic alias planning', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'incompatible',
       setup(pass) {
         pass.sideEffect('retain incompatible');
@@ -133,7 +133,7 @@ describe('render graph deterministic alias planning', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'imported',
       setup(pass) {
         pass.sideEffect('retain imported');
@@ -141,7 +141,7 @@ describe('render graph deterministic alias planning', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'candidate',
       setup(pass) {
         pass.sideEffect('retain candidate');
@@ -149,7 +149,7 @@ describe('render graph deterministic alias planning', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'overlap-end',
       setup(pass) {
         pass.readBuffer(overlappingVersion, 'copy-src');
@@ -191,7 +191,7 @@ describe('render graph deterministic alias planning', () => {
       origin: { kind: 'history', key: 'taa', slots: 2 },
       historyValid: true
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'history',
       setup(pass) {
         pass.readBuffer(history, 'copy-src');
@@ -223,14 +223,14 @@ describe('portable logical transitions', () => {
       }
     });
     let written = imported;
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read',
       setup(pass) {
         return pass.readTexture(imported, 'copy-src');
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write',
       setup(pass) {
         written = pass.writeTexture(imported, 'copy-dst');
@@ -238,11 +238,11 @@ describe('portable logical transitions', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'sample',
       setup(pass) {
         pass.readTexture(written, 'sampled');
-        pass.exportTexture(written, 'copy-src');
+        pass.exportResource(written, 'copy-src');
         return undefined;
       },
       run() {}
@@ -293,7 +293,7 @@ describe('portable logical transitions', () => {
     );
     let first = imported;
     let second = imported;
-    graph.addPass({
+    graph.addCopyPass({
       id: 'first-half',
       setup(pass) {
         first = pass.writeBuffer(imported, 'copy-dst', { offset: 0, size: 64 });
@@ -301,7 +301,7 @@ describe('portable logical transitions', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'second-half',
       setup(pass) {
         second = pass.writeBuffer(first, 'storage-write', { offset: 64, size: 64 });
@@ -309,11 +309,11 @@ describe('portable logical transitions', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'whole-read',
       setup(pass) {
         pass.readBuffer(second, 'copy-src');
-        pass.exportBuffer(second, 'copy-src');
+        pass.exportResource(second, 'copy-src');
         return undefined;
       },
       run() {}

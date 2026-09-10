@@ -11,7 +11,7 @@ import { NullDevice } from '../../src/rhi/null/device';
 function planWithTwoPasses(calls: string[]): RenderGraphExecutionPlan {
   const graph = new RenderGraphBuilder();
   for (const id of ['first', 'second']) {
-    graph.addPass({
+    graph.addCopyPass({
       id,
       setup(pass) {
         pass.sideEffect(id);

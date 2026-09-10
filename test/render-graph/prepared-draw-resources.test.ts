@@ -7,8 +7,8 @@ import {
   createPreparedDrawResourcesToken,
   createRenderGraphExecutionPlan,
   type PreparedDrawPacket,
-  type RenderEntityId,
-  type RestrictedPassContext
+  type RasterPassContext,
+  type RenderEntityId
 } from '../../src';
 
 describe('prepared draw resources', () => {
@@ -19,13 +19,24 @@ describe('prepared draw resources', () => {
     const release = vi.fn();
     const packet = drawPacket(device, retain, release);
     const graph = new RenderGraphBuilder();
-    let resolved: ReturnType<RestrictedPassContext['drawResources']> | undefined;
-    graph.addPass({
+    let resolved: ReturnType<RasterPassContext['drawResources']> | undefined;
+    graph.addRasterPass({
       id: 'opaque',
       setup(pass) {
+        pass.useDrawResources(token);
         pass.sideEffect('indexed draw');
+        const target = pass.createTexture({
+          width: 4,
+          height: 4,
+          depthOrArrayLayers: 1,
+          mipLevelCount: 1,
+          sampleCount: 1,
+          format: 'rgba8unorm',
+          usage: ['color-attachment']
+        });
+        pass.colorAttachment(0, target, { load: 'clear', store: 'store' });
       },
-      run(context: RestrictedPassContext) {
+      run(context: RasterPassContext) {
         resolved = context.drawResources(token);
       }
     });
@@ -60,7 +71,7 @@ describe('prepared draw resources', () => {
     const retain = vi.fn();
     const release = vi.fn();
     const graph = new RenderGraphBuilder();
-    graph.addPass({
+    graph.addCopyPass({
       id: 'failure',
       setup(pass) {
         pass.sideEffect('fail');

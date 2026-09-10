@@ -31,7 +31,7 @@ describe('render graph compiler', () => {
   test('uses registration order as the stable tie-breaker', () => {
     const graph = new RenderGraphBuilder();
     for (const id of ['third-party/z', 'builtin/a', 'feature/m']) {
-      graph.addPass({
+      graph.addCopyPass({
         id,
         setup(pass) {
           pass.sideEffect(`observable ${id}`);
@@ -55,7 +55,7 @@ describe('render graph compiler', () => {
     const graph = new RenderGraphBuilder();
     const initial = importedGraphTexture(graph, 'same-direction');
     let written = initial;
-    const writer = graph.addPass({
+    const writer = graph.addCopyPass({
       id: 'writer',
       setup(pass) {
         written = pass.writeTexture(initial, 'color-attachment');
@@ -63,7 +63,7 @@ describe('render graph compiler', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'reader',
       setup(pass) {
         pass.after(writer);
@@ -89,12 +89,12 @@ describe('render graph compiler', () => {
     const graph = new RenderGraphBuilder();
     const initial = importedGraphTexture(graph, 'same-pass-old-and-new');
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'in-place-logical-version',
       setup(pass) {
         pass.readTexture(initial, 'sampled');
         const written = pass.writeTexture(initial, 'color-attachment');
-        pass.exportTexture(written, 'copy-src');
+        pass.exportResource(written, 'copy-src');
         return { initial, written };
       },
       run() {}
@@ -112,7 +112,7 @@ describe('render graph compiler', () => {
     const graph = new RenderGraphBuilder();
     const initial = importedGraphTexture(graph, 'reversed-edge');
     let written = initial;
-    const writer = graph.addPass({
+    const writer = graph.addCopyPass({
       id: 'writer',
       setup(pass) {
         written = pass.writeTexture(initial, 'color-attachment');
@@ -120,7 +120,7 @@ describe('render graph compiler', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-parent',
       setup(pass) {
         pass.after(writer);
@@ -141,7 +141,7 @@ describe('render graph compiler', () => {
     const initial = importedGraphTexture(graph, 'cycle');
     let written = initial;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-new',
       setup(pass) {
         written = pass.writeTexture(initial, 'color-attachment');
@@ -149,7 +149,7 @@ describe('render graph compiler', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-old-and-new',
       setup(pass) {
         pass.readTexture(initial, 'sampled');

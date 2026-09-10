@@ -5,7 +5,7 @@ import {
   RenderGraphExecutor,
   compileRenderGraph,
   createRenderGraphExecutionPlan,
-  type RestrictedPassContext
+  type RasterPassContext
 } from '../../src/render-graph';
 import { NullDevice } from '../../src/rhi/null/device';
 import {
@@ -330,19 +330,6 @@ describe('shadow requests, atlas, cache, and graph', () => {
     const declared = declareShadowDepthPasses(graph, [request(1, 3), request(2, 2)], {
       record(context, shadowPass) {
         recorded.push(shadowRequestKey(shadowPass.request));
-        context
-          .beginRaster({
-            label: `shadow-layer-${shadowPass.layer}`,
-            colorAttachments: [],
-            depthStencilAttachment: {
-              texture: shadowPass.texture,
-              range: shadowPass.range,
-              depthLoadOp: 'clear',
-              depthStoreOp: 'store',
-              depthClearValue: 1
-            }
-          })
-          .end();
       }
     });
     const mutableLayers = declared.layerByRequestKey as unknown as Map<string, number>;
@@ -354,16 +341,13 @@ describe('shadow requests, atlas, cache, and graph', () => {
     expect(Object.isFrozen(declared.layerByRequestKey)).toBe(true);
     expect(Reflect.ownKeys(declared.layerByRequestKey)).toEqual([]);
     expect(declared.layerByRequestKey.get(shadowRequestKey(request(1, 3)))).toBe(0);
-    graph.addPass({
+    graph.addCopyPass({
       id: 'shadow-consumer',
       setup(pass) {
-        const texture = pass.readTexture(declared.texture!, 'sampled');
+        pass.readTexture(declared.texture!, 'sampled');
         pass.sideEffect('verify sampled shadow output');
-        return { texture };
       },
-      run(context: RestrictedPassContext, resources) {
-        context.texture(resources.texture, 'sampled');
-      }
+      run() {}
     });
     const snapshot = graph.build();
     const compiled = compileRenderGraph(snapshot);
@@ -387,7 +371,7 @@ describe('shadow requests, atlas, cache, and graph', () => {
     const mutableRequest = request(1, 3);
     const recorded: ShadowRequest[] = [];
     const options = {
-      record(_context: RestrictedPassContext, pass: { readonly request: ShadowRequest }): void {
+      record(_context: RasterPassContext, pass: { readonly request: ShadowRequest }): void {
         recorded.push(pass.request);
       }
     };
@@ -403,16 +387,13 @@ describe('shadow requests, atlas, cache, and graph', () => {
     options.record = () => {
       throw new Error('late recorder must not run');
     };
-    graph.addPass({
+    graph.addCopyPass({
       id: 'retain-shadow-declaration',
       setup(pass) {
-        const texture = pass.readTexture(declared.texture!, 'sampled');
+        pass.readTexture(declared.texture!, 'sampled');
         pass.sideEffect('retain shadow declaration');
-        return { texture };
       },
-      run(context: RestrictedPassContext, resources) {
-        context.texture(resources.texture, 'sampled');
-      }
+      run() {}
     });
 
     const snapshot = graph.build();

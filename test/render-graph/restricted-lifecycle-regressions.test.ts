@@ -6,7 +6,7 @@ import {
   createRenderGraphExecutionPlan,
   type RenderGraphExecutionPlan
 } from '../../src/render-graph/executor';
-import type { RestrictedPassContext } from '../../src/render-graph/types';
+import type { ComputePassContext, CopyPassContext } from '../../src/render-graph/types';
 import type { RHIBindGroupLayout } from '../../src/rhi/contracts';
 import { NullDevice } from '../../src/rhi/null/device';
 
@@ -36,16 +36,16 @@ describe('RenderGraph restricted lifecycle regressions', () => {
       }
     );
     let captured: unknown;
-    let layout: ReturnType<RestrictedPassContext['device']['createBindGroupLayout']> | undefined;
-    let capturedDevice: RestrictedPassContext['device'] | undefined;
-    graph.addPass({
+    let layout: ReturnType<ComputePassContext['device']['createBindGroupLayout']> | undefined;
+    let capturedDevice: ComputePassContext['device'] | undefined;
+    graph.addComputePass({
       id: 'opaque-bind-group',
       setup(pass) {
         const input = pass.readBuffer(source, 'storage-read');
         pass.sideEffect('verify restricted ownership');
         return { input };
       },
-      run(context: RestrictedPassContext, resources) {
+      run(context: ComputePassContext, resources) {
         capturedDevice = context.device;
         const input = context.buffer(resources.input, 'storage-read');
         layout = context.device.createBindGroupLayout({
@@ -55,9 +55,7 @@ describe('RenderGraph restricted lifecycle regressions', () => {
           layout,
           entries: [{ binding: 0, resource: input }]
         });
-        const compute = context.beginCompute();
-        compute.setBindGroup(0, captured as never);
-        compute.end();
+        context.compute.setBindGroup(0, captured as never);
       }
     });
 
@@ -87,14 +85,14 @@ describe('RenderGraph restricted lifecycle regressions', () => {
       rawLayout = createLayout(descriptor);
       return rawLayout;
     });
-    let layout: ReturnType<RestrictedPassContext['device']['createBindGroupLayout']> | undefined;
-    graph.addPass({
+    let layout: ReturnType<CopyPassContext['device']['createBindGroupLayout']> | undefined;
+    graph.addCopyPass({
       id: 'failed-pass-resource-owner',
       setup(pass) {
         pass.sideEffect('fail after allocation');
         return undefined;
       },
-      run(context: RestrictedPassContext) {
+      run(context: CopyPassContext) {
         layout = context.device.createBindGroupLayout({ entries: [] });
         throw new Error('intentional encode failure');
       }
