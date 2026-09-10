@@ -11,12 +11,24 @@ import {
   runShadowSelectionReference,
   runShadowSelectionSubject
 } from '../../benchmark/lighting-shadow/scenario';
+import { runPbrEvaluationWorkload } from '../../benchmark/lighting-shadow/pbr-evaluation';
 import {
   assertDeclaredShadowLayers,
   createShadowDeclarationWorkload
 } from '../../benchmark/lighting-shadow/declaration-scenario';
 
 describe('lighting-shadow benchmark oracle', () => {
+  test('keeps the standard PBR workload checksum stable across its scale axis', () => {
+    expect(runPbrEvaluationWorkload(64)).toEqual({
+      evaluations: 64,
+      checksum: 'e6b48921'
+    });
+    expect(runPbrEvaluationWorkload(1_024)).toEqual({
+      evaluations: 1_024,
+      checksum: 'a461aa10'
+    });
+  });
+
   test('checks every declaration key against an independent stable-layer oracle', () => {
     const workload = createShadowDeclarationWorkload(64);
     expect(createShadowDeclarationWorkload(64)).toEqual(workload);
