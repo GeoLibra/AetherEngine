@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
   BUILT_IN_WEBGL2_TRANSLATOR,
+  STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT,
   STANDARD_LIT_LIST_SHADER_MODULE_KEY,
+  STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT,
   STANDARD_LIT_LIST_WEBGL_SHADER_MODULE
 } from '../../src';
 
@@ -32,5 +34,17 @@ describe('standard-lit LightList built-in shader', () => {
         .filter((binding) => binding.kind === 'combined-sampler' && binding.slot >= 6)
         .map(({ slot }) => slot)
     ).toEqual([6, 7, 8]);
+  });
+
+  test('publishes the standard PBR v1 profile for both backend artifacts', () => {
+    const webgpu = STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT.modules.wgsl;
+    const webgl =
+      STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT.modules.glslEs300['fragment:standardLitFragment']!
+        .source;
+
+    expect(webgpu).toContain('fn geometrySmithGgx');
+    expect(webgpu).not.toContain('fn geometrySchlickGgxDirect');
+    expect(webgl).toContain('geometrySmithGgx');
+    expect(webgl).not.toContain('geometrySchlickGgxDirect');
   });
 });

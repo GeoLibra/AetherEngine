@@ -144,18 +144,22 @@ fn fifthPower(value: f32) -> f32 {
 /// Uses alpha = roughness^2 following Disney's perceptual roughness mapping.
 fn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {
   let alpha = roughness * roughness;
-  let alphaSquared = alpha * alpha;
   let normalDotHalf = max(dot(normal, halfDirection), 0.0);
-  let denominator = normalDotHalf * normalDotHalf * (alphaSquared - 1.0) + 1.0;
-  return alphaSquared / max(3.14159265359 * denominator * denominator, 0.000001);
+  let normalCrossHalf = cross(normal, halfDirection);
+  let oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
+  let alphaNormalDotHalf = alpha * normalDotHalf;
+  let denominator = oneMinusNormalDotHalfSquared + alphaNormalDotHalf * alphaNormalDotHalf;
+  let alphaOverDenominator = alpha / denominator;
+  return alphaOverDenominator * alphaOverDenominator / 3.14159265359;
 }
 
-/// Geometric Shadowing / Masking Sub-term: Schlick-GGX for direct lighting.
-/// Direct lighting remapping: k = (roughness + 1)^2 / 8.
-fn geometrySchlickGgxDirect(normalDotDirection: f32, roughness: f32) -> f32 {
-  let shifted = roughness + 1.0;
-  let k = shifted * shifted / 8.0;
-  return normalDotDirection / max(normalDotDirection * (1.0 - k) + k, 0.000001);
+/// Exact separable Smith-GGX masking term for one direction.
+fn geometrySmithGgx(normalDotDirection: f32, alpha: f32) -> f32 {
+  let alphaSquared = alpha * alpha;
+  let root = sqrt(
+    alphaSquared + (1.0 - alphaSquared) * normalDotDirection * normalDotDirection
+  );
+  return 2.0 * normalDotDirection / (normalDotDirection + root);
 }
 
 /// Geometric Shadowing Function (G-term): Smith's method.
@@ -169,8 +173,8 @@ fn geometrySmith(
 ) -> f32 {
   let normalDotView = max(dot(normal, viewDirection), 0.0);
   let normalDotLight = max(dot(normal, lightDirection), 0.0);
-  return geometrySchlickGgxDirect(normalDotView, roughness) *
-    geometrySchlickGgxDirect(normalDotLight, roughness);
+  let alpha = roughness * roughness;
+  return geometrySmithGgx(normalDotView, alpha) * geometrySmithGgx(normalDotLight, alpha);
 }
 
 /// Fresnel Equation (F-term): Fresnel-Schlick approximation.
@@ -218,7 +222,7 @@ fn cookTorranceDirect(
 
   // Cook-Torrance specular term: (D * G * F) / (4 * (N.V) * (N.L))
   let specular = distribution * geometry * fresnel /
-    max(4.0 * normalDotView * normalDotLight, 0.000001);
+    (4.0 * normalDotView * normalDotLight);
 
   return (diffuse + specular) * radiance * normalDotLight;
 }

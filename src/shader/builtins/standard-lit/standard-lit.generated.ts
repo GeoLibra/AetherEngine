@@ -13,8 +13,8 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit.wgsl',
-    contentHash: '4741b0daa2763555b172e6f93d8cd98ee97b99c18c0c17bbd6f1e2b1c6f01bbb',
-    byteLength: 8831
+    contentHash: '00cb34354d58a25674c8d9cfac3f6e28944f2510471b73a82a025cc3669d0056',
+    byteLength: 8994
   },
   entryPoints: [
     {
@@ -359,18 +359,22 @@ fn fifthPower(value: f32) -> f32 {
 /// Uses alpha = roughness^2 following Disney's perceptual roughness mapping.
 fn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {
   let alpha = roughness * roughness;
-  let alphaSquared = alpha * alpha;
   let normalDotHalf = max(dot(normal, halfDirection), 0.0);
-  let denominator = normalDotHalf * normalDotHalf * (alphaSquared - 1.0) + 1.0;
-  return alphaSquared / max(3.14159265359 * denominator * denominator, 0.000001);
+  let normalCrossHalf = cross(normal, halfDirection);
+  let oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
+  let alphaNormalDotHalf = alpha * normalDotHalf;
+  let denominator = oneMinusNormalDotHalfSquared + alphaNormalDotHalf * alphaNormalDotHalf;
+  let alphaOverDenominator = alpha / denominator;
+  return alphaOverDenominator * alphaOverDenominator / 3.14159265359;
 }
 
-/// Geometric Shadowing / Masking Sub-term: Schlick-GGX for direct lighting.
-/// Direct lighting remapping: k = (roughness + 1)^2 / 8.
-fn geometrySchlickGgxDirect(normalDotDirection: f32, roughness: f32) -> f32 {
-  let shifted = roughness + 1.0;
-  let k = shifted * shifted / 8.0;
-  return normalDotDirection / max(normalDotDirection * (1.0 - k) + k, 0.000001);
+/// Exact separable Smith-GGX masking term for one direction.
+fn geometrySmithGgx(normalDotDirection: f32, alpha: f32) -> f32 {
+  let alphaSquared = alpha * alpha;
+  let root = sqrt(
+    alphaSquared + (1.0 - alphaSquared) * normalDotDirection * normalDotDirection
+  );
+  return 2.0 * normalDotDirection / (normalDotDirection + root);
 }
 
 /// Geometric Shadowing Function (G-term): Smith's method.
@@ -384,8 +388,8 @@ fn geometrySmith(
 ) -> f32 {
   let normalDotView = max(dot(normal, viewDirection), 0.0);
   let normalDotLight = max(dot(normal, lightDirection), 0.0);
-  return geometrySchlickGgxDirect(normalDotView, roughness) *
-    geometrySchlickGgxDirect(normalDotLight, roughness);
+  let alpha = roughness * roughness;
+  return geometrySmithGgx(normalDotView, alpha) * geometrySmithGgx(normalDotLight, alpha);
 }
 
 /// Fresnel Equation (F-term): Fresnel-Schlick approximation.
@@ -433,7 +437,7 @@ fn cookTorranceDirect(
 
   // Cook-Torrance specular term: (D * G * F) / (4 * (N.V) * (N.L))
   let specular = distribution * geometry * fresnel /
-    max(4.0 * normalDotView * normalDotLight, 0.000001);
+    (4.0 * normalDotView * normalDotLight);
 
   return (diffuse + specular) * radiance * normalDotLight;
 }
@@ -539,25 +543,29 @@ float fifthPower(float value) {
 }
 
 float distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {
-    float alpha = (roughness * roughness);
-    float alphaSquared = (alpha * alpha);
+    float alpha_1 = (roughness * roughness);
     float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);
-    float denominator = (((normalDotHalf * normalDotHalf) * (alphaSquared - 1.0)) + 1.0);
-    return (alphaSquared / max(((3.1415927 * denominator) * denominator), 1e-6));
+    vec3 normalCrossHalf = cross(normal_1, halfDirection);
+    float oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
+    float alphaNormalDotHalf = (alpha_1 * normalDotHalf);
+    float denominator = (oneMinusNormalDotHalfSquared + (alphaNormalDotHalf * alphaNormalDotHalf));
+    float alphaOverDenominator = (alpha_1 / denominator);
+    return ((alphaOverDenominator * alphaOverDenominator) / 3.1415927);
 }
 
-float geometrySchlickGgxDirect(float normalDotDirection, float roughness_1) {
-    float shifted = (roughness_1 + 1.0);
-    float k = ((shifted * shifted) / 8.0);
-    return (normalDotDirection / max(((normalDotDirection * (1.0 - k)) + k), 1e-6));
+float geometrySmithGgx(float normalDotDirection, float alpha) {
+    float alphaSquared = (alpha * alpha);
+    float root = sqrt((alphaSquared + (((1.0 - alphaSquared) * normalDotDirection) * normalDotDirection)));
+    return ((2.0 * normalDotDirection) / (normalDotDirection + root));
 }
 
-float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_2) {
+float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_1) {
     float normalDotView = max(dot(normal_2, viewDirection), 0.0);
     float normalDotLight = max(dot(normal_2, lightDirection), 0.0);
-    float _e10 = geometrySchlickGgxDirect(normalDotView, roughness_2);
-    float _e11 = geometrySchlickGgxDirect(normalDotLight, roughness_2);
-    return (_e10 * _e11);
+    float alpha_2 = (roughness_1 * roughness_1);
+    float _e11 = geometrySmithGgx(normalDotView, alpha_2);
+    float _e12 = geometrySmithGgx(normalDotLight, alpha_2);
+    return (_e11 * _e12);
 }
 
 vec3 fresnelSchlick(float cosine, vec3 f0_) {
@@ -566,7 +574,7 @@ vec3 fresnelSchlick(float cosine, vec3 f0_) {
     return (f0_ + ((vec3(1.0) - f0_) * _e10));
 }
 
-vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_3, vec3 radiance) {
+vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_2, vec3 radiance) {
     bool local = false;
     float normalDotLight_1 = max(dot(normal_3, lightDirection_1), 0.0);
     float normalDotView_1 = max(dot(normal_3, viewDirection_1), 0.0);
@@ -581,14 +589,14 @@ vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection
     }
     vec3 halfDirection_1 = normalize((viewDirection_1 + lightDirection_1));
     float clampedMetallic = clamp(metallic, 0.0, 1.0);
-    float clampedRoughness = clamp(roughness_3, 0.045, 1.0);
+    float clampedRoughness = clamp(roughness_2, 0.045, 1.0);
     float _e32 = distributionGgx(normal_3, halfDirection_1, clampedRoughness);
     float _e33 = geometrySmith(normal_3, viewDirection_1, lightDirection_1, clampedRoughness);
     vec3 f0_1 = ((vec3(0.04) * (1.0 - clampedMetallic)) + (baseColor * clampedMetallic));
     vec3 _e44 = fresnelSchlick(max(dot(viewDirection_1, halfDirection_1), 0.0), f0_1);
     vec3 diffuseWeight = ((vec3(1.0) - _e44) * (1.0 - clampedMetallic));
     vec3 diffuse = ((diffuseWeight * baseColor) / vec3(3.1415927));
-    vec3 specular = (((_e32 * _e33) * _e44) / vec3(max(((4.0 * normalDotView_1) * normalDotLight_1), 1e-6)));
+    vec3 specular = (((_e32 * _e33) * _e44) / vec3(((4.0 * normalDotView_1) * normalDotLight_1)));
     return (((diffuse + specular) * radiance) * normalDotLight_1);
 }
 
@@ -689,25 +697,29 @@ float fifthPower(float value) {
 }
 
 float distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {
-    float alpha = (roughness * roughness);
-    float alphaSquared = (alpha * alpha);
+    float alpha_1 = (roughness * roughness);
     float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);
-    float denominator = (((normalDotHalf * normalDotHalf) * (alphaSquared - 1.0)) + 1.0);
-    return (alphaSquared / max(((3.1415927 * denominator) * denominator), 1e-6));
+    vec3 normalCrossHalf = cross(normal_1, halfDirection);
+    float oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
+    float alphaNormalDotHalf = (alpha_1 * normalDotHalf);
+    float denominator = (oneMinusNormalDotHalfSquared + (alphaNormalDotHalf * alphaNormalDotHalf));
+    float alphaOverDenominator = (alpha_1 / denominator);
+    return ((alphaOverDenominator * alphaOverDenominator) / 3.1415927);
 }
 
-float geometrySchlickGgxDirect(float normalDotDirection, float roughness_1) {
-    float shifted = (roughness_1 + 1.0);
-    float k = ((shifted * shifted) / 8.0);
-    return (normalDotDirection / max(((normalDotDirection * (1.0 - k)) + k), 1e-6));
+float geometrySmithGgx(float normalDotDirection, float alpha) {
+    float alphaSquared = (alpha * alpha);
+    float root = sqrt((alphaSquared + (((1.0 - alphaSquared) * normalDotDirection) * normalDotDirection)));
+    return ((2.0 * normalDotDirection) / (normalDotDirection + root));
 }
 
-float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_2) {
+float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_1) {
     float normalDotView = max(dot(normal_2, viewDirection), 0.0);
     float normalDotLight = max(dot(normal_2, lightDirection), 0.0);
-    float _e10 = geometrySchlickGgxDirect(normalDotView, roughness_2);
-    float _e11 = geometrySchlickGgxDirect(normalDotLight, roughness_2);
-    return (_e10 * _e11);
+    float alpha_2 = (roughness_1 * roughness_1);
+    float _e11 = geometrySmithGgx(normalDotView, alpha_2);
+    float _e12 = geometrySmithGgx(normalDotLight, alpha_2);
+    return (_e11 * _e12);
 }
 
 vec3 fresnelSchlick(float cosine, vec3 f0_) {
@@ -716,7 +728,7 @@ vec3 fresnelSchlick(float cosine, vec3 f0_) {
     return (f0_ + ((vec3(1.0) - f0_) * _e10));
 }
 
-vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_3, vec3 radiance) {
+vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_2, vec3 radiance) {
     bool local = false;
     float normalDotLight_1 = max(dot(normal_3, lightDirection_1), 0.0);
     float normalDotView_1 = max(dot(normal_3, viewDirection_1), 0.0);
@@ -731,14 +743,14 @@ vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection
     }
     vec3 halfDirection_1 = normalize((viewDirection_1 + lightDirection_1));
     float clampedMetallic = clamp(metallic, 0.0, 1.0);
-    float clampedRoughness = clamp(roughness_3, 0.045, 1.0);
+    float clampedRoughness = clamp(roughness_2, 0.045, 1.0);
     float _e32 = distributionGgx(normal_3, halfDirection_1, clampedRoughness);
     float _e33 = geometrySmith(normal_3, viewDirection_1, lightDirection_1, clampedRoughness);
     vec3 f0_1 = ((vec3(0.04) * (1.0 - clampedMetallic)) + (baseColor * clampedMetallic));
     vec3 _e44 = fresnelSchlick(max(dot(viewDirection_1, halfDirection_1), 0.0), f0_1);
     vec3 diffuseWeight = ((vec3(1.0) - _e44) * (1.0 - clampedMetallic));
     vec3 diffuse = ((diffuseWeight * baseColor) / vec3(3.1415927));
-    vec3 specular = (((_e32 * _e33) * _e44) / vec3(max(((4.0 * normalDotView_1) * normalDotLight_1), 1e-6)));
+    vec3 specular = (((_e32 * _e33) * _e44) / vec3(((4.0 * normalDotView_1) * normalDotLight_1)));
     return (((diffuse + specular) * radiance) * normalDotLight_1);
 }
 

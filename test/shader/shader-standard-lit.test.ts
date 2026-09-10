@@ -87,11 +87,12 @@ describe('standard-lit built-in shader', () => {
     });
   });
 
-  test('contains the authored GGX, Smith, and Schlick PBR terms', () => {
+  test('publishes the standard PBR v1 GGX, Smith, and Schlick terms', () => {
     const wgsl = STANDARD_LIT_SHADER_ARTIFACT.modules.wgsl;
     const fragment = STANDARD_LIT_SHADER_ARTIFACT.modules.glslEs300['fragment:standardLitFragment'];
     expect(wgsl).toContain('fn distributionGgx');
-    expect(wgsl).toContain('fn geometrySchlickGgxDirect');
+    expect(wgsl).toContain('fn geometrySmithGgx');
+    expect(wgsl).not.toContain('fn geometrySchlickGgxDirect');
     expect(wgsl).toContain('fn geometrySmith');
     expect(wgsl).toContain('fn fresnelSchlick');
     expect(wgsl).toContain('materialData.metallic');
