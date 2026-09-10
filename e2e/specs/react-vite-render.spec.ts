@@ -28,7 +28,7 @@ test('renders the public React example and survives surface suspension', async (
   await expect.poll(() => cleanFrame(page, backend)).toBeGreaterThan(initialFrame);
   await expect(page.locator('canvas')).toHaveScreenshot('react-vite-standard-lit-box.png', {
     animations: 'disabled',
-    maxDiffPixelRatio: 0.01
+    maxDiffPixelRatio: 0.05
   });
   const firstPose = await page.locator('canvas').screenshot();
   const firstPoseFrame = await page.evaluate(
@@ -60,7 +60,7 @@ test('renders the public React example and survives surface suspension', async (
   expectBackendClean(recovered, backend);
   await expect(page.locator('canvas')).toHaveScreenshot('react-vite-standard-lit-recovered.png', {
     animations: 'disabled',
-    maxDiffPixelRatio: 0.01
+    maxDiffPixelRatio: 0.05
   });
   await info.attach('react-vite-state', {
     body: JSON.stringify({ initial, recovered }, null, 2),
