@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl',
-    contentHash: 'bc0b761acb23ec075ada34bd393a65223518800f048ff5e73f445329cf1a6044',
-    byteLength: 14037
+    contentHash: '1f23296d69a33f87dc3cb7664008b0ac45d47c8cac6ad4842e4f6d1377b1818d',
+    byteLength: 17160
   },
   entryPoints: [
     {
@@ -71,6 +71,60 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
           addressSpace: 'uniform',
           access: 'read',
           typeName: 'MaterialData'
+        },
+        {
+          group: 2,
+          binding: 1,
+          name: 'baseColorTexture',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 2,
+          binding: 2,
+          name: 'metallicRoughnessTexture',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 2,
+          binding: 3,
+          name: 'normalTexture',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 2,
+          binding: 4,
+          name: 'occlusionTexture',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 2,
+          binding: 5,
+          name: 'emissiveTexture',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 2,
+          binding: 6,
+          name: 'surfaceSampler',
+          kind: 'sampler',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'sampler'
         },
         {
           group: 3,
@@ -192,6 +246,60 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
       addressSpace: 'uniform',
       access: 'read',
       typeName: 'MaterialData'
+    },
+    {
+      group: 2,
+      binding: 1,
+      name: 'baseColorTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 2,
+      binding: 2,
+      name: 'metallicRoughnessTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 2,
+      binding: 3,
+      name: 'normalTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 2,
+      binding: 4,
+      name: 'occlusionTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 2,
+      binding: 5,
+      name: 'emissiveTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 2,
+      binding: 6,
+      name: 'surfaceSampler',
+      kind: 'sampler',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'sampler'
     },
     {
       group: 3,
@@ -356,7 +464,7 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
       group: 2,
       binding: 0,
       name: 'materialData',
-      byteSize: 32,
+      byteSize: 80,
       alignment: 16,
       fields: [
         {
@@ -367,32 +475,95 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
           typeName: 'vec4<f32>'
         },
         {
-          path: 'metallic',
+          path: 'emissiveFactor',
           offset: 16,
+          size: 12,
+          alignment: 16,
+          typeName: 'vec3<f32>'
+        },
+        {
+          path: 'normalScale',
+          offset: 28,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
+        },
+        {
+          path: 'metallic',
+          offset: 32,
           size: 4,
           alignment: 4,
           typeName: 'f32'
         },
         {
           path: 'roughness',
-          offset: 20,
+          offset: 36,
           size: 4,
           alignment: 4,
           typeName: 'f32'
+        },
+        {
+          path: 'occlusionStrength',
+          offset: 40,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
+        },
+        {
+          path: 'alphaCutoff',
+          offset: 44,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
+        },
+        {
+          path: 'baseColorUvSet',
+          offset: 48,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'metallicRoughnessUvSet',
+          offset: 52,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'normalUvSet',
+          offset: 56,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'occlusionUvSet',
+          offset: 60,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'emissiveUvSet',
+          offset: 64,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'alphaMask',
+          offset: 68,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
         },
         {
           path: 'padding0',
-          offset: 24,
-          size: 4,
-          alignment: 4,
-          typeName: 'f32'
-        },
-        {
-          path: 'padding1',
-          offset: 28,
-          size: 4,
-          alignment: 4,
-          typeName: 'f32'
+          offset: 72,
+          size: 8,
+          alignment: 8,
+          typeName: 'vec2<u32>'
         }
       ]
     },
@@ -524,6 +695,21 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
       location: 1,
       name: 'normal',
       typeName: 'vec3<f32>'
+    },
+    {
+      location: 2,
+      name: 'uv0',
+      typeName: 'vec2<f32>'
+    },
+    {
+      location: 3,
+      name: 'uv1',
+      typeName: 'vec2<f32>'
+    },
+    {
+      location: 4,
+      name: 'tangent',
+      typeName: 'vec4<f32>'
     }
   ],
   fragmentOutputs: [
@@ -614,10 +800,28 @@ struct ViewData {
 /// - padding0, padding1: Explicit tail padding to complete 32-byte alignment.
 struct MaterialData {
   baseColor: vec4<f32>,
+  emissiveFactor: vec3<f32>,
+  normalScale: f32,
   metallic: f32,
   roughness: f32,
-  padding0: f32,
-  padding1: f32,
+  occlusionStrength: f32,
+  alphaCutoff: f32,
+  baseColorUvSet: u32,
+  metallicRoughnessUvSet: u32,
+  normalUvSet: u32,
+  occlusionUvSet: u32,
+  emissiveUvSet: u32,
+  alphaMask: u32,
+  padding0: vec2<u32>,
+};
+
+struct StandardLitSurface {
+  baseColor: vec4<f32>,
+  normal: vec3<f32>,
+  metallic: f32,
+  emissive: vec3<f32>,
+  roughness: f32,
+  occlusion: f32,
 };
 
 struct ReceiverLightHeader { offset: u32, count: u32 };
@@ -638,12 +842,18 @@ struct StandardLitVertexOutput {
   @builtin(position) position: vec4<f32>,
   @location(0) normal: vec3<f32>,
   @location(1) worldPosition: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>,
 };
 
 /// Interpolated fragment input in world coordinate space.
 struct StandardLitFragmentInput {
   @location(0) normal: vec3<f32>,
   @location(1) worldPosition: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>,
 };
 
 // ----------------------------------------------------------------------------
@@ -653,6 +863,12 @@ struct StandardLitFragmentInput {
 @group(0) @binding(0) var<uniform> objectData: ObjectData;               // Group 0: Per-draw
 @group(1) @binding(0) var<uniform> viewData: ViewData;                   // Group 1: Per-view / Per-frame
 @group(2) @binding(0) var<uniform> materialData: MaterialData;           // Group 2: Per-material
+@group(2) @binding(1) var baseColorTexture: texture_2d<f32>;
+@group(2) @binding(2) var metallicRoughnessTexture: texture_2d<f32>;
+@group(2) @binding(3) var normalTexture: texture_2d<f32>;
+@group(2) @binding(4) var occlusionTexture: texture_2d<f32>;
+@group(2) @binding(5) var emissiveTexture: texture_2d<f32>;
+@group(2) @binding(6) var surfaceSampler: sampler;
 @group(3) @binding(5) var<uniform> environmentData: EnvironmentData;
 @group(3) @binding(6) var irradianceMap: texture_2d<f32>;
 @group(3) @binding(7) var prefilteredRadianceMap: texture_2d<f32>;
@@ -765,18 +981,53 @@ fn cookTorranceDirect(
 @vertex
 fn standardLitVertex(
   @location(0) position: vec3<f32>,
-  @location(1) normal: vec3<f32>
+  @location(1) normal: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>
 ) -> StandardLitVertexOutput {
   // Transform vertex position to world space
   let worldPosition = objectData.world * vec4<f32>(position, 1.0);
 
   // Transform normal vector to world space via normal matrix
   let worldNormal = normalize((objectData.normalWorld * vec4<f32>(normal, 0.0)).xyz);
+  let rawWorldTangent = (objectData.world * vec4<f32>(tangent.xyz, 0.0)).xyz;
+  let worldTangent = normalize(rawWorldTangent - worldNormal * dot(worldNormal, rawWorldTangent));
+  let world3 = mat3x3<f32>(objectData.world[0].xyz, objectData.world[1].xyz, objectData.world[2].xyz);
+  let transformSign = select(-1.0, 1.0, determinant(world3) >= 0.0);
 
   return StandardLitVertexOutput(
     viewData.viewProjection * worldPosition, // Projected clip position
     worldNormal,                             // World normal for fragment shading
-    worldPosition.xyz                        // World position for view direction calculation
+    worldPosition.xyz,
+    uv0,
+    uv1,
+    vec4<f32>(worldTangent, tangent.w * transformSign)
+  );
+}
+
+fn selectUv(index: u32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
+  return select(uv0, uv1, index == 1u);
+}
+
+fn sampleStandardLitSurface(input: StandardLitFragmentInput) -> StandardLitSurface {
+  let baseSample = textureSample(baseColorTexture, surfaceSampler, selectUv(materialData.baseColorUvSet, input.uv0, input.uv1));
+  let mrSample = textureSample(metallicRoughnessTexture, surfaceSampler, selectUv(materialData.metallicRoughnessUvSet, input.uv0, input.uv1));
+  let normalSample = textureSample(normalTexture, surfaceSampler, selectUv(materialData.normalUvSet, input.uv0, input.uv1)).xyz * 2.0 - vec3<f32>(1.0);
+  let aoSample = textureSample(occlusionTexture, surfaceSampler, selectUv(materialData.occlusionUvSet, input.uv0, input.uv1)).r;
+  let emissiveSample = textureSample(emissiveTexture, surfaceSampler, selectUv(materialData.emissiveUvSet, input.uv0, input.uv1)).rgb;
+  let tangent = normalize(input.tangent.xyz);
+  let geometricNormal = normalize(input.normal);
+  let bitangent = cross(geometricNormal, tangent) * input.tangent.w;
+  let mapped = normalize(vec3<f32>(normalSample.xy * materialData.normalScale, normalSample.z));
+  let worldNormal = normalize(tangent * mapped.x + bitangent * mapped.y + geometricNormal * mapped.z);
+  return StandardLitSurface(
+    materialData.baseColor * baseSample,
+    worldNormal,
+    clamp(materialData.metallic * mrSample.b, 0.0, 1.0),
+    materialData.emissiveFactor * emissiveSample,
+    clamp(materialData.roughness * mrSample.g, 0.045, 1.0),
+    1.0 + materialData.occlusionStrength * (aoSample - 1.0)
   );
 }
 
@@ -788,7 +1039,8 @@ fn evaluatePackedLight(
   index: u32,
   worldPosition: vec3<f32>,
   normal: vec3<f32>,
-  viewDirection: vec3<f32>
+  viewDirection: vec3<f32>,
+  surface: StandardLitSurface
 ) -> vec3<f32> {
   let base = 4u + index * 12u;
   let vector = vec3<f32>(
@@ -807,9 +1059,9 @@ fn evaluatePackedLight(
       normal,
       viewDirection,
       -normalize(vector),
-      materialData.baseColor.rgb,
-      materialData.metallic,
-      materialData.roughness,
+      surface.baseColor.rgb,
+      surface.metallic,
+      surface.roughness,
       color * intensity
     );
   }
@@ -819,9 +1071,9 @@ fn evaluatePackedLight(
     normal,
     viewDirection,
     normalize(delta),
-    materialData.baseColor.rgb,
-    materialData.metallic,
-    materialData.roughness,
+    surface.baseColor.rgb,
+    surface.metallic,
+    surface.roughness,
     color * intensity / distanceSquared
   );
 }
@@ -838,10 +1090,10 @@ fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
   );
 }
 
-fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
-  let metallic = clamp(materialData.metallic, 0.0, 1.0);
-  let roughness = clamp(materialData.roughness, 0.045, 1.0);
-  let f0 = vec3<f32>(0.04) * (1.0 - metallic) + materialData.baseColor.rgb * metallic;
+fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>, surface: StandardLitSurface) -> vec3<f32> {
+  let metallic = surface.metallic;
+  let roughness = surface.roughness;
+  let f0 = vec3<f32>(0.04) * (1.0 - metallic) + surface.baseColor.rgb * metallic;
   let fresnel = fresnelSchlick(max(dot(normal, viewDirection), 0.0), f0);
   let irradianceUv = directionToEquirectangularUv(normal);
   let reflection = reflect(-viewDirection, normal);
@@ -858,9 +1110,9 @@ fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
     vec2<f32>(max(dot(normal, viewDirection), 0.0), roughness)
   ).rg;
   let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
-    materialData.baseColor.rgb * irradiance / 3.14159265359;
+    surface.baseColor.rgb * irradiance / 3.14159265359;
   let specular = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
-  return (diffuse + specular) * environmentData.intensity;
+  return (diffuse + specular) * environmentData.intensity * surface.occlusion;
 }
 
 // ----------------------------------------------------------------------------
@@ -871,23 +1123,25 @@ fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
 fn standardLitFragment(
   fragmentInput: StandardLitFragmentInput
 ) -> @location(0) vec4<f32> {
-  let normal = normalize(fragmentInput.normal);
+  let surface = sampleStandardLitSurface(fragmentInput);
+  if (materialData.alphaMask != 0u && surface.baseColor.a < materialData.alphaCutoff) { discard; }
+  let normal = surface.normal;
   let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
-  var lit = evaluateIbl(normal, viewDirection);
+  var lit = evaluateIbl(normal, viewDirection, surface);
   let directionalCount = directionalLightCount();
   for (var index = 0u; index < directionalCount; index += 1u) {
     lit += evaluatePackedLight(
-      directionalIndex(index), fragmentInput.worldPosition, normal, viewDirection
+      directionalIndex(index), fragmentInput.worldPosition, normal, viewDirection, surface
     );
   }
   let header = receiverLightHeader();
   for (var index = 0u; index < header.count; index += 1u) {
     lit += evaluatePackedLight(
-      receiverLightIndex(header, index), fragmentInput.worldPosition, normal, viewDirection
+      receiverLightIndex(header, index), fragmentInput.worldPosition, normal, viewDirection, surface
     );
   }
 
-  return vec4<f32>(lit, materialData.baseColor.a);
+  return vec4<f32>(lit + surface.emissive, surface.baseColor.a);
 }
 
 `,

@@ -23,6 +23,11 @@ import {
   LayoutCache
 } from '../pipeline';
 import { disposePreparedMesh, prepareMesh, type PreparedMesh } from '../mesh';
+import {
+  prepareStandardLitTextureBindings,
+  type PreparedStandardLitTextureBindings
+} from '../material';
+import { StandardLitMaterialSchema } from '../../material';
 import type { PreparedDrawPacket } from '../phase';
 import {
   createPreparedBindGroupLayoutToken,
@@ -104,6 +109,7 @@ export class BaselineStandardLitPreparation {
   private readonly environmentBundle?: PreparedEnvironmentBundle | undefined;
   private readonly environmentBuffer: RHIBuffer;
   private readonly environmentTextures: EnvironmentTextureSet;
+  private readonly materialTextures: PreparedStandardLitTextureBindings;
   readonly postColor: BaselinePostColorPreparation;
   private readonly postColorOwnedResources: readonly RHIResource[];
   private readonly lightListRecorder:
@@ -149,6 +155,19 @@ export class BaselineStandardLitPreparation {
       label: 'aether-standard-lit',
       code: shaderModule
     });
+    const parameters = options.material.material.instance.parameters;
+    this.materialTextures = prepareStandardLitTextureBindings({
+      device,
+      textureIds: [
+        parameters.get(StandardLitMaterialSchema.fields.baseColorTexture).assetId,
+        parameters.get(StandardLitMaterialSchema.fields.metallicRoughnessTexture).assetId,
+        parameters.get(StandardLitMaterialSchema.fields.normalTexture).assetId,
+        parameters.get(StandardLitMaterialSchema.fields.occlusionTexture).assetId,
+        parameters.get(StandardLitMaterialSchema.fields.emissiveTexture).assetId
+      ],
+      samplerId: parameters.get(StandardLitMaterialSchema.fields.sampler).assetId,
+      ...(options.materialResources === undefined ? {} : { resolver: options.materialResources })
+    });
     const { diffuseIrradiance, intensity, radianceTint } = options.environmentLighting;
     if (options.environment !== undefined) {
       this.environmentBundle = sharedEnvironmentTextureCache.acquire(device, options.environment);
@@ -191,7 +210,7 @@ export class BaselineStandardLitPreparation {
             {
               format: stream.format,
               offset: stream.offset,
-              shaderLocation: stream.semantic === 'POSITION' ? 0 : 1
+              shaderLocation: standardLitShaderLocation(stream.semantic)
             }
           ]
         }))
@@ -268,10 +287,21 @@ export class BaselineStandardLitPreparation {
     const bindGroups: RHIBindGroup[] = [];
     try {
       for (let group = 0; group < 3; group += 1) {
+        const entries =
+          group === 2
+            ? [
+                { binding: 0, resource: { buffer: buffers[group]! } },
+                ...this.materialTextures.views.map((view, index) => ({
+                  binding: index + 1,
+                  resource: view
+                })),
+                { binding: 6, resource: this.materialTextures.sampler }
+              ]
+            : [{ binding: 0, resource: { buffer: buffers[group]! } }];
         bindGroups.push(
           device.createBindGroup({
             layout: this.bindGroupLayouts[group]!,
-            entries: [{ binding: 0, resource: { buffer: buffers[group]! } }]
+            entries
           })
         );
       }
@@ -393,6 +423,7 @@ export class BaselineStandardLitPreparation {
     this.pipeline.dispose();
     this.lightListRecorder.dispose();
     this.environmentBuffer.dispose();
+    this.materialTextures.dispose();
     if (this.environmentBundle !== undefined) {
       this.environmentBundle.release();
     } else {
@@ -501,4 +532,21 @@ export class BaselineStandardLitPreparation {
 
 function disposeResources(resources: readonly RHIResource[]): void {
   for (const resource of [...resources].reverse()) resource.dispose();
+}
+
+function standardLitShaderLocation(semantic: string): number {
+  switch (semantic) {
+    case 'POSITION':
+      return 0;
+    case 'NORMAL':
+      return 1;
+    case 'TEXCOORD_0':
+      return 2;
+    case 'TEXCOORD_1':
+      return 3;
+    case 'TANGENT':
+      return 4;
+    default:
+      throw new Error(`Standard-lit mesh semantic "${semantic}" is unsupported.`);
+  }
 }

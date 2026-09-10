@@ -20,6 +20,7 @@ import type {
 } from '../../lighting';
 import type { PreparedDrawPacket } from '../../phase';
 import type { RenderView } from '../../visibility';
+import type { StandardLitResourceResolver } from '../../material';
 import type { BaselinePostColorPreparation } from '../baseline-post-color';
 import type { PreparedBackgroundFrame } from '../../background/prepare';
 import type { ViewBackground } from '../../background/types';
@@ -159,6 +160,8 @@ export interface BaselineRenderingOptions {
     payloadVersion: number;
     material: StandardLitMaterial;
   }>;
+  /** Resolves non-built-in StandardLit texture and sampler asset identities. */
+  readonly materialResources?: StandardLitResourceResolver;
   /** Optional pre-cooked real environment asset or full environment configuration; if omitted, defaults to synthetic fallback. */
   readonly environment?: EnvironmentAsset | BaselineEnvironmentOptions | undefined;
   /** Optional shared environment lighting configuration overriding defaults for both IBL and Skybox. */

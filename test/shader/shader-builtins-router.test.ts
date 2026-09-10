@@ -86,7 +86,7 @@ describe('Built-in WebGL2 Shader Translation Router & Generic Translator', () =>
       clipDepthMode: 'vertex-remap'
     });
     expect(standardLitListFrag.source).not.toMatch(/^#version/m);
-    expect(standardLitListFrag.targetAbiFingerprint).toBe('standard-lit-list-v1');
+    expect(standardLitListFrag.targetAbiFingerprint).toBe('standard-lit-list-v2');
   });
 
   test('fails fast when an unregistered shader module is passed', () => {

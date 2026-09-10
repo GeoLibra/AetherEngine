@@ -35,7 +35,10 @@ describe('standard-lit built-in shader', () => {
     );
     expect(manifest.vertexInputs).toEqual([
       { location: 0, name: 'position', type: 'vec3<f32>' },
-      { location: 1, name: 'normal', type: 'vec3<f32>' }
+      { location: 1, name: 'normal', type: 'vec3<f32>' },
+      { location: 2, name: 'uv0', type: 'vec2<f32>' },
+      { location: 3, name: 'uv1', type: 'vec2<f32>' },
+      { location: 4, name: 'tangent', type: 'vec4<f32>' }
     ]);
     expect(
       manifest.groups.map(({ group, entries }) => ({
@@ -45,7 +48,18 @@ describe('standard-lit built-in shader', () => {
     ).toEqual([
       { group: 0, entries: [{ kind: 'uniform-buffer', binding: 0, name: 'objectData' }] },
       { group: 1, entries: [{ kind: 'uniform-buffer', binding: 0, name: 'viewData' }] },
-      { group: 2, entries: [{ kind: 'uniform-buffer', binding: 0, name: 'materialData' }] },
+      {
+        group: 2,
+        entries: [
+          { kind: 'uniform-buffer', binding: 0, name: 'materialData' },
+          { kind: 'texture', binding: 1, name: 'baseColorTexture' },
+          { kind: 'texture', binding: 2, name: 'metallicRoughnessTexture' },
+          { kind: 'texture', binding: 3, name: 'normalTexture' },
+          { kind: 'texture', binding: 4, name: 'occlusionTexture' },
+          { kind: 'texture', binding: 5, name: 'emissiveTexture' },
+          { kind: 'sampler', binding: 6, name: 'surfaceSampler' }
+        ]
+      },
       { group: 3, entries: [{ kind: 'uniform-buffer', binding: 0, name: 'lightData' }] }
     ]);
     expect(manifest.fragmentOutputs).toEqual([
@@ -67,13 +81,22 @@ describe('standard-lit built-in shader', () => {
       ]
     });
     expect(manifest.buffers.find(({ name }) => name === 'materialData')).toMatchObject({
-      byteSize: 32,
+      byteSize: 80,
       fields: [
         { path: 'baseColor', offset: 0 },
-        { path: 'metallic', offset: 16 },
-        { path: 'roughness', offset: 20 },
-        { path: 'padding0', offset: 24 },
-        { path: 'padding1', offset: 28 }
+        { path: 'emissiveFactor', offset: 16 },
+        { path: 'normalScale', offset: 28 },
+        { path: 'metallic', offset: 32 },
+        { path: 'roughness', offset: 36 },
+        { path: 'occlusionStrength', offset: 40 },
+        { path: 'alphaCutoff', offset: 44 },
+        { path: 'baseColorUvSet', offset: 48 },
+        { path: 'metallicRoughnessUvSet', offset: 52 },
+        { path: 'normalUvSet', offset: 56 },
+        { path: 'occlusionUvSet', offset: 60 },
+        { path: 'emissiveUvSet', offset: 64 },
+        { path: 'alphaMask', offset: 68 },
+        { path: 'padding0', offset: 72 }
       ]
     });
     expect(manifest.buffers.find(({ name }) => name === 'lightData')).toMatchObject({
