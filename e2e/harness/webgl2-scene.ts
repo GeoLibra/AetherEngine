@@ -1,7 +1,7 @@
 import {
   BrowserGraphicsBootstrapError,
   BUILT_IN_WEBGL2_TRANSLATOR,
-  LIGHT_LIST_WEBGL_SHADER_MODULE,
+  LIGHT_LIST_WEBGL2_SHADER_MODULE,
   createBrowserGraphics,
   type RenderEntityId,
   type RenderView,
@@ -292,7 +292,7 @@ const TRANSLATOR: WebGL2ShaderTranslationPort = {
   translatorId: 'aether-e2e-glsl',
   version: 1,
   translate(input) {
-    if (input.wgsl === LIGHT_LIST_WEBGL_SHADER_MODULE)
+    if (input.wgsl === LIGHT_LIST_WEBGL2_SHADER_MODULE)
       return BUILT_IN_WEBGL2_TRANSLATOR.translate(input);
     const source =
       input.stage === 'vertex'

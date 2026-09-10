@@ -5,16 +5,12 @@ import {
   LIGHT_LIST_SHADER_ARTIFACT,
   LIGHT_LIST_WEBGL2_SHADER_ARTIFACT,
   LIGHT_LIST_WEBGL2_SHADER_MODULE,
-  LIGHT_LIST_WEBGL_SHADER_ARTIFACT,
-  LIGHT_LIST_WEBGL_SHADER_MODULE,
   POST_COLOR_SHADER_ARTIFACT,
   POST_COLOR_SHADER_MODULE,
   SKYBOX_SHADER_ARTIFACT,
   SKYBOX_SHADER_MODULE,
   STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT,
   STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE,
-  STANDARD_LIT_LIST_WEBGL_SHADER_ARTIFACT,
-  STANDARD_LIT_LIST_WEBGL_SHADER_MODULE,
   STANDARD_LIT_SHADER_ARTIFACT,
   STANDARD_LIT_SHADER_MODULE,
   createCookedArtifactWebGL2Translator,
@@ -196,13 +192,6 @@ describe('Built-in WebGL2 Shader Translation Router & Generic Translator', () =>
     });
 
     expect(result.physicalBindings.every((b) => b.slot === 99)).toBe(true);
-  });
-
-  test('maintains identical identity between WebGL2 canonical symbols and legacy WebGL aliases', () => {
-    expect(LIGHT_LIST_WEBGL_SHADER_ARTIFACT).toBe(LIGHT_LIST_WEBGL2_SHADER_ARTIFACT);
-    expect(LIGHT_LIST_WEBGL_SHADER_MODULE).toBe(LIGHT_LIST_WEBGL2_SHADER_MODULE);
-    expect(STANDARD_LIT_LIST_WEBGL_SHADER_ARTIFACT).toBe(STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT);
-    expect(STANDARD_LIT_LIST_WEBGL_SHADER_MODULE).toBe(STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE);
   });
 
   test('createCookedArtifactWebGL2Translator accepts raw artifact and infers ID, version, and fingerprint', () => {

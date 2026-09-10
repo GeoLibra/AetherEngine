@@ -1,8 +1,8 @@
 import {
   STANDARD_LIT_LIST_SHADER_ABI_VERSION,
   STANDARD_LIT_LIST_SHADER_MODULE_KEY,
-  STANDARD_LIT_LIST_WEBGL_SHADER_ARTIFACT,
-  STANDARD_LIT_LIST_WEBGL_SHADER_MODULE,
+  STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT,
+  STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE,
   STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT,
   STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE,
   createCookedShaderBindingManifest
@@ -118,11 +118,11 @@ export class BaselineStandardLitPreparation {
     const shaderArtifact =
       options.graphics.backend === 'webgpu'
         ? STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT
-        : STANDARD_LIT_LIST_WEBGL_SHADER_ARTIFACT;
+        : STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT;
     const shaderModule =
       options.graphics.backend === 'webgpu'
         ? STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE
-        : STANDARD_LIT_LIST_WEBGL_SHADER_MODULE;
+        : STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE;
     const manifest = createCookedShaderBindingManifest(
       shaderArtifact,
       STANDARD_LIT_LIST_SHADER_ABI_VERSION
