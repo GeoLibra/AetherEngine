@@ -139,7 +139,12 @@ function reflectTextureBinding(
       sampleType: 'float',
       multisampled: true
     },
-    texture_depth_2d: { viewDimension: '2d', sampleType: 'depth', multisampled: false }
+    texture_depth_2d: { viewDimension: '2d', sampleType: 'depth', multisampled: false },
+    texture_depth_2d_array: {
+      viewDimension: '2d-array',
+      sampleType: 'depth',
+      multisampled: false
+    }
   } as const;
   const facts = textureTypes[sourceType as keyof typeof textureTypes];
   if (facts !== undefined) {

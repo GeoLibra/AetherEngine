@@ -1,7 +1,8 @@
 import {
   RenderGraphBuilder,
   type PassToken,
-  type RestrictedPassContext,
+  type PreparedDrawResourcesToken,
+  type RasterPassContext,
   type TextureHandle,
   type TextureRange
 } from '../../../render-graph';
@@ -20,10 +21,12 @@ export interface ShadowDepthPassRecord {
   readonly layer: number;
   readonly texture: TextureHandle;
   readonly range: TextureRange;
+  /** Prepared caster draws declared during setup and legal to resolve in this pass. */
+  readonly draws: readonly PreparedDrawResourcesToken[];
 }
 
 export type ShadowDepthPassRecorder = (
-  context: RestrictedPassContext,
+  context: RasterPassContext,
   pass: ShadowDepthPassRecord
 ) => void;
 
@@ -38,6 +41,7 @@ export function declareShadowDepthPasses(
   requests: readonly ShadowRequest[],
   options: {
     readonly record: ShadowDepthPassRecorder;
+    readonly draws?: (request: ShadowRequest) => readonly PreparedDrawResourcesToken[];
     readonly format?: string;
     readonly label?: string;
   }
@@ -68,6 +72,7 @@ export function declareShadowDepthPasses(
   const layerByRequestKey = new Map<string, number>();
   for (let layer = 0; layer < acceptedRequests.length; layer++) {
     const request = acceptedRequests[layer]!;
+    const draws = Object.freeze([...(options.draws?.(request) ?? [])]);
     const key = shadowRequestKey(request);
     if (layerByRequestKey.has(key)) throw new Error(`Duplicate shadow request key "${key}".`);
     layerByRequestKey.set(key, layer);
@@ -80,19 +85,29 @@ export function declareShadowDepthPasses(
       arrayLayerCount: 1,
       aspect: 'depth-only'
     });
-    const token = graph.addPass<
-      Readonly<{ texture: TextureHandle; range: TextureRange }>,
-      RestrictedPassContext
-    >({
+    const token = graph.addRasterPass<Readonly<{ texture: TextureHandle; range: TextureRange }>>({
       id: `shadow:${key}`,
       setup(pass) {
-        next = pass.writeTexture(source, 'depth-stencil-attachment', range);
+        for (const draw of draws) pass.useDrawResources(draw);
+        pass.sideEffect(`record shadow depth for ${key}`);
+        next = pass.depthStencilAttachment(source, {
+          range,
+          depthLoad: 'clear',
+          depthStore: 'store',
+          depthClearValue: 1
+        });
         return { texture: next, range };
       },
       run(context, resources) {
         record(
           context,
-          Object.freeze({ request, layer, texture: resources.texture, range: resources.range })
+          Object.freeze({
+            request,
+            layer,
+            texture: resources.texture,
+            range: resources.range,
+            draws
+          })
         );
       }
     });

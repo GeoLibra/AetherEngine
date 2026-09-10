@@ -47,7 +47,7 @@ describe('standard-lit LightList built-in shader', () => {
       clipDepthMode: 'vertex-remap'
     });
 
-    expect(STANDARD_LIT_LIST_SHADER_MODULE_KEY).toBe('aether.shader.standard-lit-list.v2');
+    expect(STANDARD_LIT_LIST_SHADER_MODULE_KEY).toBe('aether.shader.standard-lit-list.v3');
     expect(
       translated.physicalBindings
         .filter((binding) => binding.kind === 'sampler' && binding.group === 3)
@@ -55,13 +55,14 @@ describe('standard-lit LightList built-in shader', () => {
     ).toEqual([
       { group: 3, binding: 9, slot: 6 },
       { group: 3, binding: 9, slot: 7 },
-      { group: 3, binding: 9, slot: 8 }
+      { group: 3, binding: 9, slot: 8 },
+      { group: 3, binding: 12, slot: 11 }
     ]);
     expect(
       translated.programBindings
         .filter((binding) => binding.kind === 'combined-sampler' && binding.slot >= 6)
         .map(({ slot }) => slot)
-    ).toEqual([6, 7, 8]);
+    ).toEqual([11, 6, 7, 8]);
   });
 
   test('publishes the standard PBR v1 profile for both backend artifacts', () => {

@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import {
   buildStableCascade,
+  buildDirectionalShadowCascades,
   computeCascadeSplits,
   snapShadowCoordinate,
   stableLightBasis
 } from '../../src/rendering';
+import { Mat4 } from '../../src/math';
 
 describe('stable cascaded shadows', () => {
   test('computes uniform/logarithmic mixes and clamps lambda', () => {
@@ -60,6 +62,32 @@ describe('stable cascaded shadows', () => {
     expect(after.radius).toBeGreaterThanOrEqual(after.rawRadius);
     expect(after.basis).toEqual(before.basis);
     expect(after.centerWorld).toEqual([256, -128, 64]);
+  });
+
+  test('builds four finite ordered caster matrices from the camera frustum', () => {
+    const projection = Mat4.perspective(Math.PI / 3, 16 / 9, 0.1, 100);
+    const cascades = buildDirectionalShadowCascades({
+      inverseViewProjection: Mat4.invert(projection),
+      near: 0.1,
+      far: 100,
+      shadowDistance: 80,
+      lightDirection: [0, -1, -1]
+    });
+
+    expect(cascades).toHaveLength(4);
+    expect(cascades.map((cascade) => cascade.splitFar)).toEqual(
+      [...cascades.map((cascade) => cascade.splitFar)].sort((left, right) => left - right)
+    );
+    expect(cascades.every((cascade) => cascade.viewProjection.every(Number.isFinite))).toBe(true);
+    expect(() =>
+      buildDirectionalShadowCascades({
+        inverseViewProjection: Mat4.invert(projection),
+        near: 0.1,
+        far: 'infinite',
+        shadowDistance: 80,
+        lightDirection: [0, -1, -1]
+      })
+    ).toThrow('finite camera far plane');
   });
 });
 

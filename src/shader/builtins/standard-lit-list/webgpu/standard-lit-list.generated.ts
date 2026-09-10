@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl',
-    contentHash: '837102480ec42dfefd8765ffbdcfe7338f004c535622cc7f2fa71e7e90f41ac2',
-    byteLength: 17309
+    contentHash: '3ddacaca0ce9d96a715599804c90964c8931355c0b1b99a9a4db5e2051f37a69',
+    byteLength: 19423
   },
   entryPoints: [
     {
@@ -215,6 +215,33 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
           addressSpace: 'handle',
           access: 'read',
           typeName: 'sampler'
+        },
+        {
+          group: 3,
+          binding: 10,
+          name: 'directionalShadowData',
+          kind: 'uniform-buffer',
+          addressSpace: 'uniform',
+          access: 'read',
+          typeName: 'DirectionalShadowData'
+        },
+        {
+          group: 3,
+          binding: 11,
+          name: 'directionalShadowMap',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_depth_2d_array'
+        },
+        {
+          group: 3,
+          binding: 12,
+          name: 'directionalShadowSampler',
+          kind: 'comparison-sampler',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'sampler_comparison'
         }
       ]
     }
@@ -390,6 +417,33 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
       addressSpace: 'handle',
       access: 'read',
       typeName: 'sampler'
+    },
+    {
+      group: 3,
+      binding: 10,
+      name: 'directionalShadowData',
+      kind: 'uniform-buffer',
+      addressSpace: 'uniform',
+      access: 'read',
+      typeName: 'DirectionalShadowData'
+    },
+    {
+      group: 3,
+      binding: 11,
+      name: 'directionalShadowMap',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_depth_2d_array'
+    },
+    {
+      group: 3,
+      binding: 12,
+      name: 'directionalShadowSampler',
+      kind: 'comparison-sampler',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'sampler_comparison'
     }
   ],
   bufferLayouts: [
@@ -683,6 +737,57 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
           typeName: 'f32'
         }
       ]
+    },
+    {
+      group: 3,
+      binding: 10,
+      name: 'directionalShadowData',
+      byteSize: 384,
+      alignment: 16,
+      fields: [
+        {
+          path: 'viewProjection',
+          offset: 0,
+          size: 256,
+          alignment: 16,
+          typeName: 'array<mat4x4<f32>,4>'
+        },
+        {
+          path: 'cameraView',
+          offset: 256,
+          size: 64,
+          alignment: 16,
+          typeName: 'mat4x4<f32>'
+        },
+        {
+          path: 'splitDepths',
+          offset: 320,
+          size: 16,
+          alignment: 16,
+          typeName: 'vec4<f32>'
+        },
+        {
+          path: 'params',
+          offset: 336,
+          size: 16,
+          alignment: 16,
+          typeName: 'vec4<f32>'
+        },
+        {
+          path: 'lightIndex',
+          offset: 352,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'padding',
+          offset: 368,
+          size: 12,
+          alignment: 16,
+          typeName: 'vec3<u32>'
+        }
+      ]
     }
   ],
   vertexInputs: [
@@ -833,6 +938,15 @@ struct EnvironmentData {
   maxValidRadianceLod: f32,
 };
 
+struct DirectionalShadowData {
+  viewProjection: array<mat4x4<f32>, 4>,
+  cameraView: mat4x4<f32>,
+  splitDepths: vec4<f32>,
+  params: vec4<f32>, // enabled, constant bias, slope bias, inverse resolution
+  lightIndex: u32,
+  padding: vec3<u32>,
+};
+
 // ----------------------------------------------------------------------------
 // Stage Input / Output Interfaces
 // ----------------------------------------------------------------------------
@@ -874,6 +988,9 @@ struct StandardLitFragmentInput {
 @group(3) @binding(7) var prefilteredRadianceMap: texture_2d<f32>;
 @group(3) @binding(8) var environmentBrdfLut: texture_2d<f32>;
 @group(3) @binding(9) var environmentSampler: sampler;
+@group(3) @binding(10) var<uniform> directionalShadowData: DirectionalShadowData;
+@group(3) @binding(11) var directionalShadowMap: texture_depth_2d_array;
+@group(3) @binding(12) var directionalShadowSampler: sampler_comparison;
 
 // ----------------------------------------------------------------------------
 // PBR Mathematical Helpers & Cook-Torrance BRDF Implementation
@@ -1055,15 +1172,17 @@ fn evaluatePackedLight(
   );
   let intensity = bitcast<f32>(lightWord(base + 11u));
   if (lightWord(base) == 0u) {
+    let lightDirection = -normalize(vector);
+    let visibility = directionalShadowVisibility(index, worldPosition, normal, lightDirection);
     return cookTorranceDirect(
       normal,
       viewDirection,
-      -normalize(vector),
+      lightDirection,
       surface.baseColor.rgb,
       surface.metallic,
       surface.roughness,
       color * intensity
-    );
+    ) * visibility;
   }
   let delta = vector - worldPosition;
   let distanceSquared = max(dot(delta, delta), 0.000001);
@@ -1076,6 +1195,48 @@ fn evaluatePackedLight(
     surface.roughness,
     color * intensity / distanceSquared
   );
+}
+
+fn directionalShadowVisibility(
+  lightIndex: u32,
+  worldPosition: vec3<f32>,
+  normal: vec3<f32>,
+  lightDirection: vec3<f32>
+) -> f32 {
+  if (directionalShadowData.params.x < 0.5 || lightIndex != directionalShadowData.lightIndex) {
+    return 1.0;
+  }
+  let viewPosition = directionalShadowData.cameraView * vec4<f32>(worldPosition, 1.0);
+  let viewDepth = -viewPosition.z;
+  var cascade = 4u;
+  for (var index = 0u; index < 4u; index += 1u) {
+    if (cascade == 4u && viewDepth <= directionalShadowData.splitDepths[index]) {
+      cascade = index;
+    }
+  }
+  if (cascade == 4u) { return 1.0; }
+  let clip = directionalShadowData.viewProjection[cascade] * vec4<f32>(worldPosition, 1.0);
+  let projected = clip.xyz / clip.w;
+  let uv = projected.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+  if (projected.z < 0.0 || projected.z > 1.0 || any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) {
+    return 1.0;
+  }
+  let normalDotLight = clamp(dot(normal, lightDirection), 0.0, 1.0);
+  let bias = directionalShadowData.params.y + directionalShadowData.params.z * (1.0 - normalDotLight);
+  let texel = directionalShadowData.params.w;
+  var visibility = 0.0;
+  for (var y = -1; y <= 1; y += 1) {
+    for (var x = -1; x <= 1; x += 1) {
+      visibility += textureSampleCompare(
+        directionalShadowMap,
+        directionalShadowSampler,
+        uv + vec2<f32>(f32(x), f32(y)) * texel,
+        i32(cascade),
+        projected.z - bias
+      );
+    }
+  }
+  return visibility / 9.0;
 }
 
 // ----------------------------------------------------------------------------
