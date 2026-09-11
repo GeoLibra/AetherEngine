@@ -3,6 +3,8 @@ import {
   DEFAULT_TABLE_CHUNK_CAPACITY,
   DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY
 } from '../../src/ecs/constants';
+// @ts-expect-error DEFAULT_TABLE_CAPACITY alias is removed in favor of DEFAULT_TABLE_CHUNK_CAPACITY
+import { DEFAULT_TABLE_CAPACITY } from '../../src/ecs/constants';
 import { defineComponent, type Entity } from '../../src';
 import { Table } from '../../src/ecs/table';
 

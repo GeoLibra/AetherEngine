@@ -1,7 +1,6 @@
 export type {
   WebGL2ImageCopyBuffer,
   WebGL2ImageCopyTexture,
-  WebGL2LeasedResource,
   WebGL2RenderPassSnapshot,
   WebGL2ReplayCommand
 } from './command-types';

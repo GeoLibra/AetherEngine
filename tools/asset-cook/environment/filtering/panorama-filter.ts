@@ -5,7 +5,10 @@
 
 import { packRgbToRgba16Float } from '../artifact/binary-packing';
 import { computeSha256Digest } from '../artifact/recipe-key';
-import type { EnvironmentMip, EnvironmentTexturePayload } from '../artifact/types';
+import type {
+  EnvironmentMip,
+  EnvironmentTexturePayload
+} from '../../../../src/assets/environment/artifact/types';
 import type { CanonicalHdrPanorama } from '../decode/types';
 
 /**

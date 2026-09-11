@@ -24,12 +24,5 @@ export const LIGHT_LIST_WEBGL2_SHADER_SOURCE: ShaderAuthoringSource = Object.fre
 
 export const LIGHT_LIST_WEBGL2_SHADER_MODULE = LIGHT_LIST_WEBGL2_SHADER_ARTIFACT.modules.wgsl;
 
-export {
-  LIGHT_LIST_SHADER_ARTIFACT,
-  LIGHT_LIST_SHADER_GENERATED_ARTIFACT
-} from './webgpu/light-list.generated';
-
-export {
-  LIGHT_LIST_WEBGL2_SHADER_ARTIFACT,
-  LIGHT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT
-} from './webgl2/light-list.generated';
+export { LIGHT_LIST_SHADER_ARTIFACT } from './webgpu/light-list.generated';
+export { LIGHT_LIST_WEBGL2_SHADER_ARTIFACT } from './webgl2/light-list.generated';

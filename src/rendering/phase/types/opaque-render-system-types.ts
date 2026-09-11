@@ -1,7 +1,7 @@
 import type {
   BufferHandle,
   PreparedBindGroupLayoutToken,
-  PreparedDrawResourceBindings,
+  PreparedDrawResourcesBindings,
   PreparedRenderPipelineToken,
   RenderSystemDescriptor,
   SurfaceFrameToken,
@@ -62,5 +62,5 @@ export type OpaqueLightListInput =
 /** RenderSystem contribution plus the exact packet bindings required at execution. */
 export interface OpaqueRenderSystemPreparation {
   readonly descriptor: RenderSystemDescriptor<unknown>;
-  readonly preparedDrawResources: PreparedDrawResourceBindings;
+  readonly preparedDrawResources: PreparedDrawResourcesBindings;
 }

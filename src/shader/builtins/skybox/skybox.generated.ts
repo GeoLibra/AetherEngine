@@ -576,4 +576,3 @@ void main() {
     }
   }
 });
-export const SKYBOX_SHADER_GENERATED_ARTIFACT = SKYBOX_SHADER_ARTIFACT;

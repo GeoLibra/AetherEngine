@@ -242,7 +242,8 @@ describe('RenderGraphExecutor', () => {
 
     expect(execution.commandStats).toMatchObject({ renderPasses: 1 });
     expect(execution.debug.commandStats).toEqual(execution.commandStats);
-    expect(execution.debugIR.commandStats).toEqual(execution.commandStats);
+    // @ts-expect-error debugIR alias was removed in favor of debug
+    expect(execution.debugIR).toBeUndefined();
     expect(Object.keys(context as object).sort()).toEqual(['raster', 'restrictedContext', 'scope']);
     expect(capturedDevice).toBeDefined();
     expect(capturedDevice).not.toHaveProperty('queue');
@@ -277,12 +278,14 @@ describe('RenderGraphExecutor', () => {
 
     const normal = executor.execute(plan, { device: new NullDevice() });
     expect(normal.debug).toBeUndefined();
+    // @ts-expect-error debugIR alias was removed in favor of debug
     expect(normal.debugIR).toBeUndefined();
     expect(normal.executionCounters).toEqual({ scheduledSteps: 3, passResolutions: 1 });
 
     const captured = executor.execute(plan, { device: new NullDevice() }, { captureDebug: true });
     expect(captured.debug).toMatchObject({ schemaVersion: 1, commandStats: captured.commandStats });
-    expect(captured.debugIR).toBe(captured.debug);
+    // @ts-expect-error debugIR alias was removed in favor of debug
+    expect(captured.debugIR).toBeUndefined();
   });
 
   test('rejects undeclared, wrong-usage, and out-of-range resource access', () => {

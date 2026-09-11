@@ -15,7 +15,6 @@ export type {
 export type {
   AccessToken,
   AppScope,
-  CoreSchedule as CoreScheduleType,
   ExtensionContribution,
   ExtensionPoint,
   ExtensionSnapshot,

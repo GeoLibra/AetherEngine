@@ -135,8 +135,3 @@ export interface CookedShaderRuntimeArtifact {
   readonly fragmentOutputs: readonly CookedShaderStageIo[];
   readonly modules: CookedShaderModules;
 }
-
-/**
- * Raw output payload from native WGSL cooker.
- */
-export type NativeWgslCookResult = CookedShaderRuntimeArtifact;

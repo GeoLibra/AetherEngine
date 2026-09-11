@@ -2,16 +2,14 @@ export {
   STANDARD_LIT_SHADER_ABI_VERSION,
   STANDARD_LIT_SHADER_MODULE,
   STANDARD_LIT_SHADER_ARTIFACT,
-  STANDARD_LIT_SHADER_SOURCE,
-  STANDARD_LIT_SHADER_GENERATED_ARTIFACT
+  STANDARD_LIT_SHADER_SOURCE
 } from './standard-lit';
 
 export {
   STANDARD_SHADOW_SHADER_ABI_VERSION,
   STANDARD_SHADOW_SHADER_MODULE_KEY,
   STANDARD_SHADOW_SHADER_ARTIFACT,
-  STANDARD_SHADOW_SHADER_MODULE,
-  STANDARD_SHADOW_SHADER_GENERATED_ARTIFACT
+  STANDARD_SHADOW_SHADER_MODULE
 } from './standard-shadow';
 
 export {
@@ -22,25 +20,21 @@ export {
   LIGHT_LIST_WEBGL2_SHADER_ABI_VERSION,
   LIGHT_LIST_WEBGL2_SHADER_ARTIFACT,
   LIGHT_LIST_WEBGL2_SHADER_MODULE,
-  LIGHT_LIST_WEBGL2_SHADER_SOURCE,
-  LIGHT_LIST_SHADER_GENERATED_ARTIFACT,
-  LIGHT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT
+  LIGHT_LIST_WEBGL2_SHADER_SOURCE
 } from './light-list';
 
 export {
   POST_COLOR_SHADER_ABI_VERSION,
   POST_COLOR_SHADER_ARTIFACT,
   POST_COLOR_SHADER_MODULE,
-  POST_COLOR_SHADER_SOURCE,
-  POST_COLOR_SHADER_GENERATED_ARTIFACT
+  POST_COLOR_SHADER_SOURCE
 } from './post-color';
 
 export {
   SKYBOX_SHADER_ABI_VERSION,
   SKYBOX_SHADER_ARTIFACT,
   SKYBOX_SHADER_MODULE,
-  SKYBOX_SHADER_SOURCE,
-  SKYBOX_SHADER_GENERATED_ARTIFACT
+  SKYBOX_SHADER_SOURCE
 } from './skybox';
 
 export {
@@ -50,14 +44,13 @@ export {
   STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE,
   STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT,
   STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE,
-  STANDARD_LIT_LIST_WEBGPU_SHADER_GENERATED_ARTIFACT,
-  STANDARD_LIT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT,
-  mapStandardLitListPhysicalBindings
+  mapStandardLitListPhysicalBindings,
+  mapStandardLitListProgramBindings
 } from './standard-lit-list';
 
 import {
   createWebGL2TranslationRouter,
-  type BuiltInShaderRegistration,
+  type WebGL2ShaderRegistration,
   type WebGL2ShaderTranslationPort
 } from '../../rhi/webgl2/shader';
 import { LIGHT_LIST_WEBGL2_SHADER_ARTIFACT } from './light-list';
@@ -78,7 +71,7 @@ import {
 /**
  * Declarative registration table configuring WebGL2 lowering for all engine built-in shaders.
  */
-export const BUILT_IN_SHADER_REGISTRATIONS: readonly BuiltInShaderRegistration[] = Object.freeze([
+export const BUILT_IN_SHADER_REGISTRATIONS: readonly WebGL2ShaderRegistration[] = Object.freeze([
   Object.freeze({
     artifact: STANDARD_LIT_SHADER_ARTIFACT
   }),
@@ -128,7 +121,6 @@ export const BUILT_IN_WEBGL2_TRANSLATOR: WebGL2ShaderTranslationPort =
 export {
   createCookedArtifactWebGL2Translator,
   createWebGL2TranslationRouter,
-  type BuiltInShaderRegistration,
   type CookedArtifactWebGL2TranslatorOptions,
   type WebGL2RouterRegistrationEntry,
   type WebGL2ShaderModuleRegistration,

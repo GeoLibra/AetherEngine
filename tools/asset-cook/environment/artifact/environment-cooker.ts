@@ -21,7 +21,7 @@ import type {
   EnvironmentCookRecipe,
   EnvironmentMip,
   EnvironmentTexturePayload
-} from './types';
+} from '../../../../src/assets/environment/artifact/types';
 import type { CanonicalHdrPanorama } from '../decode/types';
 import { cookPanoramaMipChain } from '../filtering/panorama-filter';
 

@@ -11,6 +11,34 @@ import type { RestrictedProgrammableStage as BarrelRestrictedProgrammableStage }
 import type { RestrictedVertexState as RootRestrictedVertexState } from '../../src';
 // @ts-expect-error Restricted vertex state is not exported from the public barrel.
 import type { RestrictedVertexState as BarrelRestrictedVertexState } from '../../src/render-graph';
+// @ts-expect-error Legacy opaque callback context is removed.
+import type { RestrictedPassContext as RootRestrictedPassContext } from '../../src';
+// @ts-expect-error Legacy opaque callback context is not exported from the public barrel.
+import type { RestrictedPassContext as BarrelRestrictedPassContext } from '../../src/render-graph';
+// @ts-expect-error Legacy encoder type is removed.
+import type { RestrictedRenderPassEncoder as RootRestrictedRenderPassEncoder } from '../../src';
+// @ts-expect-error Legacy encoder type is not exported from the public barrel.
+import type { RestrictedRenderPassEncoder as BarrelRestrictedRenderPassEncoder } from '../../src/render-graph';
+// @ts-expect-error Legacy encoder type is removed.
+import type { RestrictedComputePassEncoder as RootRestrictedComputePassEncoder } from '../../src';
+// @ts-expect-error Legacy encoder type is not exported from the public barrel.
+import type { RestrictedComputePassEncoder as BarrelRestrictedComputePassEncoder } from '../../src/render-graph';
+// @ts-expect-error Legacy declared raster pass descriptor is removed.
+import type { DeclaredRasterPass as RootDeclaredRasterPass } from '../../src';
+// @ts-expect-error Legacy declared raster pass descriptor is not exported from the public barrel.
+import type { DeclaredRasterPass as BarrelDeclaredRasterPass } from '../../src/render-graph';
+// @ts-expect-error PreparedDrawResourceBindings singular alias is removed in favor of PreparedDrawResourcesBindings.
+import type { PreparedDrawResourceBindings as RootPreparedDrawResourceBindings } from '../../src';
+// @ts-expect-error PreparedDrawResourceBindings singular alias is not exported from the render-graph barrel.
+import type { PreparedDrawResourceBindings as BarrelPreparedDrawResourceBindings } from '../../src/render-graph';
+import type {
+  RasterPassContext,
+  ComputePassContext,
+  CopyPassContext,
+  RasterCommands,
+  ComputeCommands,
+  CopyCommands
+} from '../../src';
 import {
   RenderGraphBuilder,
   RenderGraphExecutor,

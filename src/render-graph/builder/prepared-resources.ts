@@ -76,5 +76,3 @@ export type PreparedDrawResourcesBindings = ReadonlyMap<
   PreparedDrawResourcesToken,
   PreparedDrawPacket
 >;
-
-export type PreparedDrawResourceBindings = PreparedDrawResourcesBindings;

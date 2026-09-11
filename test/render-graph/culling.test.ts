@@ -19,19 +19,19 @@ describe('render graph culling', () => {
     const initial = graph.createTexture(descriptor);
     let first = initial;
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'stale-export-author',
       setup(pass) {
-        first = pass.writeTexture(initial, 'color-attachment');
+        first = pass.colorAttachment(0, initial, { load: 'clear', store: 'store' });
         pass.exportResource(first, 'copy-src');
         return { first };
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'active-export-author',
       setup(pass) {
-        const final = pass.writeTexture(first, 'color-attachment');
+        const final = pass.colorAttachment(0, first, { load: 'clear', store: 'store' });
         pass.exportResource(final, 'copy-src');
         return { final };
       },
@@ -62,10 +62,10 @@ describe('render graph culling', () => {
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'present',
       setup(pass) {
-        const output = pass.writeTexture(surface, 'color-attachment');
+        const output = pass.colorAttachment(0, surface, { load: 'clear', store: 'store' });
         pass.present(output, { kind: 'surface-frame', id: 'frame-1' });
         return { output };
       },
@@ -96,10 +96,10 @@ describe('render graph culling', () => {
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'write-imported',
       setup(pass) {
-        written = pass.writeTexture(imported, 'color-attachment');
+        written = pass.colorAttachment(0, imported, { load: 'clear', store: 'store' });
         return { written };
       },
       run() {}
@@ -122,10 +122,10 @@ describe('render graph culling', () => {
     let retained = retainedTexture;
     let unused = unusedTexture;
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'retained-producer',
       setup(pass) {
-        retained = pass.writeTexture(retainedTexture, 'color-attachment');
+        retained = pass.colorAttachment(0, retainedTexture, { load: 'clear', store: 'store' });
         return { retained };
       },
       run() {}
@@ -139,10 +139,10 @@ describe('render graph culling', () => {
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'unused-producer',
       setup(pass) {
-        unused = pass.writeTexture(unusedTexture, 'color-attachment');
+        unused = pass.colorAttachment(0, unusedTexture, { load: 'clear', store: 'store' });
         return { unused };
       },
       run() {}

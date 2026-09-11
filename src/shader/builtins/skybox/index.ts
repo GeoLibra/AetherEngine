@@ -12,4 +12,4 @@ export const SKYBOX_SHADER_SOURCE: ShaderAuthoringSource = Object.freeze({
 
 export const SKYBOX_SHADER_MODULE = SKYBOX_SHADER_ARTIFACT.modules.wgsl;
 
-export { SKYBOX_SHADER_ARTIFACT, SKYBOX_SHADER_GENERATED_ARTIFACT } from './skybox.generated';
+export { SKYBOX_SHADER_ARTIFACT } from './skybox.generated';

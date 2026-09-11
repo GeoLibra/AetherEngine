@@ -1,60 +1,15 @@
 import type {
-  GPUColor,
-  GPUComputePassDescriptor,
   GPUFragmentState,
-  GPULoadOp,
   GPUProgrammableStage,
   GPUSamplerDescriptor,
   GPUShaderModuleDescriptor,
-  GPUStoreOp,
   GPUVertexState,
   GPUBindGroupLayoutDescriptor,
-  RHIComputePassEncoder,
   RHIComputePipelineDescriptor,
   RHIDevice,
-  RHIRenderPassEncoder,
   RHIRenderPipelineDescriptor
 } from '../../rhi/contracts';
 import type { TextureGraphRange } from '../compiler/ranges';
-import type {
-  PreparedComputePipelineToken,
-  PreparedBindGroupLayoutToken,
-  PreparedDrawResourcesToken,
-  PreparedRenderPipelineToken
-} from '../builder/prepared-resources';
-import type {
-  BufferHandle,
-  BufferRange,
-  BufferUsage,
-  TextureHandle,
-  TextureRange,
-  TextureUsage
-} from './render-graph-types';
-
-export interface DeclaredRasterColorAttachment {
-  readonly texture: TextureHandle;
-  readonly range?: TextureRange;
-  readonly loadOp: GPULoadOp;
-  readonly storeOp: GPUStoreOp;
-  readonly clearValue?: GPUColor;
-}
-
-export interface DeclaredRasterDepthStencilAttachment {
-  readonly texture: TextureHandle;
-  readonly range?: TextureRange;
-  readonly depthLoadOp?: GPULoadOp;
-  readonly depthStoreOp?: GPUStoreOp;
-  readonly depthClearValue?: number;
-  readonly stencilLoadOp?: GPULoadOp;
-  readonly stencilStoreOp?: GPUStoreOp;
-  readonly stencilClearValue?: number;
-}
-
-export interface DeclaredRasterPass {
-  readonly label?: string;
-  readonly colorAttachments: readonly DeclaredRasterColorAttachment[];
-  readonly depthStencilAttachment?: DeclaredRasterDepthStencilAttachment;
-}
 
 export interface RestrictedBindGroupEntry {
   readonly binding: number;
@@ -142,36 +97,6 @@ export type RestrictedComputePipelineDescriptor = Omit<
   readonly compute?: RestrictedProgrammableStage;
 };
 
-export type RestrictedRenderPassEncoder = Omit<
-  RHIRenderPassEncoder,
-  'setBindGroup' | 'setPipeline' | 'setVertexBuffer' | 'setIndexBuffer' | 'drawIndirect'
-> & {
-  setBindGroup(index: number, bindGroup: RestrictedBindGroup, offsets?: readonly number[]): void;
-  setPipeline(pipeline: RestrictedRenderPipeline): void;
-  setVertexBuffer(
-    slot: number,
-    buffer: RestrictedBufferSlice,
-    offset?: number,
-    size?: number
-  ): void;
-  setIndexBuffer(
-    buffer: RestrictedBufferSlice,
-    format: 'uint16' | 'uint32',
-    offset?: number,
-    size?: number
-  ): void;
-  drawIndirect(buffer: RestrictedBufferSlice, offset: number): void;
-};
-
-export type RestrictedComputePassEncoder = Omit<
-  RHIComputePassEncoder,
-  'setBindGroup' | 'setPipeline' | 'dispatchWorkgroupsIndirect'
-> & {
-  setBindGroup(index: number, bindGroup: RestrictedBindGroup, offsets?: readonly number[]): void;
-  setPipeline(pipeline: RestrictedComputePipeline): void;
-  dispatchWorkgroupsIndirect(buffer: RestrictedBufferSlice, offset: number): void;
-};
-
 /** Portable creation only: no queue, allocation, encoder, native extension, or destroy. */
 export interface RestrictedPortableDevice {
   readonly capabilities: RHIDevice['capabilities'];
@@ -187,24 +112,6 @@ export interface RestrictedPortableDevice {
   createComputePipeline(
     descriptor?: RestrictedComputePipelineDescriptor
   ): RestrictedComputePipeline;
-}
-
-/** The only GPU capability visible to a user render-pass callback. */
-export interface RestrictedPassContext {
-  readonly device: RestrictedPortableDevice;
-  texture(handle: TextureHandle, usage: TextureUsage, range?: TextureRange): RestrictedTextureView;
-  buffer(handle: BufferHandle, usage: BufferUsage, range?: BufferRange): RestrictedBufferSlice;
-  renderPipeline(token: PreparedRenderPipelineToken): RestrictedRenderPipeline;
-  computePipeline(token: PreparedComputePipelineToken): RestrictedComputePipeline;
-  bindGroupLayout(token: PreparedBindGroupLayoutToken): RestrictedBindGroupLayout;
-  drawResources(token: PreparedDrawResourcesToken): RestrictedPreparedDrawResources;
-  beginRaster(descriptor: DeclaredRasterPass): RestrictedRenderPassEncoder;
-  beginCompute(descriptor?: GPUComputePassDescriptor): RestrictedComputePassEncoder;
-  copyBufferToBuffer(
-    source: RestrictedBufferSlice,
-    destination: RestrictedBufferSlice,
-    size?: number
-  ): void;
 }
 
 /** Opaque usable view capability; only its owning context can lower it. */

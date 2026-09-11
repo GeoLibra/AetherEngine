@@ -1,4 +1,6 @@
 import { expect, test } from 'vitest';
+// @ts-expect-error WebGL2LeasedResource alias was removed
+import type { WebGL2LeasedResource } from '../../../src/rhi/webgl2/types';
 import type { GPUBufferDescriptor, GPUTextureDescriptor } from '../../../src/rhi/contracts/webgpu';
 import type {
   GPUBindGroupDescriptor,

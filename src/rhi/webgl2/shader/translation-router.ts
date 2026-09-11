@@ -46,11 +46,6 @@ export interface WebGL2ShaderRegistration {
 }
 
 /**
- * Backward compatibility alias for BuiltInShaderRegistration.
- */
-export type BuiltInShaderRegistration = WebGL2ShaderRegistration;
-
-/**
  * Explicit module-to-translator registration.
  */
 export interface WebGL2ShaderModuleRegistration {

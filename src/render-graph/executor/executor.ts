@@ -84,14 +84,11 @@ export interface RenderGraphExecution {
   readonly commandStats: RHICommandStats;
   readonly executionCounters: RenderGraphExecutionCounters;
   readonly debug?: RenderGraphExecutionDebug;
-  /** Backward-compatible alias for debug when captureDebug is enabled. */
-  readonly debugIR?: RenderGraphExecutionDebug;
 }
 
 /** Execution result carrying an explicitly requested immutable Debug IR snapshot. */
 export interface RenderGraphExecutionCapture extends RenderGraphExecution {
   readonly debug: RenderGraphExecutionDebug;
-  readonly debugIR: RenderGraphExecutionDebug;
 }
 
 type ActivePass = EndableRenderPass;
@@ -178,12 +175,6 @@ export class RenderGraphExecutor {
             inputs.preparedBindGroupLayouts ?? new Map(),
             inputs.preparedDrawResources ?? new Map(),
             encoder,
-            (next) => {
-              activePass = next;
-            },
-            () => {
-              activePass = undefined;
-            },
             pass.rasterDetails !== undefined
               ? {
                   renderPipelines: pass.rasterDetails.preparedRenderPipelines,
@@ -252,7 +243,7 @@ export class RenderGraphExecutor {
         submission,
         commandStats,
         executionCounters,
-        ...(debug === undefined ? {} : { debug, debugIR: debug })
+        ...(debug === undefined ? {} : { debug })
       });
     } catch (error) {
       // The caller's failure is primary; best-effort shutdown must not mask it.

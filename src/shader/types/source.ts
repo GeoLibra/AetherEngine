@@ -54,6 +54,5 @@ export type {
   CookedShaderStageIo,
   CookedShaderEntryPoint,
   CookedShaderModules,
-  CookedShaderRuntimeArtifact,
-  NativeWgslCookResult
+  CookedShaderRuntimeArtifact
 } from './artifact';

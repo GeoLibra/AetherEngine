@@ -6,7 +6,6 @@ export {
 
 export {
   createWebGL2TranslationRouter,
-  type BuiltInShaderRegistration,
   type WebGL2RouterRegistrationEntry,
   type WebGL2ShaderModuleRegistration,
   type WebGL2ShaderRegistration,

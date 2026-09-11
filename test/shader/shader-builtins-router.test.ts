@@ -1,4 +1,10 @@
 import { describe, expect, test } from 'vitest';
+// @ts-expect-error Legacy BuiltInShaderRegistration alias is removed in favor of WebGL2ShaderRegistration.
+import type { BuiltInShaderRegistration as RootBuiltInShaderRegistration } from '../../src';
+// @ts-expect-error Legacy BuiltInShaderRegistration alias is not exported from the RHI barrel.
+import type { BuiltInShaderRegistration as RhiBuiltInShaderRegistration } from '../../src/rhi';
+// @ts-expect-error Legacy BuiltInShaderRegistration alias is not exported from the shader barrel.
+import type { BuiltInShaderRegistration as ShaderBuiltInShaderRegistration } from '../../src/shader';
 import {
   BUILT_IN_SHADER_REGISTRATIONS,
   BUILT_IN_WEBGL2_TRANSLATOR,
@@ -15,7 +21,8 @@ import {
   STANDARD_LIT_SHADER_MODULE,
   STANDARD_SHADOW_SHADER_ARTIFACT,
   createCookedArtifactWebGL2Translator,
-  createWebGL2TranslationRouter
+  createWebGL2TranslationRouter,
+  type WebGL2ShaderRegistration
 } from '../../src';
 
 describe('Built-in WebGL2 Shader Translation Router & Generic Translator', () => {
@@ -256,5 +263,8 @@ describe('Built-in WebGL2 Shader Translation Router & Generic Translator', () =>
       STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT
     );
     expect(BUILT_IN_SHADER_REGISTRATIONS[5]?.webgl2?.mapPhysicalBindings).toBeTypeOf('function');
+
+    const typedRegistrations: readonly WebGL2ShaderRegistration[] = BUILT_IN_SHADER_REGISTRATIONS;
+    expect(typedRegistrations).toBe(BUILT_IN_SHADER_REGISTRATIONS);
   });
 });
