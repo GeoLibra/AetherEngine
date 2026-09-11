@@ -4,7 +4,6 @@ import type { BufferUsage, TextureRange, TextureUsage } from './render-graph-typ
 export type SplitReasonCode =
   | 'optimization-disabled'
   | 'non-raster-boundary'
-  | 'legacy-opaque'
   | 'attachment-identity-mismatch'
   | 'attachment-view-mismatch'
   | 'attachment-layout-mismatch'

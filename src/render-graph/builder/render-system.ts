@@ -1,4 +1,4 @@
-import { RenderGraphBuilder, type PassBuilder } from './builder';
+import { RenderGraphBuilder } from './builder';
 import { compileRenderGraph } from '../compiler/compiler';
 import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../compiler/debug-ir';
 import {
@@ -11,8 +11,7 @@ import type {
   RasterPassBuilder,
   RasterPassContext,
   RenderGraphExecutionPlan,
-  RenderGraphExecutionStep,
-  RestrictedPassContext
+  RenderGraphExecutionStep
 } from '../types';
 import type { RenderPhaseSnapshot } from '../../rendering/phase';
 import type {
@@ -71,21 +70,7 @@ export interface ComputeRenderSystemDescriptor<
   run(context: ComputePassContext, resources: TResources, query: RenderQuerySnapshot<TItem>): void;
 }
 
-export interface LegacyRenderSystemDescriptor<
-  TResources,
-  TItem = never
-> extends BaseRenderSystemDescriptor<TItem> {
-  readonly kind?: 'legacy';
-  setup(builder: PassBuilder, context: RenderSystemSetupContext<TItem>): TResources;
-  run(
-    context: RestrictedPassContext,
-    resources: TResources,
-    query: RenderQuerySnapshot<TItem>
-  ): void;
-}
-
 export type RenderSystemDescriptor<TResources, TItem = never> =
-  | LegacyRenderSystemDescriptor<TResources, TItem>
   | RasterRenderSystemDescriptor<TResources, TItem>
   | ComputeRenderSystemDescriptor<TResources, TItem>;
 
@@ -223,21 +208,10 @@ export function compileRenderSystems(
           desc.run(context, resources, instance.query);
         }
       });
-    } else if (instance.descriptor.kind === 'compute') {
+    } else {
+      // The descriptor union leaves only compute; a system must declare a command class explicitly.
       const desc = instance.descriptor;
       graph.defineComputePass(token, {
-        id: instance.instanceId,
-        setup(pass) {
-          applyPredecessors();
-          return desc.setup(pass, setupContext);
-        },
-        run(context, resources) {
-          desc.run(context, resources, instance.query);
-        }
-      });
-    } else {
-      const desc = instance.descriptor;
-      graph.definePass<unknown, RestrictedPassContext>(token, {
         id: instance.instanceId,
         setup(pass) {
           applyPredecessors();

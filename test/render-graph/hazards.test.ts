@@ -74,7 +74,7 @@ describe('render graph hazards', () => {
     });
     let first = initial;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-first',
       setup(pass) {
         first = pass.writeTexture(initial, 'color-attachment', mip(0));
@@ -82,25 +82,25 @@ describe('render graph hazards', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-first',
       setup(pass) {
         return { first: pass.readTexture(first, 'sampled', mip(0)) };
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-parent',
       setup(pass) {
         return { initial: pass.readTexture(initial, 'sampled', mip(0)) };
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-second',
       setup(pass) {
         const second = pass.writeTexture(first, 'color-attachment', mip(0));
-        pass.exportTexture(second, 'copy-src');
+        pass.exportResource(second, 'copy-src');
         return { second };
       },
       run() {}
@@ -131,7 +131,7 @@ describe('render graph hazards', () => {
     });
     let written = initial;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-buffer',
       setup(pass) {
         written = pass.writeBuffer(initial, 'storage-write', bytes(8, 16));
@@ -139,7 +139,7 @@ describe('render graph hazards', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-buffer',
       setup(pass) {
         pass.readBuffer(written, 'storage-read', bytes(12, 4));
@@ -173,7 +173,7 @@ describe('render graph hazards', () => {
     });
     let first = initial;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-low',
       setup(pass) {
         first = pass.writeBuffer(initial, 'storage-write', bytes(0, 16));
@@ -181,18 +181,18 @@ describe('render graph hazards', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-high-parent',
       setup(pass) {
         return { initial: pass.readBuffer(initial, 'storage-read', bytes(32, 16)) };
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-high',
       setup(pass) {
         const second = pass.writeBuffer(first, 'storage-write', bytes(32, 16));
-        pass.exportBuffer(second, 'copy-src');
+        pass.exportResource(second, 'copy-src');
         return { second };
       },
       run() {}
@@ -221,7 +221,7 @@ describe('render graph hazards', () => {
     });
     let written = initial;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write',
       setup(pass) {
         written = pass.writeBuffer(initial, 'storage-write', bytes(0, 16));
@@ -229,7 +229,7 @@ describe('render graph hazards', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'unknown-read',
       setup(pass) {
         pass.readBuffer(written, 'storage-read', bytes(0, 8));
@@ -280,7 +280,7 @@ describe('render graph hazards', () => {
       }
     });
     let written = initial;
-    graph.addPass({
+    graph.addCopyPass({
       id: 'texture-writer',
       setup(pass) {
         written = pass.writeTexture(initial, 'color-attachment', mip(0));
@@ -288,7 +288,7 @@ describe('render graph hazards', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'texture-reader',
       setup(pass) {
         pass.readTexture(written, 'sampled', mip(0));
@@ -323,7 +323,7 @@ describe('render graph hazards', () => {
       }
     });
     let first = initial;
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-mip-zero',
       setup(pass) {
         first = pass.writeTexture(initial, 'color-attachment', mip(0));
@@ -331,11 +331,11 @@ describe('render graph hazards', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-mip-one',
       setup(pass) {
         const second = pass.writeTexture(first, 'color-attachment', mip(1));
-        pass.exportTexture(second, 'copy-src');
+        pass.exportResource(second, 'copy-src');
         return { second };
       },
       run() {}
@@ -373,14 +373,14 @@ describe('render graph hazards', () => {
         acquire: { kind: 'external-acquire', id: 'damaged-buffer-read' }
       }
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-low-buffer',
       setup(pass) {
         return { written: pass.writeBuffer(initial, 'storage-write', bytes(0, 16)) };
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'read-old-buffer',
       setup(pass) {
         return { initial: pass.readBuffer(initial, 'storage-read', bytes(32, 16)) };

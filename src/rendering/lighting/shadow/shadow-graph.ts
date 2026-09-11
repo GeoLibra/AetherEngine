@@ -1,7 +1,6 @@
 import {
   RenderGraphBuilder,
   type PassToken,
-  type PreparedDrawResourcesToken,
   type RasterPassContext,
   type TextureHandle,
   type TextureRange
@@ -90,16 +89,14 @@ export function declareShadowDepthPasses(
       arrayLayerCount: 1,
       aspect: 'depth-only'
     });
-    const token = graph.addRasterPass<Readonly<{ texture: TextureHandle; range: TextureRange }>>({
+    const token = graph.addRasterPass({
       id: `shadow:${key}`,
       setup(pass) {
-        for (const draw of draws) pass.useDrawResources(draw);
-        pass.sideEffect(`record shadow depth for ${key}`);
         next = pass.depthStencilAttachment(source, {
-          range,
           depthLoad: 'clear',
           depthStore: 'store',
-          depthClearValue: 1
+          depthClearValue: 1,
+          range
         });
         return { texture: next, range };
       },

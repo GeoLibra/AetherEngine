@@ -12,7 +12,6 @@ import {
   type BrowserGraphicsSession,
   type BufferHandle,
   type RenderEntityId,
-  type RestrictedPassContext,
   type LightReceiver,
   type PreparedLight,
   type WebGpuLightListBuildOutput
@@ -192,7 +191,7 @@ function addReadbackPass(
   destinations: readonly BufferHandle[]
 ): void {
   const sources = [output.directionalIndices, output.headers, output.lightIndices, output.overflow];
-  graph.addPass({
+  graph.addCopyPass({
     id: 'light-list:webgpu-readback',
     setup(pass) {
       pass.sideEffect('copy LightList outputs to readback buffers');
@@ -201,9 +200,9 @@ function addReadbackPass(
         destination: pass.writeBuffer(destinations[index]!, 'copy-dst')
       }));
     },
-    run(context: RestrictedPassContext, copies) {
+    run(context, copies) {
       for (const copy of copies)
-        context.copyBufferToBuffer(
+        context.copy.copyBufferToBuffer(
           context.buffer(copy.source, 'copy-src'),
           context.buffer(copy.destination, 'copy-dst')
         );

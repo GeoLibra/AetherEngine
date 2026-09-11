@@ -7,7 +7,7 @@ import {
   createPreparedBindGroupLayoutToken,
   createRenderGraphExecutionPlan,
   type RestrictedBindGroupLayout,
-  type RestrictedPassContext
+  type CopyPassContext
 } from '../../src';
 
 describe('prepared bind-group layouts', () => {
@@ -17,12 +17,12 @@ describe('prepared bind-group layouts', () => {
     const layout = device.createBindGroupLayout({ entries: [] });
     const graph = new RenderGraphBuilder();
     let resolved: RestrictedBindGroupLayout | undefined;
-    graph.addPass({
+    graph.addCopyPass({
       id: 'resolve-layout',
       setup(pass) {
         pass.sideEffect('resolve prepared layout');
       },
-      run(context: RestrictedPassContext) {
+      run(context: CopyPassContext) {
         resolved = context.bindGroupLayout(token);
         context.device.createBindGroup({ layout: resolved, entries: [] });
       }
@@ -42,7 +42,7 @@ describe('prepared bind-group layouts', () => {
     const foreign = new NullDevice();
     const token = createPreparedBindGroupLayoutToken('foreign');
     const graph = new RenderGraphBuilder();
-    graph.addPass({
+    graph.addCopyPass({
       id: 'unused',
       setup(pass) {
         pass.sideEffect('validate bindings');

@@ -132,21 +132,25 @@ export function executeRasterGroup(
     };
   }
 
-  // Determine viewport dimensions from first attachment
+  // Determine viewport dimensions from the first attachment's physical subresource extent.
+  // A mip>0 attachment backs a render pass whose frame buffer is smaller than the full
+  // descriptor; the default viewport and scissor must match the attached subresource size.
   let width = 0;
   let height = 0;
   if (group.attachments.colorAttachments.length > 0) {
     const firstColor = group.attachments.colorAttachments[0]!;
     const texRecord = resourceRecords.get(firstColor.resourceId)!;
     const desc = texRecord.descriptor as TextureDescriptor;
-    width = desc.width;
-    height = desc.height;
+    const normalizedRange = normalizeTextureRange(desc, firstColor.range);
+    width = Math.max(1, desc.width >> normalizedRange.baseMipLevel);
+    height = Math.max(1, desc.height >> normalizedRange.baseMipLevel);
   } else if (group.attachments.depthStencilAttachment !== undefined) {
     const depthPlan = group.attachments.depthStencilAttachment;
     const texRecord = resourceRecords.get(depthPlan.resourceId)!;
     const desc = texRecord.descriptor as TextureDescriptor;
-    width = desc.width;
-    height = desc.height;
+    const normalizedRange = normalizeTextureRange(desc, depthPlan.range);
+    width = Math.max(1, desc.width >> normalizedRange.baseMipLevel);
+    height = Math.max(1, desc.height >> normalizedRange.baseMipLevel);
   }
 
   // 3. Open physical render pass

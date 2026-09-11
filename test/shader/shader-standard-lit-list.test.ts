@@ -3,10 +3,7 @@ import {
   BUILT_IN_WEBGL2_TRANSLATOR,
   STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT,
   STANDARD_LIT_LIST_SHADER_MODULE_KEY,
-  STANDARD_LIT_LIST_SHADER_ABI_VERSION,
-  STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT,
-  STANDARD_LIT_LIST_WEBGL_SHADER_MODULE,
-  createCookedShaderBindingManifest
+  STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE
 } from '../../src';
 
 describe('standard-lit LightList built-in shader', () => {
@@ -38,7 +35,7 @@ describe('standard-lit LightList built-in shader', () => {
   });
   test('maps the shared environment sampler to every fused WebGL2 texture unit', () => {
     const translated = BUILT_IN_WEBGL2_TRANSLATOR.translate({
-      wgsl: STANDARD_LIT_LIST_WEBGL_SHADER_MODULE,
+      wgsl: STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE,
       stage: 'fragment',
       entryPoint: 'standardLitFragment',
       constants: {},

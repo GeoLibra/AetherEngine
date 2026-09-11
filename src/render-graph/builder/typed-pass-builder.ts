@@ -18,6 +18,7 @@ import type {
   GraphHandle,
   GraphResourceBuilder,
   GraphResourceCreateOptions,
+  PassToken,
   RasterPassBuilder,
   TextureDescriptor,
   TextureHandle,
@@ -101,6 +102,11 @@ export class BaseGraphResourceBuilder implements GraphResourceBuilder {
     this.assertActive();
     if (!reason.trim()) throw new Error('Render graph side effects require a non-empty reason.');
     this.sideEffects.push(reason);
+  }
+
+  after(pass: PassToken): void {
+    this.assertActive();
+    this.graph.declareAfter(pass, this.passId);
   }
 
   exportResource(handle: GraphHandle, finalState: ExternalResourceState): void {

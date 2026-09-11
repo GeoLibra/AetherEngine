@@ -14,8 +14,10 @@ import {
 import { NullDevice } from '../../src/rhi/null/device';
 import type {
   BufferDescriptor,
-  TextureDescriptor,
-  RestrictedPassContext
+  ComputePassContext,
+  CopyPassContext,
+  RasterPassContext,
+  TextureDescriptor
 } from '../../src/render-graph/types';
 
 const TEXTURE: TextureDescriptor = {
@@ -84,11 +86,11 @@ describe('RenderGraphExecutor', () => {
       ['first', first],
       ['second', second]
     ] as const) {
-      graph.addPass({
+      graph.addRasterPass({
         id,
         setup(pass) {
-          const color = pass.writeTexture(texture, 'color-attachment');
-          pass.presentTexture(color, { kind: 'surface-frame', id: 'surface' });
+          const color = pass.colorAttachment(0, texture, { load: 'clear', store: 'store' });
+          pass.present(color, { kind: 'surface-frame', id: 'surface' });
         },
         run() {}
       });
@@ -109,12 +111,15 @@ describe('RenderGraphExecutor', () => {
     const token = createPreparedRenderPipelineToken('main');
     const graph = new RenderGraphBuilder();
     let resolved: unknown;
-    graph.addPass({
+    graph.addRasterPass({
       id: 'prepared-pipeline',
       setup(pass) {
+        pass.useRenderPipeline(token);
         pass.sideEffect('record');
+        const target = pass.createTexture(TEXTURE);
+        pass.colorAttachment(0, target, { load: 'clear', store: 'store' });
       },
-      run(context: RestrictedPassContext) {
+      run(context: RasterPassContext) {
         resolved = context.renderPipeline(token);
       }
     });
@@ -133,12 +138,13 @@ describe('RenderGraphExecutor', () => {
     const token = createPreparedComputePipelineToken('light-list');
     const graph = new RenderGraphBuilder();
     let resolved: unknown;
-    graph.addPass({
+    graph.addComputePass({
       id: 'prepared-compute-pipeline',
       setup(pass) {
+        pass.useComputePipeline(token);
         pass.sideEffect('record');
       },
-      run(context: RestrictedPassContext) {
+      run(context: ComputePassContext) {
         resolved = context.computePipeline(token);
       }
     });
@@ -155,7 +161,7 @@ describe('RenderGraphExecutor', () => {
     const device = new NullDevice();
     const graph = new RenderGraphBuilder();
     const imported = importedBuffer(graph, 'incompatible');
-    graph.addPass({
+    graph.addCopyPass({
       id: 'consume',
       setup(pass) {
         pass.readBuffer(imported, 'uniform');
@@ -197,18 +203,20 @@ describe('RenderGraphExecutor', () => {
     const graph = new RenderGraphBuilder();
     const texture = graph.createTexture(TEXTURE);
     const buffer = importedBuffer(graph, 'constants');
-    let context: RestrictedPassContext | undefined;
+    let context: RasterPassContext | undefined;
+    let capturedDevice: unknown;
 
-    graph.addPass({
+    graph.addRasterPass({
       id: 'record',
       setup(pass) {
-        const color = pass.writeTexture(texture, 'color-attachment');
+        const color = pass.colorAttachment(0, texture, { load: 'clear', store: 'store' });
         const constants = pass.readBuffer(buffer, 'uniform', { offset: 0, size: 16 });
-        pass.exportTexture(color, 'copy-src');
+        pass.exportResource(color, 'copy-src');
         return { color, constants };
       },
-      run(passContext: RestrictedPassContext, resources) {
+      run(passContext: RasterPassContext, resources) {
         context = passContext;
+        capturedDevice = passContext.device;
         expect(passContext.texture(resources.color, 'color-attachment')).toMatchObject({
           kind: 'restricted-texture-view'
         });
@@ -219,11 +227,6 @@ describe('RenderGraphExecutor', () => {
           offset: 0,
           size: 16
         });
-        passContext
-          .beginRaster({
-            colorAttachments: [{ texture: resources.color, loadOp: 'clear', storeOp: 'store' }]
-          })
-          .end();
       }
     });
 
@@ -240,29 +243,29 @@ describe('RenderGraphExecutor', () => {
     expect(execution.commandStats).toMatchObject({ renderPasses: 1 });
     expect(execution.debug.commandStats).toEqual(execution.commandStats);
     expect(execution.debugIR.commandStats).toEqual(execution.commandStats);
-    expect(Object.keys(context as object).sort()).toEqual([
-      'beginCompute',
-      'beginRaster',
-      'bindGroupLayout',
+    expect(Object.keys(context as object).sort()).toEqual(['raster', 'restrictedContext', 'scope']);
+    expect(capturedDevice).toBeDefined();
+    expect(capturedDevice).not.toHaveProperty('queue');
+    expect(capturedDevice).not.toHaveProperty('createCommandEncoder');
+    const surface = context as unknown as Record<string, unknown>;
+    expect('beginRaster' in surface).toBe(false);
+    expect('beginCompute' in surface).toBe(false);
+    expect('copyBufferToBuffer' in surface).toBe(false);
+    for (const method of [
+      'texture',
       'buffer',
-      'computePipeline',
-      'copyBufferToBuffer',
-      'device',
-      'drawResources',
       'renderPipeline',
-      'texture'
-    ]);
-    expect((context as unknown as Record<string, unknown>).device).toBeDefined();
-    expect((context as unknown as Record<string, unknown>).device).not.toHaveProperty('queue');
-    expect((context as unknown as Record<string, unknown>).device).not.toHaveProperty(
-      'createCommandEncoder'
-    );
-    expect((context as unknown as Record<string, unknown>).queue).toBeUndefined();
+      'computePipeline',
+      'bindGroupLayout',
+      'drawResources'
+    ]) {
+      expect(typeof surface[method]).toBe('function');
+    }
   });
 
   test('omits detailed Debug IR by default and captures it only when requested', () => {
     const graph = new RenderGraphBuilder();
-    graph.addPass({
+    graph.addCopyPass({
       id: 'side-effect',
       setup(pass) {
         pass.sideEffect('test capture boundary');
@@ -287,14 +290,14 @@ describe('RenderGraphExecutor', () => {
     const graph = new RenderGraphBuilder();
     const first = importedBuffer(graph, 'first');
     const second = importedBuffer(graph, 'second');
-    graph.addPass({
+    graph.addCopyPass({
       id: 'restrict',
       setup(pass) {
         const declared = pass.readBuffer(first, 'uniform', { offset: 0, size: 16 });
         pass.sideEffect('test restriction');
         return { declared };
       },
-      run(context: RestrictedPassContext, resources) {
+      run(context: CopyPassContext, resources) {
         expect(() => context.buffer(second, 'uniform')).toThrow(/not declared/i);
         expect(() => context.buffer(resources.declared, 'copy-src')).toThrow(/usage/i);
         expect(() =>
@@ -324,7 +327,7 @@ describe('RenderGraphExecutor', () => {
         acquire: { kind: 'external-acquire', id: 'depth' }
       }
     });
-    graph.addPass({
+    graph.addRasterPass({
       id: 'depth-reader',
       setup(pass) {
         const declared = pass.readTexture(depth, 'sampled', {
@@ -334,17 +337,23 @@ describe('RenderGraphExecutor', () => {
           arrayLayerCount: 1,
           aspect: 'depth-only'
         });
-        const attached = pass.writeTexture(depth, 'depth-stencil-attachment', {
-          baseMipLevel: 1,
-          mipLevelCount: 1,
-          baseArrayLayer: 1,
-          arrayLayerCount: 1,
-          aspect: 'depth-only'
+        const attached = pass.depthStencilAttachment(depth, {
+          range: {
+            baseMipLevel: 1,
+            mipLevelCount: 1,
+            baseArrayLayer: 1,
+            arrayLayerCount: 1,
+            aspect: 'depth-only'
+          },
+          depthLoad: 'clear',
+          depthStore: 'store',
+          depthAccess: 'write',
+          stencilAccess: 'write'
         });
         pass.sideEffect('read only one depth subresource');
         return { declared, attached };
       },
-      run(context: RestrictedPassContext, resources) {
+      run(context: RasterPassContext, resources) {
         const view = context.texture(resources.declared, 'sampled');
         expect(view.range).toEqual({
           kind: 'texture',
@@ -358,16 +367,6 @@ describe('RenderGraphExecutor', () => {
         });
         expect('texture' in view).toBe(false);
         expect('createView' in view).toBe(false);
-        context
-          .beginRaster({
-            colorAttachments: [],
-            depthStencilAttachment: {
-              texture: resources.attached,
-              depthLoadOp: 'clear',
-              depthStoreOp: 'store'
-            }
-          })
-          .end();
       }
     });
     const physical = device.createTexture({
@@ -404,25 +403,23 @@ describe('RenderGraphExecutor', () => {
       historyValid: true
     });
     const transient = graph.createTexture(TEXTURE);
-    graph.addPass({
+    graph.addRasterPass({
       id: 'culled',
       setup(pass) {
         pass.readBuffer(imported, 'uniform');
         pass.readBuffer(history, 'uniform');
-        const output = pass.writeTexture(transient, 'color-attachment');
+        const output = pass.colorAttachment(0, transient, { load: 'clear', store: 'store' });
         return { output };
       },
       run() {}
     });
-    graph.addPass({
+    graph.addComputePass({
       id: 'observable',
       setup(pass) {
         pass.sideEffect('keeps only this pass');
         return {};
       },
-      run(context: RestrictedPassContext) {
-        context.beginCompute().end();
-      }
+      run() {}
     });
 
     new RenderGraphExecutor().execute(compile(graph), { device, transientPool: pool });
@@ -440,7 +437,7 @@ describe('RenderGraphExecutor', () => {
       ['first', first],
       ['second', second]
     ] as const) {
-      graph.addPass({
+      graph.addCopyPass({
         id,
         setup(pass) {
           const output = pass.writeBuffer(handle, 'copy-dst');
@@ -456,37 +453,39 @@ describe('RenderGraphExecutor', () => {
     expect(pool.acquisitions).toBe(1);
   });
 
-  test('requires a callback to end each pass encoder before it returns', () => {
+  test('ends the pass encoder around each compute callback before returning', () => {
+    const device = new NullDevice({ submissionMode: 'manual' });
     const graph = new RenderGraphBuilder();
-    graph.addPass({
-      id: 'unclosed',
+    graph.addComputePass({
+      id: 'auto-ended',
       setup(pass) {
         pass.sideEffect('must record safely');
         return {};
       },
-      run(context: RestrictedPassContext) {
-        context.beginCompute();
-      }
+      run() {}
     });
 
-    expect(() =>
-      new RenderGraphExecutor().execute(compile(graph), { device: new NullDevice() })
-    ).toThrow(/must end the active pass encoder/i);
+    const execution = new RenderGraphExecutor().execute(compile(graph), { device });
+
+    expect(execution.commandBuffer.getCommandStream().map((record) => record.kind)).toEqual([
+      'beginComputePass',
+      'endComputePass'
+    ]);
+    expect(execution.commandStats.computePasses).toBe(1);
+    device.queue.completeNextForTesting();
   });
 
   test('uses one encoder, one command buffer, and one queue submission for all retained passes', () => {
     const device = new NullDevice({ submissionMode: 'manual' });
     const graph = new RenderGraphBuilder();
     for (const id of ['first', 'second']) {
-      graph.addPass({
+      graph.addComputePass({
         id,
         setup(pass) {
           pass.sideEffect(id);
           return {};
         },
-        run(context: RestrictedPassContext) {
-          context.beginCompute({ label: id }).end();
-        }
+        run() {}
       });
     }
 
@@ -507,7 +506,7 @@ describe('RenderGraphExecutor', () => {
     const device = new NullDevice({ submissionMode: 'manual' });
     let ran = false;
     const graph = new RenderGraphBuilder();
-    graph.addPass({
+    graph.addCopyPass({
       id: 'required',
       setup(pass) {
         pass.sideEffect('required');
@@ -533,14 +532,13 @@ describe('RenderGraphExecutor', () => {
   test('preserves the callback error while safely closing an active pass encoder', () => {
     const primary = new Error('callback failed');
     const graph = new RenderGraphBuilder();
-    graph.addPass({
+    graph.addComputePass({
       id: 'throws',
       setup(pass) {
         pass.sideEffect('throws');
         return {};
       },
-      run(context: RestrictedPassContext) {
-        context.beginCompute();
+      run() {
         throw primary;
       }
     });
@@ -557,7 +555,7 @@ describe('RenderGraphExecutor', () => {
       throw new Error('pool cleanup failed');
     };
     const graph = new RenderGraphBuilder();
-    graph.addPass({
+    graph.addCopyPass({
       id: 'throws',
       setup(pass) {
         pass.sideEffect('throws');

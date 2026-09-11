@@ -4,7 +4,7 @@ import {
   createPreparedRenderPipelineToken,
   type PreparedBindGroupLayoutToken,
   type PreparedRenderPipelineToken,
-  type RestrictedPassContext
+  type RasterPassContext
 } from '../../../render-graph';
 import { LIGHT_LIST_WEBGL2_SHADER_MODULE } from '../../../shader';
 import type {
@@ -53,7 +53,7 @@ export function prepareWebGlLightListRecorder(device: RHIDevice): PreparedWebGlL
   const recorder: WebGlFragmentLightListBuildRecorder = Object.freeze({
     pipeline: pipelineToken,
     record(
-      context: RestrictedPassContext,
+      context: RasterPassContext,
       input: WebGlFragmentLightListBuildInput,
       output: WebGlFragmentLightListBuildOutput
     ) {
@@ -67,21 +67,11 @@ export function prepareWebGlLightListRecorder(device: RHIDevice): PreparedWebGlL
         ]
       });
       const pipeline = context.renderPipeline(pipelineToken);
-      const pass = context.beginRaster({
-        label: 'aether-light-list-webgl',
-        colorAttachments: [
-          attachment(output.directionalIndices),
-          attachment(output.headers),
-          attachment(output.lightIndices),
-          attachment(output.overflow)
-        ]
-      });
-      pass.setPipeline(pipeline);
-      pass.setViewport(0, 0, output.packing.width, output.packing.height, 0, 1);
-      pass.setScissorRect(0, 0, output.packing.width, output.packing.height);
-      pass.setBindGroup(0, group);
-      pass.draw(3);
-      pass.end();
+      context.raster.setPipeline(pipeline);
+      context.raster.setViewport(0, 0, output.packing.width, output.packing.height, 0, 1);
+      context.raster.setScissorRect(0, 0, output.packing.width, output.packing.height);
+      context.raster.setBindGroup(0, group);
+      context.raster.draw(3);
     }
   });
   return Object.freeze({
@@ -101,15 +91,6 @@ function textureEntry(binding: number) {
     binding,
     visibility: FRAGMENT_STAGE,
     texture: { sampleType: 'uint' as const }
-  });
-}
-
-function attachment(texture: WebGlFragmentLightListBuildOutput['directionalIndices']) {
-  return Object.freeze({
-    texture,
-    loadOp: 'clear' as const,
-    storeOp: 'store' as const,
-    clearValue: { r: 0, g: 0, b: 0, a: 0 }
   });
 }
 
