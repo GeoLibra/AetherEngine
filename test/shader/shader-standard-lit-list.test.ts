@@ -2,8 +2,11 @@ import { describe, expect, test } from 'vitest';
 import {
   BUILT_IN_WEBGL2_TRANSLATOR,
   STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT,
+  STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT,
   STANDARD_LIT_LIST_SHADER_MODULE_KEY,
-  STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE
+  STANDARD_LIT_LIST_SHADER_ABI_VERSION,
+  STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE,
+  createCookedShaderBindingManifest
 } from '../../src';
 
 describe('standard-lit LightList built-in shader', () => {

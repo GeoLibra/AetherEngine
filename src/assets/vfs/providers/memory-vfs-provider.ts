@@ -1,20 +1,25 @@
+import { sliceRangeBytes, validateByteRange } from '../range';
+import { createVFSStreamSession } from '../stream';
 import type {
+  ByteRange,
   MemoryVFSProviderEntry,
   NormalizedMountPath,
   VFSProvider,
   VFSProviderCapabilities,
   VFSProviderId,
+  VFSProviderRangeReadResult,
   VFSProviderReadResult,
-  VFSReadOptions
+  VFSProviderStreamOpenResult,
+  VFSReadOptions,
+  VFSStreamOptions
 } from '../types';
 import { normalizeVFSUri, toNormalizedMountPath } from '../uri';
 
-const MEMORY_CAPABILITIES: VFSProviderCapabilities = Object.freeze({
-  read: true,
-  range: false,
-  write: false,
-  watch: false
-});
+export interface MemoryVFSProviderOptions {
+  readonly enableRange?: boolean;
+  readonly enableStream?: boolean;
+  readonly streamChunkBytes?: number;
+}
 
 /** Validates a stable provider identity at its construction boundary. */
 export function defineVFSProviderId(value: string): VFSProviderId {
@@ -25,11 +30,22 @@ export function defineVFSProviderId(value: string): VFSProviderId {
 /** Deterministic owned-byte provider for headless use and VFS contract tests. */
 export class MemoryVFSProvider implements VFSProvider {
   readonly id: VFSProviderId;
-  readonly capabilities = MEMORY_CAPABILITIES;
+  readonly capabilities: VFSProviderCapabilities;
+  readonly #streamChunkBytes: number;
   readonly #entries = new Map<NormalizedMountPath, MemoryVFSProviderEntry>();
 
-  constructor(id: string) {
+  constructor(id: string, options?: MemoryVFSProviderOptions) {
     this.id = defineVFSProviderId(id);
+    const range = options?.enableRange ?? false;
+    const stream = options?.enableStream ?? false;
+    this.#streamChunkBytes = options?.streamChunkBytes ?? 64 * 1024;
+    this.capabilities = Object.freeze({
+      read: true,
+      range,
+      stream,
+      write: false,
+      watch: false
+    });
   }
 
   /** Inserts or replaces one provider-relative path after taking byte ownership. */
@@ -90,6 +106,123 @@ export class MemoryVFSProvider implements VFSProvider {
       providerId: this.id,
       ...(entry.mime === undefined ? {} : { mime: entry.mime }),
       ...(entry.integrity === undefined ? {} : { integrity: entry.integrity })
+    });
+  }
+
+  /** Returns detached byte slice for requested range. */
+  async readRange(
+    path: NormalizedMountPath,
+    range: ByteRange,
+    options: VFSReadOptions
+  ): Promise<VFSProviderRangeReadResult> {
+    validatePath(path);
+    validateByteRange(range);
+    if (options.signal?.aborted) {
+      return Object.freeze({
+        kind: 'aborted',
+        code: 'vfs-read-aborted',
+        message: 'VFS range read was aborted.',
+        requestedUri: normalizeVFSUri(`asset://${path}`),
+        providerId: this.id
+      });
+    }
+    const entry = this.#entries.get(path);
+    if (!entry) {
+      return Object.freeze({
+        kind: 'not-found',
+        code: 'vfs-memory-not-found',
+        message: 'Memory VFS entry was not found.',
+        requestedUri: normalizeVFSUri(`asset://${path}`),
+        providerId: this.id
+      });
+    }
+
+    if (range.offset + range.length > entry.bytes.byteLength) {
+      return Object.freeze({
+        kind: 'range-not-satisfiable',
+        code: 'vfs-range-out-of-bounds',
+        message: `Requested range [${range.offset}, ${range.offset + range.length}) exceeds total length ${entry.bytes.byteLength}.`,
+        requestedUri: entry.resolvedUri,
+        providerId: this.id
+      });
+    }
+
+    const sliced = sliceRangeBytes(entry.bytes, range);
+    return Object.freeze({
+      kind: 'success',
+      bytes: sliced,
+      range,
+      totalLength: entry.bytes.byteLength,
+      resolvedUri: entry.resolvedUri,
+      revision: entry.revision,
+      providerId: this.id,
+      ...(entry.mime === undefined ? {} : { mime: entry.mime }),
+      ...(entry.integrity === undefined ? {} : { integrity: entry.integrity })
+    });
+  }
+
+  /** Opens single-consumer chunk stream over the in-memory entry. */
+  async openStream(
+    path: NormalizedMountPath,
+    options: VFSStreamOptions
+  ): Promise<VFSProviderStreamOpenResult> {
+    validatePath(path);
+    if (options.signal?.aborted) {
+      return Object.freeze({
+        kind: 'aborted',
+        code: 'vfs-stream-aborted',
+        message: 'VFS stream open was aborted.',
+        requestedUri: normalizeVFSUri(`asset://${path}`),
+        providerId: this.id
+      });
+    }
+    const entry = this.#entries.get(path);
+    if (!entry) {
+      return Object.freeze({
+        kind: 'not-found',
+        code: 'vfs-memory-not-found',
+        message: 'Memory VFS entry was not found.',
+        requestedUri: normalizeVFSUri(`asset://${path}`),
+        providerId: this.id
+      });
+    }
+
+    const allBytes = entry.bytes.slice();
+    const chunkSize = this.#streamChunkBytes;
+
+    async function* chunkGenerator() {
+      for (let offset = 0; offset < allBytes.byteLength; offset += chunkSize) {
+        const end = Math.min(offset + chunkSize, allBytes.byteLength);
+        yield {
+          offset,
+          bytes: allBytes.subarray(offset, end)
+        };
+      }
+    }
+
+    const session = createVFSStreamSession({
+      metadata: Object.freeze({
+        resolvedUri: entry.resolvedUri,
+        providerId: this.id,
+        revision: entry.revision,
+        contentLength: allBytes.byteLength,
+        ...(entry.mime === undefined ? {} : { mime: entry.mime })
+      }),
+      source: chunkGenerator(),
+      expectedLength: options.expectedLength ?? allBytes.byteLength,
+      ...(options.expectedIntegrity !== undefined
+        ? { expectedIntegrity: options.expectedIntegrity }
+        : entry.integrity === undefined
+          ? {}
+          : { expectedIntegrity: entry.integrity }),
+      ...(options.highWaterMarkBytes === undefined
+        ? {}
+        : { highWaterMarkBytes: options.highWaterMarkBytes })
+    });
+
+    return Object.freeze({
+      kind: 'session',
+      session
     });
   }
 }

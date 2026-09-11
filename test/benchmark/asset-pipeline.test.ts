@@ -20,6 +20,8 @@ import {
 import {
   copyVFSReadReference,
   createVFSReadFixture,
+  createVFSRangeFixture,
+  createVFSStreamFixture,
   vfsByteChecksum
 } from '../../benchmark/asset-pipeline/vfs-read';
 
@@ -92,5 +94,34 @@ describe('asset pipeline benchmark semantic oracle', () => {
     expect(result.providerId).toBe(fixture.providerId);
     expect(vfsByteChecksum(result.bytes)).toBe(expected);
     expect(fixture.dispatches()).toBe(1);
+  });
+
+  test('executes range read fixture with representation pinning', async () => {
+    const fixture = createVFSRangeFixture(16 * 1024, 1024);
+    const result = await fixture.vfs.readRange({
+      uri: fixture.uri,
+      range: fixture.range,
+      expectedRevision: fixture.revision
+    });
+    expect(result.kind).toBe('success');
+    if (result.kind === 'success') {
+      expect(result.bytes.byteLength).toBe(1024);
+      expect(result.totalLength).toBe(16 * 1024);
+    }
+  });
+
+  test('executes stream fixture with chunk pull and completion verification', async () => {
+    const fixture = createVFSStreamFixture(4096, 1024);
+    const openResult = await fixture.vfs.openStream({ uri: fixture.uri });
+    expect(openResult.kind).toBe('session');
+    if (openResult.kind === 'session') {
+      let count = 0;
+      for await (const chunk of openResult.session.chunks) {
+        count += chunk.bytes.byteLength;
+      }
+      expect(count).toBe(4096);
+      const completion = await openResult.session.completion;
+      expect(completion.kind).toBe('complete');
+    }
   });
 });

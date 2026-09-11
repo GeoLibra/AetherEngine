@@ -84,3 +84,36 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   for (const byte of digest) encoded += HEX[byte]!;
   return encoded;
 }
+
+/** Verifies byte length and content hash expectations against terminal verification metadata. */
+export function checkIntegrityExpectations(
+  byteLength: number,
+  verification: import('./types').VFSVerification,
+  uri: CanonicalVFSUri,
+  providerId: import('./types').VFSProviderId,
+  expectedLength?: number,
+  expectedIntegrity?: string
+): VFSReadFailure | null {
+  if (expectedLength !== undefined && byteLength !== expectedLength) {
+    return Object.freeze({
+      kind: 'integrity',
+      code: 'vfs-integrity-mismatch',
+      message: 'VFS read failed integrity validation.',
+      requestedUri: uri,
+      providerId
+    });
+  }
+  if (expectedIntegrity !== undefined) {
+    const expectedDigest = validateExpectedIntegrity(expectedIntegrity);
+    if (verification.kind !== 'content-hash' || verification.digest !== expectedDigest) {
+      return Object.freeze({
+        kind: 'integrity',
+        code: 'vfs-integrity-mismatch',
+        message: 'VFS read failed integrity validation.',
+        requestedUri: uri,
+        providerId
+      });
+    }
+  }
+  return null;
+}

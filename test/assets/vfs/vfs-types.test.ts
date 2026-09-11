@@ -9,7 +9,9 @@ describe('VFS contracts', () => {
       Aborted: 'aborted',
       Integrity: 'integrity',
       Permission: 'permission',
-      ProviderFailure: 'provider-failure'
+      ProviderFailure: 'provider-failure',
+      UnsupportedChannel: 'unsupported-channel',
+      RangeNotSatisfiable: 'range-not-satisfiable'
     });
     expect(DEFAULT_VFS_READ_POLICY).toEqual({
       consultCaches: true,

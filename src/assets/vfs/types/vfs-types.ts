@@ -1,4 +1,12 @@
 import type { VFS_FAILURE_KIND } from '../constants';
+import type {
+  ByteRange,
+  VFSProviderRangeReadOptions,
+  VFSProviderRangeReadResult
+} from './range-types';
+import type { VFSStreamOptions, VFSProviderStreamOpenResult } from './stream-types';
+import type { VFSPayloadOptions, VFSProviderPayloadLeaseResult } from './payload-types';
+import type { VFSRetryMetadata } from './transport-types';
 
 /** Stable identity of a VFS provider within one mount. */
 export type VFSProviderId = string & { readonly __vfsProviderId: unique symbol };
@@ -15,12 +23,14 @@ export type NormalizedMountPath = string & { readonly __normalizedMountPath: uni
 /** Expected storage failure kinds represented without exceptions. */
 export type VFSFailureKind = (typeof VFS_FAILURE_KIND)[keyof typeof VFS_FAILURE_KIND];
 
-/** Capabilities supported by providers in the full-read-only VFS slice. */
+/** Capabilities supported by providers in the VFS ecosystem. */
 export interface VFSProviderCapabilities {
-  readonly read: true;
-  readonly range: false;
-  readonly write: false;
-  readonly watch: false;
+  readonly read: boolean;
+  readonly range?: boolean;
+  readonly stream?: boolean;
+  readonly payload?: boolean;
+  readonly write?: boolean;
+  readonly watch?: boolean;
 }
 
 /** Options forwarded to a provider after the request has passed VFS validation. */
@@ -47,6 +57,7 @@ export interface VFSReadFailure {
   readonly message: string;
   readonly requestedUri: CanonicalVFSUri;
   readonly providerId?: VFSProviderId;
+  readonly retry?: VFSRetryMetadata;
 }
 
 /** Expected provider-local failure before trusted URI provenance is attached. */
@@ -54,16 +65,30 @@ export interface VFSProviderReadFailure {
   readonly kind: VFSFailureKind;
   readonly code: string;
   readonly message: string;
+  readonly retry?: VFSRetryMetadata;
 }
 
 /** Complete outcome returned by a VFS provider. */
 export type VFSProviderReadResult = VFSReadSuccess | VFSProviderReadFailure;
 
-/** Read-only byte provider mounted below a canonical VFS root. */
+/** Byte provider mounted below a canonical VFS root. */
 export interface VFSProvider {
   readonly id: VFSProviderId;
   readonly capabilities: VFSProviderCapabilities;
   read(path: NormalizedMountPath, options: VFSReadOptions): Promise<VFSProviderReadResult>;
+  readRange?(
+    path: NormalizedMountPath,
+    range: ByteRange,
+    options: VFSProviderRangeReadOptions
+  ): Promise<VFSProviderRangeReadResult>;
+  openStream?(
+    path: NormalizedMountPath,
+    options: VFSStreamOptions
+  ): Promise<VFSProviderStreamOpenResult>;
+  acquirePayloadLease?(
+    path: NormalizedMountPath,
+    options: VFSPayloadOptions
+  ): Promise<VFSProviderPayloadLeaseResult>;
 }
 
 /** Explicit rules controlling cache lookup and primary fallback. */
@@ -109,6 +134,12 @@ export type VFSBoundaryFailure =
   | Readonly<{
       kind: 'mount-not-found';
       code: 'vfs-mount-not-found';
+      message: string;
+      requestedUri: CanonicalVFSUri;
+    }>
+  | Readonly<{
+      kind: 'unsupported-channel';
+      code: 'vfs-unsupported-channel';
       message: string;
       requestedUri: CanonicalVFSUri;
     }>;
