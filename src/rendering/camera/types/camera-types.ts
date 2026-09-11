@@ -32,6 +32,10 @@ export interface ExtractedView {
   readonly jitterPixels: readonly [number, number];
   readonly depthMode: 'standard' | 'reverse';
   readonly projectionKind: 'perspective' | 'orthographic';
+  /** Positive camera-space near distance in engine world units. */
+  readonly near: number;
+  /** Positive far distance in engine world units, or an explicitly infinite projection. */
+  readonly far: number | 'infinite';
 }
 
 export interface ExtractViewOptions {

@@ -123,7 +123,7 @@ const builtInTranslations = [
     wgsl: STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE,
     stage: 'fragment' as const,
     entryPoint: 'standardLitFragment',
-    expectedFingerprint: 'standard-lit-list-v1'
+    expectedFingerprint: 'standard-lit-list-v3'
   }
 ] as const;
 

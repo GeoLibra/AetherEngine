@@ -15,6 +15,7 @@ import {
   buildCpuLightLists,
   createShadowCacheKey,
   declareShadowDepthPasses,
+  shadowDepthFormat,
   selectShadowRequests,
   shadowRequestKey,
   validatePreparedLight,
@@ -222,6 +223,10 @@ describe('CPU light-list fallback', () => {
 });
 
 describe('shadow requests, atlas, cache, and graph', () => {
+  test('selects a depth format supported by each browser backend', () => {
+    expect(shadowDepthFormat('webgpu')).toBe('depth32float');
+    expect(shadowDepthFormat('webgl2')).toBe('depth24plus');
+  });
   const request = (id: number, importance: number, resolutionClass = 32): ShadowRequest => ({
     lightEntity: entity(id),
     viewId: 'main',
@@ -356,6 +361,7 @@ describe('shadow requests, atlas, cache, and graph', () => {
 
     expect(declared.texture?.version).toBe(2);
     expect(snapshot.passes).toHaveLength(3);
+    expect(snapshot.passes.slice(0, 2).map((pass) => pass.passKind)).toEqual(['raster', 'raster']);
     expect(snapshot.passes.slice(0, 2).map((pass) => pass.accesses[0]?.range)).toEqual([
       expect.objectContaining({ baseArrayLayer: 0, arrayLayerCount: 1, aspect: 'depth-only' }),
       expect.objectContaining({ baseArrayLayer: 1, arrayLayerCount: 1, aspect: 'depth-only' })

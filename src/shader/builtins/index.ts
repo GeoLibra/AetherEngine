@@ -7,6 +7,14 @@ export {
 } from './standard-lit';
 
 export {
+  STANDARD_SHADOW_SHADER_ABI_VERSION,
+  STANDARD_SHADOW_SHADER_MODULE_KEY,
+  STANDARD_SHADOW_SHADER_ARTIFACT,
+  STANDARD_SHADOW_SHADER_MODULE,
+  STANDARD_SHADOW_SHADER_GENERATED_ARTIFACT
+} from './standard-shadow';
+
+export {
   LIGHT_LIST_SHADER_ABI_VERSION,
   LIGHT_LIST_SHADER_ARTIFACT,
   LIGHT_LIST_SHADER_MODULE,
@@ -57,9 +65,14 @@ import { POST_COLOR_SHADER_ABI_VERSION, POST_COLOR_SHADER_ARTIFACT } from './pos
 import { SKYBOX_SHADER_ABI_VERSION, SKYBOX_SHADER_ARTIFACT } from './skybox';
 import { STANDARD_LIT_SHADER_ARTIFACT } from './standard-lit';
 import {
+  STANDARD_SHADOW_SHADER_ABI_VERSION,
+  STANDARD_SHADOW_SHADER_ARTIFACT
+} from './standard-shadow';
+import {
   STANDARD_LIT_LIST_SHADER_ABI_VERSION,
   STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT,
-  mapStandardLitListPhysicalBindings
+  mapStandardLitListPhysicalBindings,
+  mapStandardLitListProgramBindings
 } from './standard-lit-list';
 
 /**
@@ -68,6 +81,13 @@ import {
 export const BUILT_IN_SHADER_REGISTRATIONS: readonly BuiltInShaderRegistration[] = Object.freeze([
   Object.freeze({
     artifact: STANDARD_LIT_SHADER_ARTIFACT
+  }),
+  Object.freeze({
+    artifact: STANDARD_SHADOW_SHADER_ARTIFACT,
+    webgl2: Object.freeze({
+      version: STANDARD_SHADOW_SHADER_ABI_VERSION,
+      targetAbiFingerprint: 'standard-shadow-v1'
+    })
   }),
   Object.freeze({
     artifact: POST_COLOR_SHADER_ARTIFACT,
@@ -91,7 +111,8 @@ export const BUILT_IN_SHADER_REGISTRATIONS: readonly BuiltInShaderRegistration[]
     webgl2: Object.freeze({
       version: STANDARD_LIT_LIST_SHADER_ABI_VERSION,
       targetAbiFingerprint: `standard-lit-list-v${STANDARD_LIT_LIST_SHADER_ABI_VERSION}`,
-      mapPhysicalBindings: mapStandardLitListPhysicalBindings
+      mapPhysicalBindings: mapStandardLitListPhysicalBindings,
+      mapProgramBindings: mapStandardLitListProgramBindings
     })
   })
 ]);

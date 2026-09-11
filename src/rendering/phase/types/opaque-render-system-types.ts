@@ -25,6 +25,10 @@ export interface OpaqueRenderSystemInput {
     prefilteredRadianceMap: TextureHandle;
     environmentBrdfLut: TextureHandle;
   }>;
+  readonly shadow?: Readonly<{
+    buffer: BufferHandle;
+    map: TextureHandle;
+  }>;
   readonly background?: Readonly<{
     pipelineToken: PreparedRenderPipelineToken;
     uniformLayoutToken: PreparedBindGroupLayoutToken;

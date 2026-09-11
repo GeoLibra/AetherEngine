@@ -78,7 +78,15 @@ describe('createOpaqueRenderSystem', () => {
         color: COLOR,
         depth: DEPTH
       })
-    ).toThrow(/opaque phase/i);
+    ).toThrow(/opaque or alpha-test phase/i);
+    expect(() =>
+      createOpaqueRenderSystem({
+        phase: { ...empty, phase: 'alpha-test' },
+        surfaceFrame: { kind: 'surface-frame', id: 'main' },
+        color: COLOR,
+        depth: DEPTH
+      })
+    ).not.toThrow();
     expect(() =>
       createOpaqueRenderSystem({
         phase: { ...empty, phase: 'opaque' },

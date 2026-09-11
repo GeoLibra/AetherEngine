@@ -13,6 +13,7 @@ import {
   STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE,
   STANDARD_LIT_SHADER_ARTIFACT,
   STANDARD_LIT_SHADER_MODULE,
+  STANDARD_SHADOW_SHADER_ARTIFACT,
   createCookedArtifactWebGL2Translator,
   createWebGL2TranslationRouter
 } from '../../src';
@@ -82,7 +83,7 @@ describe('Built-in WebGL2 Shader Translation Router & Generic Translator', () =>
       clipDepthMode: 'vertex-remap'
     });
     expect(standardLitListFrag.source).not.toMatch(/^#version/m);
-    expect(standardLitListFrag.targetAbiFingerprint).toBe('standard-lit-list-v1');
+    expect(standardLitListFrag.targetAbiFingerprint).toBe('standard-lit-list-v3');
   });
 
   test('fails fast when an unregistered shader module is passed', () => {
@@ -245,14 +246,15 @@ describe('Built-in WebGL2 Shader Translation Router & Generic Translator', () =>
   });
 
   test('BUILT_IN_SHADER_REGISTRATIONS contains declarative registrations for all built-in shaders', () => {
-    expect(BUILT_IN_SHADER_REGISTRATIONS).toHaveLength(5);
+    expect(BUILT_IN_SHADER_REGISTRATIONS).toHaveLength(6);
     expect(BUILT_IN_SHADER_REGISTRATIONS[0]?.artifact).toBe(STANDARD_LIT_SHADER_ARTIFACT);
-    expect(BUILT_IN_SHADER_REGISTRATIONS[1]?.artifact).toBe(POST_COLOR_SHADER_ARTIFACT);
-    expect(BUILT_IN_SHADER_REGISTRATIONS[2]?.artifact).toBe(SKYBOX_SHADER_ARTIFACT);
-    expect(BUILT_IN_SHADER_REGISTRATIONS[3]?.artifact).toBe(LIGHT_LIST_WEBGL2_SHADER_ARTIFACT);
-    expect(BUILT_IN_SHADER_REGISTRATIONS[4]?.artifact).toBe(
+    expect(BUILT_IN_SHADER_REGISTRATIONS[1]?.artifact).toBe(STANDARD_SHADOW_SHADER_ARTIFACT);
+    expect(BUILT_IN_SHADER_REGISTRATIONS[2]?.artifact).toBe(POST_COLOR_SHADER_ARTIFACT);
+    expect(BUILT_IN_SHADER_REGISTRATIONS[3]?.artifact).toBe(SKYBOX_SHADER_ARTIFACT);
+    expect(BUILT_IN_SHADER_REGISTRATIONS[4]?.artifact).toBe(LIGHT_LIST_WEBGL2_SHADER_ARTIFACT);
+    expect(BUILT_IN_SHADER_REGISTRATIONS[5]?.artifact).toBe(
       STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT
     );
-    expect(BUILT_IN_SHADER_REGISTRATIONS[4]?.webgl2?.mapPhysicalBindings).toBeTypeOf('function');
+    expect(BUILT_IN_SHADER_REGISTRATIONS[5]?.webgl2?.mapPhysicalBindings).toBeTypeOf('function');
   });
 });

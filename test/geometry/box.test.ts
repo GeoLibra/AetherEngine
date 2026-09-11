@@ -19,7 +19,10 @@ describe('built-in box mesh', () => {
       mesh.streams.map(({ semantic, format, count }) => ({ semantic, format, count }))
     ).toEqual([
       { semantic: 'POSITION', format: 'float32x3', count: 24 },
-      { semantic: 'NORMAL', format: 'float32x3', count: 24 }
+      { semantic: 'NORMAL', format: 'float32x3', count: 24 },
+      { semantic: 'TEXCOORD_0', format: 'float32x2', count: 24 },
+      { semantic: 'TEXCOORD_1', format: 'float32x2', count: 24 },
+      { semantic: 'TANGENT', format: 'float32x4', count: 24 }
     ]);
     expect(mesh.indices?.format).toBe('u16');
     expect(mesh.indices?.data).toHaveLength(36);

@@ -6,3 +6,11 @@ export {
   createStandardLitMaterial
 } from './standard-lit';
 export type { StandardLitMaterial, StandardLitMaterialOptions } from './standard-lit';
+export type { StandardLitAlphaMode, StandardLitUvSets } from './standard-lit';
+export { evaluateStandardLitSurface } from './standard-lit-surface';
+export type {
+  StandardLitSurface,
+  StandardLitSurfaceEvaluationInput,
+  StandardLitSurfaceSamples,
+  StandardLitTextureSample
+} from './standard-lit-surface';

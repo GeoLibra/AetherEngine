@@ -16,10 +16,12 @@ import type {
 import type { PreparedBindGroupLayoutToken } from '../../../render-graph';
 import type {
   PreparedWebGlLightListRecorder,
-  PreparedWebGpuLightListRecorder
+  PreparedWebGpuLightListRecorder,
+  ShadowRequest
 } from '../../lighting';
 import type { PreparedDrawPacket } from '../../phase';
 import type { RenderView } from '../../visibility';
+import type { StandardLitResourceResolver } from '../../material';
 import type { BaselinePostColorPreparation } from '../baseline-post-color';
 import type { PreparedBackgroundFrame } from '../../background/prepare';
 import type { ViewBackground } from '../../background/types';
@@ -30,6 +32,15 @@ export interface BaselineEnvironmentFrame {
   readonly irradianceMap: RHITexture;
   readonly prefilteredRadianceMap: RHITexture;
   readonly environmentBrdfLut: RHITexture;
+}
+
+/** Cascade caster packets prepared for one shadowed directional light. */
+export interface BaselineDirectionalShadowFrame {
+  readonly requests: readonly ShadowRequest[];
+  readonly packetsByRequestKey: ReadonlyMap<string, readonly PreparedDrawPacket[]>;
+  readonly uniformBuffer: RHIBuffer;
+  release(): void;
+  retain(submission: RHISubmission): void;
 }
 
 /** Submission-scoped LightList inputs consumed by forward shading. */
@@ -112,6 +123,10 @@ export type BaselinePreparedFrame =
       background?: PreparedBackgroundFrame;
       /** Prepared LightList input for standard-lit packets; legacy/custom packets may omit it. */
       lightList?: BaselineLightListFrame;
+      /** Optional four-cascade directional shadow caster snapshot. */
+      shadow?: BaselineDirectionalShadowFrame;
+      /** Always-valid receiver resources used when no directional shadow was selected. */
+      shadowReceiver?: Readonly<{ buffer: RHIBuffer; map: RHITexture }>;
       postColor?: BaselinePostColorPreparation;
       deviceGeneration: number;
       surfaceGeneration: number;
@@ -159,6 +174,8 @@ export interface BaselineRenderingOptions {
     payloadVersion: number;
     material: StandardLitMaterial;
   }>;
+  /** Resolves non-built-in StandardLit texture and sampler asset identities. */
+  readonly materialResources?: StandardLitResourceResolver;
   /** Optional pre-cooked real environment asset or full environment configuration; if omitted, defaults to synthetic fallback. */
   readonly environment?: EnvironmentAsset | BaselineEnvironmentOptions | undefined;
   /** Optional shared environment lighting configuration overriding defaults for both IBL and Skybox. */

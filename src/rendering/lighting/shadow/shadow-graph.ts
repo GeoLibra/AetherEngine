@@ -15,11 +15,18 @@ export interface ShadowGraphDeclaration {
   readonly layerByRequestKey: ReadonlyMap<string, number>;
 }
 
+/** Selects the depth format shared by the shadow texture, pipeline, and receiver view. */
+export function shadowDepthFormat(backend: 'webgpu' | 'webgl2'): 'depth32float' | 'depth24plus' {
+  return backend === 'webgl2' ? 'depth24plus' : 'depth32float';
+}
+
 export interface ShadowDepthPassRecord {
   readonly request: ShadowRequest;
   readonly layer: number;
   readonly texture: TextureHandle;
   readonly range: TextureRange;
+  /** Prepared caster draws declared during setup and legal to resolve in this pass. */
+  readonly draws: readonly PreparedDrawResourcesToken[];
 }
 
 export type ShadowDepthPassRecorder = (
@@ -38,6 +45,7 @@ export function declareShadowDepthPasses(
   requests: readonly ShadowRequest[],
   options: {
     readonly record: ShadowDepthPassRecorder;
+    readonly draws?: (request: ShadowRequest) => readonly PreparedDrawResourcesToken[];
     readonly format?: string;
     readonly label?: string;
   }
@@ -68,6 +76,7 @@ export function declareShadowDepthPasses(
   const layerByRequestKey = new Map<string, number>();
   for (let layer = 0; layer < acceptedRequests.length; layer++) {
     const request = acceptedRequests[layer]!;
+    const draws = Object.freeze([...(options.draws?.(request) ?? [])]);
     const key = shadowRequestKey(request);
     if (layerByRequestKey.has(key)) throw new Error(`Duplicate shadow request key "${key}".`);
     layerByRequestKey.set(key, layer);
@@ -94,7 +103,13 @@ export function declareShadowDepthPasses(
       run(context, resources) {
         record(
           context,
-          Object.freeze({ request, layer, texture: resources.texture, range: resources.range })
+          Object.freeze({
+            request,
+            layer,
+            texture: resources.texture,
+            range: resources.range,
+            draws
+          })
         );
       }
     });

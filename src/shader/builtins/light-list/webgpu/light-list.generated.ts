@@ -13,8 +13,8 @@ export const LIGHT_LIST_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/light-list.wgsl',
-    contentHash: '712be48525c0bc87412abbe0df8b09a73129327575ff714129c9d1e06f0e0be3',
-    byteLength: 4957
+    contentHash: '123d83fbb72b2fc08ccbec16a51772eaa89858ba44ae562d3f04f9429c98c6a6',
+    byteLength: 4971
   },
   entryPoints: [
     {
@@ -294,7 +294,7 @@ fn buildLightList() {
   var flags = 0u;
   for (var lightIndex = 0u; lightIndex < lightCount; lightIndex += 1u) {
     let lightBase = HEADER_WORDS + lightIndex * LIGHT_WORDS;
-    let lightEnabled = lights.values[lightBase + 1u] != 0u;
+    let lightEnabled = (lights.values[lightBase + 1u] & 1u) != 0u;
     let visible = (lights.values[lightBase + 2u] & viewLayerMask) != 0u;
     if (lightEnabled && visible && lights.values[lightBase] == DIRECTIONAL_KIND) {
       if (directionalCount < maxDirectional) {
@@ -320,7 +320,7 @@ fn buildLightList() {
     var receiverOverflow = 0u;
     for (var lightIndex = 0u; lightIndex < lightCount; lightIndex += 1u) {
       let lightBase = HEADER_WORDS + lightIndex * LIGHT_WORDS;
-      let lightActive = lights.values[lightBase + 1u] != 0u;
+      let lightActive = (lights.values[lightBase + 1u] & 1u) != 0u;
       let lightLayerMask = lights.values[lightBase + 2u];
       let layerMatch =
         (lightLayerMask & viewLayerMask) != 0u &&

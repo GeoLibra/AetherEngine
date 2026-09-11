@@ -141,16 +141,16 @@ export { createMaterialBindGroupCacheCase } from './bind-group-cache-scenario';
 
 export function createStandardLitBuiltinCase(instanceCount: number): MaterialScenarioCase {
   const semantic = Object.freeze({
-    schemaFields: 3,
+    schemaFields: 18,
     bindingGroups: 4,
-    vertexInputs: 2,
+    vertexInputs: 5,
     fragmentOutputs: 1
   });
   const counters = Object.freeze({
     constructions: instanceCount,
-    schemaFields: 3,
+    schemaFields: 18,
     bindingGroups: 4,
-    vertexInputs: 2,
+    vertexInputs: 5,
     staleReuse: 0
   });
   return Object.freeze({

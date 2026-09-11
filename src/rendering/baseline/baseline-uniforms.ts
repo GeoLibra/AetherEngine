@@ -20,15 +20,38 @@ export function createBaselineUniformBuffer(
   return buffer;
 }
 
-export function packBaselineMaterialUniform(material: StandardLitMaterial): readonly number[] {
+export function packBaselineMaterialUniform(material: StandardLitMaterial): Uint32Array {
   const baseColor = material.instance.parameters.get(StandardLitMaterialSchema.fields.baseColor);
-  return [
+  const emissive = material.instance.parameters.get(
+    StandardLitMaterialSchema.fields.emissiveFactor
+  );
+  const floats = new Float32Array([
     ...baseColor,
+    ...emissive,
+    material.instance.parameters.get(StandardLitMaterialSchema.fields.normalScale),
     material.instance.parameters.get(StandardLitMaterialSchema.fields.metallic),
     material.instance.parameters.get(StandardLitMaterialSchema.fields.roughness),
+    material.instance.parameters.get(StandardLitMaterialSchema.fields.occlusionStrength),
+    material.instance.parameters.get(StandardLitMaterialSchema.fields.alphaCutoff),
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
     0,
     0
-  ];
+  ]);
+  const words = new Uint32Array(floats.buffer);
+  words[12] = material.instance.parameters.get(StandardLitMaterialSchema.fields.baseColorUvSet);
+  words[13] = material.instance.parameters.get(
+    StandardLitMaterialSchema.fields.metallicRoughnessUvSet
+  );
+  words[14] = material.instance.parameters.get(StandardLitMaterialSchema.fields.normalUvSet);
+  words[15] = material.instance.parameters.get(StandardLitMaterialSchema.fields.occlusionUvSet);
+  words[16] = material.instance.parameters.get(StandardLitMaterialSchema.fields.emissiveUvSet);
+  words[17] = material.asset.renderState.surface === 'alpha-mask' ? 1 : 0;
+  return words;
 }
 
 export function packBaselineObjectUniform(

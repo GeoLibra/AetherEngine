@@ -75,7 +75,14 @@ export function createOpaqueRenderSystem(
               ),
               environmentBrdfLut: pass.readTexture(input.environment.environmentBrdfLut, 'sampled')
             });
-      return Object.freeze({ color, depth: depthAttachment, lightList, environment });
+      const shadow =
+        input.shadow === undefined
+          ? undefined
+          : Object.freeze({
+              buffer: pass.readBuffer(input.shadow.buffer, 'uniform'),
+              map: pass.readTexture(input.shadow.map, 'sampled')
+            });
+      return Object.freeze({ color, depth: depthAttachment, lightList, environment, shadow });
     },
     run(context: RasterPassContext, resources) {
       const attachments = resources as {
@@ -88,6 +95,7 @@ export function createOpaqueRenderSystem(
           prefilteredRadianceMap: TextureHandle;
           environmentBrdfLut: TextureHandle;
         };
+        shadow?: { buffer: BufferHandle; map: TextureHandle };
       };
       const draws = entries.map(([token]) => context.drawResources(token));
       const lightListGroup =
@@ -97,7 +105,8 @@ export function createOpaqueRenderSystem(
               context,
               input.lightList!,
               attachments.lightList,
-              attachments.environment
+              attachments.environment,
+              attachments.shadow
             );
 
       for (const draw of draws) {
@@ -153,7 +162,8 @@ function createLightListGroup(
     irradianceMap: TextureHandle;
     prefilteredRadianceMap: TextureHandle;
     environmentBrdfLut: TextureHandle;
-  }
+  },
+  shadow?: { buffer: BufferHandle; map: TextureHandle }
 ) {
   const layout = context.bindGroupLayout(input.bindGroupLayout);
   const handles = [
@@ -187,14 +197,30 @@ function createLightListGroup(
           addressModeU: 'repeat',
           addressModeV: 'clamp-to-edge'
         })
-      }
+      },
+      ...(shadow === undefined
+        ? []
+        : [
+            { binding: 10, resource: context.buffer(shadow.buffer, 'uniform') },
+            { binding: 11, resource: context.texture(shadow.map, 'sampled') },
+            {
+              binding: 12,
+              resource: context.device.createSampler({
+                compare: 'less-equal',
+                minFilter: 'linear',
+                magFilter: 'linear',
+                addressModeU: 'clamp-to-edge',
+                addressModeV: 'clamp-to-edge'
+              })
+            }
+          ])
     ]
   });
 }
 
 function validateInput(input: OpaqueRenderSystemInput): void {
-  if (input.phase.phase !== 'opaque')
-    throw new Error('Opaque RenderSystem requires an opaque phase.');
+  if (input.phase.phase !== 'opaque' && input.phase.phase !== 'alpha-test')
+    throw new Error('Opaque RenderSystem requires an opaque or alpha-test phase.');
   if (!input.color.usage.includes('color-attachment'))
     throw new Error('Opaque RenderSystem color output requires color-attachment usage.');
   if (!input.depth.usage.includes('depth-stencil-attachment'))

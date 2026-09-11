@@ -5,12 +5,18 @@ import {
   STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE,
   STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT,
   STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE,
+  STANDARD_SHADOW_SHADER_ABI_VERSION,
+  STANDARD_SHADOW_SHADER_ARTIFACT,
+  STANDARD_SHADOW_SHADER_MODULE,
+  STANDARD_SHADOW_SHADER_MODULE_KEY,
   createCookedShaderBindingManifest
 } from '../../shader';
 import type {
   RHIBindGroup,
   RHIBindGroupLayout,
   RHIBuffer,
+  RHIRenderPipeline,
+  RHITexture,
   RHIResource,
   RHISubmission
 } from '../../rhi/contracts';
@@ -23,6 +29,11 @@ import {
   LayoutCache
 } from '../pipeline';
 import { disposePreparedMesh, prepareMesh, type PreparedMesh } from '../mesh';
+import {
+  prepareStandardLitTextureBindings,
+  type PreparedStandardLitTextureBindings
+} from '../material';
+import { StandardLitMaterialSchema } from '../../material';
 import type { PreparedDrawPacket } from '../phase';
 import {
   createPreparedBindGroupLayoutToken,
@@ -33,6 +44,7 @@ import type { RenderEntityId } from '../world';
 import type { RenderTransformFact } from '../mesh';
 import type {
   BaselineEnvironmentFrame,
+  BaselineDirectionalShadowFrame,
   BaselineLightListFrame,
   BaselineRenderingOptions
 } from './types';
@@ -48,6 +60,7 @@ import {
   type PreparedWebGlLightListRecorder,
   type PreparedWebGpuLightListRecorder
 } from '../lighting';
+import { shadowDepthFormat } from '../lighting/shadow';
 import {
   createDefaultEnvironmentTextures,
   sharedEnvironmentTextureCache,
@@ -98,12 +111,26 @@ export class BaselineStandardLitPreparation {
   private readonly shaderModule: ReturnType<
     RegisteredOptions['graphics']['device']['createShaderModule']
   >;
+  private readonly shadowShaderModule: ReturnType<
+    RegisteredOptions['graphics']['device']['createShaderModule']
+  >;
+  private readonly shadowPipeline: ReturnType<
+    RegisteredOptions['graphics']['device']['createRenderPipeline']
+  >;
+  private readonly shadowBindGroupLayouts: readonly RHIBindGroupLayout[];
+  private readonly shadowPipelineLayout: ReturnType<
+    RegisteredOptions['graphics']['device']['createPipelineLayout']
+  >;
   private readonly pipelineKey: string;
   private readonly bindingLayoutHash: string;
   private readonly pendingSubmissions = new Set<Promise<unknown>>();
   private readonly environmentBundle?: PreparedEnvironmentBundle | undefined;
   private readonly environmentBuffer: RHIBuffer;
   private readonly environmentTextures: EnvironmentTextureSet;
+  private readonly materialTextures: PreparedStandardLitTextureBindings;
+  private readonly disabledShadowBuffer: RHIBuffer;
+  private readonly disabledShadowTexture: RHITexture;
+  private readonly shadowFormat: 'depth32float' | 'depth24plus';
   readonly postColor: BaselinePostColorPreparation;
   private readonly postColorOwnedResources: readonly RHIResource[];
   private readonly lightListRecorder:
@@ -115,6 +142,7 @@ export class BaselineStandardLitPreparation {
 
   constructor(private readonly options: RegisteredOptions) {
     const { device } = options.graphics;
+    this.shadowFormat = shadowDepthFormat(options.graphics.backend);
     const shaderArtifact =
       options.graphics.backend === 'webgpu'
         ? STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT
@@ -148,6 +176,54 @@ export class BaselineStandardLitPreparation {
     this.shaderModule = device.createShaderModule({
       label: 'aether-standard-lit',
       code: shaderModule
+    });
+    const shadowManifest = createCookedShaderBindingManifest(
+      STANDARD_SHADOW_SHADER_ARTIFACT,
+      STANDARD_SHADOW_SHADER_ABI_VERSION
+    );
+    const shadowCompiled = compileBindingLayoutPlan(shadowManifest);
+    if (shadowCompiled.kind !== 'success') {
+      throw new Error(
+        `Standard shadow binding layout is invalid: ${shadowCompiled.diagnostic.message}`
+      );
+    }
+    const shadowEntry = new LayoutCache().resolve({
+      plan: shadowCompiled.plan,
+      layoutRevision: STANDARD_SHADOW_SHADER_ABI_VERSION,
+      featurePolicyHash: options.featurePolicyKey,
+      target,
+      deviceGeneration: device.generation
+    }).entry;
+    const shadowLayout = new DeviceLayoutCache().resolve(shadowEntry, device);
+    if (shadowLayout.status === 'unsupported') {
+      throw new Error(
+        `Standard shadow device layout is unsupported: ${shadowLayout.diagnostic.message}`
+      );
+    }
+    this.shadowBindGroupLayouts = shadowLayout.layout.bindGroupLayouts;
+    this.shadowPipelineLayout = shadowLayout.layout.pipelineLayout;
+    this.shadowShaderModule = device.createShaderModule({
+      label: 'aether-standard-shadow',
+      code: STANDARD_SHADOW_SHADER_MODULE
+    });
+    const parameters = options.material.material.instance.parameters;
+    this.materialTextures = prepareStandardLitTextureBindings({
+      device,
+      textureIds: [
+        parameters.get(StandardLitMaterialSchema.fields.baseColorTexture).assetId,
+        parameters.get(StandardLitMaterialSchema.fields.metallicRoughnessTexture).assetId,
+        parameters.get(StandardLitMaterialSchema.fields.normalTexture).assetId,
+        parameters.get(StandardLitMaterialSchema.fields.occlusionTexture).assetId,
+        parameters.get(StandardLitMaterialSchema.fields.emissiveTexture).assetId
+      ],
+      samplerId: parameters.get(StandardLitMaterialSchema.fields.sampler).assetId,
+      ...(options.materialResources === undefined ? {} : { resolver: options.materialResources })
+    });
+    this.disabledShadowBuffer = uniformBuffer(device, new Uint32Array(96));
+    this.disabledShadowTexture = device.createTexture({
+      size: [1, 1, 1],
+      format: this.shadowFormat,
+      usage: (1 << 2) | (1 << 4)
     });
     const { diffuseIrradiance, intensity, radianceTint } = options.environmentLighting;
     if (options.environment !== undefined) {
@@ -191,7 +267,7 @@ export class BaselineStandardLitPreparation {
             {
               format: stream.format,
               offset: stream.offset,
-              shaderLocation: stream.semantic === 'POSITION' ? 0 : 1
+              shaderLocation: standardLitShaderLocation(stream.semantic)
             }
           ]
         }))
@@ -210,6 +286,39 @@ export class BaselineStandardLitPreparation {
         module: this.shaderModule,
         entryPoint: 'standardLitFragment',
         targets: [{ format: 'rgba16float' }]
+      }
+    });
+    this.shadowPipeline = device.createRenderPipeline({
+      label: 'aether-standard-shadow',
+      layout: this.shadowPipelineLayout,
+      vertex: {
+        module: this.shadowShaderModule,
+        entryPoint: 'standardShadowVertex',
+        buffers: options.mesh.data.streams.map((stream) => ({
+          arrayStride: stream.stride,
+          attributes: [
+            {
+              format: stream.format,
+              offset: stream.offset,
+              shaderLocation: standardLitShaderLocation(stream.semantic)
+            }
+          ]
+        }))
+      },
+      primitive: {
+        topology: 'triangle-list',
+        frontFace: options.mesh.data.frontFace,
+        cullMode: 'back'
+      },
+      depthStencil: {
+        format: this.shadowFormat,
+        depthWriteEnabled: true,
+        depthCompare: 'less'
+      },
+      fragment: {
+        module: this.shadowShaderModule,
+        entryPoint: 'standardShadowFragment',
+        targets: []
       }
     });
     this.mesh = prepareMesh(device, options.mesh.data, {
@@ -268,10 +377,21 @@ export class BaselineStandardLitPreparation {
     const bindGroups: RHIBindGroup[] = [];
     try {
       for (let group = 0; group < 3; group += 1) {
+        const entries =
+          group === 2
+            ? [
+                { binding: 0, resource: { buffer: buffers[group]! } },
+                ...this.materialTextures.views.map((view, index) => ({
+                  binding: index + 1,
+                  resource: view
+                })),
+                { binding: 6, resource: this.materialTextures.sampler }
+              ]
+            : [{ binding: 0, resource: { buffer: buffers[group]! } }];
         bindGroups.push(
           device.createBindGroup({
             layout: this.bindGroupLayouts[group]!,
-            entries: [{ binding: 0, resource: { buffer: buffers[group]! } }]
+            entries
           })
         );
       }
@@ -280,6 +400,123 @@ export class BaselineStandardLitPreparation {
       throw error;
     }
     return this.packet(input.entity, buffers, bindGroups);
+  }
+
+  /** Creates one cascade-specific depth caster packet with alpha coverage matching StandardLit. */
+  createShadowPacket(input: {
+    entity: RenderEntityId;
+    transform: RenderTransformFact;
+    viewProjection: ArrayLike<number>;
+    cascade: number;
+  }): PreparedDrawPacket {
+    this.assertLive();
+    if (input.viewProjection.length !== 16) {
+      throw new Error('Standard shadow view-projection matrix must contain sixteen values.');
+    }
+    const { device } = this.options.graphics;
+    const parameters = this.options.material.material.instance.parameters;
+    const baseColor = parameters.get(StandardLitMaterialSchema.fields.baseColor);
+    const floats = new Float32Array([
+      ...baseColor,
+      parameters.get(StandardLitMaterialSchema.fields.alphaCutoff),
+      0,
+      0,
+      0
+    ]);
+    const materialWords = new Uint32Array(floats.buffer);
+    materialWords[5] = parameters.get(StandardLitMaterialSchema.fields.baseColorUvSet);
+    materialWords[6] =
+      this.options.material.material.asset.renderState.surface === 'alpha-mask' ? 1 : 0;
+    const buffers = [
+      uniformBuffer(device, Array.from(input.transform.matrix)),
+      uniformBuffer(device, Array.from(input.viewProjection)),
+      uniformBuffer(device, materialWords)
+    ];
+    const bindGroups: RHIBindGroup[] = [];
+    try {
+      bindGroups.push(
+        device.createBindGroup({
+          layout: this.shadowBindGroupLayouts[0]!,
+          entries: [{ binding: 0, resource: { buffer: buffers[0]! } }]
+        }),
+        device.createBindGroup({
+          layout: this.shadowBindGroupLayouts[1]!,
+          entries: [{ binding: 0, resource: { buffer: buffers[1]! } }]
+        }),
+        device.createBindGroup({
+          layout: this.shadowBindGroupLayouts[2]!,
+          entries: [
+            { binding: 0, resource: { buffer: buffers[2]! } },
+            { binding: 1, resource: this.materialTextures.views[0]! },
+            { binding: 2, resource: this.materialTextures.sampler }
+          ]
+        })
+      );
+    } catch (error) {
+      disposeResources([...bindGroups, ...buffers]);
+      throw error;
+    }
+    return this.packet(input.entity, buffers, bindGroups, {
+      pipeline: this.shadowPipeline,
+      phase: 'shadow',
+      pipelineKey: `${STANDARD_SHADOW_SHADER_MODULE_KEY}:${input.cascade}`,
+      drawKey: `${input.entity}:shadow:${input.cascade}`
+    });
+  }
+
+  /** Uploads receiver CSM data and binds its lifetime to the frame submission. */
+  createDirectionalShadowFrame(input: {
+    requests: BaselineDirectionalShadowFrame['requests'];
+    packetsByRequestKey: BaselineDirectionalShadowFrame['packetsByRequestKey'];
+    view: ExtractedView;
+    cascades: readonly { readonly splitFar: number; readonly viewProjection: readonly number[] }[];
+    lightIndex: number;
+  }): BaselineDirectionalShadowFrame {
+    this.assertLive();
+    if (input.cascades.length !== 4) {
+      throw new Error('Baseline directional shadows require exactly four cascades.');
+    }
+    const floats = new Float32Array([
+      ...input.cascades.flatMap((cascade) => [...cascade.viewProjection]),
+      ...Array.from(input.view.view),
+      ...input.cascades.map((cascade) => cascade.splitFar),
+      1,
+      0.0005,
+      0.002,
+      1 / input.requests[0]!.resolutionClass,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]);
+    const words = new Uint32Array(floats.buffer);
+    words[88] = input.lightIndex;
+    const shadowUniformBuffer = uniformBuffer(this.options.graphics.device, words);
+    let released = false;
+    let retained = false;
+    return Object.freeze({
+      requests: input.requests,
+      packetsByRequestKey: input.packetsByRequestKey,
+      uniformBuffer: shadowUniformBuffer,
+      release: () => {
+        if (released) return;
+        released = true;
+        if (!retained) shadowUniformBuffer.dispose();
+      },
+      retain: (submission: RHISubmission) => {
+        if (released || retained) throw new Error('Baseline shadow frame cannot be retained.');
+        retained = true;
+        const pending = submission.done.finally(() => {
+          shadowUniformBuffer.dispose();
+          this.pendingSubmissions.delete(pending);
+        });
+        this.pendingSubmissions.add(pending);
+      }
+    });
   }
 
   get lightListBindGroupLayout() {
@@ -293,6 +530,10 @@ export class BaselineStandardLitPreparation {
       prefilteredRadianceMap: this.environmentTextures.prefilteredRadianceMap,
       environmentBrdfLut: this.environmentTextures.environmentBrdfLut
     });
+  }
+
+  get disabledShadowReceiver(): Readonly<{ buffer: RHIBuffer; map: RHITexture }> {
+    return Object.freeze({ buffer: this.disabledShadowBuffer, map: this.disabledShadowTexture });
   }
 
   /** Prepares background resources for the given view and background configuration. */
@@ -391,8 +632,12 @@ export class BaselineStandardLitPreparation {
     await Promise.allSettled([...this.pendingSubmissions]);
     disposePreparedMesh(this.mesh);
     this.pipeline.dispose();
+    this.shadowPipeline.dispose();
     this.lightListRecorder.dispose();
     this.environmentBuffer.dispose();
+    this.materialTextures.dispose();
+    this.disabledShadowBuffer.dispose();
+    this.disabledShadowTexture.dispose();
     if (this.environmentBundle !== undefined) {
       this.environmentBundle.release();
     } else {
@@ -403,14 +648,23 @@ export class BaselineStandardLitPreparation {
     }
     disposeResources(this.postColorOwnedResources);
     this.shaderModule.dispose();
+    this.shadowShaderModule.dispose();
     this.pipelineLayout.dispose();
+    this.shadowPipelineLayout.dispose();
     disposeResources(this.bindGroupLayouts);
+    disposeResources(this.shadowBindGroupLayouts);
   }
 
   private packet(
     entity: RenderEntityId,
     buffers: readonly RHIBuffer[],
-    bindGroups: readonly RHIBindGroup[]
+    bindGroups: readonly RHIBindGroup[],
+    overrides?: Readonly<{
+      pipeline: RHIRenderPipeline;
+      phase: PreparedDrawPacket['phase'];
+      pipelineKey: string;
+      drawKey: string;
+    }>
   ): PreparedDrawPacket {
     const submesh = this.mesh.submeshes[0]!;
     let released = false;
@@ -426,15 +680,19 @@ export class BaselineStandardLitPreparation {
     const releaseFrameResources = (): void => disposeResources([...bindGroups, ...buffers]);
     return Object.freeze({
       entity,
-      phase: 'opaque',
-      pipelineKey: this.pipelineKey,
+      phase:
+        overrides?.phase ??
+        (this.options.material.material.asset.renderState.surface === 'alpha-mask'
+          ? 'alpha-test'
+          : 'opaque'),
+      pipelineKey: overrides?.pipelineKey ?? this.pipelineKey,
       materialKey: this.options.material.handle.assetId,
       meshKey: this.options.mesh.handle.assetId,
       bindingKey: bindingKey.hash,
-      drawKey: `${entity}:0`,
+      drawKey: overrides?.drawKey ?? `${entity}:0`,
       distance: 0,
       insertionOrder: 0,
-      pipeline: this.pipeline,
+      pipeline: overrides?.pipeline ?? this.pipeline,
       bindingSet: Object.freeze({
         bindingKey,
         bindGroups: Object.freeze([...bindGroups]),
@@ -501,4 +759,21 @@ export class BaselineStandardLitPreparation {
 
 function disposeResources(resources: readonly RHIResource[]): void {
   for (const resource of [...resources].reverse()) resource.dispose();
+}
+
+function standardLitShaderLocation(semantic: string): number {
+  switch (semantic) {
+    case 'POSITION':
+      return 0;
+    case 'NORMAL':
+      return 1;
+    case 'TEXCOORD_0':
+      return 2;
+    case 'TEXCOORD_1':
+      return 3;
+    case 'TANGENT':
+      return 4;
+    default:
+      throw new Error(`Standard-lit mesh semantic "${semantic}" is unsupported.`);
+  }
 }

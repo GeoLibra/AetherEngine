@@ -8,7 +8,7 @@ export type MaterialBindingLayoutIdentityEntry = Readonly<
       readonly group: number;
       readonly binding: number;
       readonly bindingPath: string;
-      readonly viewDimension: '2d' | 'cube';
+      readonly viewDimension: '2d' | '2d-array' | 'cube';
       readonly sampleType: 'float' | 'depth' | 'uint' | 'sint';
       readonly multisampled: boolean;
     }
