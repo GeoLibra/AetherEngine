@@ -1,7 +1,11 @@
 import { VFS_FAILURE_KIND } from './constants';
 import { VFSInFlightCoalescer } from './coalescer';
 import { IncrementalSha256 } from './incremental-sha256';
-import { validateExpectedIntegrity, validateVFSReadSuccess } from './integrity';
+import {
+  checkIntegrityExpectations,
+  validateExpectedIntegrity,
+  validateVFSReadSuccess
+} from './integrity';
 import { VFSMountTable } from './mount-table';
 import { validateByteRange } from './range';
 import { deriveVFSTransportKey } from './transport-key';
@@ -18,6 +22,7 @@ import type {
   VFSPayloadRequest,
   VFSProvider,
   VFSProviderId,
+  VFSProviderRangeReadOptions,
   VFSRangeReadRequest,
   VFSRangeReadResult,
   VFSRangeReadSuccess,
@@ -58,9 +63,9 @@ export class VirtualFileSystem {
     }
     const request = Object.freeze({
       uri: rawUri,
-      ...(expectedLength === undefined ? {} : { expectedLength }),
-      ...(expectedIntegrity === undefined ? {} : { expectedIntegrity }),
-      ...(signal === undefined ? {} : { signal })
+      ...(expectedLength !== undefined && { expectedLength }),
+      ...(expectedIntegrity !== undefined && { expectedIntegrity }),
+      ...(signal !== undefined && { signal })
     });
 
     if (request.signal?.aborted) return failure('aborted', uri);
@@ -166,10 +171,12 @@ export class VirtualFileSystem {
         transportKey,
         signal,
         async (transportSignal) => {
-          const rangeOptions = Object.freeze({
+          const rangeOptions: VFSProviderRangeReadOptions = Object.freeze({
             signal: transportSignal,
-            ...(allowFullBodyFallback === undefined ? {} : { allowFullBodyFallback }),
-            ...(maxBodyBytes === undefined ? {} : { maxBodyBytes })
+            ...(expectedRevision !== undefined && { expectedRevision }),
+            ...(expectedIntegrity !== undefined && { expectedIntegrity }),
+            ...(allowFullBodyFallback !== undefined && { allowFullBodyFallback }),
+            ...(maxBodyBytes !== undefined && { maxBodyBytes })
           });
           const providerResult = await mount.primary.readRange!(path, range, rangeOptions);
           if (providerResult.kind !== 'success') {
@@ -179,6 +186,12 @@ export class VirtualFileSystem {
               mount.primary.id,
               providerResult.code
             );
+          }
+          if (
+            providerResult.providerId !== mount.primary.id ||
+            providerResult.resolvedUri !== uri
+          ) {
+            return failure('integrity', uri, mount.primary.id, 'vfs-range-provenance-mismatch');
           }
           const bytes = new Uint8Array(providerResult.bytes);
           if (bytes.byteLength !== range.length) {
@@ -242,14 +255,21 @@ export class VirtualFileSystem {
 
     try {
       const streamOptions = Object.freeze({
-        ...(signal === undefined ? {} : { signal }),
-        ...(highWaterMarkBytes === undefined ? {} : { highWaterMarkBytes }),
-        ...(expectedLength === undefined ? {} : { expectedLength }),
-        ...(expectedIntegrity === undefined ? {} : { expectedIntegrity })
+        ...(signal !== undefined && { signal }),
+        ...(highWaterMarkBytes !== undefined && { highWaterMarkBytes }),
+        ...(expectedLength !== undefined && { expectedLength }),
+        ...(expectedIntegrity !== undefined && { expectedIntegrity })
       });
       const result = await mount.primary.openStream(path, streamOptions);
       if (result.kind !== 'session') {
         return failure(result.kind, uri, mount.primary.id, result.code);
+      }
+      if (
+        result.session.metadata.providerId !== mount.primary.id ||
+        result.session.metadata.resolvedUri !== uri
+      ) {
+        result.session.cancel();
+        return failure('integrity', uri, mount.primary.id, 'vfs-stream-provenance-mismatch');
       }
       const originalSession = result.session;
       const wrappedCompletion = originalSession.completion.then((outcome) => {
@@ -310,13 +330,17 @@ export class VirtualFileSystem {
 
     try {
       const payloadOptions = Object.freeze({
-        ...(signal === undefined ? {} : { signal }),
-        ...(expectedLength === undefined ? {} : { expectedLength }),
-        ...(expectedIntegrity === undefined ? {} : { expectedIntegrity })
+        ...(signal !== undefined && { signal }),
+        ...(expectedLength !== undefined && { expectedLength }),
+        ...(expectedIntegrity !== undefined && { expectedIntegrity })
       });
       const result = await mount.primary.acquirePayloadLease(path, payloadOptions);
       if (result.kind !== 'lease') {
         return failure(result.kind, uri, mount.primary.id, result.code);
+      }
+      if (result.lease.providerId !== mount.primary.id || result.lease.resolvedUri !== uri) {
+        result.lease.release();
+        return failure('integrity', uri, mount.primary.id, 'vfs-payload-provenance-mismatch');
       }
 
       const err = checkIntegrityExpectations(
@@ -391,11 +415,7 @@ function validateRequestInput(
 }
 
 function invalidRequest(message: string): VFSBoundaryFailure {
-  return Object.freeze({
-    kind: 'invalid-request',
-    code: 'vfs-invalid-request',
-    message
-  });
+  return Object.freeze({ kind: 'invalid-request', code: 'vfs-invalid-request', message });
 }
 
 function unsupportedChannel(
@@ -461,26 +481,6 @@ function failure(
     code,
     message: `VFS read failed: ${kind}.`,
     requestedUri,
-    ...(providerId === undefined ? {} : { providerId })
+    ...(providerId !== undefined && { providerId })
   });
-}
-
-function checkIntegrityExpectations(
-  byteLength: number,
-  verification: VFSVerification,
-  uri: CanonicalVFSUri,
-  providerId: VFSProviderId,
-  expectedLength?: number,
-  expectedIntegrity?: string
-): VFSReadFailure | null {
-  if (expectedLength !== undefined && byteLength !== expectedLength) {
-    return failure('integrity', uri, providerId, 'vfs-integrity-mismatch');
-  }
-  if (expectedIntegrity !== undefined) {
-    const expectedDigest = validateExpectedIntegrity(expectedIntegrity);
-    if (verification.kind !== 'content-hash' || verification.digest !== expectedDigest) {
-      return failure('integrity', uri, providerId, 'vfs-integrity-mismatch');
-    }
-  }
-  return null;
 }

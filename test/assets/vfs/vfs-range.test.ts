@@ -201,4 +201,38 @@ describe('VFS byte range operations and readRange contract', () => {
 
     expect(result.kind).toBe('range-not-satisfiable');
   });
+
+  test('rejects range read with mismatched provenance', async () => {
+    const vfs = new VirtualFileSystem();
+    const root = normalizeVFSUri('asset://test');
+    vfs.mount({
+      root,
+      scheme: 'asset' as any,
+      primary: {
+        id: 'range-prov' as any,
+        capabilities: { read: true, range: true, write: false, watch: false },
+        read: async () => ({ kind: 'not-found', code: 'not-found', message: 'not found' }),
+        readRange: async () => ({
+          kind: 'success',
+          bytes: new Uint8Array([1, 2]),
+          range: { offset: 0, length: 2 },
+          totalLength: 2,
+          resolvedUri: normalizeVFSUri('asset://test/different.pkg'),
+          revision: 'v1',
+          providerId: 'range-prov' as any
+        })
+      },
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    const result = await vfs.readRange({
+      uri: 'asset://test/package.pkg',
+      range: { offset: 0, length: 2 }
+    });
+    expect(result.kind).toBe('integrity');
+    if (result.kind !== 'success') {
+      expect(result.code).toBe('vfs-range-provenance-mismatch');
+    }
+  });
 });

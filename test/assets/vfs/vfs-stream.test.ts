@@ -201,7 +201,7 @@ describe('VFS stream channel and session lifecycle', () => {
     }
   });
 
-  test('slices oversized chunks according to highWaterMarkBytes', async () => {
+  test('rejects oversized chunks exceeding highWaterMarkBytes', async () => {
     async function* largeChunkGen() {
       yield new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     }
@@ -218,16 +218,16 @@ describe('VFS stream channel and session lifecycle', () => {
     });
 
     const chunkLengths: number[] = [];
-    const offsets: number[] = [];
     for await (const chunk of session.chunks) {
       chunkLengths.push(chunk.bytes.byteLength);
-      offsets.push(chunk.offset);
     }
 
-    expect(chunkLengths).toEqual([4, 4, 2]);
-    expect(offsets).toEqual([0, 4, 8]);
+    expect(chunkLengths).toEqual([]);
     const completion = await session.completion;
-    expect(completion.kind).toBe('complete');
+    expect(completion.kind).toBe('provider-failure');
+    if (completion.kind === 'provider-failure') {
+      expect(completion.code).toBe('vfs-stream-chunk-overflow');
+    }
   });
 
   test('strictly enforces single-consumer iterator rule', async () => {
@@ -306,5 +306,48 @@ describe('VFS stream channel and session lifecycle', () => {
 
     const completion = await session.completion;
     expect(completion.kind).toBe('aborted');
+  });
+
+  test('rejects openStream with mismatched provenance and cancels session', async () => {
+    const vfs = new VirtualFileSystem();
+    const root = normalizeVFSUri('asset://test');
+    let cancelCalled = false;
+
+    vfs.mount({
+      root,
+      scheme: 'asset' as any,
+      primary: {
+        id: 'stream-prov' as any,
+        capabilities: { read: true, stream: true, write: false, watch: false },
+        read: async () => ({ kind: 'not-found', code: 'not-found', message: 'not found' }),
+        openStream: async () => ({
+          kind: 'session',
+          session: {
+            metadata: {
+              resolvedUri: normalizeVFSUri('asset://test/spoofed.bin'),
+              providerId: 'stream-prov' as any,
+              revision: '1',
+              contentLength: 3
+            },
+            chunks: (async function* () {
+              yield { offset: 0, bytes: new Uint8Array([1, 2, 3]) };
+            })(),
+            completion: new Promise(() => {}),
+            cancel: () => {
+              cancelCalled = true;
+            }
+          }
+        })
+      },
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    const result = await vfs.openStream({ uri: 'asset://test/real.bin' });
+    expect(result.kind).toBe('integrity');
+    if (result.kind !== 'session') {
+      expect(result.code).toBe('vfs-stream-provenance-mismatch');
+    }
+    expect(cancelCalled).toBe(true);
   });
 });

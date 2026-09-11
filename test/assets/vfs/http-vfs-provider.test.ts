@@ -12,6 +12,7 @@ function createMockResponse(params: {
   status: number;
   bodyBytes?: Uint8Array;
   headers?: Record<string, string>;
+  body?: AsyncIterable<Uint8Array> | null;
 }): HttpTransportResponse {
   const headersMap = new Map<string, string>();
   if (params.headers) {
@@ -31,7 +32,7 @@ function createMockResponse(params: {
       const bytes = params.bodyBytes ?? new Uint8Array();
       return new Uint8Array(bytes).buffer as ArrayBuffer;
     },
-    body: null
+    body: params.body !== undefined ? params.body : null
   };
 }
 
@@ -216,6 +217,136 @@ describe('HttpVFSProvider contracts', () => {
     expect(result.kind).toBe('provider-failure');
     if (result.kind === 'provider-failure') {
       expect(result.code).toBe('vfs-http-body-too-large');
+    }
+  });
+
+  test('sends If-Range header when expectedRevision is provided', async () => {
+    let capturedHeaders: Record<string, string> | undefined;
+    const provider = new HttpVFSProvider({
+      id: 'mock-http',
+      baseUrl: 'https://cdn.example.com/assets',
+      baseUri,
+      transport: async (_url, init) => {
+        capturedHeaders = init?.headers;
+        return createMockResponse({
+          status: 206,
+          bodyBytes: new Uint8Array([20, 30]),
+          headers: {
+            'Content-Range': 'bytes 2-3/10',
+            ETag: '"rev-pinned"'
+          }
+        });
+      }
+    });
+
+    const result = await provider.readRange(
+      toNormalizedMountPath(['package.pkg']),
+      { offset: 2, length: 2 },
+      { expectedRevision: 'rev-pinned' }
+    );
+
+    expect(capturedHeaders?.['If-Range']).toBe('"rev-pinned"');
+    expect(result.kind).toBe('success');
+  });
+
+  test('rejects HTTP range reads missing strong ETag or having weak ETag', async () => {
+    const providerNoETag = new HttpVFSProvider({
+      id: 'mock-http',
+      baseUrl: 'https://cdn.example.com/assets',
+      baseUri,
+      transport: async () =>
+        createMockResponse({
+          status: 206,
+          bodyBytes: new Uint8Array([20, 30]),
+          headers: {
+            'Content-Range': 'bytes 2-3/10'
+          }
+        })
+    });
+
+    const resNoETag = await providerNoETag.readRange(
+      toNormalizedMountPath(['package.pkg']),
+      { offset: 2, length: 2 },
+      {}
+    );
+    expect(resNoETag.kind).toBe('integrity');
+    if (resNoETag.kind === 'integrity') {
+      expect(resNoETag.code).toBe('vfs-http-missing-validator');
+    }
+
+    const providerWeakETag = new HttpVFSProvider({
+      id: 'mock-http',
+      baseUrl: 'https://cdn.example.com/assets',
+      baseUri,
+      transport: async () =>
+        createMockResponse({
+          status: 206,
+          bodyBytes: new Uint8Array([20, 30]),
+          headers: {
+            'Content-Range': 'bytes 2-3/10',
+            ETag: 'W/"weak-1"'
+          }
+        })
+    });
+
+    const resWeak = await providerWeakETag.readRange(
+      toNormalizedMountPath(['package.pkg']),
+      { offset: 2, length: 2 },
+      {}
+    );
+    expect(resWeak.kind).toBe('integrity');
+    if (resWeak.kind === 'integrity') {
+      expect(resWeak.code).toBe('vfs-http-missing-validator');
+    }
+  });
+
+  test('rejects openStream when response body does not support streaming', async () => {
+    const provider = new HttpVFSProvider({
+      id: 'mock-http',
+      baseUrl: 'https://cdn.example.com',
+      baseUri,
+      transport: async () =>
+        createMockResponse({
+          status: 200,
+          bodyBytes: new Uint8Array([1, 2, 3]),
+          body: null
+        })
+    });
+
+    const result = await provider.openStream(toNormalizedMountPath(['stream.bin']), {});
+    expect(result.kind).toBe('unsupported-channel');
+    if (result.kind === 'unsupported-channel') {
+      expect(result.code).toBe('vfs-http-stream-not-supported');
+    }
+  });
+
+  test('opens stream session when response body supports streaming', async () => {
+    async function* gen() {
+      yield new Uint8Array([1, 2]);
+      yield new Uint8Array([3, 4]);
+    }
+    const provider = new HttpVFSProvider({
+      id: 'mock-http',
+      baseUrl: 'https://cdn.example.com',
+      baseUri,
+      transport: async () =>
+        createMockResponse({
+          status: 200,
+          headers: { ETag: '"stream-rev"', 'content-length': '4' },
+          body: gen()
+        })
+    });
+
+    const result = await provider.openStream(toNormalizedMountPath(['stream.bin']), {});
+    expect(result.kind).toBe('session');
+    if (result.kind === 'session') {
+      const chunks: number[] = [];
+      for await (const chunk of result.session.chunks) {
+        chunks.push(...chunk.bytes);
+      }
+      expect(chunks).toEqual([1, 2, 3, 4]);
+      const completion = await result.session.completion;
+      expect(completion.kind).toBe('complete');
     }
   });
 });

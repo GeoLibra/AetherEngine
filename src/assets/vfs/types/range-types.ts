@@ -27,6 +27,8 @@ export interface VFSRangeReadRequest {
 /** Options forwarded to a provider for a range read request. */
 export interface VFSProviderRangeReadOptions {
   readonly signal?: AbortSignal;
+  readonly expectedRevision?: string;
+  readonly expectedIntegrity?: string;
   readonly allowFullBodyFallback?: boolean;
   readonly maxBodyBytes?: number;
 }

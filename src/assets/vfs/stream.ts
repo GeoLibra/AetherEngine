@@ -70,16 +70,11 @@ export function createVFSStreamSession(params: CreateStreamSessionParams): VFSSt
       const iterator = source[Symbol.asyncIterator]();
       let currentOffset = 0;
       const hasher = expectedIntegrity !== undefined ? new IncrementalSha256() : null;
-      const pendingChunks: VFSStreamChunk[] = [];
 
       return {
         async next(): Promise<IteratorResult<VFSStreamChunk>> {
           if (isCancelled) {
             return { done: true, value: undefined };
-          }
-
-          if (pendingChunks.length > 0) {
-            return { done: false, value: pendingChunks.shift()! };
           }
 
           try {
@@ -120,26 +115,25 @@ export function createVFSStreamSession(params: CreateStreamSessionParams): VFSSt
               return { done: true, value: undefined };
             }
 
-            if (hasher !== null) {
-              hasher.update(bytes);
-            }
-
             if (
               highWaterMarkBytes !== undefined &&
               highWaterMarkBytes > 0 &&
               bytes.byteLength > highWaterMarkBytes
             ) {
-              let sliceOffset = 0;
-              while (sliceOffset < bytes.byteLength) {
-                const sliceEnd = Math.min(sliceOffset + highWaterMarkBytes, bytes.byteLength);
-                pendingChunks.push({
-                  offset: currentOffset + sliceOffset,
-                  bytes: bytes.subarray(sliceOffset, sliceEnd)
-                });
-                sliceOffset = sliceEnd;
-              }
-              currentOffset += bytes.byteLength;
-              return { done: false, value: pendingChunks.shift()! };
+              const err = Object.freeze({
+                kind: 'provider-failure' as const,
+                code: 'vfs-stream-chunk-overflow',
+                message: `Stream chunk size (${bytes.byteLength} bytes) exceeds negotiated high-water mark (${highWaterMarkBytes} bytes).`,
+                requestedUri: metadata.resolvedUri,
+                providerId: metadata.providerId
+              });
+              settle(err);
+              cancel();
+              return { done: true, value: undefined };
+            }
+
+            if (hasher !== null) {
+              hasher.update(bytes);
             }
 
             const chunk: VFSStreamChunk = {

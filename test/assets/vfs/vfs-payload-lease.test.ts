@@ -126,4 +126,43 @@ describe('VFS platform payload leases', () => {
     }
     expect(releaseCalls).toBe(1);
   });
+
+  test('validates payload lease provenance and releases lease on mismatch', async () => {
+    const vfs = new VirtualFileSystem();
+    const root = normalizeVFSUri('asset://test');
+    let releaseCalls = 0;
+
+    vfs.mount({
+      root,
+      scheme: 'asset' as any,
+      primary: {
+        id: 'real-provider' as any,
+        capabilities: { read: true, payload: true, write: false, watch: false },
+        read: async () => ({ kind: 'not-found', code: 'not-found', message: 'not found' }),
+        acquirePayloadLease: async () => ({
+          kind: 'lease',
+          lease: {
+            resolvedUri: normalizeVFSUri('asset://test/other-file.png'),
+            providerId: 'real-provider' as any,
+            revision: 'v1',
+            verification: { kind: 'length-only', byteLength: 512 },
+            byteLength: 512,
+            payload: {},
+            release: () => {
+              releaseCalls++;
+            }
+          }
+        })
+      },
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    const result = await vfs.acquirePayloadLease({ uri: 'asset://test/texture.png' });
+    expect(result.kind).toBe('integrity');
+    if (result.kind !== 'lease') {
+      expect(result.code).toBe('vfs-payload-provenance-mismatch');
+    }
+    expect(releaseCalls).toBe(1);
+  });
 });

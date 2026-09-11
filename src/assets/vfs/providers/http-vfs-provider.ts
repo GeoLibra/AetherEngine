@@ -182,6 +182,10 @@ export class HttpVFSProvider implements VFSProvider {
         ...this.#defaultHeaders,
         Range: rangeHeader
       };
+      if (options.expectedRevision !== undefined) {
+        const trimmed = options.expectedRevision.trim();
+        headers['If-Range'] = trimmed.startsWith('"') ? trimmed : `"${trimmed}"`;
+      }
 
       const response = await this.#transport(url, {
         method: 'GET',
@@ -217,7 +221,17 @@ export class HttpVFSProvider implements VFSProvider {
         });
       }
 
-      const revision = extractRevision(response);
+      const revision = extractStrongRevision(response);
+      if (!revision) {
+        return Object.freeze({
+          kind: 'integrity',
+          code: 'vfs-http-missing-validator',
+          message:
+            'HTTP Range response requires a strong validator (strong ETag) to pin representation.',
+          requestedUri: uri,
+          providerId: this.id
+        });
+      }
 
       if (response.status === 206) {
         const contentRange = response.headers.get('Content-Range');
@@ -378,20 +392,14 @@ export class HttpVFSProvider implements VFSProvider {
       const contentLength = contentLengthHeader ? Number(contentLengthHeader) : null;
       const revision = extractRevision(response);
 
-      let chunkStream: AsyncIterable<Uint8Array>;
-      if (response.body) {
-        chunkStream = response.body;
-      } else {
-        // Fallback: arrayBuffer split into chunks
-        const buffer = await response.arrayBuffer();
-        const allBytes = new Uint8Array(buffer);
-        const chunkSize = options.highWaterMarkBytes ?? 64 * 1024;
-        async function* generator() {
-          for (let offset = 0; offset < allBytes.byteLength; offset += chunkSize) {
-            yield allBytes.subarray(offset, Math.min(offset + chunkSize, allBytes.byteLength));
-          }
-        }
-        chunkStream = generator();
+      if (!response.body) {
+        return Object.freeze({
+          kind: 'unsupported-channel',
+          code: 'vfs-http-stream-not-supported',
+          message: 'HTTP response body does not support streaming.',
+          requestedUri: uri,
+          providerId: this.id
+        });
       }
 
       const session = createVFSStreamSession({
@@ -404,7 +412,7 @@ export class HttpVFSProvider implements VFSProvider {
             ? { mime: response.headers.get('content-type')! }
             : {})
         }),
-        source: chunkStream,
+        source: response.body,
         ...(options.expectedLength !== undefined
           ? { expectedLength: options.expectedLength }
           : contentLength !== null
@@ -443,14 +451,21 @@ export class HttpVFSProvider implements VFSProvider {
   }
 }
 
-function extractRevision(response: HttpTransportResponse): string {
+function extractStrongRevision(response: HttpTransportResponse): string | null {
   const etag = response.headers.get('etag');
-  if (etag && !etag.startsWith('W/')) {
-    return etag.replace(/"/g, '');
+  if (etag && !etag.trim().startsWith('W/')) {
+    const cleaned = etag.replace(/"/g, '').trim();
+    return cleaned.length > 0 ? cleaned : null;
   }
+  return null;
+}
+
+function extractRevision(response: HttpTransportResponse): string {
+  const strong = extractStrongRevision(response);
+  if (strong) return strong;
   const lastModified = response.headers.get('last-modified');
   if (lastModified) {
-    return lastModified;
+    return lastModified.trim();
   }
   return '1';
 }
