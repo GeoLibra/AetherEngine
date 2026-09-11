@@ -2,7 +2,10 @@ import { bench, expect } from 'vitest';
 import {
   createVFSReadFixture,
   copyVFSReadReference,
-  vfsByteChecksum
+  vfsByteChecksum,
+  createVFSRangeFixture,
+  sliceVFSRangeReference,
+  createVFSStreamFixture
 } from './asset-pipeline/vfs-read';
 import {
   createAssetRequestFixture,
@@ -44,6 +47,44 @@ for (const mountCount of [1, 16, 128]) {
     result.bytes[0] = 255;
   });
 }
+
+// Range read benchmarks
+const rangeChunkSize = profile === 'nightly' ? 65_536 : profile === 'standard' ? 16_384 : 1_024;
+const rangePackageSize = rangeChunkSize * 16;
+const rangeFixture = createVFSRangeFixture(rangePackageSize, rangeChunkSize);
+
+bench(`raw slice ${rangeChunkSize} bytes comparator`, () => {
+  const result = sliceVFSRangeReference(rangeFixture.bytes, rangeFixture.range);
+  expect(result.byteLength).toBe(rangeChunkSize);
+});
+
+bench(`VFS range read ${rangeChunkSize} bytes with representation pinning`, async () => {
+  const result = await rangeFixture.vfs.readRange({
+    uri: rangeFixture.uri,
+    range: rangeFixture.range,
+    expectedRevision: rangeFixture.revision
+  });
+  if (result.kind !== 'success') throw new Error('Range read benchmark failed.');
+  expect(result.bytes.byteLength).toBe(rangeChunkSize);
+});
+
+// Stream session benchmarks
+const streamTotalBytes = profile === 'nightly' ? 65_536 : profile === 'standard' ? 16_384 : 4_096;
+const streamChunkSize = profile === 'nightly' ? 4_096 : 1_024;
+const streamFixture = createVFSStreamFixture(streamTotalBytes, streamChunkSize);
+
+bench(`VFS stream pull and terminal verification (${streamTotalBytes} bytes)`, async () => {
+  const openResult = await streamFixture.vfs.openStream({ uri: streamFixture.uri });
+  if (openResult.kind !== 'session') throw new Error('Stream benchmark open failed.');
+  let bytesPulled = 0;
+  for await (const chunk of openResult.session.chunks) {
+    bytesPulled += chunk.bytes.byteLength;
+  }
+  const completion = await openResult.session.completion;
+  if (completion.kind !== 'complete') throw new Error('Stream benchmark completion failed.');
+  expect(bytesPulled).toBe(streamTotalBytes);
+});
+
 const sizes =
   profile === 'nightly' ? [10_000, 100_000] : profile === 'standard' ? [10_000] : [1_000];
 

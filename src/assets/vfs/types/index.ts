@@ -1,10 +1,44 @@
 export type {
+  ByteRange,
+  VFSRangeReadRequest,
+  VFSRangeReadResult,
+  VFSRangeReadSuccess,
+  VFSProviderRangeReadResult
+} from './range-types';
+export type {
+  VFSProviderStreamOpenResult,
+  VFSStreamChunk,
+  VFSStreamCompletion,
+  VFSStreamMetadata,
+  VFSStreamOpenResult,
+  VFSStreamOptions,
+  VFSStreamRequest,
+  VFSStreamSession,
+  VFSVerification
+} from './stream-types';
+export type {
+  VFSPayloadLease,
+  VFSPayloadLeaseResult,
+  VFSPayloadOptions,
+  VFSPayloadRequest,
+  VFSProviderPayloadLeaseResult
+} from './payload-types';
+export type {
+  VFSDependencyResolveOptions,
+  VFSRedactedMetadata,
+  VFSRemoteLocatorResolver,
+  VFSResolvedAuthoringLocator,
+  VFSRetryMetadata,
+  VFSTransportKey,
+  VFSTransportLocator
+} from './transport-types';
+export type {
   CanonicalVFSUri,
-  VFSBoundaryFailure,
   NormalizedMountPath,
   ResolvedVFSMount,
-  VFSMount,
+  VFSBoundaryFailure,
   VFSFailureKind,
+  VFSMount,
   VFSProvider,
   VFSProviderCapabilities,
   VFSProviderId,
