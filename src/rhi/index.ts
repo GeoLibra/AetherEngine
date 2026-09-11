@@ -24,7 +24,6 @@ export {
   createWebGL2TranslationRouter
 } from './webgl2/shader';
 export type {
-  BuiltInShaderRegistration,
   CookedArtifactWebGL2TranslatorOptions,
   WebGL2RouterRegistrationEntry,
   WebGL2ShaderModuleRegistration,

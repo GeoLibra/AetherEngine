@@ -50,7 +50,7 @@ export {
 
 import {
   createWebGL2TranslationRouter,
-  type BuiltInShaderRegistration,
+  type WebGL2ShaderRegistration,
   type WebGL2ShaderTranslationPort
 } from '../../rhi/webgl2/shader';
 import { LIGHT_LIST_WEBGL2_SHADER_ARTIFACT } from './light-list';
@@ -71,7 +71,7 @@ import {
 /**
  * Declarative registration table configuring WebGL2 lowering for all engine built-in shaders.
  */
-export const BUILT_IN_SHADER_REGISTRATIONS: readonly BuiltInShaderRegistration[] = Object.freeze([
+export const BUILT_IN_SHADER_REGISTRATIONS: readonly WebGL2ShaderRegistration[] = Object.freeze([
   Object.freeze({
     artifact: STANDARD_LIT_SHADER_ARTIFACT
   }),
@@ -121,7 +121,6 @@ export const BUILT_IN_WEBGL2_TRANSLATOR: WebGL2ShaderTranslationPort =
 export {
   createCookedArtifactWebGL2Translator,
   createWebGL2TranslationRouter,
-  type BuiltInShaderRegistration,
   type CookedArtifactWebGL2TranslatorOptions,
   type WebGL2RouterRegistrationEntry,
   type WebGL2ShaderModuleRegistration,
