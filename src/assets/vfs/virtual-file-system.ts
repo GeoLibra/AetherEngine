@@ -1,5 +1,6 @@
 import { VFS_FAILURE_KIND } from './constants';
 import { VFSInFlightCoalescer } from './coalescer';
+import { IncrementalSha256 } from './incremental-sha256';
 import { validateExpectedIntegrity, validateVFSReadSuccess } from './integrity';
 import { VFSMountTable } from './mount-table';
 import { validateByteRange } from './range';
@@ -12,6 +13,7 @@ import type {
   ResolvedVFSMount,
   VFSMount,
   VFSFailureKind,
+  VFSPayloadLease,
   VFSPayloadLeaseResult,
   VFSPayloadRequest,
   VFSProvider,
@@ -24,7 +26,10 @@ import type {
   VFSReadResult,
   VFSReadSuccess,
   VFSStreamOpenResult,
-  VFSStreamRequest
+  VFSStreamRequest,
+  VFSStreamSession,
+  VFSVerification,
+  VFSBoundaryFailure
 } from './types';
 
 /** Routes full reads, range reads, and streams through explicit mount policy and an owned integrity boundary. */
@@ -40,49 +45,28 @@ export class VirtualFileSystem {
 
   /** Reads detached bytes; request, provider, and integrity failures are returned as values. */
   async read(input: VFSReadRequest): Promise<VFSReadResult> {
-    let request: VFSReadRequest;
+    const rawUri = input.uri;
+    const expectedLength = input.expectedLength;
+    const expectedIntegrity = input.expectedIntegrity;
+    const signal = input.signal;
+
     let uri: CanonicalVFSUri;
     try {
-      const uriInput = input.uri;
-      const expectedLength = input.expectedLength;
-      const expectedIntegrity = input.expectedIntegrity;
-      const signal = input.signal;
+      uri = validateRequestInput(rawUri, expectedLength, expectedIntegrity);
+    } catch {
+      return invalidRequest('Invalid VFS read request.');
+    }
+    const request = Object.freeze({
+      uri: rawUri,
+      ...(expectedLength === undefined ? {} : { expectedLength }),
+      ...(expectedIntegrity === undefined ? {} : { expectedIntegrity }),
+      ...(signal === undefined ? {} : { signal })
+    });
 
-      request = Object.freeze({
-        uri: uriInput,
-        ...(expectedLength === undefined ? {} : { expectedLength }),
-        ...(expectedIntegrity === undefined ? {} : { expectedIntegrity }),
-        ...(signal === undefined ? {} : { signal })
-      });
-      uri = normalizeVFSUri(request.uri);
-      if (
-        request.expectedLength !== undefined &&
-        (!Number.isSafeInteger(request.expectedLength) || request.expectedLength < 0)
-      ) {
-        throw new Error('Invalid expected byte length.');
-      }
-      if (request.expectedIntegrity !== undefined) {
-        validateExpectedIntegrity(request.expectedIntegrity);
-      }
-    } catch {
-      return Object.freeze({
-        kind: 'invalid-request',
-        code: 'vfs-invalid-request',
-        message: 'Invalid VFS read request.'
-      });
-    }
     if (request.signal?.aborted) return failure('aborted', uri);
-    let resolved: ResolvedVFSMount;
-    try {
-      resolved = this.#mounts.resolve(uri);
-    } catch {
-      return Object.freeze({
-        kind: 'mount-not-found',
-        code: 'vfs-mount-not-found',
-        message: 'No VFS mount matches the requested URI.',
-        requestedUri: uri
-      });
-    }
+    const resolved = this.#resolveMount(uri);
+    if ('kind' in resolved) return resolved;
+
     const { mount, path } = resolved;
     if (mount.policy.consultCaches) {
       for (const cache of mount.caches) {
@@ -95,6 +79,7 @@ export class VirtualFileSystem {
       providerId: mount.primary.id,
       canonicalUri: uri,
       channel: 'full',
+      ...(request.expectedLength === undefined ? {} : { expectedLength: request.expectedLength }),
       ...(request.expectedIntegrity === undefined ? {} : { integrity: request.expectedIntegrity })
     });
 
@@ -117,16 +102,12 @@ export class VirtualFileSystem {
           }
           return primary;
         },
-        (result) => {
-          if (result.kind === 'success') {
-            return {
-              ...result,
-              bytes: new Uint8Array(result.bytes)
-            };
-          }
-          return result;
-        }
+        (result) =>
+          result.kind === 'success' ? { ...result, bytes: new Uint8Array(result.bytes) } : result
       );
+      if (outcome.kind === 'success') {
+        return validateVFSReadSuccess(uri, request, outcome);
+      }
       return outcome;
     } catch (error) {
       if (
@@ -141,48 +122,34 @@ export class VirtualFileSystem {
 
   /** Reads a specific byte range; unsupported channel or out-of-bounds ranges are returned as typed failures. */
   async readRange(input: VFSRangeReadRequest): Promise<VFSRangeReadResult> {
+    const rawUri = input.uri;
+    const rawRange = input.range;
+    const expectedRevision = input.expectedRevision;
+    const expectedIntegrity = input.expectedIntegrity;
+    const signal = input.signal;
+    const allowFullBodyFallback = input.allowFullBodyFallback;
+    const maxBodyBytes = input.maxBodyBytes;
+
     let uri: CanonicalVFSUri;
     let range: ByteRange;
     try {
-      uri = normalizeVFSUri(input.uri);
-      validateByteRange(input.range);
-      range = Object.freeze({ offset: input.range.offset, length: input.range.length });
-      if (input.expectedIntegrity !== undefined) {
-        validateExpectedIntegrity(input.expectedIntegrity);
-      }
+      uri = validateRequestInput(rawUri, undefined, expectedIntegrity);
+      validateByteRange(rawRange);
+      range = Object.freeze({ offset: rawRange.offset, length: rawRange.length });
     } catch {
-      return Object.freeze({
-        kind: 'invalid-request',
-        code: 'vfs-invalid-request',
-        message: 'Invalid VFS range read request.'
-      });
+      return invalidRequest('Invalid VFS range read request.');
     }
 
-    if (input.signal?.aborted) return failure('aborted', uri);
-
-    let resolved: ResolvedVFSMount;
-    try {
-      resolved = this.#mounts.resolve(uri);
-    } catch {
-      return Object.freeze({
-        kind: 'mount-not-found',
-        code: 'vfs-mount-not-found',
-        message: 'No VFS mount matches the requested URI.',
-        requestedUri: uri
-      });
-    }
+    if (signal?.aborted) return failure('aborted', uri);
+    const resolved = this.#resolveMount(uri);
+    if ('kind' in resolved) return resolved;
 
     const { mount, path } = resolved;
     if (
       mount.primary.capabilities.range !== true ||
       typeof mount.primary.readRange !== 'function'
     ) {
-      return Object.freeze({
-        kind: 'unsupported-channel',
-        code: 'vfs-unsupported-channel',
-        message: `VFS provider "${mount.primary.id}" does not support range reads.`,
-        requestedUri: uri
-      });
+      return unsupportedChannel(uri, mount.primary.id, 'range reads');
     }
 
     const transportKey = deriveVFSTransportKey({
@@ -190,18 +157,21 @@ export class VirtualFileSystem {
       canonicalUri: uri,
       channel: 'range',
       range,
-      ...(input.expectedRevision === undefined ? {} : { revision: input.expectedRevision }),
-      ...(input.expectedIntegrity === undefined ? {} : { integrity: input.expectedIntegrity })
+      ...(expectedRevision === undefined ? {} : { revision: expectedRevision }),
+      ...(expectedIntegrity === undefined ? {} : { integrity: expectedIntegrity })
     });
 
     try {
       const outcome = await this.#rangeCoalescer.coalesce(
         transportKey,
-        input.signal,
+        signal,
         async (transportSignal) => {
-          const providerResult = await mount.primary.readRange!(path, range, {
-            signal: transportSignal
+          const rangeOptions = Object.freeze({
+            signal: transportSignal,
+            ...(allowFullBodyFallback === undefined ? {} : { allowFullBodyFallback }),
+            ...(maxBodyBytes === undefined ? {} : { maxBodyBytes })
           });
+          const providerResult = await mount.primary.readRange!(path, range, rangeOptions);
           if (providerResult.kind !== 'success') {
             return failure(
               (providerResult.kind as VFSFailureKind) ?? 'provider-failure',
@@ -219,19 +189,24 @@ export class VirtualFileSystem {
             bytes
           };
         },
-        (result) => {
-          if (result.kind === 'success') {
-            return {
-              ...result,
-              bytes: new Uint8Array(result.bytes)
-            };
-          }
-          return result;
-        }
+        (result) =>
+          result.kind === 'success' ? { ...result, bytes: new Uint8Array(result.bytes) } : result
       );
+      if (outcome.kind === 'success') {
+        if (expectedRevision !== undefined && outcome.revision !== expectedRevision) {
+          return failure('integrity', uri, mount.primary.id, 'vfs-revision-mismatch');
+        }
+        if (expectedIntegrity !== undefined) {
+          const expectedDigest = validateExpectedIntegrity(expectedIntegrity);
+          const actualDigest = new IncrementalSha256().update(outcome.bytes).digest();
+          if (actualDigest !== expectedDigest) {
+            return failure('integrity', uri, mount.primary.id, 'vfs-integrity-mismatch');
+          }
+        }
+      }
       return outcome;
     } catch (error) {
-      if (input.signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
         return failure('aborted', uri, mount.primary.id);
       }
       return failure('provider-failure', uri, mount.primary.id);
@@ -240,89 +215,152 @@ export class VirtualFileSystem {
 
   /** Opens a single-consumer stream session over the resolved resource. */
   async openStream(input: VFSStreamRequest): Promise<VFSStreamOpenResult> {
+    const rawUri = input.uri;
+    const expectedLength = input.expectedLength;
+    const expectedIntegrity = input.expectedIntegrity;
+    const highWaterMarkBytes = input.highWaterMarkBytes;
+    const signal = input.signal;
+
     let uri: CanonicalVFSUri;
     try {
-      uri = normalizeVFSUri(input.uri);
-      if (
-        input.expectedLength !== undefined &&
-        (!Number.isSafeInteger(input.expectedLength) || input.expectedLength < 0)
-      ) {
-        throw new Error('Invalid expected length.');
-      }
-      if (input.expectedIntegrity !== undefined) {
-        validateExpectedIntegrity(input.expectedIntegrity);
-      }
+      uri = validateRequestInput(rawUri, expectedLength, expectedIntegrity);
     } catch {
-      return Object.freeze({
-        kind: 'invalid-request',
-        code: 'vfs-invalid-request',
-        message: 'Invalid VFS stream request.'
-      });
+      return invalidRequest('Invalid VFS stream request.');
     }
 
-    if (input.signal?.aborted) return failure('aborted', uri);
-
-    let resolved: ResolvedVFSMount;
-    try {
-      resolved = this.#mounts.resolve(uri);
-    } catch {
-      return Object.freeze({
-        kind: 'mount-not-found',
-        code: 'vfs-mount-not-found',
-        message: 'No VFS mount matches the requested URI.',
-        requestedUri: uri
-      });
-    }
+    if (signal?.aborted) return failure('aborted', uri);
+    const resolved = this.#resolveMount(uri);
+    if ('kind' in resolved) return resolved;
 
     const { mount, path } = resolved;
     if (
       mount.primary.capabilities.stream !== true ||
       typeof mount.primary.openStream !== 'function'
     ) {
-      return Object.freeze({
-        kind: 'unsupported-channel',
-        code: 'vfs-unsupported-channel',
-        message: `VFS provider "${mount.primary.id}" does not support stream sessions.`,
-        requestedUri: uri
-      });
+      return unsupportedChannel(uri, mount.primary.id, 'stream sessions');
     }
 
     try {
       const streamOptions = Object.freeze({
-        ...(input.signal === undefined ? {} : { signal: input.signal }),
-        ...(input.highWaterMarkBytes === undefined
-          ? {}
-          : { highWaterMarkBytes: input.highWaterMarkBytes })
+        ...(signal === undefined ? {} : { signal }),
+        ...(highWaterMarkBytes === undefined ? {} : { highWaterMarkBytes }),
+        ...(expectedLength === undefined ? {} : { expectedLength }),
+        ...(expectedIntegrity === undefined ? {} : { expectedIntegrity })
       });
       const result = await mount.primary.openStream(path, streamOptions);
       if (result.kind !== 'session') {
         return failure(result.kind, uri, mount.primary.id, result.code);
       }
-      return result;
+      const originalSession = result.session;
+      const wrappedCompletion = originalSession.completion.then((outcome) => {
+        if (outcome.kind !== 'complete') return outcome;
+        const err = checkIntegrityExpectations(
+          outcome.verification.byteLength,
+          outcome.verification,
+          uri,
+          originalSession.metadata.providerId,
+          expectedLength,
+          expectedIntegrity
+        );
+        return err ?? outcome;
+      });
+
+      const wrappedSession: VFSStreamSession = {
+        metadata: originalSession.metadata,
+        chunks: originalSession.chunks,
+        completion: wrappedCompletion,
+        cancel: () => originalSession.cancel()
+      };
+
+      return Object.freeze({
+        kind: 'session',
+        session: Object.freeze(wrappedSession)
+      });
     } catch (error) {
-      if (input.signal?.aborted) return failure('aborted', uri, mount.primary.id);
+      if (signal?.aborted) return failure('aborted', uri, mount.primary.id);
       return failure('provider-failure', uri, mount.primary.id);
     }
   }
 
   /** Acquires an encoded platform payload lease. */
   async acquirePayloadLease(input: VFSPayloadRequest): Promise<VFSPayloadLeaseResult> {
+    const rawUri = input.uri;
+    const expectedLength = input.expectedLength;
+    const expectedIntegrity = input.expectedIntegrity;
+    const signal = input.signal;
+
     let uri: CanonicalVFSUri;
     try {
-      uri = normalizeVFSUri(input.uri);
+      uri = validateRequestInput(rawUri, expectedLength, expectedIntegrity);
     } catch {
-      return Object.freeze({
-        kind: 'invalid-request',
-        code: 'vfs-invalid-request',
-        message: 'Invalid VFS payload request.'
-      });
+      return invalidRequest('Invalid VFS payload request.');
     }
 
-    if (input.signal?.aborted) return failure('aborted', uri);
+    if (signal?.aborted) return failure('aborted', uri);
+    const resolved = this.#resolveMount(uri);
+    if ('kind' in resolved) return resolved;
 
-    let resolved: ResolvedVFSMount;
+    const { mount, path } = resolved;
+    if (
+      mount.primary.capabilities.payload !== true ||
+      typeof mount.primary.acquirePayloadLease !== 'function'
+    ) {
+      return unsupportedChannel(uri, mount.primary.id, 'platform payload leases');
+    }
+
     try {
-      resolved = this.#mounts.resolve(uri);
+      const payloadOptions = Object.freeze({
+        ...(signal === undefined ? {} : { signal }),
+        ...(expectedLength === undefined ? {} : { expectedLength }),
+        ...(expectedIntegrity === undefined ? {} : { expectedIntegrity })
+      });
+      const result = await mount.primary.acquirePayloadLease(path, payloadOptions);
+      if (result.kind !== 'lease') {
+        return failure(result.kind, uri, mount.primary.id, result.code);
+      }
+
+      const err = checkIntegrityExpectations(
+        result.lease.byteLength,
+        result.lease.verification,
+        uri,
+        mount.primary.id,
+        expectedLength,
+        expectedIntegrity
+      );
+      if (err !== null) {
+        result.lease.release();
+        return err;
+      }
+
+      let released = false;
+      const wrappedLease: VFSPayloadLease = {
+        resolvedUri: result.lease.resolvedUri,
+        providerId: result.lease.providerId,
+        revision: result.lease.revision,
+        verification: result.lease.verification,
+        byteLength: result.lease.byteLength,
+        payload: result.lease.payload,
+        ...(result.lease.mime === undefined ? {} : { mime: result.lease.mime }),
+        release() {
+          if (released) return;
+          released = true;
+          result.lease.release();
+        }
+      };
+
+      return Object.freeze({
+        kind: 'lease',
+        lease: Object.freeze(wrappedLease)
+      });
+    } catch {
+      if (signal?.aborted) return failure('aborted', uri, mount.primary.id);
+      return failure('provider-failure', uri, mount.primary.id);
+    }
+  }
+
+  #resolveMount(uri: CanonicalVFSUri): ResolvedVFSMount | VFSBoundaryFailure {
+    try {
+      return this.#mounts.resolve(uri);
     } catch {
       return Object.freeze({
         kind: 'mount-not-found',
@@ -331,25 +369,46 @@ export class VirtualFileSystem {
         requestedUri: uri
       });
     }
-
-    const { mount, path } = resolved;
-    if (
-      mount.primary.capabilities.payload !== true ||
-      typeof mount.primary.acquirePayloadLease !== 'function'
-    ) {
-      return Object.freeze({
-        kind: 'unsupported-channel',
-        code: 'vfs-unsupported-channel',
-        message: `VFS provider "${mount.primary.id}" does not support platform payload leases.`,
-        requestedUri: uri
-      });
-    }
-
-    const payloadOptions = Object.freeze({
-      ...(input.signal === undefined ? {} : { signal: input.signal })
-    });
-    return mount.primary.acquirePayloadLease(path, payloadOptions);
   }
+}
+
+function validateRequestInput(
+  rawUri: string,
+  expectedLength?: number,
+  expectedIntegrity?: string
+): CanonicalVFSUri {
+  const uri = normalizeVFSUri(rawUri);
+  if (
+    expectedLength !== undefined &&
+    (!Number.isSafeInteger(expectedLength) || expectedLength < 0)
+  ) {
+    throw new Error('Invalid expected length.');
+  }
+  if (expectedIntegrity !== undefined) {
+    validateExpectedIntegrity(expectedIntegrity);
+  }
+  return uri;
+}
+
+function invalidRequest(message: string): VFSBoundaryFailure {
+  return Object.freeze({
+    kind: 'invalid-request',
+    code: 'vfs-invalid-request',
+    message
+  });
+}
+
+function unsupportedChannel(
+  uri: CanonicalVFSUri,
+  providerId: string,
+  channel: string
+): VFSBoundaryFailure {
+  return Object.freeze({
+    kind: 'unsupported-channel',
+    code: 'vfs-unsupported-channel',
+    message: `VFS provider "${providerId}" does not support ${channel}.`,
+    requestedUri: uri
+  });
 }
 
 async function attempt(
@@ -404,4 +463,24 @@ function failure(
     requestedUri,
     ...(providerId === undefined ? {} : { providerId })
   });
+}
+
+function checkIntegrityExpectations(
+  byteLength: number,
+  verification: VFSVerification,
+  uri: CanonicalVFSUri,
+  providerId: VFSProviderId,
+  expectedLength?: number,
+  expectedIntegrity?: string
+): VFSReadFailure | null {
+  if (expectedLength !== undefined && byteLength !== expectedLength) {
+    return failure('integrity', uri, providerId, 'vfs-integrity-mismatch');
+  }
+  if (expectedIntegrity !== undefined) {
+    const expectedDigest = validateExpectedIntegrity(expectedIntegrity);
+    if (verification.kind !== 'content-hash' || verification.digest !== expectedDigest) {
+      return failure('integrity', uri, providerId, 'vfs-integrity-mismatch');
+    }
+  }
+  return null;
 }

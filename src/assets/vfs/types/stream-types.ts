@@ -42,6 +42,8 @@ export interface VFSStreamSession {
 export interface VFSStreamOptions {
   readonly signal?: AbortSignal;
   readonly highWaterMarkBytes?: number;
+  readonly expectedLength?: number;
+  readonly expectedIntegrity?: string;
 }
 
 /** Caller-owned stream request. */

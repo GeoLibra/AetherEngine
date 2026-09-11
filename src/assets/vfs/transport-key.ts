@@ -9,6 +9,7 @@ export interface VFSTransportKeyParams {
   readonly revision?: string;
   readonly range?: ByteRange;
   readonly credentialPartition?: string;
+  readonly expectedLength?: number;
   readonly integrity?: string;
   readonly transportUrl?: string;
 }
@@ -40,6 +41,10 @@ export function deriveVFSTransportKey(params: VFSTransportKeyParams): VFSTranspo
     parts.push(`partition:${params.credentialPartition}`);
   } else {
     parts.push('partition:default');
+  }
+
+  if (params.expectedLength !== undefined) {
+    parts.push(`length:${params.expectedLength}`);
   }
 
   if (params.integrity !== undefined) {

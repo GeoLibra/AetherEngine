@@ -3,6 +3,7 @@ export type {
   VFSRangeReadRequest,
   VFSRangeReadResult,
   VFSRangeReadSuccess,
+  VFSProviderRangeReadOptions,
   VFSProviderRangeReadResult
 } from './range-types';
 export type {

@@ -8,6 +8,8 @@ import {
   toNormalizedMountPath
 } from '../../../src/assets/vfs';
 
+const HASH_1_TO_7 = '32bbe378a25091502b2baf9f7258c19444e7a43ee4593b08030acd790bd66e6a';
+
 describe('VFS stream channel and session lifecycle', () => {
   test('returns unsupported-channel if provider does not support stream sessions', async () => {
     const vfs = new VirtualFileSystem();
@@ -75,6 +77,157 @@ describe('VFS stream channel and session lifecycle', () => {
         expect(completion.verification.byteLength).toBe(7);
       }
     }
+  });
+
+  test('verifies stream completion with expectedIntegrity using incremental hash', async () => {
+    const vfs = new VirtualFileSystem();
+    const provider = new MemoryVFSProvider('memory-stream', {
+      enableStream: true,
+      streamChunkBytes: 3
+    });
+    const root = normalizeVFSUri('asset://test');
+    const path = toNormalizedMountPath(['hashed.bin']);
+    const fullBytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7]);
+
+    provider.put(path, {
+      bytes: fullBytes,
+      resolvedUri: normalizeVFSUri('asset://test/hashed.bin'),
+      revision: 'v1'
+    });
+
+    vfs.mount({
+      root,
+      scheme: 'asset' as any,
+      primary: provider,
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    const openResult = await vfs.openStream({
+      uri: 'asset://test/hashed.bin',
+      expectedIntegrity: `sha256:${HASH_1_TO_7}`
+    });
+    expect(openResult.kind).toBe('session');
+    if (openResult.kind === 'session') {
+      for await (const _chunk of openResult.session.chunks) {
+        // Drain stream
+      }
+      const completion = await openResult.session.completion;
+      expect(completion.kind).toBe('complete');
+      if (completion.kind === 'complete') {
+        expect(completion.verification.kind).toBe('content-hash');
+        if (completion.verification.kind === 'content-hash') {
+          expect(completion.verification.digest).toBe(HASH_1_TO_7);
+        }
+      }
+    }
+  });
+
+  test('settles stream completion with integrity failure when expectedIntegrity mismatches', async () => {
+    const vfs = new VirtualFileSystem();
+    const provider = new MemoryVFSProvider('memory-stream', {
+      enableStream: true,
+      streamChunkBytes: 3
+    });
+    const root = normalizeVFSUri('asset://test');
+    const path = toNormalizedMountPath(['mismatch.bin']);
+    provider.put(path, {
+      bytes: new Uint8Array([1, 2, 3, 4, 5, 6, 7]),
+      resolvedUri: normalizeVFSUri('asset://test/mismatch.bin'),
+      revision: 'v1'
+    });
+
+    vfs.mount({
+      root,
+      scheme: 'asset' as any,
+      primary: provider,
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    const openResult = await vfs.openStream({
+      uri: 'asset://test/mismatch.bin',
+      expectedIntegrity: 'sha256:' + '0'.repeat(64)
+    });
+    expect(openResult.kind).toBe('session');
+    if (openResult.kind === 'session') {
+      for await (const _chunk of openResult.session.chunks) {
+        // Drain stream
+      }
+      const completion = await openResult.session.completion;
+      expect(completion.kind).toBe('integrity');
+      if (completion.kind !== 'complete') {
+        expect(completion.code).toBe('vfs-integrity-mismatch');
+      }
+    }
+  });
+
+  test('settles stream completion with integrity failure when expectedLength mismatches', async () => {
+    const vfs = new VirtualFileSystem();
+    const provider = new MemoryVFSProvider('memory-stream', {
+      enableStream: true,
+      streamChunkBytes: 3
+    });
+    const root = normalizeVFSUri('asset://test');
+    const path = toNormalizedMountPath(['len.bin']);
+    provider.put(path, {
+      bytes: new Uint8Array([1, 2, 3, 4, 5, 6, 7]),
+      resolvedUri: normalizeVFSUri('asset://test/len.bin'),
+      revision: 'v1'
+    });
+
+    vfs.mount({
+      root,
+      scheme: 'asset' as any,
+      primary: provider,
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    const openResult = await vfs.openStream({
+      uri: 'asset://test/len.bin',
+      expectedLength: 10
+    });
+    expect(openResult.kind).toBe('session');
+    if (openResult.kind === 'session') {
+      for await (const _chunk of openResult.session.chunks) {
+        // Drain stream
+      }
+      const completion = await openResult.session.completion;
+      expect(completion.kind).toBe('integrity');
+      if (completion.kind !== 'complete') {
+        expect(completion.code).toBe('vfs-integrity-mismatch');
+      }
+    }
+  });
+
+  test('slices oversized chunks according to highWaterMarkBytes', async () => {
+    async function* largeChunkGen() {
+      yield new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    }
+
+    const session = createVFSStreamSession({
+      metadata: {
+        resolvedUri: normalizeVFSUri('asset://test/hwm.bin'),
+        providerId: 'test' as any,
+        revision: '1',
+        contentLength: 10
+      },
+      source: largeChunkGen(),
+      highWaterMarkBytes: 4
+    });
+
+    const chunkLengths: number[] = [];
+    const offsets: number[] = [];
+    for await (const chunk of session.chunks) {
+      chunkLengths.push(chunk.bytes.byteLength);
+      offsets.push(chunk.offset);
+    }
+
+    expect(chunkLengths).toEqual([4, 4, 2]);
+    expect(offsets).toEqual([0, 4, 8]);
+    const completion = await session.completion;
+    expect(completion.kind).toBe('complete');
   });
 
   test('strictly enforces single-consumer iterator rule', async () => {

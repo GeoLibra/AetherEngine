@@ -20,6 +20,15 @@ export interface VFSRangeReadRequest {
   readonly signal?: AbortSignal;
   /** If true and provider returns 200 full body, VFS may slice it if within budget. */
   readonly allowFullBodyFallback?: boolean;
+  /** Maximum body bytes permitted when allowFullBodyFallback is true. */
+  readonly maxBodyBytes?: number;
+}
+
+/** Options forwarded to a provider for a range read request. */
+export interface VFSProviderRangeReadOptions {
+  readonly signal?: AbortSignal;
+  readonly allowFullBodyFallback?: boolean;
+  readonly maxBodyBytes?: number;
 }
 
 /** Validated provider payload for a successful range read. */

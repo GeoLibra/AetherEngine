@@ -154,4 +154,43 @@ describe('VFS in-flight coalescing and independent cancellation leases', () => {
     expect(res2.kind).toBe('aborted');
     expect(providerAborted).toBe(true);
   });
+
+  test('separates in-flight flights when callers request different expectedLength', async () => {
+    const vfs = new VirtualFileSystem();
+    let providerCalls = 0;
+
+    const root = normalizeVFSUri('asset://test');
+    vfs.mount({
+      root,
+      scheme: 'asset' as any,
+      primary: {
+        id: 'slow-provider' as any,
+        capabilities: { read: true, range: false, write: false, watch: false },
+        async read() {
+          providerCalls++;
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          return {
+            kind: 'success',
+            bytes: new Uint8Array([10, 20, 30]),
+            resolvedUri: normalizeVFSUri('asset://test/data.bin'),
+            revision: '1',
+            contentLength: 3,
+            providerId: 'slow-provider' as any
+          };
+        }
+      },
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    const read1 = vfs.read({ uri: 'asset://test/data.bin', expectedLength: 3 });
+    const read2 = vfs.read({ uri: 'asset://test/data.bin', expectedLength: 5 });
+
+    const [res1, res2] = await Promise.all([read1, read2]);
+
+    expect(providerCalls).toBe(2);
+    expect(res1.kind).toBe('success');
+    expect(res2.kind).toBe('integrity');
+    expect((res2 as any).code).toBe('vfs-integrity-mismatch');
+  });
 });

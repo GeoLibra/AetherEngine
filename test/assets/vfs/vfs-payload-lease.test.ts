@@ -29,7 +29,7 @@ describe('VFS platform payload leases', () => {
     expect(result.kind).toBe('unsupported-channel');
   });
 
-  test('acquires platform payload lease and supports idempotent release', async () => {
+  test('acquires platform payload lease and enforces idempotent release', async () => {
     const vfs = new VirtualFileSystem();
     const root = normalizeVFSUri('asset://test');
     let releaseCalls = 0;
@@ -74,7 +74,56 @@ describe('VFS platform payload leases', () => {
 
       result.lease.release();
       result.lease.release();
-      expect(releaseCalls).toBe(2);
+      result.lease.release();
+      expect(releaseCalls).toBe(1);
     }
+  });
+
+  test('enforces expectedLength and releases underlying lease on mismatch', async () => {
+    const vfs = new VirtualFileSystem();
+    const root = normalizeVFSUri('asset://test');
+    let releaseCalls = 0;
+
+    vfs.mount({
+      root,
+      scheme: 'asset' as any,
+      primary: {
+        id: 'blob-provider' as any,
+        capabilities: { read: true, payload: true, write: false, watch: false },
+        read: async () => ({
+          kind: 'not-found',
+          code: 'not-found',
+          message: 'not found'
+        }),
+        acquirePayloadLease: async () => {
+          return {
+            kind: 'lease',
+            lease: {
+              resolvedUri: normalizeVFSUri('asset://test/texture.png'),
+              providerId: 'blob-provider' as any,
+              revision: 'v1',
+              verification: { kind: 'length-only', byteLength: 1024 },
+              byteLength: 1024,
+              payload: { fakeBlob: true },
+              release: () => {
+                releaseCalls++;
+              }
+            }
+          };
+        }
+      },
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    const result = await vfs.acquirePayloadLease({
+      uri: 'asset://test/texture.png',
+      expectedLength: 2048
+    });
+    expect(result.kind).toBe('integrity');
+    if (result.kind !== 'lease') {
+      expect(result.code).toBe('vfs-integrity-mismatch');
+    }
+    expect(releaseCalls).toBe(1);
   });
 });

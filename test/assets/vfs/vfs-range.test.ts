@@ -10,6 +10,8 @@ import {
   toNormalizedMountPath
 } from '../../../src/assets/vfs';
 
+const RANGE_HASH_2_TO_5 = '0dbea64d4275627cbbd092e72a44ebfe30cdc170993b539cc5ba587ce30995d4';
+
 describe('VFS byte range operations and readRange contract', () => {
   test('formats HTTP Range header correctly', () => {
     expect(formatHttpRangeHeader({ offset: 0, length: 100 })).toBe('bytes=0-99');
@@ -97,6 +99,78 @@ describe('VFS byte range operations and readRange contract', () => {
       expect(result.range).toEqual({ offset: 2, length: 4 });
       expect(result.totalLength).toBe(10);
       expect(result.revision).toBe('v1');
+    }
+  });
+
+  test('enforces representation pinning and fails on expectedRevision mismatch', async () => {
+    const vfs = new VirtualFileSystem();
+    const provider = new MemoryVFSProvider('memory-range', { enableRange: true });
+    const root = normalizeVFSUri('asset://test');
+    const path = toNormalizedMountPath(['package.pkg']);
+
+    provider.put(path, {
+      bytes: new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+      resolvedUri: normalizeVFSUri('asset://test/package.pkg'),
+      revision: 'v2'
+    });
+
+    vfs.mount({
+      root,
+      scheme: 'asset' as any,
+      primary: provider,
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    const result = await vfs.readRange({
+      uri: 'asset://test/package.pkg',
+      range: { offset: 2, length: 4 },
+      expectedRevision: 'v1'
+    });
+
+    expect(result.kind).toBe('integrity');
+    if (result.kind !== 'success') {
+      expect(result.code).toBe('vfs-revision-mismatch');
+    }
+  });
+
+  test('verifies expectedIntegrity on range bytes and fails on mismatch', async () => {
+    const vfs = new VirtualFileSystem();
+    const provider = new MemoryVFSProvider('memory-range', { enableRange: true });
+    const root = normalizeVFSUri('asset://test');
+    const path = toNormalizedMountPath(['package.pkg']);
+
+    provider.put(path, {
+      bytes: new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+      resolvedUri: normalizeVFSUri('asset://test/package.pkg'),
+      revision: 'v1'
+    });
+
+    vfs.mount({
+      root,
+      scheme: 'asset' as any,
+      primary: provider,
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    // 1. Success when hash matches
+    const validResult = await vfs.readRange({
+      uri: 'asset://test/package.pkg',
+      range: { offset: 2, length: 4 },
+      expectedIntegrity: `sha256:${RANGE_HASH_2_TO_5}`
+    });
+    expect(validResult.kind).toBe('success');
+
+    // 2. Failure when hash mismatches
+    const invalidResult = await vfs.readRange({
+      uri: 'asset://test/package.pkg',
+      range: { offset: 2, length: 4 },
+      expectedIntegrity: 'sha256:' + '0'.repeat(64)
+    });
+    expect(invalidResult.kind).toBe('integrity');
+    if (invalidResult.kind !== 'success') {
+      expect(invalidResult.code).toBe('vfs-integrity-mismatch');
     }
   });
 

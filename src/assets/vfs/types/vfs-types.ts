@@ -1,5 +1,9 @@
 import type { VFS_FAILURE_KIND } from '../constants';
-import type { ByteRange, VFSProviderRangeReadResult } from './range-types';
+import type {
+  ByteRange,
+  VFSProviderRangeReadOptions,
+  VFSProviderRangeReadResult
+} from './range-types';
 import type { VFSStreamOptions, VFSProviderStreamOpenResult } from './stream-types';
 import type { VFSPayloadOptions, VFSProviderPayloadLeaseResult } from './payload-types';
 import type { VFSRetryMetadata } from './transport-types';
@@ -75,7 +79,7 @@ export interface VFSProvider {
   readRange?(
     path: NormalizedMountPath,
     range: ByteRange,
-    options: VFSReadOptions
+    options: VFSProviderRangeReadOptions
   ): Promise<VFSProviderRangeReadResult>;
   openStream?(
     path: NormalizedMountPath,

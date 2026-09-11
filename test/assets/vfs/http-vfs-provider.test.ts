@@ -94,7 +94,7 @@ describe('HttpVFSProvider contracts', () => {
     }
   });
 
-  test('slices HTTP 200 full body response when server ignores Range header', async () => {
+  test('rejects HTTP 200 by default and slices when allowFullBodyFallback is enabled within maxBodyBytes', async () => {
     const full = new Uint8Array([0, 10, 20, 30, 40, 50]);
     const provider = new HttpVFSProvider({
       id: 'mock-http',
@@ -104,20 +104,42 @@ describe('HttpVFSProvider contracts', () => {
         createMockResponse({
           status: 200,
           bodyBytes: full,
-          headers: { ETag: '"full-rev"' }
+          headers: { ETag: '"full-rev"', 'content-length': '6' }
         })
     });
 
-    const result = await provider.readRange(
+    // 1. By default, HTTP 200 is rejected with unsupported-channel
+    const defaultResult = await provider.readRange(
       toNormalizedMountPath(['package.pkg']),
       { offset: 2, length: 3 },
       {}
     );
+    expect(defaultResult.kind).toBe('unsupported-channel');
+    if (defaultResult.kind !== 'success') {
+      expect(defaultResult.code).toBe('vfs-http-range-not-supported');
+    }
 
-    expect(result.kind).toBe('success');
-    if (result.kind === 'success') {
-      expect(Array.from(result.bytes)).toEqual([20, 30, 40]);
-      expect(result.totalLength).toBe(6);
+    // 2. If maxBodyBytes is exceeded, rejects with provider-failure vfs-http-body-too-large
+    const exceededResult = await provider.readRange(
+      toNormalizedMountPath(['package.pkg']),
+      { offset: 2, length: 3 },
+      { allowFullBodyFallback: true, maxBodyBytes: 4 }
+    );
+    expect(exceededResult.kind).toBe('provider-failure');
+    if (exceededResult.kind !== 'success') {
+      expect(exceededResult.code).toBe('vfs-http-body-too-large');
+    }
+
+    // 3. If allowFullBodyFallback is true and within maxBodyBytes, slices correctly
+    const fallbackResult = await provider.readRange(
+      toNormalizedMountPath(['package.pkg']),
+      { offset: 2, length: 3 },
+      { allowFullBodyFallback: true, maxBodyBytes: 10 }
+    );
+    expect(fallbackResult.kind).toBe('success');
+    if (fallbackResult.kind === 'success') {
+      expect(Array.from(fallbackResult.bytes)).toEqual([20, 30, 40]);
+      expect(fallbackResult.totalLength).toBe(6);
     }
   });
 

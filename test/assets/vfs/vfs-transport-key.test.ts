@@ -80,4 +80,27 @@ describe('VFS transport key derivation', () => {
     });
     expect(fullKey).not.toBe(streamKey);
   });
+
+  test('differentiates expectedLength expectations', () => {
+    const keyDefault = deriveVFSTransportKey({
+      providerId: 'memory',
+      canonicalUri: 'asset://data.bin',
+      channel: 'full'
+    });
+    const key100 = deriveVFSTransportKey({
+      providerId: 'memory',
+      canonicalUri: 'asset://data.bin',
+      channel: 'full',
+      expectedLength: 100
+    });
+    const key200 = deriveVFSTransportKey({
+      providerId: 'memory',
+      canonicalUri: 'asset://data.bin',
+      channel: 'full',
+      expectedLength: 200
+    });
+    expect(keyDefault).not.toBe(key100);
+    expect(key100).not.toBe(key200);
+    expect(key100).toContain('length:100');
+  });
 });

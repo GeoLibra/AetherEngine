@@ -209,8 +209,15 @@ export class MemoryVFSProvider implements VFSProvider {
         ...(entry.mime === undefined ? {} : { mime: entry.mime })
       }),
       source: chunkGenerator(),
-      expectedLength: allBytes.byteLength,
-      ...(entry.integrity === undefined ? {} : { expectedIntegrity: entry.integrity })
+      expectedLength: options.expectedLength ?? allBytes.byteLength,
+      ...(options.expectedIntegrity !== undefined
+        ? { expectedIntegrity: options.expectedIntegrity }
+        : entry.integrity === undefined
+          ? {}
+          : { expectedIntegrity: entry.integrity }),
+      ...(options.highWaterMarkBytes === undefined
+        ? {}
+        : { highWaterMarkBytes: options.highWaterMarkBytes })
     });
 
     return Object.freeze({

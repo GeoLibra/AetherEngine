@@ -9,8 +9,7 @@ import type {
   VFSVerification
 } from './types';
 import { validateExpectedIntegrity } from './integrity';
-
-const HEX = Array.from({ length: 256 }, (_, value) => value.toString(16).padStart(2, '0'));
+import { IncrementalSha256 } from './incremental-sha256';
 
 export interface CreateStreamSessionParams {
   readonly metadata: VFSStreamMetadata;
@@ -24,10 +23,11 @@ export interface CreateStreamSessionParams {
 /**
  * Creates a single-consumer VFS stream session.
  * Enforces ownership transfer, contiguous offsets, early-exit cancellation,
- * and passive terminal verification.
+ * bounded chunk sizes, and passive terminal verification using incremental SHA-256.
  */
 export function createVFSStreamSession(params: CreateStreamSessionParams): VFSStreamSession {
-  const { metadata, source, expectedLength, expectedIntegrity, onCancel } = params;
+  const { metadata, source, expectedLength, expectedIntegrity, highWaterMarkBytes, onCancel } =
+    params;
 
   let hasIterated = false;
   let isCancelled = false;
@@ -69,7 +69,8 @@ export function createVFSStreamSession(params: CreateStreamSessionParams): VFSSt
 
       const iterator = source[Symbol.asyncIterator]();
       let currentOffset = 0;
-      const accumulatedChunks: Uint8Array[] = [];
+      const hasher = expectedIntegrity !== undefined ? new IncrementalSha256() : null;
+      const pendingChunks: VFSStreamChunk[] = [];
 
       return {
         async next(): Promise<IteratorResult<VFSStreamChunk>> {
@@ -77,12 +78,16 @@ export function createVFSStreamSession(params: CreateStreamSessionParams): VFSSt
             return { done: true, value: undefined };
           }
 
+          if (pendingChunks.length > 0) {
+            return { done: false, value: pendingChunks.shift()! };
+          }
+
           try {
             const item = await iterator.next();
             if (item.done) {
               if (!settled) {
                 // Perform passive terminal verification
-                await verifyAndSettle();
+                verifyAndSettle();
               }
               return { done: true, value: undefined };
             }
@@ -115,8 +120,26 @@ export function createVFSStreamSession(params: CreateStreamSessionParams): VFSSt
               return { done: true, value: undefined };
             }
 
-            if (expectedIntegrity !== undefined) {
-              accumulatedChunks.push(bytes);
+            if (hasher !== null) {
+              hasher.update(bytes);
+            }
+
+            if (
+              highWaterMarkBytes !== undefined &&
+              highWaterMarkBytes > 0 &&
+              bytes.byteLength > highWaterMarkBytes
+            ) {
+              let sliceOffset = 0;
+              while (sliceOffset < bytes.byteLength) {
+                const sliceEnd = Math.min(sliceOffset + highWaterMarkBytes, bytes.byteLength);
+                pendingChunks.push({
+                  offset: currentOffset + sliceOffset,
+                  bytes: bytes.subarray(sliceOffset, sliceEnd)
+                });
+                sliceOffset = sliceEnd;
+              }
+              currentOffset += bytes.byteLength;
+              return { done: false, value: pendingChunks.shift()! };
             }
 
             const chunk: VFSStreamChunk = {
@@ -149,7 +172,7 @@ export function createVFSStreamSession(params: CreateStreamSessionParams): VFSSt
         }
       };
 
-      async function verifyAndSettle(): Promise<void> {
+      function verifyAndSettle(): void {
         // Validate total length
         if (expectedLength !== undefined && currentOffset !== expectedLength) {
           settle(
@@ -171,10 +194,9 @@ export function createVFSStreamSession(params: CreateStreamSessionParams): VFSSt
 
         // Validate hash if requested
         let verification: VFSVerification;
-        if (expectedIntegrity !== undefined) {
+        if (hasher !== null && expectedIntegrity !== undefined) {
           const expectedDigest = validateExpectedIntegrity(expectedIntegrity);
-          const fullBytes = concatenateChunks(accumulatedChunks, currentOffset);
-          const digest = await computeSha256(fullBytes);
+          const digest = hasher.digest();
           if (digest !== expectedDigest) {
             settle(
               integrityFailure(
@@ -222,25 +244,4 @@ export function createVFSStreamSession(params: CreateStreamSessionParams): VFSSt
     completion: completionPromise,
     cancel
   });
-}
-
-function concatenateChunks(chunks: readonly Uint8Array[], totalLength: number): Uint8Array {
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return result;
-}
-
-async function computeSha256(bytes: Uint8Array): Promise<string> {
-  const digestBuffer = await globalThis.crypto.subtle.digest(
-    'SHA-256',
-    new Uint8Array(bytes).buffer
-  );
-  const digest = new Uint8Array(digestBuffer);
-  let encoded = '';
-  for (const byte of digest) encoded += HEX[byte]!;
-  return encoded;
 }

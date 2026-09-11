@@ -29,6 +29,8 @@ export interface VFSPayloadRequest {
 /** Options forwarded to a provider for payload lease acquisition. */
 export interface VFSPayloadOptions {
   readonly signal?: AbortSignal;
+  readonly expectedLength?: number;
+  readonly expectedIntegrity?: string;
 }
 
 /** Result returned by provider for payload lease. */

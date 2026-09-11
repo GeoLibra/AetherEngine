@@ -14,6 +14,7 @@ import type {
   VFSProvider,
   VFSProviderCapabilities,
   VFSProviderId,
+  VFSProviderRangeReadOptions,
   VFSProviderRangeReadResult,
   VFSProviderReadResult,
   VFSProviderStreamOpenResult,
@@ -169,7 +170,7 @@ export class HttpVFSProvider implements VFSProvider {
   async readRange(
     path: NormalizedMountPath,
     range: ByteRange,
-    options: VFSReadOptions
+    options: VFSProviderRangeReadOptions
   ): Promise<VFSProviderRangeReadResult> {
     validateByteRange(range);
     const url = `${this.#baseUrl}${path}`;
@@ -258,9 +259,45 @@ export class HttpVFSProvider implements VFSProvider {
       }
 
       if (response.status === 200) {
-        // Full body delivered instead of range; slice if within limit
+        if (options.allowFullBodyFallback !== true) {
+          return Object.freeze({
+            kind: 'unsupported-channel',
+            code: 'vfs-http-range-not-supported',
+            message:
+              'Server returned full body (HTTP 200) for range request, but allowFullBodyFallback was not enabled.',
+            requestedUri: uri,
+            providerId: this.id
+          });
+        }
+
+        const contentLengthHeader = response.headers.get('content-length');
+        const declaredLength = contentLengthHeader ? Number(contentLengthHeader) : null;
+        if (
+          options.maxBodyBytes !== undefined &&
+          declaredLength !== null &&
+          declaredLength > options.maxBodyBytes
+        ) {
+          return Object.freeze({
+            kind: 'provider-failure',
+            code: 'vfs-http-body-too-large',
+            message: `HTTP 200 full body length (${declaredLength}) exceeds maxBodyBytes (${options.maxBodyBytes}).`,
+            requestedUri: uri,
+            providerId: this.id
+          });
+        }
+
         const buffer = await response.arrayBuffer();
         const fullBytes = new Uint8Array(buffer);
+        if (options.maxBodyBytes !== undefined && fullBytes.byteLength > options.maxBodyBytes) {
+          return Object.freeze({
+            kind: 'provider-failure',
+            code: 'vfs-http-body-too-large',
+            message: `HTTP 200 full body length (${fullBytes.byteLength}) exceeds maxBodyBytes (${options.maxBodyBytes}).`,
+            requestedUri: uri,
+            providerId: this.id
+          });
+        }
+
         if (range.offset + range.length > fullBytes.byteLength) {
           return Object.freeze({
             kind: 'range-not-satisfiable',
@@ -368,7 +405,14 @@ export class HttpVFSProvider implements VFSProvider {
             : {})
         }),
         source: chunkStream,
-        ...(contentLength !== null ? { expectedLength: contentLength } : {}),
+        ...(options.expectedLength !== undefined
+          ? { expectedLength: options.expectedLength }
+          : contentLength !== null
+            ? { expectedLength: contentLength }
+            : {}),
+        ...(options.expectedIntegrity === undefined
+          ? {}
+          : { expectedIntegrity: options.expectedIntegrity }),
         ...(options.highWaterMarkBytes === undefined
           ? {}
           : { highWaterMarkBytes: options.highWaterMarkBytes })
