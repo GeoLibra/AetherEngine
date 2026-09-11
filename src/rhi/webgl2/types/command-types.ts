@@ -119,5 +119,3 @@ export type WebGL2ReplayCommand =
       destination: WebGL2ImageCopyBuffer;
       copySize: Readonly<{ width: number; height: number; depthOrArrayLayers: number }>;
     }>;
-
-export type WebGL2LeasedResource = RHIResource;

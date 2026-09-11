@@ -5,7 +5,7 @@ import {
   validateEnvironmentArtifact,
   validateEnvironmentArtifactV1,
   validateEnvironmentArtifactV2
-} from '../../tools/asset-cook/environment/artifact/manifest-codec';
+} from '../../src/assets/environment/artifact/manifest-codec';
 import {
   cookEnvironmentPanorama,
   cookEnvironmentPanoramaV2,

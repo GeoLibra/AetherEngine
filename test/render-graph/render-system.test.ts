@@ -50,6 +50,12 @@ function view(id: string): RenderView {
 }
 
 describe('RenderSystem facade', () => {
+  test('rejects the legacy register alias method on RenderSystemRegistry', () => {
+    const registry = new RenderSystemRegistry();
+    // @ts-expect-error register alias was removed in favor of add
+    expect(registry.register).toBeUndefined();
+  });
+
   test('reports semantic cycles through the sole RenderGraph compiler', () => {
     const registry = new RenderSystemRegistry();
     registry.add({

@@ -27,6 +27,10 @@ import type { RestrictedComputePassEncoder as BarrelRestrictedComputePassEncoder
 import type { DeclaredRasterPass as RootDeclaredRasterPass } from '../../src';
 // @ts-expect-error Legacy declared raster pass descriptor is not exported from the public barrel.
 import type { DeclaredRasterPass as BarrelDeclaredRasterPass } from '../../src/render-graph';
+// @ts-expect-error PreparedDrawResourceBindings singular alias is removed in favor of PreparedDrawResourcesBindings.
+import type { PreparedDrawResourceBindings as RootPreparedDrawResourceBindings } from '../../src';
+// @ts-expect-error PreparedDrawResourceBindings singular alias is not exported from the render-graph barrel.
+import type { PreparedDrawResourceBindings as BarrelPreparedDrawResourceBindings } from '../../src/render-graph';
 import type {
   RasterPassContext,
   ComputePassContext,

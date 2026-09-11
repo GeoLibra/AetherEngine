@@ -166,13 +166,6 @@ export class RenderSystemRegistry {
     return renderSystemToken(descriptor.id);
   }
 
-  /** Alias kept for render-plugin authoring that reads naturally as a registration action. */
-  register<TResources, TItem>(
-    descriptor: RenderSystemDescriptor<TResources, TItem>
-  ): RenderSystemToken {
-    return this.add(descriptor);
-  }
-
   entries(): readonly RegisteredRenderSystem[] {
     return Object.freeze([...this.systems]);
   }

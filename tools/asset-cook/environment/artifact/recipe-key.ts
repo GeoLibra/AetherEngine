@@ -4,7 +4,7 @@
 
 import { createHash } from 'node:crypto';
 import { canonicalStringify } from '../../../../src/core/utils/hash';
-import type { EnvironmentCookRecipe } from './types';
+import type { EnvironmentCookRecipe } from '../../../../src/assets/environment/artifact/types';
 
 export function computeSha256Digest(data: string | Uint8Array): string {
   const hasher = createHash('sha256');

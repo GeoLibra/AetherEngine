@@ -4,6 +4,8 @@ import {
   type CookedShaderModuleSelection
 } from '../../src/shader/pipeline/artifact-loader';
 import type { CookedShaderRuntimeArtifact } from '../../src/shader/types';
+// @ts-expect-error NativeWgslCookResult alias was removed in favor of CookedShaderRuntimeArtifact
+import type { NativeWgslCookResult } from '../../src/shader/types';
 import { createCookedShaderBindingManifest } from '../../src/shader/layout';
 
 const sampleBinding = Object.freeze({

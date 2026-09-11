@@ -10,7 +10,6 @@ export const MAX_WORLD_ID = 2 ** 21 - 1;
 
 export const DEFAULT_TABLE_INITIAL_CHUNK_CAPACITY = 4;
 export const DEFAULT_TABLE_CHUNK_CAPACITY = 64;
-export const DEFAULT_TABLE_CAPACITY = DEFAULT_TABLE_CHUNK_CAPACITY;
 
 export const FIELD_TYPE_SIZES: Record<ComponentFieldType, number> = {
   f32: 4,

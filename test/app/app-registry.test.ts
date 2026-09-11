@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'vitest';
+// @ts-expect-error CoreScheduleType alias was removed in favor of CoreSchedule
+import type { CoreScheduleType } from '../../src';
 import { createExtensionPoint, createServiceToken, serviceFactory, serviceValue } from '../../src';
 import { ExtensionRegistry, ServiceRegistry } from '../../src/app/registry';
 
