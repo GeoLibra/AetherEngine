@@ -114,7 +114,7 @@ export class ComputePassContextImpl implements ComputePassContext {
   ) {
     this.scope = new ComputePassScope();
     this.compute = new ComputeCommandsImpl(
-      restrictedContext.createComputePassProxy(computePass),
+      restrictedContext.createComputePassProxy(computePass) as UnderlyingComputePass,
       this.scope
     );
   }

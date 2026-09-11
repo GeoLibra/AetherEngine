@@ -21,7 +21,7 @@ sequenceDiagram
     participant Builder as RenderGraphBuilder
     participant Compiler as Compiler
     participant Executor as Executor
-    participant Context as RestrictedPassContext
+    participant Context as TypedPassContexts
     participant Queue as RHIQueue
 
     System->>Builder: Declare resources and pass accesses
@@ -30,8 +30,8 @@ sequenceDiagram
     Compiler-->>Executor: Canonical execution plan
     Executor->>Executor: Validate plan and prepared resources
     Executor->>Executor: Acquire required surface frames
-    Executor->>Context: Resolve declared pass-local capabilities
-    Context->>Queue: Record through the executor-owned encoder
+    Executor->>Context: Create isolated typed pass context (Raster/Compute/Copy)
+    Context->>Queue: Record through typed context commands
     Executor->>Queue: Submit one command buffer
     Executor->>Executor: Retain resources until submission terminal
     Executor->>Executor: Present successful surface outputs
@@ -43,14 +43,14 @@ sequenceDiagram
 - Logical handles are scoped to one graph identity and resource version. Consumers must not reconstruct or mutate them.
 - Imported resources remain externally owned. Transient resources are owned by the executor pool and may be reused only after all retaining submissions become terminal.
 - A surface frame belongs to exactly one executor invocation. A successful submission ends in `present()`; a pre-submit failure ends in `release()`.
-- Pass callbacks receive only `RestrictedPassContext`. They cannot acquire surfaces, submit queues, allocate arbitrary persistent resources, or access undeclared graph resources.
+- Pass callbacks receive only their matching typed pass context (`RasterPassContext`, `ComputePassContext`, or `CopyPassContext`). They cannot acquire surfaces, submit queues, allocate arbitrary persistent resources, or access undeclared graph resources.
 - Prepared pipelines and draw resources are created before surface acquisition and validated again at the submission boundary.
 
 ## Fail-Fast Invariants
 
 1. Execution accepts only a canonical plan produced for the exact immutable graph snapshot.
 2. Every pass access must reference a handle owned by the current graph and a declared compatible range and usage.
-3. A pass must end an active raster or compute encoder before returning.
+3. Pass commands can only be invoked within their active synchronous callback scope; physical pass and encoder lifecycles are owned and closed by the executor and fusion partitions.
 4. Restricted capabilities expire when their pass context closes.
 5. An acquired surface frame reaches one terminal state exactly once.
 6. Failed or device-lost transient resources are destroyed instead of returning to the reusable pool.
