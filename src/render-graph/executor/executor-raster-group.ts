@@ -182,8 +182,6 @@ export function executeRasterGroup(
         inputs.preparedBindGroupLayouts ?? new Map(),
         inputs.preparedDrawResources ?? new Map(),
         encoder,
-        () => {},
-        () => {},
         pass.rasterDetails === undefined
           ? undefined
           : {

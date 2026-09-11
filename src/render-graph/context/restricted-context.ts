@@ -12,7 +12,6 @@ import type {
   TextureUsage
 } from '../types';
 import type {
-  GPUComputePassDescriptor,
   RHIBindGroup,
   RHIBindGroupLayout,
   RHIComputePassEncoder,
@@ -28,7 +27,6 @@ import type {
   RHITexture,
   RHISubmission
 } from '../../rhi/contracts';
-import type { EndableRenderPass } from '../executor/executor-cleanup';
 import type {
   PreparedComputePipelineBindings,
   PreparedComputePipelineToken,
@@ -44,18 +42,14 @@ import { RestrictedResourceOwner } from './restricted-resource-owner';
 import { createTrackedPassProxy, type BufferCapability } from './restricted-encoder-proxy';
 import { createRestrictedPortableDevice } from './restricted-device-factory';
 import type {
-  DeclaredRasterPass,
   RestrictedBindGroup,
   RestrictedBindGroupEntry,
   RestrictedBindGroupLayout,
   RestrictedBufferSlice,
-  RestrictedComputePassEncoder,
   RestrictedComputePipeline,
-  RestrictedPassContext,
   RestrictedPreparedDrawResources,
   RestrictedPipelineLayout,
   RestrictedPortableDevice,
-  RestrictedRenderPassEncoder,
   RestrictedRenderPipeline,
   RestrictedSampler,
   RestrictedShaderModule,
@@ -66,11 +60,8 @@ interface TextureCapability {
   readonly view: RHITextureView;
 }
 
-type ActivePass = EndableRenderPass;
-
 /** @internal One-pass adapter over the executor-owned encoder and physical bindings. */
-export class RestrictedContext implements RestrictedPassContext {
-  private activePass: ActivePass | undefined;
+export class RestrictedContext {
   private readonly textureCapabilities = new WeakMap<RestrictedTextureView, TextureCapability>();
   private readonly bufferCapabilities = new WeakMap<RestrictedBufferSlice, BufferCapability>();
   private readonly samplers = new WeakMap<RestrictedSampler, RHISampler>();
@@ -99,8 +90,6 @@ export class RestrictedContext implements RestrictedPassContext {
     private readonly preparedBindGroupLayouts: PreparedBindGroupLayoutBindings,
     private readonly preparedDrawResources: PreparedDrawResourcesBindings,
     private readonly encoder: ReturnType<RHIDevice['createCommandEncoder']>,
-    private readonly onBegin: (pass: ActivePass) => void,
-    private readonly onEnd: () => void,
     declarations?: {
       readonly renderPipelines?: readonly PreparedRenderPipelineToken[];
       readonly computePipelines?: readonly PreparedComputePipelineToken[];
@@ -128,21 +117,6 @@ export class RestrictedContext implements RestrictedPassContext {
       computePipelines: this.computePipelines,
       requireOpen: (action) => this.requireOpen(action),
       bindingResource: (resource) => this.bindingResource(resource)
-    });
-  }
-
-  publicContext(): RestrictedPassContext {
-    return Object.freeze({
-      device: this.device,
-      texture: this.texture.bind(this),
-      buffer: this.buffer.bind(this),
-      renderPipeline: this.renderPipeline.bind(this),
-      computePipeline: this.computePipeline.bind(this),
-      bindGroupLayout: this.bindGroupLayout.bind(this),
-      drawResources: this.drawResources.bind(this),
-      beginRaster: this.beginRaster.bind(this),
-      beginCompute: this.beginCompute.bind(this),
-      copyBufferToBuffer: this.copyBufferToBuffer.bind(this)
     });
   }
 
@@ -257,47 +231,6 @@ export class RestrictedContext implements RestrictedPassContext {
     return capability;
   }
 
-  beginRaster(descriptor: DeclaredRasterPass): RestrictedRenderPassEncoder {
-    this.requireInactive('begin a raster pass');
-    const colorAttachments = descriptor.colorAttachments.map((attachment) => ({
-      view: this.textureView(attachment.texture, 'color-attachment', attachment.range),
-      loadOp: attachment.loadOp,
-      storeOp: attachment.storeOp,
-      ...(attachment.clearValue === undefined ? {} : { clearValue: attachment.clearValue })
-    }));
-    const depth = descriptor.depthStencilAttachment;
-    const depthStencilAttachment =
-      depth === undefined
-        ? undefined
-        : {
-            view: this.textureView(depth.texture, 'depth-stencil-attachment', depth.range),
-            ...(depth.depthLoadOp === undefined ? {} : { depthLoadOp: depth.depthLoadOp }),
-            ...(depth.depthStoreOp === undefined ? {} : { depthStoreOp: depth.depthStoreOp }),
-            ...(depth.depthClearValue === undefined
-              ? {}
-              : { depthClearValue: depth.depthClearValue }),
-            ...(depth.stencilLoadOp === undefined ? {} : { stencilLoadOp: depth.stencilLoadOp }),
-            ...(depth.stencilStoreOp === undefined ? {} : { stencilStoreOp: depth.stencilStoreOp }),
-            ...(depth.stencilClearValue === undefined
-              ? {}
-              : { stencilClearValue: depth.stencilClearValue })
-          };
-    return this.track(
-      this.encoder.beginRenderPass({
-        ...(descriptor.label === undefined ? {} : { label: descriptor.label }),
-        colorAttachments,
-        ...(depthStencilAttachment === undefined ? {} : { depthStencilAttachment })
-      })
-    ) as unknown as RestrictedRenderPassEncoder;
-  }
-
-  beginCompute(descriptor: GPUComputePassDescriptor = {}): RestrictedComputePassEncoder {
-    this.requireInactive('begin a compute pass');
-    return this.track(
-      this.encoder.beginComputePass(descriptor)
-    ) as unknown as RestrictedComputePassEncoder;
-  }
-
   copyBufferToBuffer(
     source: RestrictedBufferSlice,
     destination: RestrictedBufferSlice,
@@ -336,14 +269,14 @@ export class RestrictedContext implements RestrictedPassContext {
   }
 
   /** Creates an unwrapping tracked proxy for an externally managed physical compute pass. */
-  createComputePassProxy(pass: RHIComputePassEncoder): RestrictedComputePassEncoder {
+  createComputePassProxy(pass: RHIComputePassEncoder): unknown {
     return createTrackedPassProxy(pass, {
       bindGroups: this.bindGroups,
       renderPipelines: this.renderPipelines,
       computePipelines: this.computePipelines,
       bufferCapabilities: this.bufferCapabilities,
       onEnd: () => {}
-    }) as unknown as RestrictedComputePassEncoder;
+    });
   }
 
   renderPipelineRequirements(pipeline: RestrictedRenderPipeline): {
@@ -398,22 +331,6 @@ export class RestrictedContext implements RestrictedPassContext {
     );
   }
 
-  private track<T extends ActivePass>(pass: T): T {
-    const tracked = createTrackedPassProxy(pass, {
-      bindGroups: this.bindGroups,
-      renderPipelines: this.renderPipelines,
-      computePipelines: this.computePipelines,
-      bufferCapabilities: this.bufferCapabilities,
-      onEnd: () => {
-        this.activePass = undefined;
-        this.onEnd();
-      }
-    });
-    this.activePass = tracked;
-    this.onBegin(tracked);
-    return tracked;
-  }
-
   private preparedBuffer(buffer: RHIBuffer, usage: 'vertex' | 'index'): RestrictedBufferSlice {
     const capability = Object.freeze({
       kind: 'restricted-buffer-slice' as const,
@@ -444,15 +361,6 @@ export class RestrictedContext implements RestrictedPassContext {
     return { resource: resolved.resource, range: resolved.range };
   }
 
-  private textureView(
-    handle: TextureHandle,
-    usage: TextureUsage,
-    requestedRange: TextureRange | undefined
-  ): RHITextureView {
-    const resolved = this.requiredTexture(handle, usage, requestedRange);
-    return this.resourceOwner.own(resolved.resource.createView(toViewDescriptor(resolved.range)));
-  }
-
   private requiredBufferCapability(
     capability: RestrictedBufferSlice,
     usage: 'copy-src' | 'copy-dst'
@@ -467,8 +375,6 @@ export class RestrictedContext implements RestrictedPassContext {
 
   private requireInactive(action: string): void {
     this.requireOpen(action);
-    if (this.activePass !== undefined)
-      throw new Error(`Cannot ${action} while a render graph pass encoder is active.`);
   }
 
   private requireOpen(action: string): void {

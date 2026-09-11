@@ -178,12 +178,6 @@ export class RenderGraphExecutor {
             inputs.preparedBindGroupLayouts ?? new Map(),
             inputs.preparedDrawResources ?? new Map(),
             encoder,
-            (next) => {
-              activePass = next;
-            },
-            () => {
-              activePass = undefined;
-            },
             pass.rasterDetails !== undefined
               ? {
                   renderPipelines: pass.rasterDetails.preparedRenderPipelines,
