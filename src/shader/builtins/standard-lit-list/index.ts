@@ -9,15 +9,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE =
 export const STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE =
   STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT.modules.wgsl;
 
-export {
-  STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT,
-  STANDARD_LIT_LIST_WEBGPU_SHADER_GENERATED_ARTIFACT
-} from './webgpu/standard-lit-list.generated';
-
-export {
-  STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT,
-  STANDARD_LIT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT
-} from './webgl2/standard-lit-list.generated';
+export { STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT } from './webgpu/standard-lit-list.generated';
+export { STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT } from './webgl2/standard-lit-list.generated';
 
 export {
   mapStandardLitListPhysicalBindings,

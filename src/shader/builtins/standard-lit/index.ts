@@ -12,7 +12,4 @@ export const STANDARD_LIT_SHADER_SOURCE: ShaderAuthoringSource = Object.freeze({
 
 export const STANDARD_LIT_SHADER_MODULE = STANDARD_LIT_SHADER_ARTIFACT.modules.wgsl;
 
-export {
-  STANDARD_LIT_SHADER_ARTIFACT,
-  STANDARD_LIT_SHADER_GENERATED_ARTIFACT
-} from './standard-lit.generated';
+export { STANDARD_LIT_SHADER_ARTIFACT } from './standard-lit.generated';
