@@ -418,7 +418,7 @@ function cyclicGraph() {
   graph.addRasterPass({
     id: 'write-new',
     setup(pass) {
-      written = pass.writeTexture(initial, 'color-attachment');
+      written = pass.colorAttachment(0, initial, { load: 'clear', store: 'store' });
       return written;
     },
     run() {}

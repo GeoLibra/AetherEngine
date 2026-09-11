@@ -137,7 +137,7 @@ function rangeProbe(): Readonly<Record<string, number>> {
     },
     run() {}
   });
-  graph.addCopyPass({
+  graph.addComputePass({
     id: 'range/write',
     setup(pass) {
       value = pass.writeBuffer(value, 'storage-write', { offset: 0, size: 64 });
@@ -160,15 +160,19 @@ function rangeProbe(): Readonly<Record<string, number>> {
 function textureProbe(): Readonly<Record<string, number>> {
   const graph = new RenderGraphBuilder();
   let value = graph.createTexture(TEXTURE, { origin: imported('range-texture', 'sampled') });
-  graph.addCopyPass({
+  graph.addRasterPass({
     id: 'texture/mip-write',
     setup(pass) {
-      value = pass.writeTexture(value, 'color-attachment', {
-        baseMipLevel: 0,
-        mipLevelCount: 1,
-        baseArrayLayer: 0,
-        arrayLayerCount: 1,
-        aspect: 'all'
+      value = pass.colorAttachment(0, value, {
+        range: {
+          baseMipLevel: 0,
+          mipLevelCount: 1,
+          baseArrayLayer: 0,
+          arrayLayerCount: 1,
+          aspect: 'all'
+        },
+        load: 'clear',
+        store: 'store'
       });
       pass.sideEffect('texture subresource');
       return undefined;
@@ -254,7 +258,7 @@ function topologyProbe(): { linearEdges: number; fanEdges: number } {
 function cullProbe(): Readonly<Record<string, number>> {
   const graph = new RenderGraphBuilder();
   const buffer = graph.createBuffer(BUFFER);
-  graph.addCopyPass({
+  graph.addComputePass({
     id: 'culled',
     setup(pass) {
       pass.writeBuffer(buffer, 'storage-write');
@@ -279,7 +283,7 @@ function aliasProbe(): Readonly<Record<string, number>> {
   const graph = new RenderGraphBuilder();
   for (let index = 0; index < 2; index += 1) {
     const resource = graph.createBuffer(BUFFER);
-    graph.addCopyPass({
+    graph.addComputePass({
       id: `alias/${index}`,
       setup(pass) {
         pass.writeBuffer(resource, 'storage-write');

@@ -55,10 +55,10 @@ describe('render graph compiler', () => {
     const graph = new RenderGraphBuilder();
     const initial = importedGraphTexture(graph, 'same-direction');
     let written = initial;
-    const writer = graph.addCopyPass({
+    const writer = graph.addRasterPass({
       id: 'writer',
       setup(pass) {
-        written = pass.writeTexture(initial, 'color-attachment');
+        written = pass.colorAttachment(0, initial, { load: 'clear', store: 'store' });
         return { written };
       },
       run() {}
@@ -89,11 +89,11 @@ describe('render graph compiler', () => {
     const graph = new RenderGraphBuilder();
     const initial = importedGraphTexture(graph, 'same-pass-old-and-new');
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'in-place-logical-version',
       setup(pass) {
         pass.readTexture(initial, 'sampled');
-        const written = pass.writeTexture(initial, 'color-attachment');
+        const written = pass.colorAttachment(0, initial, { load: 'clear', store: 'store' });
         pass.exportResource(written, 'copy-src');
         return { initial, written };
       },
@@ -112,10 +112,10 @@ describe('render graph compiler', () => {
     const graph = new RenderGraphBuilder();
     const initial = importedGraphTexture(graph, 'reversed-edge');
     let written = initial;
-    const writer = graph.addCopyPass({
+    const writer = graph.addRasterPass({
       id: 'writer',
       setup(pass) {
-        written = pass.writeTexture(initial, 'color-attachment');
+        written = pass.colorAttachment(0, initial, { load: 'clear', store: 'store' });
         return { written };
       },
       run() {}
@@ -141,10 +141,10 @@ describe('render graph compiler', () => {
     const initial = importedGraphTexture(graph, 'cycle');
     let written = initial;
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'write-new',
       setup(pass) {
-        written = pass.writeTexture(initial, 'color-attachment');
+        written = pass.colorAttachment(0, initial, { load: 'clear', store: 'store' });
         return { written };
       },
       run() {}
@@ -172,5 +172,45 @@ describe('render graph compiler', () => {
     expect(cycle.passChain).toEqual(['write-new', 'read-old-and-new', 'write-new']);
     expect(cycle.edges.map((edge) => edge.kind)).toEqual(['raw', 'war']);
     expect(cycle.message).toMatch(/write-new.*RAW.*read-old-and-new.*WAR.*write-new/i);
+  });
+
+  test('rejects a snapshot with incompatible passKind and write usage', () => {
+    const graph = new RenderGraphBuilder();
+    const initial = importedGraphTexture(graph, 'forged-check');
+    graph.addCopyPass({
+      id: 'valid-copy',
+      setup(pass) {
+        pass.readTexture(initial, 'copy-src');
+        return {};
+      },
+      run() {}
+    });
+    const snapshot = graph.build();
+    const forgedSnapshot = {
+      ...snapshot,
+      passes: [
+        {
+          ...snapshot.passes[0]!,
+          accesses: [
+            ...snapshot.passes[0]!.accesses,
+            {
+              kind: 'write' as const,
+              handle: initial,
+              usage: 'color-attachment' as any,
+              range: {
+                baseMipLevel: 0,
+                mipLevelCount: 1,
+                baseArrayLayer: 0,
+                arrayLayerCount: 1,
+                aspect: 'all' as const
+              }
+            }
+          ]
+        }
+      ]
+    };
+    expect(() => compileRenderGraph(forgedSnapshot as any)).toThrow(
+      /Copy pass.*cannot declare write usage "color-attachment"/i
+    );
   });
 });

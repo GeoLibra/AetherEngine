@@ -8,8 +8,12 @@ import type {
   BufferReadUsage,
   BufferWriteUsage,
   ColorAttachmentOptions,
+  ComputeBufferWriteUsage,
   ComputePassBuilder,
+  ComputeTextureWriteUsage,
+  CopyBufferWriteUsage,
   CopyPassBuilder,
+  CopyTextureWriteUsage,
   DeclaredColorAttachment,
   DeclaredDepthStencilAttachment,
   DeclaredResolveAttachment,
@@ -74,7 +78,13 @@ export class BaseGraphResourceBuilder implements GraphResourceBuilder {
     return handle;
   }
 
-  writeTexture(
+  readBuffer(handle: BufferHandle, usage: BufferReadUsage, range?: BufferRange): BufferHandle {
+    this.assertActive();
+    this.accesses.push(this.graph.declareRead(this.passId, handle, usage, 'buffer', range));
+    return handle;
+  }
+
+  protected declareWriteTexture(
     handle: TextureHandle,
     usage: TextureWriteUsage,
     range?: TextureRange
@@ -85,13 +95,11 @@ export class BaseGraphResourceBuilder implements GraphResourceBuilder {
     return access.handle as TextureHandle;
   }
 
-  readBuffer(handle: BufferHandle, usage: BufferReadUsage, range?: BufferRange): BufferHandle {
-    this.assertActive();
-    this.accesses.push(this.graph.declareRead(this.passId, handle, usage, 'buffer', range));
-    return handle;
-  }
-
-  writeBuffer(handle: BufferHandle, usage: BufferWriteUsage, range?: BufferRange): BufferHandle {
+  protected declareWriteBuffer(
+    handle: BufferHandle,
+    usage: BufferWriteUsage,
+    range?: BufferRange
+  ): BufferHandle {
     this.assertActive();
     const access = this.graph.declareWrite(this.passId, handle, usage, 'buffer', range);
     this.accesses.push(access);
@@ -310,6 +318,18 @@ export class RasterPassBuilderImpl extends BaseGraphResourceBuilder implements R
     return output;
   }
 
+  writeBuffer(): never {
+    throw new Error(
+      `Raster pass "${this.passId}" cannot declare buffer write access. Only texture attachment writes are allowed.`
+    );
+  }
+
+  writeTexture(_handle: TextureHandle, usage: string): never {
+    throw new Error(
+      `Raster pass "${this.passId}" cannot declare texture write usage "${usage}". Only attachment writes are allowed.`
+    );
+  }
+
   useRenderPipeline(token: PreparedRenderPipelineToken): void {
     this.assertActive();
     this.renderPipelines.add(token);
@@ -342,6 +362,32 @@ export class RasterPassBuilderImpl extends BaseGraphResourceBuilder implements R
 export class ComputePassBuilderImpl extends BaseGraphResourceBuilder implements ComputePassBuilder {
   private readonly computePipelines = new Set<PreparedComputePipelineToken>();
 
+  writeTexture(
+    handle: TextureHandle,
+    usage: ComputeTextureWriteUsage,
+    range?: TextureRange
+  ): TextureHandle {
+    if (usage !== 'storage-write') {
+      throw new Error(
+        `Compute pass cannot declare texture write usage "${usage}". Only "storage-write" is allowed.`
+      );
+    }
+    return this.declareWriteTexture(handle, usage, range);
+  }
+
+  writeBuffer(
+    handle: BufferHandle,
+    usage: ComputeBufferWriteUsage,
+    range?: BufferRange
+  ): BufferHandle {
+    if (usage !== 'storage-write') {
+      throw new Error(
+        `Compute pass cannot declare buffer write usage "${usage}". Only "storage-write" is allowed.`
+      );
+    }
+    return this.declareWriteBuffer(handle, usage, range);
+  }
+
   useComputePipeline(token: PreparedComputePipelineToken): void {
     this.assertActive();
     this.computePipelines.add(token);
@@ -354,4 +400,30 @@ export class ComputePassBuilderImpl extends BaseGraphResourceBuilder implements 
   }
 }
 
-export class CopyPassBuilderImpl extends BaseGraphResourceBuilder implements CopyPassBuilder {}
+export class CopyPassBuilderImpl extends BaseGraphResourceBuilder implements CopyPassBuilder {
+  writeTexture(
+    handle: TextureHandle,
+    usage: CopyTextureWriteUsage,
+    range?: TextureRange
+  ): TextureHandle {
+    if (usage !== 'copy-dst') {
+      throw new Error(
+        `Copy pass cannot declare texture write usage "${usage}". Only "copy-dst" is allowed.`
+      );
+    }
+    return this.declareWriteTexture(handle, usage, range);
+  }
+
+  writeBuffer(
+    handle: BufferHandle,
+    usage: CopyBufferWriteUsage,
+    range?: BufferRange
+  ): BufferHandle {
+    if (usage !== 'copy-dst') {
+      throw new Error(
+        `Copy pass cannot declare buffer write usage "${usage}". Only "copy-dst" is allowed.`
+      );
+    }
+    return this.declareWriteBuffer(handle, usage, range);
+  }
+}

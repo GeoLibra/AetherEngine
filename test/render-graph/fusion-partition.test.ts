@@ -392,17 +392,38 @@ describe('RenderGraph Pass Fusion Partitioning', () => {
   });
 
   test('reports physical lifetime expansion and peak transient bytes for a fused group', () => {
+    const DEPTH_DESC: TextureDescriptor = Object.freeze({
+      width: 64,
+      height: 64,
+      depthOrArrayLayers: 1,
+      mipLevelCount: 1,
+      sampleCount: 1,
+      format: 'depth32float',
+      usage: Object.freeze(['depth-stencil-attachment', 'sampled', 'copy-dst'] as const)
+    });
+
     const builder = new RenderGraphBuilder();
     const color = builder.createTexture(createColorDesc());
-    const firstBuffer = builder.createBuffer(createTransientBufferDesc());
-    const secondBuffer = builder.createBuffer(createTransientBufferDesc());
+    const depthA = builder.createTexture(DEPTH_DESC);
+    const depthB = builder.createTexture(DEPTH_DESC);
     let currentColor = color;
+    let writtenDepthA = depthA;
+
+    builder.addCopyPass({
+      id: 'prep',
+      setup(pass) {
+        writtenDepthA = pass.writeTexture(depthA, 'copy-dst');
+        pass.sideEffect('prep');
+        return {};
+      },
+      run() {}
+    });
 
     builder.addRasterPass({
       id: 'first',
       setup(pass) {
         currentColor = pass.colorAttachment(0, currentColor, { load: 'clear', store: 'auto' });
-        pass.writeBuffer(firstBuffer, 'storage-write');
+        pass.readTexture(writtenDepthA, 'sampled');
         pass.sideEffect('first');
         return {};
       },
@@ -412,7 +433,10 @@ describe('RenderGraph Pass Fusion Partitioning', () => {
       id: 'second',
       setup(pass) {
         currentColor = pass.colorAttachment(0, currentColor, { load: 'load', store: 'store' });
-        pass.writeBuffer(secondBuffer, 'storage-write');
+        pass.depthStencilAttachment(depthB, {
+          depthLoad: 'clear',
+          depthStore: 'discard'
+        });
         pass.sideEffect('second');
         return {};
       },
@@ -422,7 +446,8 @@ describe('RenderGraph Pass Fusion Partitioning', () => {
     const snapshot = builder.build();
     const result = partitionRasterGroups(snapshot, compileRenderGraph(snapshot));
 
-    expect(result.counters.physicalLifetimeExpansionBytes).toBe(256);
-    expect(result.counters.peakTransientBytes).toBe(64 * 64 * 4 + 256 + 256);
+    const depthBytes = 64 * 64 * 4;
+    expect(result.counters.physicalLifetimeExpansionBytes).toBe(depthBytes);
+    expect(result.counters.peakTransientBytes).toBe(64 * 64 * 4 + depthBytes + depthBytes);
   });
 });

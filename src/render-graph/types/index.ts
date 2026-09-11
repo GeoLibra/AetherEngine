@@ -91,6 +91,10 @@ export type {
   RasterPassBuilder,
   ComputePassBuilder,
   CopyPassBuilder,
+  ComputeTextureWriteUsage,
+  ComputeBufferWriteUsage,
+  CopyTextureWriteUsage,
+  CopyBufferWriteUsage,
   RasterPassDescriptor,
   ComputePassDescriptor,
   CopyPassDescriptor

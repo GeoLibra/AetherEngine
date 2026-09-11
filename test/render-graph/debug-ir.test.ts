@@ -51,14 +51,32 @@ describe('render graph Debug IR', () => {
       format: 'rgba8unorm',
       usage: ['color-attachment']
     });
-    const firstBuffer = graph.createBuffer(BUFFER);
-    const secondBuffer = graph.createBuffer(BUFFER);
+    const firstBuffer = graph.createBuffer(
+      { ...BUFFER, usage: ['uniform'] },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'uniform',
+          acquire: { kind: 'external-acquire', id: 'buf-1' }
+        }
+      }
+    );
+    const secondBuffer = graph.createBuffer(
+      { ...BUFFER, usage: ['uniform'] },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'uniform',
+          acquire: { kind: 'external-acquire', id: 'buf-2' }
+        }
+      }
+    );
     let current = color;
     graph.addRasterPass({
       id: 'clear',
       setup(pass) {
         current = pass.colorAttachment(0, current, { load: 'clear', store: 'auto' });
-        pass.writeBuffer(firstBuffer, 'copy-dst');
+        pass.readBuffer(firstBuffer, 'uniform');
         pass.sideEffect('clear');
         return {};
       },
@@ -68,7 +86,7 @@ describe('render graph Debug IR', () => {
       id: 'draw',
       setup(pass) {
         current = pass.colorAttachment(0, current, { load: 'load', store: 'store' });
-        pass.writeBuffer(secondBuffer, 'copy-dst');
+        pass.readBuffer(secondBuffer, 'uniform');
         pass.sideEffect('draw');
         return {};
       },

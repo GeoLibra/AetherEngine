@@ -171,17 +171,16 @@ export interface CopyPassContext extends DeclaredResourceResolver {
   readonly device: RestrictedPortableDevice;
 }
 
+export type ComputeTextureWriteUsage = 'storage-write';
+export type ComputeBufferWriteUsage = 'storage-write';
+export type CopyTextureWriteUsage = 'copy-dst';
+export type CopyBufferWriteUsage = 'copy-dst';
+
 export interface GraphResourceBuilder {
   createTexture(descriptor: TextureDescriptor, options?: GraphResourceCreateOptions): TextureHandle;
   createBuffer(descriptor: BufferDescriptor, options?: GraphResourceCreateOptions): BufferHandle;
   readTexture(handle: TextureHandle, usage: TextureReadUsage, range?: TextureRange): TextureHandle;
-  writeTexture(
-    handle: TextureHandle,
-    usage: TextureWriteUsage,
-    range?: TextureRange
-  ): TextureHandle;
   readBuffer(handle: BufferHandle, usage: BufferReadUsage, range?: BufferRange): BufferHandle;
-  writeBuffer(handle: BufferHandle, usage: BufferWriteUsage, range?: BufferRange): BufferHandle;
   sideEffect(label: string): void;
   after(pass: PassToken): void;
   exportResource(handle: GraphHandle, finalState: ExternalResourceState): void;
@@ -208,10 +207,27 @@ export interface RasterPassBuilder extends GraphResourceBuilder {
 }
 
 export interface ComputePassBuilder extends GraphResourceBuilder {
+  writeTexture(
+    handle: TextureHandle,
+    usage: ComputeTextureWriteUsage,
+    range?: TextureRange
+  ): TextureHandle;
+  writeBuffer(
+    handle: BufferHandle,
+    usage: ComputeBufferWriteUsage,
+    range?: BufferRange
+  ): BufferHandle;
   useComputePipeline(token: PreparedComputePipelineToken): void;
 }
 
-export interface CopyPassBuilder extends GraphResourceBuilder {}
+export interface CopyPassBuilder extends GraphResourceBuilder {
+  writeTexture(
+    handle: TextureHandle,
+    usage: CopyTextureWriteUsage,
+    range?: TextureRange
+  ): TextureHandle;
+  writeBuffer(handle: BufferHandle, usage: CopyBufferWriteUsage, range?: BufferRange): BufferHandle;
+}
 
 export interface RasterPassDescriptor<TResources> {
   readonly id: string;

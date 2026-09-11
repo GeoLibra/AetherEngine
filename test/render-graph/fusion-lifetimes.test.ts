@@ -36,12 +36,30 @@ describe('fusion physical lifetime widening', () => {
   test('widens member resource lifetimes to entire physical group span', () => {
     const builder = new RenderGraphBuilder();
     const color = builder.createTexture(COLOR_DESC);
-    const bufA = builder.createBuffer(BUFFER_DESC);
-    const bufB = builder.createBuffer(BUFFER_DESC);
+    const bufA = builder.createBuffer(
+      { ...BUFFER_DESC, usage: ['uniform'] },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'uniform',
+          acquire: { kind: 'external-acquire', id: 'bufA' }
+        }
+      }
+    );
+    const bufB = builder.createBuffer(
+      { ...BUFFER_DESC, usage: ['uniform'] },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'uniform',
+          acquire: { kind: 'external-acquire', id: 'bufB' }
+        }
+      }
+    );
 
     let currentColor = color;
 
-    // Pass 0: member A writes bufA
+    // Pass 0: member A reads bufA
     builder.addRasterPass({
       id: 'pass-a',
       setup(pass) {
@@ -49,14 +67,14 @@ describe('fusion physical lifetime widening', () => {
           load: 'clear',
           store: 'auto'
         });
-        pass.writeBuffer(bufA, 'storage-write');
+        pass.readBuffer(bufA, 'uniform');
         pass.sideEffect('member a');
         return {};
       },
       run() {}
     });
 
-    // Pass 1: member B writes bufB
+    // Pass 1: member B reads bufB
     builder.addRasterPass({
       id: 'pass-b',
       setup(pass) {
@@ -64,7 +82,7 @@ describe('fusion physical lifetime widening', () => {
           load: 'load',
           store: 'store'
         });
-        pass.writeBuffer(bufB, 'storage-write');
+        pass.readBuffer(bufB, 'uniform');
         pass.sideEffect('member b');
         return {};
       },
@@ -98,13 +116,41 @@ describe('fusion physical lifetime widening', () => {
   });
 
   test('prevents transient alias reuse between consecutive passes of the same fused group', () => {
+    const DEPTH_DESC: TextureDescriptor = Object.freeze({
+      width: 64,
+      height: 64,
+      depthOrArrayLayers: 1,
+      mipLevelCount: 1,
+      sampleCount: 1,
+      format: 'depth32float',
+      usage: Object.freeze([
+        'depth-stencil-attachment',
+        'sampled',
+        'copy-dst',
+        'storage-write'
+      ] as const)
+    });
+
     const builder = new RenderGraphBuilder();
     const color = builder.createTexture(COLOR_DESC);
-    const bufA = builder.createBuffer(BUFFER_DESC);
-    const bufB = builder.createBuffer(BUFFER_DESC);
+    const depthA = builder.createTexture(DEPTH_DESC);
+    const depthB = builder.createTexture(DEPTH_DESC);
 
     let currentColor = color;
+    let writtenDepthA = depthA;
 
+    // Pass 0: initializes depthA via copy pass
+    builder.addCopyPass({
+      id: 'prep-a',
+      setup(pass) {
+        writtenDepthA = pass.writeTexture(depthA, 'copy-dst');
+        pass.sideEffect('prep a');
+        return {};
+      },
+      run() {}
+    });
+
+    // Pass 1: member A uses depthA as sampled texture
     builder.addRasterPass({
       id: 'pass-a',
       setup(pass) {
@@ -112,13 +158,14 @@ describe('fusion physical lifetime widening', () => {
           load: 'clear',
           store: 'auto'
         });
-        pass.writeBuffer(bufA, 'storage-write');
+        pass.readTexture(writtenDepthA, 'sampled');
         pass.sideEffect('member a');
         return {};
       },
       run() {}
     });
 
+    // Pass 2: member B safe late depth introduction with depthB
     builder.addRasterPass({
       id: 'pass-b',
       setup(pass) {
@@ -126,7 +173,10 @@ describe('fusion physical lifetime widening', () => {
           load: 'load',
           store: 'store'
         });
-        pass.writeBuffer(bufB, 'storage-write');
+        pass.depthStencilAttachment(depthB, {
+          depthLoad: 'clear',
+          depthStore: 'discard'
+        });
         pass.sideEffect('member b');
         return {};
       },
@@ -137,14 +187,17 @@ describe('fusion physical lifetime widening', () => {
     const compiled = compileRenderGraph(snapshot);
     const { groups } = partitionRasterGroups(snapshot, compiled);
 
-    // Without fusion awareness: disjoint lifetimes allow bufA and bufB to share allocationId 0
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.retainedPassIndices).toEqual([1, 2]);
+
+    // Without fusion awareness: disjoint lifetimes allow depthA and depthB to share allocationId 0
     const unwidenedLifetimes = analyzeResourceLifetimes(snapshot, compiled);
     const unwidenedPlan = planResourceAliases(snapshot, unwidenedLifetimes);
     const unwidenedAllocA = unwidenedPlan.decisions.find(
-      (d) => d.resourceId === bufA.resourceId
+      (d) => d.resourceId === depthA.resourceId
     )?.allocationId;
     const unwidenedAllocB = unwidenedPlan.decisions.find(
-      (d) => d.resourceId === bufB.resourceId
+      (d) => d.resourceId === depthB.resourceId
     )?.allocationId;
     expect(unwidenedAllocA).toBe(unwidenedAllocB); // Same allocation!
 
@@ -152,24 +205,51 @@ describe('fusion physical lifetime widening', () => {
     const widenedLifetimes = analyzeResourceLifetimes(snapshot, compiled, groups);
     const widenedPlan = planResourceAliases(snapshot, widenedLifetimes);
     const widenedAllocA = widenedPlan.decisions.find(
-      (d) => d.resourceId === bufA.resourceId
+      (d) => d.resourceId === depthA.resourceId
     )?.allocationId;
     const widenedAllocB = widenedPlan.decisions.find(
-      (d) => d.resourceId === bufB.resourceId
+      (d) => d.resourceId === depthB.resourceId
     )?.allocationId;
     expect(widenedAllocA).not.toBe(widenedAllocB); // Distinct allocations!
   });
 
   test('allows transient resources after fused group to alias across group boundary', () => {
+    const DEPTH_DESC: TextureDescriptor = Object.freeze({
+      width: 64,
+      height: 64,
+      depthOrArrayLayers: 1,
+      mipLevelCount: 1,
+      sampleCount: 1,
+      format: 'depth32float',
+      usage: Object.freeze([
+        'depth-stencil-attachment',
+        'sampled',
+        'copy-dst',
+        'storage-write'
+      ] as const)
+    });
+
     const builder = new RenderGraphBuilder();
     const color = builder.createTexture(COLOR_DESC);
-    const fusedBufA = builder.createBuffer(BUFFER_DESC);
-    const fusedBufB = builder.createBuffer(BUFFER_DESC);
-    const afterBuf = builder.createBuffer(BUFFER_DESC);
+    const fusedDepthA = builder.createTexture(DEPTH_DESC);
+    const fusedDepthB = builder.createTexture(DEPTH_DESC);
+    const afterDepth = builder.createTexture(DEPTH_DESC);
 
     let currentColor = color;
+    let writtenFusedDepthA = fusedDepthA;
 
-    // Pass 0: Fused member A
+    // Pass 0: initializes fusedDepthA via copy pass
+    builder.addCopyPass({
+      id: 'prep-a',
+      setup(pass) {
+        writtenFusedDepthA = pass.writeTexture(fusedDepthA, 'copy-dst');
+        pass.sideEffect('prep a');
+        return {};
+      },
+      run() {}
+    });
+
+    // Pass 1: Fused member A
     builder.addRasterPass({
       id: 'fused-a',
       setup(pass) {
@@ -177,14 +257,14 @@ describe('fusion physical lifetime widening', () => {
           load: 'clear',
           store: 'auto'
         });
-        pass.writeBuffer(fusedBufA, 'storage-write');
+        pass.readTexture(writtenFusedDepthA, 'sampled');
         pass.sideEffect('fused a');
         return {};
       },
       run() {}
     });
 
-    // Pass 1: Fused member B
+    // Pass 2: Fused member B
     builder.addRasterPass({
       id: 'fused-b',
       setup(pass) {
@@ -192,18 +272,21 @@ describe('fusion physical lifetime widening', () => {
           load: 'load',
           store: 'store'
         });
-        pass.writeBuffer(fusedBufB, 'storage-write');
+        pass.depthStencilAttachment(fusedDepthB, {
+          depthLoad: 'clear',
+          depthStore: 'discard'
+        });
         pass.sideEffect('fused b');
         return {};
       },
       run() {}
     });
 
-    // Pass 2: Compute pass after fusion group
+    // Pass 3: Compute pass after fusion group
     builder.addComputePass({
       id: 'post-pass',
       setup(pass) {
-        pass.writeBuffer(afterBuf, 'storage-write');
+        pass.writeTexture(afterDepth, 'storage-write');
         pass.sideEffect('post');
         return {};
       },
@@ -215,19 +298,19 @@ describe('fusion physical lifetime widening', () => {
     const { groups } = partitionRasterGroups(snapshot, compiled);
 
     expect(groups).toHaveLength(1);
-    expect(groups[0]?.retainedPassIndices).toEqual([0, 1]);
+    expect(groups[0]?.retainedPassIndices).toEqual([1, 2]);
 
     const lifetimes = analyzeResourceLifetimes(snapshot, compiled, groups);
     const plan = planResourceAliases(snapshot, lifetimes);
 
     const allocFusedA = plan.decisions.find(
-      (d) => d.resourceId === fusedBufA.resourceId
+      (d) => d.resourceId === fusedDepthA.resourceId
     )?.allocationId;
     const allocFusedB = plan.decisions.find(
-      (d) => d.resourceId === fusedBufB.resourceId
+      (d) => d.resourceId === fusedDepthB.resourceId
     )?.allocationId;
     const allocAfter = plan.decisions.find(
-      (d) => d.resourceId === afterBuf.resourceId
+      (d) => d.resourceId === afterDepth.resourceId
     )?.allocationId;
 
     expect(allocFusedA).toBeDefined();
