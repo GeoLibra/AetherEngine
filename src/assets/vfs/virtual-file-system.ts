@@ -236,7 +236,7 @@ export class VirtualFileSystem {
 
     let uri: CanonicalVFSUri;
     try {
-      uri = validateRequestInput(rawUri, expectedLength, expectedIntegrity);
+      uri = validateRequestInput(rawUri, expectedLength, expectedIntegrity, highWaterMarkBytes);
     } catch {
       return invalidRequest('Invalid VFS stream request.');
     }
@@ -399,7 +399,8 @@ export class VirtualFileSystem {
 function validateRequestInput(
   rawUri: string,
   expectedLength?: number,
-  expectedIntegrity?: string
+  expectedIntegrity?: string,
+  highWaterMarkBytes?: number
 ): CanonicalVFSUri {
   const uri = normalizeVFSUri(rawUri);
   if (
@@ -410,6 +411,12 @@ function validateRequestInput(
   }
   if (expectedIntegrity !== undefined) {
     validateExpectedIntegrity(expectedIntegrity);
+  }
+  if (
+    highWaterMarkBytes !== undefined &&
+    (!Number.isSafeInteger(highWaterMarkBytes) || highWaterMarkBytes <= 0)
+  ) {
+    throw new Error('Invalid highWaterMarkBytes.');
   }
   return uri;
 }

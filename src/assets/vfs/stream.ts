@@ -29,6 +29,13 @@ export function createVFSStreamSession(params: CreateStreamSessionParams): VFSSt
   const { metadata, source, expectedLength, expectedIntegrity, highWaterMarkBytes, onCancel } =
     params;
 
+  if (
+    highWaterMarkBytes !== undefined &&
+    (!Number.isSafeInteger(highWaterMarkBytes) || highWaterMarkBytes <= 0)
+  ) {
+    throw new Error('highWaterMarkBytes must be a positive safe integer.');
+  }
+
   let hasIterated = false;
   let isCancelled = false;
   let resolveCompletion!: (completion: VFSStreamCompletion) => void;
@@ -115,11 +122,7 @@ export function createVFSStreamSession(params: CreateStreamSessionParams): VFSSt
               return { done: true, value: undefined };
             }
 
-            if (
-              highWaterMarkBytes !== undefined &&
-              highWaterMarkBytes > 0 &&
-              bytes.byteLength > highWaterMarkBytes
-            ) {
+            if (highWaterMarkBytes !== undefined && bytes.byteLength > highWaterMarkBytes) {
               const err = Object.freeze({
                 kind: 'provider-failure' as const,
                 code: 'vfs-stream-chunk-overflow',

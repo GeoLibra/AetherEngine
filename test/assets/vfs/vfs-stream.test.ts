@@ -350,4 +350,41 @@ describe('VFS stream channel and session lifecycle', () => {
     }
     expect(cancelCalled).toBe(true);
   });
+
+  test('rejects invalid highWaterMarkBytes at public VFS boundary and session constructor', async () => {
+    const vfs = new VirtualFileSystem();
+    const provider = new MemoryVFSProvider('memory-stream', { enableStream: true });
+    vfs.mount({
+      root: normalizeVFSUri('asset://test'),
+      scheme: 'asset' as any,
+      primary: provider,
+      caches: [],
+      policy: DEFAULT_VFS_READ_POLICY
+    });
+
+    const invalidValues = [0, -1, 3.14, NaN, Infinity, -Infinity];
+    for (const hwm of invalidValues) {
+      const result = await vfs.openStream({
+        uri: 'asset://test/file.bin',
+        highWaterMarkBytes: hwm
+      });
+      expect(result.kind).toBe('invalid-request');
+      if (result.kind === 'invalid-request') {
+        expect(result.code).toBe('vfs-invalid-request');
+      }
+
+      expect(() =>
+        createVFSStreamSession({
+          metadata: {
+            resolvedUri: normalizeVFSUri('asset://test/file.bin'),
+            providerId: 'test' as any,
+            revision: '1',
+            contentLength: 1
+          },
+          source: (async function* () {})(),
+          highWaterMarkBytes: hwm
+        })
+      ).toThrow(/highWaterMarkBytes must be a positive safe integer/i);
+    }
+  });
 });
