@@ -2,6 +2,7 @@ import {
   RenderGraphBuilder,
   RenderGraphExecutor,
   RenderSystemRegistry,
+  createPreparedDrawResourcesToken,
   compileRenderSystems
 } from '../../render-graph';
 import { ZERO_RESOURCE_BUDGET } from '../../feature-policy';
@@ -10,6 +11,10 @@ import { buildPreparedDrawPhase, createOpaqueRenderSystem } from '../phase';
 import {
   createWebGlFragmentLightListImplementation,
   createWebGpuComputeLightListImplementation,
+  declareShadowDepthPasses,
+  recordPreparedShadowDraws,
+  shadowDepthFormat,
+  shadowRequestKey,
   type WebGlFragmentLightListBuildOutput,
   type WebGpuLightListBuildOutput
 } from '../lighting';
@@ -67,8 +72,38 @@ export class BaselineRenderer {
       );
     }
 
-    const phase = buildPreparedDrawPhase(prepared.view.id, 'opaque', prepared.packets);
+    const phaseKind = prepared.packets[0]?.phase ?? 'opaque';
+    if (phaseKind !== 'opaque' && phaseKind !== 'alpha-test') {
+      throw new Error('Baseline StandardLit packets require an opaque or alpha-test phase.');
+    }
+    const phase = buildPreparedDrawPhase(prepared.view.id, phaseKind, prepared.packets);
     const graph = new RenderGraphBuilder();
+    const shadowDrawResources = new Map();
+    const shadowTokensByRequest = new Map<
+      string,
+      readonly ReturnType<typeof createPreparedDrawResourcesToken>[]
+    >();
+    let shadowMap: ReturnType<RenderGraphBuilder['createTexture']> | undefined;
+    if (prepared.shadow !== undefined) {
+      for (const request of prepared.shadow.requests) {
+        const key = shadowRequestKey(request);
+        const packets = prepared.shadow.packetsByRequestKey.get(key) ?? [];
+        const tokens = packets.map((packet, index) => {
+          const token = createPreparedDrawResourcesToken(
+            `${prepared.view.id}:shadow:${request.subresourceIndex}:${index}`
+          );
+          shadowDrawResources.set(token, packet);
+          return token;
+        });
+        shadowTokensByRequest.set(key, Object.freeze(tokens));
+      }
+      shadowMap = declareShadowDepthPasses(graph, prepared.shadow.requests, {
+        format: shadowDepthFormat(this.options.graphics.backend),
+        draws: (request) => shadowTokensByRequest.get(shadowRequestKey(request)) ?? [],
+        record: recordPreparedShadowDraws
+      }).texture;
+    }
+    const shadowReceiver = contributeShadowReceiver(graph, prepared, shadowMap);
     const post =
       prepared.postColor === undefined
         ? undefined
@@ -172,7 +207,8 @@ export class BaselineRenderer {
               prefilteredRadianceMap: environment.prefilteredRadianceMap,
               environmentBrdfLut: environment.environmentBrdfLut
             }
-          })
+          }),
+      ...(shadowReceiver === undefined ? {} : { shadow: shadowReceiver })
     });
     const systems = new RenderSystemRegistry();
     const bgToken = bgSystem !== undefined ? systems.add(bgSystem) : undefined;
@@ -202,6 +238,13 @@ export class BaselineRenderer {
       if (lightList !== undefined && lightFrame !== undefined) {
         resources.set(lightList.lights, lightFrame.lights);
         resources.set(lightList.receivers, lightFrame.receivers);
+      }
+      if (shadowReceiver !== undefined && prepared.shadowReceiver !== undefined) {
+        resources.set(
+          shadowReceiver.buffer,
+          prepared.shadow?.uniformBuffer ?? prepared.shadowReceiver.buffer
+        );
+        if (shadowMap === undefined) resources.set(shadowReceiver.map, prepared.shadowReceiver.map);
       }
       if (bgContribution !== undefined && bgFrame !== undefined && bgFrame.status === 'ready') {
         resources.set(bgContribution.uniformBuffer, bgFrame.uniformBuffer!);
@@ -248,7 +291,7 @@ export class BaselineRenderer {
       execution = new RenderGraphExecutor().execute(compiled.plan, {
         device,
         surface,
-        preparedDrawResources: opaque.preparedDrawResources,
+        preparedDrawResources: new Map([...opaque.preparedDrawResources, ...shadowDrawResources]),
         ...(resources.size === 0 ? {} : { resources }),
         ...(renderPipelines.size === 0 ? {} : { preparedRenderPipelines: renderPipelines }),
         ...(bindGroupLayouts.size === 0 ? {} : { preparedBindGroupLayouts: bindGroupLayouts }),
@@ -261,10 +304,12 @@ export class BaselineRenderer {
           : {})
       });
       lightFrame?.retain(execution.submission);
+      prepared.shadow?.retain(execution.submission);
       bgFrame?.retain(execution.submission);
     } catch (error) {
       for (const packet of phase.snapshot.packets) packet.release();
       prepared.lightList?.release();
+      prepared.shadow?.release();
       prepared.background?.release();
       throw error;
     }
@@ -332,6 +377,46 @@ function contributeEnvironment(
     }
   );
   return { buffer, irradianceMap, prefilteredRadianceMap, environmentBrdfLut };
+}
+
+function contributeShadowReceiver(
+  graph: RenderGraphBuilder,
+  prepared: Extract<BaselinePreparedFrame, { status: 'ready' }>,
+  renderedMap: ReturnType<RenderGraphBuilder['createTexture']> | undefined
+) {
+  if (prepared.shadowReceiver === undefined) return undefined;
+  const rawBuffer = prepared.shadow?.uniformBuffer ?? prepared.shadowReceiver.buffer;
+  const buffer = graph.createBuffer(
+    { size: rawBuffer.size, usage: ['uniform'] },
+    {
+      origin: {
+        kind: 'imported',
+        initialState: 'uniform',
+        acquire: { kind: 'external-acquire', id: `${prepared.view.id}:shadow-receiver` }
+      }
+    }
+  );
+  const map =
+    renderedMap ??
+    graph.createTexture(
+      {
+        width: prepared.shadowReceiver.map.width,
+        height: prepared.shadowReceiver.map.height,
+        depthOrArrayLayers: prepared.shadowReceiver.map.depthOrArrayLayers,
+        mipLevelCount: 1,
+        sampleCount: 1,
+        format: prepared.shadowReceiver.map.format,
+        usage: ['sampled']
+      },
+      {
+        origin: {
+          kind: 'imported',
+          initialState: 'sampled',
+          acquire: { kind: 'external-acquire', id: `${prepared.view.id}:shadow-disabled-map` }
+        }
+      }
+    );
+  return Object.freeze({ buffer, map });
 }
 
 function contributeLightList(

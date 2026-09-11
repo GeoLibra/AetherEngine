@@ -38,6 +38,16 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     targetBackend: 'both'
   },
   {
+    id: 'standard-shadow',
+    exportName: 'STANDARD_SHADOW_SHADER_ARTIFACT',
+    exportAliases: ['STANDARD_SHADOW_SHADER_GENERATED_ARTIFACT'],
+    sourcePath: 'src/shader/builtins/standard-shadow/standard-shadow.wgsl',
+    metadataPath: 'src/shader/builtins/standard-shadow/standard-shadow.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/standard-shadow/standard-shadow.generated.ts',
+    sourceUri: 'asset://aether/builtins/standard-shadow.wgsl',
+    targetBackend: 'both'
+  },
+  {
     id: 'post-color',
     exportName: 'POST_COLOR_SHADER_ARTIFACT',
     exportAliases: ['POST_COLOR_SHADER_GENERATED_ARTIFACT'],

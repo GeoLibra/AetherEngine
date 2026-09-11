@@ -31,7 +31,7 @@ export type CompiledMaterialTextureBinding = Readonly<{
   bindingPath: string;
   group: number;
   binding: number;
-  viewDimension: '2d' | 'cube';
+  viewDimension: '2d' | '2d-array' | 'cube';
   sampleType: 'float' | 'depth' | 'uint' | 'sint';
   multisampled: boolean;
 }>;
@@ -70,7 +70,7 @@ interface ResolvedMaterialResourceBase {
 export type ResolvedMaterialTextureResource = Readonly<
   ResolvedMaterialResourceBase & {
     kind: 'texture';
-    viewDimension: '2d' | 'cube';
+    viewDimension: '2d' | '2d-array' | 'cube';
     sampleType: 'float' | 'depth' | 'uint' | 'sint';
     multisampled: boolean;
   }

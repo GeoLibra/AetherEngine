@@ -120,9 +120,7 @@ describe('E2E GitHub Actions workflow', () => {
     expect(e2eJob).toContain('matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}');
     expect(e2eJob).toContain('pnpm exec playwright install --with-deps chromium');
     expect(runStep).toContain('E2E_PROJECT: ${{ matrix.project }}');
-    expect(runStep).toContain(
-      'run: xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" pnpm e2e --project="$E2E_PROJECT"'
-    );
+    expect(runStep).toContain('snapshot_args=""');
     expect(runStep).not.toContain('--project=${{ matrix.project }}');
 
     expect(uploadStep).toContain('if: always()');
@@ -131,6 +129,7 @@ describe('E2E GitHub Actions workflow', () => {
       'name: e2e-${{ matrix.project }}-${{ github.run_id }}-${{ github.run_attempt }}'
     );
     expect(uploadStep).toContain('retention-days: 7');
+    expect(uploadStep).toContain('e2e/specs/*-snapshots/*-linux.png');
   });
 
   test('manual dispatch can run all projects or one selected project', async () => {

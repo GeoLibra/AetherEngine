@@ -48,9 +48,9 @@ describe('material benchmark profiles and sampling', () => {
     expect(subject.semantic).toEqual(reference.semantic);
     expect(subject.counters).toEqual({
       constructions: 100,
-      schemaFields: 3,
+      schemaFields: 18,
       bindingGroups: 4,
-      vertexInputs: 2,
+      vertexInputs: 5,
       staleReuse: 0
     });
   });

@@ -27,10 +27,19 @@ struct ViewData {
 /// - padding0, padding1: Explicit tail padding to complete 32-byte alignment.
 struct MaterialData {
   baseColor: vec4<f32>,
+  emissiveFactor: vec3<f32>,
+  normalScale: f32,
   metallic: f32,
   roughness: f32,
-  padding0: f32,
-  padding1: f32,
+  occlusionStrength: f32,
+  alphaCutoff: f32,
+  baseColorUvSet: u32,
+  metallicRoughnessUvSet: u32,
+  normalUvSet: u32,
+  occlusionUvSet: u32,
+  emissiveUvSet: u32,
+  alphaMask: u32,
+  padding0: vec2<u32>,
 };
 
 /// Directional light source parameters.
@@ -55,12 +64,18 @@ struct StandardLitVertexOutput {
   @builtin(position) position: vec4<f32>,
   @location(0) normal: vec3<f32>,
   @location(1) worldPosition: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>,
 };
 
 /// Interpolated fragment input in world coordinate space.
 struct StandardLitFragmentInput {
   @location(0) normal: vec3<f32>,
   @location(1) worldPosition: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>,
 };
 
 // ----------------------------------------------------------------------------
@@ -70,6 +85,12 @@ struct StandardLitFragmentInput {
 @group(0) @binding(0) var<uniform> objectData: ObjectData;               // Group 0: Per-draw
 @group(1) @binding(0) var<uniform> viewData: ViewData;                   // Group 1: Per-view / Per-frame
 @group(2) @binding(0) var<uniform> materialData: MaterialData;           // Group 2: Per-material
+@group(2) @binding(1) var baseColorTexture: texture_2d<f32>;
+@group(2) @binding(2) var metallicRoughnessTexture: texture_2d<f32>;
+@group(2) @binding(3) var normalTexture: texture_2d<f32>;
+@group(2) @binding(4) var occlusionTexture: texture_2d<f32>;
+@group(2) @binding(5) var emissiveTexture: texture_2d<f32>;
+@group(2) @binding(6) var surfaceSampler: sampler;
 @group(3) @binding(0) var<uniform> lightData: DirectionalLightData;       // Group 3: Per-scene / Per-light
 
 // ----------------------------------------------------------------------------
@@ -88,18 +109,22 @@ fn fifthPower(value: f32) -> f32 {
 /// Uses alpha = roughness^2 following Disney's perceptual roughness mapping.
 fn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {
   let alpha = roughness * roughness;
-  let alphaSquared = alpha * alpha;
   let normalDotHalf = max(dot(normal, halfDirection), 0.0);
-  let denominator = normalDotHalf * normalDotHalf * (alphaSquared - 1.0) + 1.0;
-  return alphaSquared / max(3.14159265359 * denominator * denominator, 0.000001);
+  let normalCrossHalf = cross(normal, halfDirection);
+  let oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
+  let alphaNormalDotHalf = alpha * normalDotHalf;
+  let denominator = oneMinusNormalDotHalfSquared + alphaNormalDotHalf * alphaNormalDotHalf;
+  let alphaOverDenominator = alpha / denominator;
+  return alphaOverDenominator * alphaOverDenominator / 3.14159265359;
 }
 
-/// Geometric Shadowing / Masking Sub-term: Schlick-GGX for direct lighting.
-/// Direct lighting remapping: k = (roughness + 1)^2 / 8.
-fn geometrySchlickGgxDirect(normalDotDirection: f32, roughness: f32) -> f32 {
-  let shifted = roughness + 1.0;
-  let k = shifted * shifted / 8.0;
-  return normalDotDirection / max(normalDotDirection * (1.0 - k) + k, 0.000001);
+/// Exact separable Smith-GGX masking term for one direction.
+fn geometrySmithGgx(normalDotDirection: f32, alpha: f32) -> f32 {
+  let alphaSquared = alpha * alpha;
+  let root = sqrt(
+    alphaSquared + (1.0 - alphaSquared) * normalDotDirection * normalDotDirection
+  );
+  return 2.0 * normalDotDirection / (normalDotDirection + root);
 }
 
 /// Geometric Shadowing Function (G-term): Smith's method.
@@ -113,8 +138,8 @@ fn geometrySmith(
 ) -> f32 {
   let normalDotView = max(dot(normal, viewDirection), 0.0);
   let normalDotLight = max(dot(normal, lightDirection), 0.0);
-  return geometrySchlickGgxDirect(normalDotView, roughness) *
-    geometrySchlickGgxDirect(normalDotLight, roughness);
+  let alpha = roughness * roughness;
+  return geometrySmithGgx(normalDotView, alpha) * geometrySmithGgx(normalDotLight, alpha);
 }
 
 /// Fresnel Equation (F-term): Fresnel-Schlick approximation.
@@ -162,7 +187,7 @@ fn cookTorranceDirect(
 
   // Cook-Torrance specular term: (D * G * F) / (4 * (N.V) * (N.L))
   let specular = distribution * geometry * fresnel /
-    max(4.0 * normalDotView * normalDotLight, 0.000001);
+    (4.0 * normalDotView * normalDotLight);
 
   return (diffuse + specular) * radiance * normalDotLight;
 }
@@ -174,19 +199,33 @@ fn cookTorranceDirect(
 @vertex
 fn standardLitVertex(
   @location(0) position: vec3<f32>,
-  @location(1) normal: vec3<f32>
+  @location(1) normal: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>
 ) -> StandardLitVertexOutput {
   // Transform vertex position to world space
   let worldPosition = objectData.world * vec4<f32>(position, 1.0);
 
   // Transform normal vector to world space via normal matrix
   let worldNormal = normalize((objectData.normalWorld * vec4<f32>(normal, 0.0)).xyz);
+  let rawWorldTangent = (objectData.world * vec4<f32>(tangent.xyz, 0.0)).xyz;
+  let worldTangent = normalize(rawWorldTangent - worldNormal * dot(worldNormal, rawWorldTangent));
+  let world3 = mat3x3<f32>(objectData.world[0].xyz, objectData.world[1].xyz, objectData.world[2].xyz);
+  let transformSign = select(-1.0, 1.0, determinant(world3) >= 0.0);
 
   return StandardLitVertexOutput(
     viewData.viewProjection * worldPosition, // Projected clip position
     worldNormal,                             // World normal for fragment shading
-    worldPosition.xyz                        // World position for view direction calculation
+    worldPosition.xyz,
+    uv0,
+    uv1,
+    vec4<f32>(worldTangent, tangent.w * transformSign)
   );
+}
+
+fn selectUv(index: u32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
+  return select(uv0, uv1, index == 1u);
 }
 
 // ----------------------------------------------------------------------------
@@ -197,7 +236,18 @@ fn standardLitVertex(
 fn standardLitFragment(
   fragmentInput: StandardLitFragmentInput
 ) -> @location(0) vec4<f32> {
-  let normal = normalize(fragmentInput.normal);
+  let baseSample = textureSample(baseColorTexture, surfaceSampler, selectUv(materialData.baseColorUvSet, fragmentInput.uv0, fragmentInput.uv1));
+  let mrSample = textureSample(metallicRoughnessTexture, surfaceSampler, selectUv(materialData.metallicRoughnessUvSet, fragmentInput.uv0, fragmentInput.uv1));
+  let normalSample = textureSample(normalTexture, surfaceSampler, selectUv(materialData.normalUvSet, fragmentInput.uv0, fragmentInput.uv1)).xyz * 2.0 - vec3<f32>(1.0);
+  let ao = 1.0 + materialData.occlusionStrength * (textureSample(occlusionTexture, surfaceSampler, selectUv(materialData.occlusionUvSet, fragmentInput.uv0, fragmentInput.uv1)).r - 1.0);
+  let emissive = materialData.emissiveFactor * textureSample(emissiveTexture, surfaceSampler, selectUv(materialData.emissiveUvSet, fragmentInput.uv0, fragmentInput.uv1)).rgb;
+  let baseColor = materialData.baseColor * baseSample;
+  if (materialData.alphaMask != 0u && baseColor.a < materialData.alphaCutoff) { discard; }
+  let geometricNormal = normalize(fragmentInput.normal);
+  let tangent = normalize(fragmentInput.tangent.xyz);
+  let bitangent = cross(geometricNormal, tangent) * fragmentInput.tangent.w;
+  let mapped = normalize(vec3<f32>(normalSample.xy * materialData.normalScale, normalSample.z));
+  let normal = normalize(tangent * mapped.x + bitangent * mapped.y + geometricNormal * mapped.z);
   let lightDirection = -normalize(lightData.direction);
   let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
 
@@ -205,11 +255,11 @@ fn standardLitFragment(
     normal,
     viewDirection,
     lightDirection,
-    materialData.baseColor.rgb,
-    materialData.metallic,
-    materialData.roughness,
+    baseColor.rgb,
+    materialData.metallic * mrSample.b,
+    materialData.roughness * mrSample.g,
     lightData.color
   );
 
-  return vec4<f32>(lit, materialData.baseColor.a);
+  return vec4<f32>(lit * ao + emissive, baseColor.a);
 }

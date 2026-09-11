@@ -13,8 +13,8 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit.wgsl',
-    contentHash: '4741b0daa2763555b172e6f93d8cd98ee97b99c18c0c17bbd6f1e2b1c6f01bbb',
-    byteLength: 8831
+    contentHash: '606b9d74d04c6c1cbcdcd118cee40ff020a5a37d1e822ef2a1e4fe63c616c56a',
+    byteLength: 11661
   },
   entryPoints: [
     {
@@ -64,6 +64,60 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
           typeName: 'MaterialData'
         },
         {
+          group: 2,
+          binding: 1,
+          name: 'baseColorTexture',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 2,
+          binding: 2,
+          name: 'metallicRoughnessTexture',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 2,
+          binding: 3,
+          name: 'normalTexture',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 2,
+          binding: 4,
+          name: 'occlusionTexture',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 2,
+          binding: 5,
+          name: 'emissiveTexture',
+          kind: 'texture',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'texture_2d<f32>'
+        },
+        {
+          group: 2,
+          binding: 6,
+          name: 'surfaceSampler',
+          kind: 'sampler',
+          addressSpace: 'handle',
+          access: 'read',
+          typeName: 'sampler'
+        },
+        {
           group: 3,
           binding: 0,
           name: 'lightData',
@@ -102,6 +156,60 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
       addressSpace: 'uniform',
       access: 'read',
       typeName: 'MaterialData'
+    },
+    {
+      group: 2,
+      binding: 1,
+      name: 'baseColorTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 2,
+      binding: 2,
+      name: 'metallicRoughnessTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 2,
+      binding: 3,
+      name: 'normalTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 2,
+      binding: 4,
+      name: 'occlusionTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 2,
+      binding: 5,
+      name: 'emissiveTexture',
+      kind: 'texture',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'texture_2d<f32>'
+    },
+    {
+      group: 2,
+      binding: 6,
+      name: 'surfaceSampler',
+      kind: 'sampler',
+      addressSpace: 'handle',
+      access: 'read',
+      typeName: 'sampler'
     },
     {
       group: 3,
@@ -171,7 +279,7 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
       group: 2,
       binding: 0,
       name: 'materialData',
-      byteSize: 32,
+      byteSize: 80,
       alignment: 16,
       fields: [
         {
@@ -182,32 +290,95 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
           typeName: 'vec4<f32>'
         },
         {
-          path: 'metallic',
+          path: 'emissiveFactor',
           offset: 16,
+          size: 12,
+          alignment: 16,
+          typeName: 'vec3<f32>'
+        },
+        {
+          path: 'normalScale',
+          offset: 28,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
+        },
+        {
+          path: 'metallic',
+          offset: 32,
           size: 4,
           alignment: 4,
           typeName: 'f32'
         },
         {
           path: 'roughness',
-          offset: 20,
+          offset: 36,
           size: 4,
           alignment: 4,
           typeName: 'f32'
+        },
+        {
+          path: 'occlusionStrength',
+          offset: 40,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
+        },
+        {
+          path: 'alphaCutoff',
+          offset: 44,
+          size: 4,
+          alignment: 4,
+          typeName: 'f32'
+        },
+        {
+          path: 'baseColorUvSet',
+          offset: 48,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'metallicRoughnessUvSet',
+          offset: 52,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'normalUvSet',
+          offset: 56,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'occlusionUvSet',
+          offset: 60,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'emissiveUvSet',
+          offset: 64,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        },
+        {
+          path: 'alphaMask',
+          offset: 68,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
         },
         {
           path: 'padding0',
-          offset: 24,
-          size: 4,
-          alignment: 4,
-          typeName: 'f32'
-        },
-        {
-          path: 'padding1',
-          offset: 28,
-          size: 4,
-          alignment: 4,
-          typeName: 'f32'
+          offset: 72,
+          size: 8,
+          alignment: 8,
+          typeName: 'vec2<u32>'
         }
       ]
     },
@@ -259,6 +430,21 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
       location: 1,
       name: 'normal',
       typeName: 'vec3<f32>'
+    },
+    {
+      location: 2,
+      name: 'uv0',
+      typeName: 'vec2<f32>'
+    },
+    {
+      location: 3,
+      name: 'uv1',
+      typeName: 'vec2<f32>'
+    },
+    {
+      location: 4,
+      name: 'tangent',
+      typeName: 'vec4<f32>'
     }
   ],
   fragmentOutputs: [
@@ -298,10 +484,19 @@ struct ViewData {
 /// - padding0, padding1: Explicit tail padding to complete 32-byte alignment.
 struct MaterialData {
   baseColor: vec4<f32>,
+  emissiveFactor: vec3<f32>,
+  normalScale: f32,
   metallic: f32,
   roughness: f32,
-  padding0: f32,
-  padding1: f32,
+  occlusionStrength: f32,
+  alphaCutoff: f32,
+  baseColorUvSet: u32,
+  metallicRoughnessUvSet: u32,
+  normalUvSet: u32,
+  occlusionUvSet: u32,
+  emissiveUvSet: u32,
+  alphaMask: u32,
+  padding0: vec2<u32>,
 };
 
 /// Directional light source parameters.
@@ -326,12 +521,18 @@ struct StandardLitVertexOutput {
   @builtin(position) position: vec4<f32>,
   @location(0) normal: vec3<f32>,
   @location(1) worldPosition: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>,
 };
 
 /// Interpolated fragment input in world coordinate space.
 struct StandardLitFragmentInput {
   @location(0) normal: vec3<f32>,
   @location(1) worldPosition: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>,
 };
 
 // ----------------------------------------------------------------------------
@@ -341,6 +542,12 @@ struct StandardLitFragmentInput {
 @group(0) @binding(0) var<uniform> objectData: ObjectData;               // Group 0: Per-draw
 @group(1) @binding(0) var<uniform> viewData: ViewData;                   // Group 1: Per-view / Per-frame
 @group(2) @binding(0) var<uniform> materialData: MaterialData;           // Group 2: Per-material
+@group(2) @binding(1) var baseColorTexture: texture_2d<f32>;
+@group(2) @binding(2) var metallicRoughnessTexture: texture_2d<f32>;
+@group(2) @binding(3) var normalTexture: texture_2d<f32>;
+@group(2) @binding(4) var occlusionTexture: texture_2d<f32>;
+@group(2) @binding(5) var emissiveTexture: texture_2d<f32>;
+@group(2) @binding(6) var surfaceSampler: sampler;
 @group(3) @binding(0) var<uniform> lightData: DirectionalLightData;       // Group 3: Per-scene / Per-light
 
 // ----------------------------------------------------------------------------
@@ -359,18 +566,22 @@ fn fifthPower(value: f32) -> f32 {
 /// Uses alpha = roughness^2 following Disney's perceptual roughness mapping.
 fn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {
   let alpha = roughness * roughness;
-  let alphaSquared = alpha * alpha;
   let normalDotHalf = max(dot(normal, halfDirection), 0.0);
-  let denominator = normalDotHalf * normalDotHalf * (alphaSquared - 1.0) + 1.0;
-  return alphaSquared / max(3.14159265359 * denominator * denominator, 0.000001);
+  let normalCrossHalf = cross(normal, halfDirection);
+  let oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
+  let alphaNormalDotHalf = alpha * normalDotHalf;
+  let denominator = oneMinusNormalDotHalfSquared + alphaNormalDotHalf * alphaNormalDotHalf;
+  let alphaOverDenominator = alpha / denominator;
+  return alphaOverDenominator * alphaOverDenominator / 3.14159265359;
 }
 
-/// Geometric Shadowing / Masking Sub-term: Schlick-GGX for direct lighting.
-/// Direct lighting remapping: k = (roughness + 1)^2 / 8.
-fn geometrySchlickGgxDirect(normalDotDirection: f32, roughness: f32) -> f32 {
-  let shifted = roughness + 1.0;
-  let k = shifted * shifted / 8.0;
-  return normalDotDirection / max(normalDotDirection * (1.0 - k) + k, 0.000001);
+/// Exact separable Smith-GGX masking term for one direction.
+fn geometrySmithGgx(normalDotDirection: f32, alpha: f32) -> f32 {
+  let alphaSquared = alpha * alpha;
+  let root = sqrt(
+    alphaSquared + (1.0 - alphaSquared) * normalDotDirection * normalDotDirection
+  );
+  return 2.0 * normalDotDirection / (normalDotDirection + root);
 }
 
 /// Geometric Shadowing Function (G-term): Smith's method.
@@ -384,8 +595,8 @@ fn geometrySmith(
 ) -> f32 {
   let normalDotView = max(dot(normal, viewDirection), 0.0);
   let normalDotLight = max(dot(normal, lightDirection), 0.0);
-  return geometrySchlickGgxDirect(normalDotView, roughness) *
-    geometrySchlickGgxDirect(normalDotLight, roughness);
+  let alpha = roughness * roughness;
+  return geometrySmithGgx(normalDotView, alpha) * geometrySmithGgx(normalDotLight, alpha);
 }
 
 /// Fresnel Equation (F-term): Fresnel-Schlick approximation.
@@ -433,7 +644,7 @@ fn cookTorranceDirect(
 
   // Cook-Torrance specular term: (D * G * F) / (4 * (N.V) * (N.L))
   let specular = distribution * geometry * fresnel /
-    max(4.0 * normalDotView * normalDotLight, 0.000001);
+    (4.0 * normalDotView * normalDotLight);
 
   return (diffuse + specular) * radiance * normalDotLight;
 }
@@ -445,19 +656,33 @@ fn cookTorranceDirect(
 @vertex
 fn standardLitVertex(
   @location(0) position: vec3<f32>,
-  @location(1) normal: vec3<f32>
+  @location(1) normal: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>
 ) -> StandardLitVertexOutput {
   // Transform vertex position to world space
   let worldPosition = objectData.world * vec4<f32>(position, 1.0);
 
   // Transform normal vector to world space via normal matrix
   let worldNormal = normalize((objectData.normalWorld * vec4<f32>(normal, 0.0)).xyz);
+  let rawWorldTangent = (objectData.world * vec4<f32>(tangent.xyz, 0.0)).xyz;
+  let worldTangent = normalize(rawWorldTangent - worldNormal * dot(worldNormal, rawWorldTangent));
+  let world3 = mat3x3<f32>(objectData.world[0].xyz, objectData.world[1].xyz, objectData.world[2].xyz);
+  let transformSign = select(-1.0, 1.0, determinant(world3) >= 0.0);
 
   return StandardLitVertexOutput(
     viewData.viewProjection * worldPosition, // Projected clip position
     worldNormal,                             // World normal for fragment shading
-    worldPosition.xyz                        // World position for view direction calculation
+    worldPosition.xyz,
+    uv0,
+    uv1,
+    vec4<f32>(worldTangent, tangent.w * transformSign)
   );
+}
+
+fn selectUv(index: u32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
+  return select(uv0, uv1, index == 1u);
 }
 
 // ----------------------------------------------------------------------------
@@ -468,7 +693,18 @@ fn standardLitVertex(
 fn standardLitFragment(
   fragmentInput: StandardLitFragmentInput
 ) -> @location(0) vec4<f32> {
-  let normal = normalize(fragmentInput.normal);
+  let baseSample = textureSample(baseColorTexture, surfaceSampler, selectUv(materialData.baseColorUvSet, fragmentInput.uv0, fragmentInput.uv1));
+  let mrSample = textureSample(metallicRoughnessTexture, surfaceSampler, selectUv(materialData.metallicRoughnessUvSet, fragmentInput.uv0, fragmentInput.uv1));
+  let normalSample = textureSample(normalTexture, surfaceSampler, selectUv(materialData.normalUvSet, fragmentInput.uv0, fragmentInput.uv1)).xyz * 2.0 - vec3<f32>(1.0);
+  let ao = 1.0 + materialData.occlusionStrength * (textureSample(occlusionTexture, surfaceSampler, selectUv(materialData.occlusionUvSet, fragmentInput.uv0, fragmentInput.uv1)).r - 1.0);
+  let emissive = materialData.emissiveFactor * textureSample(emissiveTexture, surfaceSampler, selectUv(materialData.emissiveUvSet, fragmentInput.uv0, fragmentInput.uv1)).rgb;
+  let baseColor = materialData.baseColor * baseSample;
+  if (materialData.alphaMask != 0u && baseColor.a < materialData.alphaCutoff) { discard; }
+  let geometricNormal = normalize(fragmentInput.normal);
+  let tangent = normalize(fragmentInput.tangent.xyz);
+  let bitangent = cross(geometricNormal, tangent) * fragmentInput.tangent.w;
+  let mapped = normalize(vec3<f32>(normalSample.xy * materialData.normalScale, normalSample.z));
+  let normal = normalize(tangent * mapped.x + bitangent * mapped.y + geometricNormal * mapped.z);
   let lightDirection = -normalize(lightData.direction);
   let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
 
@@ -476,13 +712,13 @@ fn standardLitFragment(
     normal,
     viewDirection,
     lightDirection,
-    materialData.baseColor.rgb,
-    materialData.metallic,
-    materialData.roughness,
+    baseColor.rgb,
+    materialData.metallic * mrSample.b,
+    materialData.roughness * mrSample.g,
     lightData.color
   );
 
-  return vec4<f32>(lit, materialData.baseColor.a);
+  return vec4<f32>(lit * ao + emissive, baseColor.a);
 }
 `,
     glslEs300: {
@@ -503,10 +739,19 @@ struct ViewData {
 };
 struct MaterialData {
     vec4 baseColor;
+    vec3 emissiveFactor;
+    float normalScale;
     float metallic;
     float roughness;
-    float padding0_;
-    float padding1_;
+    float occlusionStrength;
+    float alphaCutoff;
+    uint baseColorUvSet;
+    uint metallicRoughnessUvSet;
+    uint normalUvSet;
+    uint occlusionUvSet;
+    uint emissiveUvSet;
+    uint alphaMask;
+    uvec2 padding0_;
 };
 struct DirectionalLightData {
     vec3 direction;
@@ -518,19 +763,38 @@ struct StandardLitVertexOutput {
     vec4 position;
     vec3 normal;
     vec3 worldPosition;
+    vec2 uv0_;
+    vec2 uv1_;
+    vec4 tangent;
 };
 struct StandardLitFragmentInput {
     vec3 normal;
     vec3 worldPosition;
+    vec2 uv0_;
+    vec2 uv1_;
+    vec4 tangent;
 };
 layout(std140) uniform ViewData_block_0Fragment { ViewData _group_1_binding_0_fs; };
 
 layout(std140) uniform MaterialData_block_1Fragment { MaterialData _group_2_binding_0_fs; };
 
+uniform highp sampler2D _group_2_binding_1_fs;
+
+uniform highp sampler2D _group_2_binding_2_fs;
+
+uniform highp sampler2D _group_2_binding_3_fs;
+
+uniform highp sampler2D _group_2_binding_4_fs;
+
+uniform highp sampler2D _group_2_binding_5_fs;
+
 layout(std140) uniform DirectionalLightData_block_2Fragment { DirectionalLightData _group_3_binding_0_fs; };
 
 smooth in vec3 _vs2fs_location0;
 smooth in vec3 _vs2fs_location1;
+smooth in vec2 _vs2fs_location2;
+smooth in vec2 _vs2fs_location3;
+smooth in vec4 _vs2fs_location4;
 layout(location = 0) out vec4 _fs2p_location0;
 
 float fifthPower(float value) {
@@ -539,25 +803,29 @@ float fifthPower(float value) {
 }
 
 float distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {
-    float alpha = (roughness * roughness);
-    float alphaSquared = (alpha * alpha);
+    float alpha_1 = (roughness * roughness);
     float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);
-    float denominator = (((normalDotHalf * normalDotHalf) * (alphaSquared - 1.0)) + 1.0);
-    return (alphaSquared / max(((3.1415927 * denominator) * denominator), 1e-6));
+    vec3 normalCrossHalf = cross(normal_1, halfDirection);
+    float oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
+    float alphaNormalDotHalf = (alpha_1 * normalDotHalf);
+    float denominator = (oneMinusNormalDotHalfSquared + (alphaNormalDotHalf * alphaNormalDotHalf));
+    float alphaOverDenominator = (alpha_1 / denominator);
+    return ((alphaOverDenominator * alphaOverDenominator) / 3.1415927);
 }
 
-float geometrySchlickGgxDirect(float normalDotDirection, float roughness_1) {
-    float shifted = (roughness_1 + 1.0);
-    float k = ((shifted * shifted) / 8.0);
-    return (normalDotDirection / max(((normalDotDirection * (1.0 - k)) + k), 1e-6));
+float geometrySmithGgx(float normalDotDirection, float alpha) {
+    float alphaSquared = (alpha * alpha);
+    float root = sqrt((alphaSquared + (((1.0 - alphaSquared) * normalDotDirection) * normalDotDirection)));
+    return ((2.0 * normalDotDirection) / (normalDotDirection + root));
 }
 
-float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_2) {
+float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_1) {
     float normalDotView = max(dot(normal_2, viewDirection), 0.0);
     float normalDotLight = max(dot(normal_2, lightDirection), 0.0);
-    float _e10 = geometrySchlickGgxDirect(normalDotView, roughness_2);
-    float _e11 = geometrySchlickGgxDirect(normalDotLight, roughness_2);
-    return (_e10 * _e11);
+    float alpha_2 = (roughness_1 * roughness_1);
+    float _e11 = geometrySmithGgx(normalDotView, alpha_2);
+    float _e12 = geometrySmithGgx(normalDotLight, alpha_2);
+    return (_e11 * _e12);
 }
 
 vec3 fresnelSchlick(float cosine, vec3 f0_) {
@@ -566,46 +834,87 @@ vec3 fresnelSchlick(float cosine, vec3 f0_) {
     return (f0_ + ((vec3(1.0) - f0_) * _e10));
 }
 
-vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_3, vec3 radiance) {
-    bool local = false;
+vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_2, vec3 radiance) {
+    bool local_1 = false;
     float normalDotLight_1 = max(dot(normal_3, lightDirection_1), 0.0);
     float normalDotView_1 = max(dot(normal_3, viewDirection_1), 0.0);
     if (!((normalDotLight_1 <= 0.0))) {
-        local = (normalDotView_1 <= 0.0);
+        local_1 = (normalDotView_1 <= 0.0);
     } else {
-        local = true;
+        local_1 = true;
     }
-    bool _e21 = local;
+    bool _e21 = local_1;
     if (_e21) {
         return vec3(0.0);
     }
     vec3 halfDirection_1 = normalize((viewDirection_1 + lightDirection_1));
     float clampedMetallic = clamp(metallic, 0.0, 1.0);
-    float clampedRoughness = clamp(roughness_3, 0.045, 1.0);
+    float clampedRoughness = clamp(roughness_2, 0.045, 1.0);
     float _e32 = distributionGgx(normal_3, halfDirection_1, clampedRoughness);
     float _e33 = geometrySmith(normal_3, viewDirection_1, lightDirection_1, clampedRoughness);
     vec3 f0_1 = ((vec3(0.04) * (1.0 - clampedMetallic)) + (baseColor * clampedMetallic));
     vec3 _e44 = fresnelSchlick(max(dot(viewDirection_1, halfDirection_1), 0.0), f0_1);
     vec3 diffuseWeight = ((vec3(1.0) - _e44) * (1.0 - clampedMetallic));
     vec3 diffuse = ((diffuseWeight * baseColor) / vec3(3.1415927));
-    vec3 specular = (((_e32 * _e33) * _e44) / vec3(max(((4.0 * normalDotView_1) * normalDotLight_1), 1e-6)));
+    vec3 specular = (((_e32 * _e33) * _e44) / vec3(((4.0 * normalDotView_1) * normalDotLight_1)));
     return (((diffuse + specular) * radiance) * normalDotLight_1);
 }
 
+vec2 selectUv(uint index, vec2 uv0_1, vec2 uv1_1) {
+    return ((index == 1u) ? uv1_1 : uv0_1);
+}
+
 void main() {
-    StandardLitFragmentInput fragmentInput = StandardLitFragmentInput(_vs2fs_location0, _vs2fs_location1);
-    vec3 normal_4 = normalize(fragmentInput.normal);
-    vec3 _e5 = _group_3_binding_0_fs.direction;
-    vec3 lightDirection_2 = -(normalize(_e5));
-    vec3 _e10 = _group_1_binding_0_fs.cameraPosition;
-    vec3 viewDirection_2 = normalize((_e10 - fragmentInput.worldPosition));
-    vec4 _e16 = _group_2_binding_0_fs.baseColor;
-    float _e20 = _group_2_binding_0_fs.metallic;
-    float _e23 = _group_2_binding_0_fs.roughness;
-    vec3 _e26 = _group_3_binding_0_fs.color;
-    vec3 _e27 = cookTorranceDirect(normal_4, viewDirection_2, lightDirection_2, _e16.xyz, _e20, _e23, _e26);
-    float _e31 = _group_2_binding_0_fs.baseColor.w;
-    _fs2p_location0 = vec4(_e27, _e31);
+    StandardLitFragmentInput fragmentInput = StandardLitFragmentInput(_vs2fs_location0, _vs2fs_location1, _vs2fs_location2, _vs2fs_location3, _vs2fs_location4);
+    bool local = false;
+    uint _e5 = _group_2_binding_0_fs.baseColorUvSet;
+    vec2 _e8 = selectUv(_e5, fragmentInput.uv0_, fragmentInput.uv1_);
+    vec4 baseSample = texture(_group_2_binding_1_fs, vec2(_e8));
+    uint _e14 = _group_2_binding_0_fs.metallicRoughnessUvSet;
+    vec2 _e17 = selectUv(_e14, fragmentInput.uv0_, fragmentInput.uv1_);
+    vec4 mrSample = texture(_group_2_binding_2_fs, vec2(_e17));
+    uint _e23 = _group_2_binding_0_fs.normalUvSet;
+    vec2 _e26 = selectUv(_e23, fragmentInput.uv0_, fragmentInput.uv1_);
+    vec4 _e27 = texture(_group_2_binding_3_fs, vec2(_e26));
+    vec3 normalSample = ((_e27.xyz * 2.0) - vec3(1.0));
+    float _e36 = _group_2_binding_0_fs.occlusionStrength;
+    uint _e41 = _group_2_binding_0_fs.occlusionUvSet;
+    vec2 _e44 = selectUv(_e41, fragmentInput.uv0_, fragmentInput.uv1_);
+    vec4 _e45 = texture(_group_2_binding_4_fs, vec2(_e44));
+    float ao = (1.0 + (_e36 * (_e45.x - 1.0)));
+    vec3 _e54 = _group_2_binding_0_fs.emissiveFactor;
+    uint _e59 = _group_2_binding_0_fs.emissiveUvSet;
+    vec2 _e62 = selectUv(_e59, fragmentInput.uv0_, fragmentInput.uv1_);
+    vec4 _e63 = texture(_group_2_binding_5_fs, vec2(_e62));
+    vec3 emissive = (_e54 * _e63.xyz);
+    vec4 _e68 = _group_2_binding_0_fs.baseColor;
+    vec4 baseColor_1 = (_e68 * baseSample);
+    uint _e72 = _group_2_binding_0_fs.alphaMask;
+    if ((_e72 != 0u)) {
+        float _e80 = _group_2_binding_0_fs.alphaCutoff;
+        local = (baseColor_1.w < _e80);
+    } else {
+        local = false;
+    }
+    bool _e83 = local;
+    if (_e83) {
+        discard;
+    }
+    vec3 geometricNormal = normalize(fragmentInput.normal);
+    vec3 tangent_1 = normalize(fragmentInput.tangent.xyz);
+    vec3 bitangent = (cross(geometricNormal, tangent_1) * fragmentInput.tangent.w);
+    float _e96 = _group_2_binding_0_fs.normalScale;
+    vec3 mapped = normalize(vec3((normalSample.xy * _e96), normalSample.z));
+    vec3 normal_4 = normalize((((tangent_1 * mapped.x) + (bitangent * mapped.y)) + (geometricNormal * mapped.z)));
+    vec3 _e112 = _group_3_binding_0_fs.direction;
+    vec3 lightDirection_2 = -(normalize(_e112));
+    vec3 _e117 = _group_1_binding_0_fs.cameraPosition;
+    vec3 viewDirection_2 = normalize((_e117 - fragmentInput.worldPosition));
+    float _e124 = _group_2_binding_0_fs.metallic;
+    float _e129 = _group_2_binding_0_fs.roughness;
+    vec3 _e134 = _group_3_binding_0_fs.color;
+    vec3 _e135 = cookTorranceDirect(normal_4, viewDirection_2, lightDirection_2, baseColor_1.xyz, (_e124 * mrSample.z), (_e129 * mrSample.y), _e134);
+    _fs2p_location0 = vec4(((_e135 * ao) + emissive), baseColor_1.w);
     return;
 }
 
@@ -634,6 +943,66 @@ void main() {
               group: 1,
               binding: 0
             }
+          },
+          {
+            kind: 'combined-sampler',
+            name: '_group_2_binding_1_fs',
+            texture: {
+              group: 2,
+              binding: 1
+            },
+            sampler: {
+              group: 2,
+              binding: 6
+            }
+          },
+          {
+            kind: 'combined-sampler',
+            name: '_group_2_binding_2_fs',
+            texture: {
+              group: 2,
+              binding: 2
+            },
+            sampler: {
+              group: 2,
+              binding: 6
+            }
+          },
+          {
+            kind: 'combined-sampler',
+            name: '_group_2_binding_3_fs',
+            texture: {
+              group: 2,
+              binding: 3
+            },
+            sampler: {
+              group: 2,
+              binding: 6
+            }
+          },
+          {
+            kind: 'combined-sampler',
+            name: '_group_2_binding_4_fs',
+            texture: {
+              group: 2,
+              binding: 4
+            },
+            sampler: {
+              group: 2,
+              binding: 6
+            }
+          },
+          {
+            kind: 'combined-sampler',
+            name: '_group_2_binding_5_fs',
+            texture: {
+              group: 2,
+              binding: 5
+            },
+            sampler: {
+              group: 2,
+              binding: 6
+            }
           }
         ]
       },
@@ -654,10 +1023,19 @@ struct ViewData {
 };
 struct MaterialData {
     vec4 baseColor;
+    vec3 emissiveFactor;
+    float normalScale;
     float metallic;
     float roughness;
-    float padding0_;
-    float padding1_;
+    float occlusionStrength;
+    float alphaCutoff;
+    uint baseColorUvSet;
+    uint metallicRoughnessUvSet;
+    uint normalUvSet;
+    uint occlusionUvSet;
+    uint emissiveUvSet;
+    uint alphaMask;
+    uvec2 padding0_;
 };
 struct DirectionalLightData {
     vec3 direction;
@@ -669,10 +1047,16 @@ struct StandardLitVertexOutput {
     vec4 position;
     vec3 normal;
     vec3 worldPosition;
+    vec2 uv0_;
+    vec2 uv1_;
+    vec4 tangent;
 };
 struct StandardLitFragmentInput {
     vec3 normal;
     vec3 worldPosition;
+    vec2 uv0_;
+    vec2 uv1_;
+    vec4 tangent;
 };
 layout(std140) uniform ObjectData_block_0Vertex { ObjectData _group_0_binding_0_vs; };
 
@@ -680,8 +1064,14 @@ layout(std140) uniform ViewData_block_1Vertex { ViewData _group_1_binding_0_vs; 
 
 layout(location = 0) in vec3 _p2vs_location0;
 layout(location = 1) in vec3 _p2vs_location1;
+layout(location = 2) in vec2 _p2vs_location2;
+layout(location = 3) in vec2 _p2vs_location3;
+layout(location = 4) in vec4 _p2vs_location4;
 smooth out vec3 _vs2fs_location0;
 smooth out vec3 _vs2fs_location1;
+smooth out vec2 _vs2fs_location2;
+smooth out vec2 _vs2fs_location3;
+smooth out vec4 _vs2fs_location4;
 
 float fifthPower(float value) {
     float squared = (value * value);
@@ -689,25 +1079,29 @@ float fifthPower(float value) {
 }
 
 float distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {
-    float alpha = (roughness * roughness);
-    float alphaSquared = (alpha * alpha);
+    float alpha_1 = (roughness * roughness);
     float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);
-    float denominator = (((normalDotHalf * normalDotHalf) * (alphaSquared - 1.0)) + 1.0);
-    return (alphaSquared / max(((3.1415927 * denominator) * denominator), 1e-6));
+    vec3 normalCrossHalf = cross(normal_1, halfDirection);
+    float oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
+    float alphaNormalDotHalf = (alpha_1 * normalDotHalf);
+    float denominator = (oneMinusNormalDotHalfSquared + (alphaNormalDotHalf * alphaNormalDotHalf));
+    float alphaOverDenominator = (alpha_1 / denominator);
+    return ((alphaOverDenominator * alphaOverDenominator) / 3.1415927);
 }
 
-float geometrySchlickGgxDirect(float normalDotDirection, float roughness_1) {
-    float shifted = (roughness_1 + 1.0);
-    float k = ((shifted * shifted) / 8.0);
-    return (normalDotDirection / max(((normalDotDirection * (1.0 - k)) + k), 1e-6));
+float geometrySmithGgx(float normalDotDirection, float alpha) {
+    float alphaSquared = (alpha * alpha);
+    float root = sqrt((alphaSquared + (((1.0 - alphaSquared) * normalDotDirection) * normalDotDirection)));
+    return ((2.0 * normalDotDirection) / (normalDotDirection + root));
 }
 
-float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_2) {
+float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_1) {
     float normalDotView = max(dot(normal_2, viewDirection), 0.0);
     float normalDotLight = max(dot(normal_2, lightDirection), 0.0);
-    float _e10 = geometrySchlickGgxDirect(normalDotView, roughness_2);
-    float _e11 = geometrySchlickGgxDirect(normalDotLight, roughness_2);
-    return (_e10 * _e11);
+    float alpha_2 = (roughness_1 * roughness_1);
+    float _e11 = geometrySmithGgx(normalDotView, alpha_2);
+    float _e12 = geometrySmithGgx(normalDotLight, alpha_2);
+    return (_e11 * _e12);
 }
 
 vec3 fresnelSchlick(float cosine, vec3 f0_) {
@@ -716,44 +1110,62 @@ vec3 fresnelSchlick(float cosine, vec3 f0_) {
     return (f0_ + ((vec3(1.0) - f0_) * _e10));
 }
 
-vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_3, vec3 radiance) {
-    bool local = false;
+vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection_1, vec3 baseColor, float metallic, float roughness_2, vec3 radiance) {
+    bool local_1 = false;
     float normalDotLight_1 = max(dot(normal_3, lightDirection_1), 0.0);
     float normalDotView_1 = max(dot(normal_3, viewDirection_1), 0.0);
     if (!((normalDotLight_1 <= 0.0))) {
-        local = (normalDotView_1 <= 0.0);
+        local_1 = (normalDotView_1 <= 0.0);
     } else {
-        local = true;
+        local_1 = true;
     }
-    bool _e21 = local;
+    bool _e21 = local_1;
     if (_e21) {
         return vec3(0.0);
     }
     vec3 halfDirection_1 = normalize((viewDirection_1 + lightDirection_1));
     float clampedMetallic = clamp(metallic, 0.0, 1.0);
-    float clampedRoughness = clamp(roughness_3, 0.045, 1.0);
+    float clampedRoughness = clamp(roughness_2, 0.045, 1.0);
     float _e32 = distributionGgx(normal_3, halfDirection_1, clampedRoughness);
     float _e33 = geometrySmith(normal_3, viewDirection_1, lightDirection_1, clampedRoughness);
     vec3 f0_1 = ((vec3(0.04) * (1.0 - clampedMetallic)) + (baseColor * clampedMetallic));
     vec3 _e44 = fresnelSchlick(max(dot(viewDirection_1, halfDirection_1), 0.0), f0_1);
     vec3 diffuseWeight = ((vec3(1.0) - _e44) * (1.0 - clampedMetallic));
     vec3 diffuse = ((diffuseWeight * baseColor) / vec3(3.1415927));
-    vec3 specular = (((_e32 * _e33) * _e44) / vec3(max(((4.0 * normalDotView_1) * normalDotLight_1), 1e-6)));
+    vec3 specular = (((_e32 * _e33) * _e44) / vec3(((4.0 * normalDotView_1) * normalDotLight_1)));
     return (((diffuse + specular) * radiance) * normalDotLight_1);
+}
+
+vec2 selectUv(uint index, vec2 uv0_1, vec2 uv1_1) {
+    return ((index == 1u) ? uv1_1 : uv0_1);
 }
 
 void main() {
     vec3 position = _p2vs_location0;
     vec3 normal = _p2vs_location1;
-    mat4x4 _e4 = _group_0_binding_0_vs.world;
-    vec4 worldPosition = (_e4 * vec4(position, 1.0));
-    mat4x4 _e10 = _group_0_binding_0_vs.normalWorld;
-    vec3 worldNormal = normalize((_e10 * vec4(normal, 0.0)).xyz);
-    mat4x4 _e18 = _group_1_binding_0_vs.viewProjection;
-    StandardLitVertexOutput _tmp_return = StandardLitVertexOutput((_e18 * worldPosition), worldNormal, worldPosition.xyz);
+    vec2 uv0_ = _p2vs_location2;
+    vec2 uv1_ = _p2vs_location3;
+    vec4 tangent = _p2vs_location4;
+    mat4x4 _e7 = _group_0_binding_0_vs.world;
+    vec4 worldPosition = (_e7 * vec4(position, 1.0));
+    mat4x4 _e13 = _group_0_binding_0_vs.normalWorld;
+    vec3 worldNormal = normalize((_e13 * vec4(normal, 0.0)).xyz);
+    mat4x4 _e21 = _group_0_binding_0_vs.world;
+    vec3 rawWorldTangent = (_e21 * vec4(tangent.xyz, 0.0)).xyz;
+    vec3 worldTangent = normalize((rawWorldTangent - (worldNormal * dot(worldNormal, rawWorldTangent))));
+    vec4 _e34 = _group_0_binding_0_vs.world[0];
+    vec4 _e39 = _group_0_binding_0_vs.world[1];
+    vec4 _e44 = _group_0_binding_0_vs.world[2];
+    mat3x3 world3_ = mat3x3(_e34.xyz, _e39.xyz, _e44.xyz);
+    float transformSign = ((determinant(world3_) >= 0.0) ? 1.0 : -1.0);
+    mat4x4 _e55 = _group_1_binding_0_vs.viewProjection;
+    StandardLitVertexOutput _tmp_return = StandardLitVertexOutput((_e55 * worldPosition), worldNormal, worldPosition.xyz, uv0_, uv1_, vec4(worldTangent, (tangent.w * transformSign)));
     gl_Position = _tmp_return.position;
     _vs2fs_location0 = _tmp_return.normal;
     _vs2fs_location1 = _tmp_return.worldPosition;
+    _vs2fs_location2 = _tmp_return.uv0_;
+    _vs2fs_location3 = _tmp_return.uv1_;
+    _vs2fs_location4 = _tmp_return.tangent;
     gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
     return;
 }
