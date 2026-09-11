@@ -276,4 +276,3 @@ void main() {
     }
   }
 });
-export const POST_COLOR_SHADER_GENERATED_ARTIFACT = POST_COLOR_SHADER_ARTIFACT;

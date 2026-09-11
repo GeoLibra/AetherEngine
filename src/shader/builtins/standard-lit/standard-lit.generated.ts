@@ -1193,4 +1193,3 @@ void main() {
     }
   }
 });
-export const STANDARD_LIT_SHADER_GENERATED_ARTIFACT = STANDARD_LIT_SHADER_ARTIFACT;

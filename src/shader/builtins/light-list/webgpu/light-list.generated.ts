@@ -354,4 +354,3 @@ fn buildLightList() {
     glslEs300: {}
   }
 });
-export const LIGHT_LIST_SHADER_GENERATED_ARTIFACT = LIGHT_LIST_SHADER_ARTIFACT;

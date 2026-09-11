@@ -12,7 +12,4 @@ export const POST_COLOR_SHADER_SOURCE: ShaderAuthoringSource = Object.freeze({
 
 export const POST_COLOR_SHADER_MODULE = POST_COLOR_SHADER_ARTIFACT.modules.wgsl;
 
-export {
-  POST_COLOR_SHADER_ARTIFACT,
-  POST_COLOR_SHADER_GENERATED_ARTIFACT
-} from './post-color.generated';
+export { POST_COLOR_SHADER_ARTIFACT } from './post-color.generated';
