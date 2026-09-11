@@ -102,7 +102,8 @@ export function createCookedArtifactWebGL2Translator(
           if (
             binding.kind !== 'uniform-buffer' &&
             binding.kind !== 'texture' &&
-            binding.kind !== 'sampler'
+            binding.kind !== 'sampler' &&
+            binding.kind !== 'comparison-sampler'
           ) {
             throw new Error(
               `Unsupported WebGL2 binding kind "${binding.kind}" in entry point "${input.entryPoint}".`
@@ -112,7 +113,9 @@ export function createCookedArtifactWebGL2Translator(
             group: binding.group,
             binding: binding.binding,
             name: binding.name,
-            kind: binding.kind as WebGL2BindingKind
+            kind: (binding.kind === 'comparison-sampler'
+              ? 'sampler'
+              : binding.kind) as WebGL2BindingKind
           });
         })
       );

@@ -11,6 +11,7 @@ import {
   runShadowSelectionReference,
   runShadowSelectionSubject
 } from './lighting-shadow/scenario';
+import { runPbrEvaluationWorkload } from './lighting-shadow/pbr-evaluation';
 import { RenderGraphBuilder } from '../src/render-graph';
 import {
   LIGHT_LIST_HEADER_WORDS,
@@ -28,6 +29,16 @@ import {
   createLightListPackingWorkload,
   packLightListBenchmarkInput
 } from './lighting-shadow/light-list-declaration';
+
+for (const count of [64, 1_024]) {
+  const expectedChecksum = count === 64 ? 'e6b48921' : 'a461aa10';
+  bench(`standard PBR direct evaluation ${count} samples`, () => {
+    expect(runPbrEvaluationWorkload(count)).toEqual({
+      evaluations: count,
+      checksum: expectedChecksum
+    });
+  });
+}
 
 for (const count of [100, 1_000, 10_000]) {
   const workload = createShadowSelectionWorkload(count);

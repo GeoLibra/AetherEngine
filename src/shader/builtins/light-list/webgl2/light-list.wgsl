@@ -60,7 +60,7 @@ fn localLightAt(receiverBase: u32, requested: u32) -> vec2u {
     let lightLayerMask = loadWord(lightWords, lightBase + 2u);
     let eligible =
       loadWord(lightWords, lightBase) != 0u &&
-      loadWord(lightWords, lightBase + 1u) != 0u &&
+      (loadWord(lightWords, lightBase + 1u) & 1u) != 0u &&
       (lightLayerMask & viewLayerMask) != 0u &&
       (lightLayerMask & loadWord(receiverWords, receiverBase + 2u)) != 0u;
     if (eligible && squaredDistanceToReceiver(lightBase, receiverBase) <= 0.0) {
@@ -123,7 +123,7 @@ fn lightListFragment(input: VertexOutput) -> FragmentOutput {
       let lightBase = HEADER_WORDS + lightIndex * LIGHT_WORDS;
       let eligible =
         loadWord(lightWords, lightBase) == 0u &&
-        loadWord(lightWords, lightBase + 1u) != 0u &&
+        (loadWord(lightWords, lightBase + 1u) & 1u) != 0u &&
         (loadWord(lightWords, lightBase + 2u) & viewLayerMask) != 0u;
       if (eligible) {
         if (directionalCount < maxDirectional) {

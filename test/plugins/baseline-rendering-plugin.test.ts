@@ -75,7 +75,7 @@ describe('baseline rendering plugin', () => {
                 illuminanceLux: 10_000,
                 enabled: true,
                 layerMask: 1,
-                castsShadow: false
+                castsShadow: true
               })
               .build();
           }
@@ -97,9 +97,9 @@ describe('baseline rendering plugin', () => {
 
     expect(app.getResource(BaselineRenderDiagnosticsResource)).toMatchObject({
       status: 'rendered',
-      renderPasses: 2,
-      indexedDrawCalls: 1,
-      indexCount: 36
+      renderPasses: 6,
+      indexedDrawCalls: 5,
+      indexCount: 180
     });
     expect(graphics.device.queue.metrics().submitted).toBe(1);
     await app.destroy();

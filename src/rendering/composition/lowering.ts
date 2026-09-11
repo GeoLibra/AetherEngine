@@ -2,10 +2,11 @@ import {
   RenderGraphBuilder,
   compileRenderGraph,
   createRenderGraphExecutionPlan,
-  type RestrictedPassContext,
+  type ColorAttachmentOptions,
+  type RasterPassContext,
   type TextureHandle
 } from '../../render-graph';
-import type { CompositionPlan, CompositionSlot } from './types';
+import type { CompositionLoadOp, CompositionPlan, CompositionSlot } from './types';
 import { ReadonlyMapSnapshot } from '../world/readonly-collection-snapshot';
 
 export interface CompositionSlotResources {
@@ -14,7 +15,7 @@ export interface CompositionSlotResources {
 }
 
 export interface CompositionSlotRecorder {
-  record(context: RestrictedPassContext, resources: CompositionSlotResources): void;
+  record(context: RasterPassContext, resources: CompositionSlotResources): void;
 }
 
 export interface LoweredCompositionPlan {
@@ -39,7 +40,7 @@ export function lowerCompositionPlan(
     if (surface === undefined || !composition.presentOwners.has(surface.id)) continue;
     const recorder = recorders.get(slot.id);
     if (recorder === undefined) throw new Error(`Composition slot "${slot.id}" has no recorder.`);
-    graph.addPass<CompositionSlotResources, RestrictedPassContext>({
+    graph.addRasterPass<CompositionSlotResources>({
       id: `composition:${composition.id}:${slot.id}`,
       setup(pass) {
         const source =
@@ -63,10 +64,10 @@ export function lowerCompositionPlan(
               }
             }
           );
-        const color = pass.writeTexture(source, 'color-attachment');
+        const color = pass.colorAttachment(0, source, colorAttachmentOptions(slot));
         currentColor.set(surface.id, color);
         if (composition.presentOwners.get(surface.id) === slot.id) {
-          pass.presentTexture(color, { kind: 'surface-frame', id: surface.id });
+          pass.present(color, { kind: 'surface-frame', id: surface.id });
         }
         return { color, slot };
       },
@@ -80,4 +81,19 @@ export function lowerCompositionPlan(
     plan: createRenderGraphExecutionPlan(snapshot, compileRenderGraph(snapshot)),
     surfaceFrameTokens: new ReadonlyMapSnapshot(surfaceFrameTokens)
   });
+}
+
+function colorAttachmentOptions(slot: CompositionSlot): ColorAttachmentOptions {
+  return Object.freeze({
+    load: mapColorLoad(slot.colorLoad),
+    store: slot.stores.color ? 'store' : 'discard',
+    clearValue: { r: 0, g: 0, b: 0, a: 0 }
+  });
+}
+
+function mapColorLoad(load: CompositionLoadOp): ColorAttachmentOptions['load'] {
+  if (load === 'discard') {
+    throw new Error('Composition slots with colorLoad "discard" cannot declare a raster pass.');
+  }
+  return load;
 }

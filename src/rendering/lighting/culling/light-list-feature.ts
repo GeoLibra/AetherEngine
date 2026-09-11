@@ -8,7 +8,7 @@ import {
   type RuntimeFeatureImplementation
 } from '../../../feature-policy';
 import { buildCpuLightLists } from './light-list';
-import type { RestrictedPassContext } from '../../../render-graph';
+import type { ComputePassContext, RasterPassContext } from '../../../render-graph';
 import type {
   CpuLightListCapacity,
   CpuLightListResult,
@@ -210,9 +210,10 @@ function contributeWebGpuLightList(
     usage: ['storage-write', 'storage-read', 'uniform', 'copy-src']
   });
   let published: WebGpuLightListBuildOutput | undefined;
-  context.graph.addPass({
+  context.graph.addComputePass({
     id: `light-list:webgpu-compute:${context.viewId}`,
     setup(pass) {
+      pass.useComputePipeline(context.recorder.pipeline);
       const input = Object.freeze({
         lights: pass.readBuffer(context.input.lights, 'storage-read'),
         receivers: pass.readBuffer(context.input.receivers, 'storage-read'),
@@ -230,7 +231,7 @@ function contributeWebGpuLightList(
       pass.sideEffect('build WebGPU light lists');
       return Object.freeze({ input, output });
     },
-    run(passContext: RestrictedPassContext, resources) {
+    run(passContext: ComputePassContext, resources) {
       record(passContext, resources.input, resources.output);
     }
   });
@@ -269,20 +270,26 @@ function contributeWebGlFragmentLightList(
   const lightIndices = createOutput('light-list-indices');
   const overflow = createOutput('light-list-overflow');
   let published: WebGlFragmentLightListBuildOutput | undefined;
-  context.graph.addPass({
+  context.graph.addRasterPass({
     id: `light-list:webgl-fragment:${context.viewId}`,
     setup(pass) {
+      pass.useRenderPipeline(context.recorder.pipeline);
       const input = Object.freeze({
         lights: pass.readTexture(context.input.lights, 'sampled'),
         receivers: pass.readTexture(context.input.receivers, 'sampled'),
         receiverCount: context.input.receiverCount
       });
+      const attachmentOptions = Object.freeze({
+        load: 'clear' as const,
+        store: 'store' as const,
+        clearValue: { r: 0, g: 0, b: 0, a: 0 }
+      });
       const output = Object.freeze({
         source: 'webgl-fragment' as const,
-        directionalIndices: pass.writeTexture(directionalIndices, 'color-attachment'),
-        headers: pass.writeTexture(headers, 'color-attachment'),
-        lightIndices: pass.writeTexture(lightIndices, 'color-attachment'),
-        overflow: pass.writeTexture(overflow, 'color-attachment'),
+        directionalIndices: pass.colorAttachment(0, directionalIndices, attachmentOptions),
+        headers: pass.colorAttachment(1, headers, attachmentOptions),
+        lightIndices: pass.colorAttachment(2, lightIndices, attachmentOptions),
+        overflow: pass.colorAttachment(3, overflow, attachmentOptions),
         capacity,
         packing
       });
@@ -290,7 +297,7 @@ function contributeWebGlFragmentLightList(
       pass.sideEffect('build WebGL2 fragment light lists');
       return Object.freeze({ input, output });
     },
-    run(passContext: RestrictedPassContext, resources) {
+    run(passContext: RasterPassContext, resources) {
       record(passContext, resources.input, resources.output);
     }
   });

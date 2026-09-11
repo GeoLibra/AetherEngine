@@ -13,8 +13,8 @@ export const LIGHT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifa
   },
   source: {
     sourceUri: 'asset://aether/builtins/light-list-webgl.wgsl',
-    contentHash: '37e4be207923e5e6fdf72b5f9c97e4170aa49fe9d646fe525f1201530e3a04a7',
-    byteLength: 6822
+    contentHash: '56c2e535249d6a59b064a30a8dcefd36565054dab588ffb002cd6c47b0bd4f54',
+    byteLength: 6836
   },
   entryPoints: [
     {
@@ -186,8 +186,8 @@ uvec2 localLightAt(uint receiverBase_1, uint requested) {
     bool loop_init = true;
     while(true) {
         if (!loop_init) {
-            uint _e75 = lightIndex_1;
-            lightIndex_1 = (_e75 + 1u);
+            uint _e77 = lightIndex_1;
+            lightIndex_1 = (_e77 + 1u);
         }
         loop_init = false;
         uint _e16 = lightIndex_1;
@@ -202,47 +202,47 @@ uvec2 localLightAt(uint receiverBase_1, uint requested) {
             uint _e28 = loadWord(_group_0_binding_0_fs, lightBase_1);
             if ((_e28 != 0u)) {
                 uint _e36 = loadWord(_group_0_binding_0_fs, (lightBase_1 + 1u));
-                local_4 = (_e36 != 0u);
+                local_4 = ((_e36 & 1u) != 0u);
             } else {
                 local_4 = false;
             }
-            bool _e40 = local_4;
-            if (_e40) {
+            bool _e42 = local_4;
+            if (_e42) {
                 local_5 = ((_e26 & _e7) != 0u);
             } else {
                 local_5 = false;
             }
-            bool _e47 = local_5;
-            if (_e47) {
-                uint _e53 = loadWord(_group_0_binding_1_fs, (receiverBase_1 + 2u));
-                local_6 = ((_e26 & _e53) != 0u);
+            bool _e49 = local_5;
+            if (_e49) {
+                uint _e55 = loadWord(_group_0_binding_1_fs, (receiverBase_1 + 2u));
+                local_6 = ((_e26 & _e55) != 0u);
             } else {
                 local_6 = false;
             }
             bool eligible = local_6;
             if (eligible) {
-                float _e61 = squaredDistanceToReceiver(lightBase_1, receiverBase_1);
-                local_7 = (_e61 <= 0.0);
+                float _e63 = squaredDistanceToReceiver(lightBase_1, receiverBase_1);
+                local_7 = (_e63 <= 0.0);
             } else {
                 local_7 = false;
             }
-            bool _e65 = local_7;
-            if (_e65) {
-                uint _e66 = accepted;
-                if ((_e66 == requested)) {
-                    uint _e68 = lightIndex_1;
-                    result = _e68;
+            bool _e67 = local_7;
+            if (_e67) {
+                uint _e68 = accepted;
+                if ((_e68 == requested)) {
+                    uint _e70 = lightIndex_1;
+                    result = _e70;
                 }
-                uint _e69 = accepted;
-                accepted = (_e69 + 1u);
-                uint _e72 = candidates;
-                candidates = (_e72 + 1u);
+                uint _e71 = accepted;
+                accepted = (_e71 + 1u);
+                uint _e74 = candidates;
+                candidates = (_e74 + 1u);
             }
         }
     }
-    uint _e78 = result;
-    uint _e79 = candidates;
-    return uvec2(_e78, _e79);
+    uint _e80 = result;
+    uint _e81 = candidates;
+    return uvec2(_e80, _e81);
 }
 
 uint localCandidateCount(uint receiverIndex) {
@@ -318,8 +318,8 @@ void main() {
         bool loop_init_2 = true;
         while(true) {
             if (!loop_init_2) {
-                uint _e101 = lightIndex;
-                lightIndex = (_e101 + 1u);
+                uint _e103 = lightIndex;
+                lightIndex = (_e103 + 1u);
             }
             loop_init_2 = false;
             uint _e46 = lightIndex;
@@ -333,100 +333,100 @@ void main() {
                 uint _e54 = loadWord(_group_0_binding_0_fs, lightBase_2);
                 if ((_e54 == 0u)) {
                     uint _e62 = loadWord(_group_0_binding_0_fs, (lightBase_2 + 1u));
-                    local = (_e62 != 0u);
+                    local = ((_e62 & 1u) != 0u);
                 } else {
                     local = false;
                 }
-                bool _e66 = local;
-                if (_e66) {
-                    uint _e72 = loadWord(_group_0_binding_0_fs, (lightBase_2 + 2u));
-                    local_1 = ((_e72 & _e41) != 0u);
+                bool _e68 = local;
+                if (_e68) {
+                    uint _e74 = loadWord(_group_0_binding_0_fs, (lightBase_2 + 2u));
+                    local_1 = ((_e74 & _e41) != 0u);
                 } else {
                     local_1 = false;
                 }
                 bool eligible_1 = local_1;
                 if (eligible_1) {
-                    uint _e78 = directionalCount;
-                    if ((_e78 < _e15)) {
+                    uint _e80 = directionalCount;
+                    if ((_e80 < _e15)) {
                         uint outputIndex = (coordinate_1.x * 4u);
-                        uint _e83 = directionalCount;
-                        if ((_e83 >= outputIndex)) {
-                            uint _e87 = directionalCount;
-                            local_2 = (_e87 < (outputIndex + 4u));
+                        uint _e85 = directionalCount;
+                        if ((_e85 >= outputIndex)) {
+                            uint _e89 = directionalCount;
+                            local_2 = (_e89 < (outputIndex + 4u));
                         } else {
                             local_2 = false;
                         }
-                        bool _e92 = local_2;
-                        if (_e92) {
-                            uint _e94 = directionalCount;
-                            uint _e97 = lightIndex;
-                            output_1.directional[(_e94 - outputIndex)] = _e97;
+                        bool _e94 = local_2;
+                        if (_e94) {
+                            uint _e96 = directionalCount;
+                            uint _e99 = lightIndex;
+                            output_1.directional[(_e96 - outputIndex)] = _e99;
                         }
                     }
-                    uint _e98 = directionalCount;
-                    directionalCount = (_e98 + 1u);
+                    uint _e100 = directionalCount;
+                    directionalCount = (_e100 + 1u);
                 }
             }
         }
         if ((coordinate_1.x == 0u)) {
-            uint _e109 = directionalCount;
-            uint _e113 = directionalCount;
-            output_1.overflow.x = (min(_e109, _e15) | ((_e113 > _e15) ? DIRECTIONAL_OVERFLOW : 0u));
+            uint _e111 = directionalCount;
+            uint _e115 = directionalCount;
+            output_1.overflow.x = (min(_e111, _e15) | ((_e115 > _e15) ? DIRECTIONAL_OVERFLOW : 0u));
         }
     }
     if ((receiverIndex_2 < _e9)) {
         uint receiverBase_3 = (HEADER_WORDS + (receiverIndex_2 * RECEIVER_WORDS));
-        uint _e125 = loadWord(_group_0_binding_1_fs, (receiverBase_3 + 1u));
-        bool enabled_1 = (_e125 != 0u);
-        uint _e131 = loadWord(_group_0_binding_1_fs, (receiverBase_3 + 2u));
-        uint _e134 = loadWord(_group_0_binding_0_fs, 1u);
-        bool visible_1 = ((_e131 & _e134) != 0u);
+        uint _e127 = loadWord(_group_0_binding_1_fs, (receiverBase_3 + 1u));
+        bool enabled_1 = (_e127 != 0u);
+        uint _e133 = loadWord(_group_0_binding_1_fs, (receiverBase_3 + 2u));
+        uint _e136 = loadWord(_group_0_binding_0_fs, 1u);
+        bool visible_1 = ((_e133 & _e136) != 0u);
         if (enabled_1) {
             local_3 = visible_1;
         } else {
             local_3 = false;
         }
-        bool _e141 = local_3;
-        if (_e141) {
+        bool _e143 = local_3;
+        if (_e143) {
             uint first = ((rowInBlock > 0u) ? ((rowInBlock - 1u) * 4u) : 0u);
-            uvec2 _e150 = localLightAt(receiverBase_3, first);
-            uint _e151 = compactOffset(receiverIndex_2, _e12, _e18);
-            uint available = (_e18 - _e151);
-            uint emittedCount = min(min(_e150.y, _e12), available);
+            uvec2 _e152 = localLightAt(receiverBase_3, first);
+            uint _e153 = compactOffset(receiverIndex_2, _e12, _e18);
+            uint available = (_e18 - _e153);
+            uint emittedCount = min(min(_e152.y, _e12), available);
             if ((rowInBlock == 0u)) {
-                uint _e160 = loadWord(_group_0_binding_1_fs, receiverBase_3);
-                output_1.header = uvec4(_e160, _e151, emittedCount, (VALID_HEADER | ((_e150.y > emittedCount) ? 1u : 0u)));
+                uint _e162 = loadWord(_group_0_binding_1_fs, receiverBase_3);
+                output_1.header = uvec4(_e162, _e153, emittedCount, (VALID_HEADER | ((_e152.y > emittedCount) ? 1u : 0u)));
             } else {
                 bool loop_init_3 = true;
                 while(true) {
                     if (!loop_init_3) {
-                        uint _e182 = lane;
-                        lane = (_e182 + 1u);
+                        uint _e184 = lane;
+                        lane = (_e184 + 1u);
                     }
                     loop_init_3 = false;
-                    uint _e171 = lane;
-                    if ((_e171 < 4u)) {
+                    uint _e173 = lane;
+                    if ((_e173 < 4u)) {
                     } else {
                         break;
                     }
                     {
-                        uint _e174 = lane;
-                        uint requested_1 = (first + _e174);
+                        uint _e176 = lane;
+                        uint requested_1 = (first + _e176);
                         if ((requested_1 < emittedCount)) {
-                            uint _e178 = lane;
-                            uvec2 _e180 = localLightAt(receiverBase_3, requested_1);
-                            output_1.indices[_e178] = _e180.x;
+                            uint _e180 = lane;
+                            uvec2 _e182 = localLightAt(receiverBase_3, requested_1);
+                            output_1.indices[_e180] = _e182.x;
                         }
                     }
                 }
             }
         }
     }
-    FragmentOutput _e185 = output_1;
-    _fs2p_location0 = _e185.directional;
-    _fs2p_location1 = _e185.header;
-    _fs2p_location2 = _e185.indices;
-    _fs2p_location3 = _e185.overflow;
+    FragmentOutput _e187 = output_1;
+    _fs2p_location0 = _e187.directional;
+    _fs2p_location1 = _e187.header;
+    _fs2p_location2 = _e187.indices;
+    _fs2p_location3 = _e187.overflow;
     return;
 }
 
@@ -499,5 +499,3 @@ void main() {
   }
 });
 export const LIGHT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT = LIGHT_LIST_WEBGL2_SHADER_ARTIFACT;
-export const LIGHT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT = LIGHT_LIST_WEBGL2_SHADER_ARTIFACT;
-export const LIGHT_LIST_WEBGL_SHADER_ARTIFACT = LIGHT_LIST_WEBGL2_SHADER_ARTIFACT;

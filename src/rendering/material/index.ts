@@ -1,4 +1,5 @@
 export * from './types';
+export * from './standard-lit-textures';
 export * from './material-bindings';
 export * from './material-binding-identity';
 export * from './material-binding-compatibility';

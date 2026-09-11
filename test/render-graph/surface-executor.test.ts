@@ -6,7 +6,7 @@ import {
   createRenderGraphExecutionPlan,
   type RenderGraphExecutionPlan
 } from '../../src/render-graph/executor';
-import type { RestrictedPassContext } from '../../src/render-graph/types';
+import type { RasterPassContext } from '../../src/render-graph/types';
 import { NullDevice } from '../../src/rhi/null/device';
 import { NullSurface } from '../../src/rhi/null/surface';
 import type { RHISurface, RHISurfaceFrame } from '../../src/rhi/contracts/surface';
@@ -58,20 +58,18 @@ function presentPlan(token: SurfaceFrameToken, throwDuringRun = false): RenderGr
       acquire: { kind: 'external-acquire', id: token.id }
     }
   });
-  graph.addPass({
+  graph.addRasterPass({
     id: 'present',
     setup(pass) {
-      const color = pass.writeTexture(output, 'color-attachment');
-      pass.presentTexture(color, token);
+      const color = pass.colorAttachment(0, output, { load: 'clear', store: 'store' });
+      pass.present(color, token);
       return { color };
     },
-    run(context: RestrictedPassContext, resources) {
+    run(context: RasterPassContext, resources) {
       if (throwDuringRun) throw new Error('encode failed');
-      context
-        .beginRaster({
-          colorAttachments: [{ texture: resources.color, loadOp: 'clear', storeOp: 'store' }]
-        })
-        .end();
+      expect(context.texture(resources.color, 'color-attachment')).toMatchObject({
+        kind: 'restricted-texture-view'
+      });
     }
   });
   return compile(graph);
@@ -139,11 +137,11 @@ describe('surface-backed RenderGraph execution', () => {
         }
       }
     );
-    graph.addPass({
+    graph.addRasterPass({
       id: 'present-incompatible',
       setup(pass) {
-        const color = pass.writeTexture(output, 'color-attachment');
-        pass.presentTexture(color, { kind: 'surface-frame', id: 'main' });
+        const color = pass.colorAttachment(0, output, { load: 'clear', store: 'store' });
+        pass.present(color, { kind: 'surface-frame', id: 'main' });
         return color;
       },
       run() {}

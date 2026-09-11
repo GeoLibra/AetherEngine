@@ -30,7 +30,7 @@ export interface WebGl2BindingLayoutPlan {
   readonly textures: readonly Readonly<
     BindingLocation & {
       textureUnit: number;
-      viewDimension: '2d' | 'cube';
+      viewDimension: '2d' | '2d-array' | 'cube';
       sampleType: 'float' | 'depth' | 'uint' | 'sint';
       multisampled: boolean;
     }

@@ -53,7 +53,7 @@ export function runHistoryDebugSubject(scale: number): RenderGraphIntegrityObser
       }
     );
     bindings.set(history, { ...acquired, registry, identity });
-    graph.addPass({
+    graph.addCopyPass({
       id: `history-${index}`,
       setup(pass) {
         pass.writeBuffer(history, 'copy-dst');
@@ -140,6 +140,7 @@ export function runRenderSystemSubject(scale: number): RenderGraphIntegrityObser
   for (let index = 0; index < scale; index++) {
     registry.add({
       id: `system-${index}`,
+      kind: 'compute',
       scope: 'global',
       ...(index === 0 ? {} : { after: [renderSystemToken(`system-${index - 1}`)] }),
       setup(pass) {

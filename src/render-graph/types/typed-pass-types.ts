@@ -16,6 +16,7 @@ import type {
   ExternalResourceState,
   GraphHandle,
   GraphResourceCreateOptions,
+  PassToken,
   TextureDescriptor,
   TextureHandle,
   TextureRange,
@@ -34,7 +35,7 @@ import type {
   RestrictedTextureView
 } from './restricted-context-types';
 
-export type PassKind = 'raster' | 'compute' | 'copy' | 'legacy-opaque';
+export type PassKind = 'raster' | 'compute' | 'copy';
 
 export interface ColorAttachmentOptions {
   readonly range?: TextureRange;
@@ -182,6 +183,7 @@ export interface GraphResourceBuilder {
   readBuffer(handle: BufferHandle, usage: BufferReadUsage, range?: BufferRange): BufferHandle;
   writeBuffer(handle: BufferHandle, usage: BufferWriteUsage, range?: BufferRange): BufferHandle;
   sideEffect(label: string): void;
+  after(pass: PassToken): void;
   exportResource(handle: GraphHandle, finalState: ExternalResourceState): void;
   present(handle: TextureHandle, surfaceFrame: SurfaceFrameToken): void;
 }

@@ -14,11 +14,7 @@ import {
   TransientResourcePool
 } from '../../src/render-graph/executor';
 import { NullDevice } from '../../src/rhi/null/device';
-import type {
-  BufferHandle,
-  GraphHandle,
-  RestrictedPassContext
-} from '../../src/render-graph/types';
+import type { BufferHandle, GraphHandle } from '../../src/render-graph/types';
 import type { RHIBuffer } from '../../src/rhi/contracts';
 
 export interface RenderGraphCompilerSemantic {
@@ -318,7 +314,7 @@ function compileSubjectFixture(workload: RenderGraphWorkload) {
     }
   );
   for (const passWorkload of workload.passes) {
-    graph.addPass({
+    graph.addComputePass({
       id: `benchmark-pass-${passWorkload.registrationIndex}`,
       setup(pass) {
         for (const access of passWorkload.accesses) {
@@ -331,9 +327,7 @@ function compileSubjectFixture(workload: RenderGraphWorkload) {
         pass.sideEffect(`benchmark-pass-${passWorkload.registrationIndex}`);
         return undefined;
       },
-      run(context: RestrictedPassContext) {
-        context.beginCompute({ label: `benchmark-pass-${passWorkload.registrationIndex}` }).end();
-      }
+      run() {}
     });
   }
   const snapshot = graph.build();

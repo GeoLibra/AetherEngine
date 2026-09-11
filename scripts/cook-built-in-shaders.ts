@@ -38,6 +38,16 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     targetBackend: 'both'
   },
   {
+    id: 'standard-shadow',
+    exportName: 'STANDARD_SHADOW_SHADER_ARTIFACT',
+    exportAliases: ['STANDARD_SHADOW_SHADER_GENERATED_ARTIFACT'],
+    sourcePath: 'src/shader/builtins/standard-shadow/standard-shadow.wgsl',
+    metadataPath: 'src/shader/builtins/standard-shadow/standard-shadow.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/standard-shadow/standard-shadow.generated.ts',
+    sourceUri: 'asset://aether/builtins/standard-shadow.wgsl',
+    targetBackend: 'both'
+  },
+  {
     id: 'post-color',
     exportName: 'POST_COLOR_SHADER_ARTIFACT',
     exportAliases: ['POST_COLOR_SHADER_GENERATED_ARTIFACT'],
@@ -70,11 +80,7 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
   {
     id: 'light-list-webgl2',
     exportName: 'LIGHT_LIST_WEBGL2_SHADER_ARTIFACT',
-    exportAliases: [
-      'LIGHT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT',
-      'LIGHT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT',
-      'LIGHT_LIST_WEBGL_SHADER_ARTIFACT'
-    ],
+    exportAliases: ['LIGHT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT'],
     sourcePath: 'src/shader/builtins/light-list/webgl2/light-list.wgsl',
     metadataPath: 'src/shader/builtins/light-list/webgl2/light-list.wgsl.meta.json',
     outputPath: 'src/shader/builtins/light-list/webgl2/light-list.generated.ts',
@@ -98,11 +104,7 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
   {
     id: 'standard-lit-list-webgl2',
     exportName: 'STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT',
-    exportAliases: [
-      'STANDARD_LIT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT',
-      'STANDARD_LIT_LIST_WEBGL_SHADER_GENERATED_ARTIFACT',
-      'STANDARD_LIT_LIST_WEBGL_SHADER_ARTIFACT'
-    ],
+    exportAliases: ['STANDARD_LIT_LIST_WEBGL2_SHADER_GENERATED_ARTIFACT'],
     sourcePaths: [
       'src/shader/builtins/standard-lit-list/webgl2/light-access.wgsl',
       'src/shader/builtins/standard-lit-list/shading.wgsl'

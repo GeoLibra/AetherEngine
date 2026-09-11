@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
-import { RenderGraphBuilder, type PassBuilder } from '../../src/render-graph/builder';
+import { RenderGraphBuilder } from '../../src/render-graph/builder';
+import type { CopyPassBuilder } from '../../src/render-graph/types';
 import type { BufferDescriptor, TextureDescriptor } from '../../src/render-graph/types';
 
 const textureDescriptor: TextureDescriptor = {
@@ -22,11 +23,11 @@ describe('render graph pass declarations', () => {
     const transientGraph = new RenderGraphBuilder();
     const transient = transientGraph.createTexture(textureDescriptor);
     expect(() =>
-      transientGraph.addPass({
+      transientGraph.addCopyPass({
         id: 'invalid-present',
         setup(pass) {
           const output = pass.writeTexture(transient, 'color-attachment');
-          pass.presentTexture(output, { kind: 'surface-frame', id: 'main' });
+          pass.present(output, { kind: 'surface-frame', id: 'main' });
           return output;
         },
         run() {}
@@ -42,11 +43,11 @@ describe('render graph pass declarations', () => {
       }
     });
     expect(() =>
-      importedGraph.addPass({
+      importedGraph.addCopyPass({
         id: 'mismatched-present',
         setup(pass) {
           const output = pass.writeTexture(imported, 'color-attachment');
-          pass.presentTexture(output, { kind: 'surface-frame', id: 'other' });
+          pass.present(output, { kind: 'surface-frame', id: 'other' });
           return output;
         },
         run() {}
@@ -58,7 +59,7 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
     const run = vi.fn();
 
-    const token = graph.addPass({
+    const token = graph.addCopyPass({
       id: 'opaque',
       setup(pass) {
         return { color: pass.writeTexture(texture, 'color-attachment') };
@@ -78,7 +79,7 @@ describe('render graph pass declarations', () => {
 
   test('records explicit side effects and semantic after edges', () => {
     const graph = new RenderGraphBuilder();
-    const first = graph.addPass({
+    const first = graph.addCopyPass({
       id: 'upload',
       setup(pass) {
         pass.sideEffect('external upload callback');
@@ -86,7 +87,7 @@ describe('render graph pass declarations', () => {
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'consume',
       setup(pass) {
         pass.after(first);
@@ -107,16 +108,16 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
     let exported = texture;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'export-old-version',
       setup(pass) {
         exported = pass.writeTexture(texture, 'color-attachment');
-        pass.exportTexture(exported, 'copy-src');
+        pass.exportResource(exported, 'copy-src');
         return { exported };
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-after-export',
       setup(pass) {
         return { newer: pass.writeTexture(exported, 'color-attachment') };
@@ -132,12 +133,12 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'duplicate-export',
         setup(pass) {
           const output = pass.writeTexture(texture, 'color-attachment');
-          pass.exportTexture(output, 'copy-src');
-          pass.exportTexture(output, 'copy-src');
+          pass.exportResource(output, 'copy-src');
+          pass.exportResource(output, 'copy-src');
           return { output };
         },
         run() {}
@@ -150,20 +151,20 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
     let first = texture;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'first-export',
       setup(pass) {
         first = pass.writeTexture(texture, 'color-attachment');
-        pass.exportTexture(first, 'copy-src');
+        pass.exportResource(first, 'copy-src');
         return { first };
       },
       run() {}
     });
-    graph.addPass({
+    graph.addCopyPass({
       id: 'final-export',
       setup(pass) {
         const final = pass.writeTexture(first, 'color-attachment');
-        pass.exportTexture(final, 'copy-src');
+        pass.exportResource(final, 'copy-src');
         return { final };
       },
       run() {}
@@ -179,10 +180,10 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'export-uninitialized',
         setup(pass) {
-          pass.exportTexture(texture, 'copy-src');
+          pass.exportResource(texture, 'copy-src');
           return { texture };
         },
         run() {}
@@ -193,9 +194,9 @@ describe('render graph pass declarations', () => {
   test('rejects declaration mutation after setup and after build begins', () => {
     const graph = new RenderGraphBuilder();
     const buffer = graph.createBuffer(bufferDescriptor);
-    let escapedPass: PassBuilder | undefined;
+    let escapedPass: CopyPassBuilder | undefined;
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'write-buffer',
       setup(pass) {
         escapedPass = pass;
@@ -207,7 +208,9 @@ describe('render graph pass declarations', () => {
     expect(() => escapedPass?.sideEffect('late mutation')).toThrow(/setup.*complete|frozen/i);
     graph.build();
     expect(() => graph.createTexture(textureDescriptor)).toThrow(/build/i);
-    expect(() => graph.addPass({ id: 'too-late', setup: () => ({}), run() {} })).toThrow(/build/i);
+    expect(() => graph.addCopyPass({ id: 'too-late', setup: () => ({}), run() {} })).toThrow(
+      /build/i
+    );
   });
 
   test('only accepts declared descriptor usages', () => {
@@ -215,7 +218,7 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'invalid-usage',
         setup(pass) {
           return { texture: pass.writeTexture(texture, 'storage-write') };
@@ -236,7 +239,7 @@ describe('render graph pass declarations', () => {
     });
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'wrong-access-mode',
         setup(pass) {
           const unsafe = pass as unknown as {
@@ -254,22 +257,22 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'failed-setup',
         setup(pass) {
           const output = pass.writeTexture(texture, 'color-attachment');
-          pass.exportTexture(output, 'copy-src');
+          pass.exportResource(output, 'copy-src');
           throw new Error('setup failed');
         },
         run() {}
       })
     ).toThrow(/setup failed/i);
 
-    graph.addPass({
+    graph.addCopyPass({
       id: 'replacement',
       setup(pass) {
         const output = pass.writeTexture(texture, 'color-attachment');
-        pass.exportTexture(output, 'copy-src');
+        pass.exportResource(output, 'copy-src');
         return { output };
       },
       run() {}
@@ -291,16 +294,16 @@ describe('render graph pass declarations', () => {
         : graph.createBuffer(bufferDescriptor);
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: `invalid-${kind}-export`,
         setup(pass) {
           if (resource.kind === 'texture') {
             const output = pass.writeTexture(resource, 'color-attachment');
-            pass.exportTexture(output, finalState);
+            pass.exportResource(output, finalState);
             return { output };
           }
           const output = pass.writeBuffer(resource, 'copy-dst');
-          pass.exportBuffer(output, finalState);
+          pass.exportResource(output, finalState);
           return { output };
         },
         run() {}
@@ -318,16 +321,16 @@ describe('render graph pass declarations', () => {
           : graph.createBuffer({ ...bufferDescriptor, usage: ['copy-dst'] });
 
       expect(() =>
-        graph.addPass({
+        graph.addCopyPass({
           id: 'undeclared-export-state',
           setup(pass) {
             if (resource.kind === 'texture') {
               const output = pass.writeTexture(resource, 'color-attachment');
-              pass.exportTexture(output, 'copy-src');
+              pass.exportResource(output, 'copy-src');
               return { output };
             }
             const output = pass.writeBuffer(resource, 'copy-dst');
-            pass.exportBuffer(output, 'copy-src');
+            pass.exportResource(output, 'copy-src');
             return { output };
           },
           run() {}
@@ -346,7 +349,7 @@ describe('render graph pass declarations', () => {
       run: original
     };
 
-    graph.addPass(descriptor);
+    graph.addCopyPass(descriptor);
     descriptor.run = replacement;
     graph.build().passes[0]?.run({});
 
@@ -359,7 +362,7 @@ describe('render graph pass declarations', () => {
     const nested = { handle: 'declaration' };
     const shell = Object.freeze({ nested });
 
-    graph.addPass({ id: 'frozen-shell', setup: () => shell, run() {} });
+    graph.addCopyPass({ id: 'frozen-shell', setup: () => shell, run() {} });
     const resources = graph.build().passes[0]?.resources as typeof shell;
 
     expect(Object.isExtensible(nested)).toBe(true);
@@ -378,7 +381,7 @@ describe('render graph pass declarations', () => {
       const graph = new RenderGraphBuilder();
 
       expect(() =>
-        graph.addPass({
+        graph.addCopyPass({
           id: 'mutable-container',
           setup: () => Object.freeze({ container }),
           run() {}
@@ -392,7 +395,7 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
 
     expect(() =>
-      graph.addPass({
+      graph.addCopyPass({
         id: 'shared-handle',
         setup: () => ({ first: texture, second: texture }),
         run() {}

@@ -56,7 +56,7 @@ fn buildLightList() {
   var flags = 0u;
   for (var lightIndex = 0u; lightIndex < lightCount; lightIndex += 1u) {
     let lightBase = HEADER_WORDS + lightIndex * LIGHT_WORDS;
-    let lightEnabled = lights.values[lightBase + 1u] != 0u;
+    let lightEnabled = (lights.values[lightBase + 1u] & 1u) != 0u;
     let visible = (lights.values[lightBase + 2u] & viewLayerMask) != 0u;
     if (lightEnabled && visible && lights.values[lightBase] == DIRECTIONAL_KIND) {
       if (directionalCount < maxDirectional) {
@@ -82,7 +82,7 @@ fn buildLightList() {
     var receiverOverflow = 0u;
     for (var lightIndex = 0u; lightIndex < lightCount; lightIndex += 1u) {
       let lightBase = HEADER_WORDS + lightIndex * LIGHT_WORDS;
-      let lightActive = lights.values[lightBase + 1u] != 0u;
+      let lightActive = (lights.values[lightBase + 1u] & 1u) != 0u;
       let lightLayerMask = lights.values[lightBase + 2u];
       let layerMatch =
         (lightLayerMask & viewLayerMask) != 0u &&

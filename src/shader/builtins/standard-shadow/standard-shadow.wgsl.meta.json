@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "entryPoints": [
+    { "name": "standardShadowVertex", "stage": "vertex" },
+    { "name": "standardShadowFragment", "stage": "fragment" }
+  ],
+  "materialBindings": [{ "binding": "shadowMaterialData", "property": "standardLitShadow" }],
+  "cookPolicy": {
+    "optimization": "performance",
+    "preserveNames": true
+  }
+}

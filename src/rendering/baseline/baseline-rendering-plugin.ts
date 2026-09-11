@@ -5,9 +5,11 @@ import type { Entity } from '../../ecs/types';
 import type { World } from '../../ecs/world';
 import { CameraRenderSource, CameraRenderExtractor, CameraViewExtraction } from '../camera';
 import {
+  buildDirectionalShadowCascades,
   DirectionalLightExtraction,
   DirectionalLightExtractor,
-  DirectionalLightSource
+  DirectionalLightSource,
+  shadowRequestKey
 } from '../lighting';
 import { prepareBaselinePostColor, type BaselinePostColorPreparation } from './baseline-post-color';
 import type { RHIResource } from '../../rhi/contracts';
@@ -288,6 +290,69 @@ class BaselineRenderingRuntime {
       lights,
       receivers
     });
+    const shadowLight = lights.find(
+      (candidate) => candidate.kind === 'directional' && candidate.castsShadow
+    );
+    const shadowDirection = shadowLight?.kind === 'directional' ? shadowLight.direction : undefined;
+    const shadow =
+      shadowLight === undefined || shadowDirection === undefined
+        ? undefined
+        : (() => {
+            const cascades = buildDirectionalShadowCascades({
+              inverseViewProjection: camera.views[0]!.inverseViewProjection,
+              near: camera.views[0]!.near,
+              far: camera.views[0]!.far,
+              shadowDistance: camera.views[0]!.far === 'infinite' ? 100 : camera.views[0]!.far,
+              lightDirection: shadowDirection,
+              cascadeCount: 4,
+              resolution: 1024
+            });
+            const requests = cascades.map((_, cascade) =>
+              Object.freeze({
+                lightEntity: shadowLight.entity,
+                viewId: view.id,
+                kind: 'directional-cascade' as const,
+                subresourceIndex: cascade,
+                resolutionClass: 1024,
+                importance: 1 - cascade / cascades.length,
+                casterRevision: sourceTick
+              })
+            );
+            const packetsByRequestKey = new Map(
+              requests.map((request, cascade) => [
+                shadowRequestKey(request),
+                Object.freeze(
+                  matching.map(({ renderEntity }) => {
+                    const transform = camera.revision.snapshot
+                      .get(renderEntity)
+                      ?.get(MeshTransformField) as RenderTransformFact | undefined;
+                    if (transform === undefined) {
+                      throw new Error('Visible baseline shadow caster is missing its transform.');
+                    }
+                    return this.standardLit!.createShadowPacket({
+                      entity: renderEntity,
+                      transform,
+                      viewProjection: cascades[cascade]!.viewProjection,
+                      cascade
+                    });
+                  })
+                )
+              ])
+            );
+            const orderedLightIndex = [...lights]
+              .sort((left, right) => left.entity - right.entity)
+              .findIndex((candidate) => candidate.entity === shadowLight.entity);
+            if (orderedLightIndex < 0) {
+              throw new Error('Baseline shadow light is absent from the packed light list.');
+            }
+            return this.standardLit!.createDirectionalShadowFrame({
+              requests: Object.freeze(requests),
+              packetsByRequestKey,
+              view: camera.views[0]!,
+              cascades,
+              lightIndex: orderedLightIndex
+            });
+          })();
     const background = this.standardLit.createBackgroundFrame(
       camera.views[0]!,
       this.backgroundOverride
@@ -300,6 +365,8 @@ class BaselineRenderingRuntime {
       environment: this.standardLit.environmentFrame,
       ...(background === undefined ? {} : { background }),
       lightList,
+      ...(shadow === undefined ? {} : { shadow }),
+      shadowReceiver: this.standardLit.disabledShadowReceiver,
       postColor: this.standardLit.postColor,
       deviceGeneration: this.options.graphics.device.generation,
       surfaceGeneration: this.options.graphics.surface.generation
@@ -386,6 +453,10 @@ class BaselineRenderingRuntime {
   private discardPrepared(): void {
     if (this.prepared?.status === 'ready') {
       for (const packet of this.prepared.packets) packet.release();
+      for (const packets of this.prepared.shadow?.packetsByRequestKey.values() ?? []) {
+        for (const packet of packets) packet.release();
+      }
+      this.prepared.shadow?.release();
       this.prepared.lightList?.release();
       this.prepared.background?.release();
     }

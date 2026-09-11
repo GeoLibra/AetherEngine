@@ -54,6 +54,7 @@ describe('RenderSystem facade', () => {
     const registry = new RenderSystemRegistry();
     registry.add({
       id: 'first',
+      kind: 'compute',
       scope: 'global',
       after: [renderSystemToken('second')],
       setup(pass) {
@@ -64,6 +65,7 @@ describe('RenderSystem facade', () => {
     });
     registry.add({
       id: 'second',
+      kind: 'compute',
       scope: 'global',
       after: [renderSystemToken('first')],
       setup(pass) {
@@ -87,6 +89,7 @@ describe('RenderSystem facade', () => {
     const registry = new RenderSystemRegistry();
     registry.add({
       id: 'guarded',
+      kind: 'compute',
       scope: 'global',
       query: guardedQuery,
       setup(pass) {
@@ -165,6 +168,7 @@ describe('RenderSystem facade', () => {
     const registry = new RenderSystemRegistry();
     registry.add({
       id: 'later',
+      kind: 'compute',
       scope: 'global',
       setup(pass) {
         pass.sideEffect('later');
@@ -174,6 +178,7 @@ describe('RenderSystem facade', () => {
     });
     registry.add({
       id: 'earlier',
+      kind: 'compute',
       scope: 'global',
       before: [renderSystemToken('later')],
       setup(pass) {
@@ -199,7 +204,7 @@ describe('RenderSystem facade', () => {
   test('lowers facade declarations to the direct graph order, edges, culling, and Debug IR', () => {
     let directOutput: BufferHandle | undefined;
     const direct = new RenderGraphBuilder();
-    const directShade = direct.addPass({
+    const directShade = direct.addCopyPass({
       id: 'shade@global',
       setup(pass) {
         directOutput = pass.writeBuffer(pass.createBuffer(BUFFER), 'copy-dst');
@@ -207,7 +212,7 @@ describe('RenderSystem facade', () => {
       },
       run() {}
     });
-    direct.addPass({
+    direct.addCopyPass({
       id: 'finish@global',
       setup(pass) {
         pass.after(directShade);
@@ -217,7 +222,7 @@ describe('RenderSystem facade', () => {
       },
       run() {}
     });
-    direct.addPass({
+    direct.addCopyPass({
       id: 'discarded@global',
       setup(pass) {
         return pass.writeBuffer(pass.createBuffer(BUFFER), 'copy-dst');
@@ -231,6 +236,7 @@ describe('RenderSystem facade', () => {
     const registry = new RenderSystemRegistry();
     registry.add({
       id: 'shade',
+      kind: 'compute',
       scope: 'global',
       setup(pass) {
         facadeOutput = pass.writeBuffer(pass.createBuffer(BUFFER), 'copy-dst');
@@ -240,6 +246,7 @@ describe('RenderSystem facade', () => {
     });
     registry.add({
       id: 'finish',
+      kind: 'compute',
       scope: 'global',
       after: [renderSystemToken('shade')],
       query,
@@ -252,6 +259,7 @@ describe('RenderSystem facade', () => {
     });
     registry.add({
       id: 'discarded',
+      kind: 'compute',
       scope: 'global',
       setup(pass) {
         return pass.writeBuffer(pass.createBuffer(BUFFER), 'copy-dst');
@@ -286,6 +294,7 @@ describe('RenderSystem facade', () => {
     const retained = (descriptor: RenderSystemDescriptor<{}, string>) => registry.add(descriptor);
     retained({
       id: 'global',
+      kind: 'compute',
       scope: 'global',
       query,
       setup(pass) {
@@ -298,6 +307,7 @@ describe('RenderSystem facade', () => {
     });
     retained({
       id: 'per-view',
+      kind: 'compute',
       scope: 'per-view',
       query,
       setup(pass) {
@@ -332,7 +342,7 @@ describe('RenderSystem facade', () => {
     );
     expect(queryCalls).toBe(2);
     expect(Object.isFrozen(first.instances[0]?.query.items)).toBe(true);
-    for (const pass of first.plan.compiled.retainedPasses) pass.run({});
+    for (const pass of first.plan.compiled.retainedPasses) pass.run({} as never);
     expect(seen).toEqual([querySnapshot, querySnapshot, querySnapshot]);
   });
 });

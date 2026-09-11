@@ -100,6 +100,21 @@ export function createBoxMeshData(options: BoxMeshOptions = {}): MeshData {
     ...faceNormal(0, 0, 1),
     ...faceNormal(0, 0, -1)
   ]);
+  const uv0 = new Float32Array(Array.from({ length: 6 }, () => [0, 0, 0, 1, 1, 1, 1, 0]).flat());
+  const uv1 = new Float32Array(uv0);
+  const tangentDirections = [
+    [0, 0, 1],
+    [0, 0, -1],
+    [1, 0, 0],
+    [1, 0, 0],
+    [1, 0, 0],
+    [-1, 0, 0]
+  ] as const;
+  const tangents = new Float32Array(
+    tangentDirections.flatMap(([xDirection, yDirection, zDirection]) =>
+      Array.from({ length: 4 }, () => [xDirection, yDirection, zDirection, 1]).flat()
+    )
+  );
   const indices = new Uint16Array(
     Array.from({ length: 6 }, (_, face) => FACE_INDICES.map((index) => index + face * 4)).flat()
   );
@@ -124,6 +139,30 @@ export function createBoxMeshData(options: BoxMeshOptions = {}): MeshData {
         offset: 0,
         count: 24,
         data: normals
+      },
+      {
+        semantic: 'TEXCOORD_0',
+        format: 'float32x2',
+        stride: 8,
+        offset: 0,
+        count: 24,
+        data: uv0
+      },
+      {
+        semantic: 'TEXCOORD_1',
+        format: 'float32x2',
+        stride: 8,
+        offset: 0,
+        count: 24,
+        data: uv1
+      },
+      {
+        semantic: 'TANGENT',
+        format: 'float32x4',
+        stride: 16,
+        offset: 0,
+        count: 24,
+        data: tangents
       }
     ],
     indices: { format: 'u16', data: indices },

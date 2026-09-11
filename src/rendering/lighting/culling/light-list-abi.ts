@@ -58,7 +58,7 @@ export function packWebGpuLightListInput(input: {
     assertUint32(light.entity, 'Light-list light entity');
     const base = LIGHT_LIST_HEADER_WORDS + index * LIGHT_LIST_LIGHT_WORDS;
     lightWords[base] = light.kind === 'directional' ? 0 : light.kind === 'point' ? 1 : 2;
-    lightWords[base + 1] = light.enabled ? 1 : 0;
+    lightWords[base + 1] = (light.enabled ? 1 : 0) | (light.castsShadow ? 2 : 0);
     lightWords[base + 2] = light.layerMask;
     lightWords[base + 3] = light.entity;
     if (light.kind === 'directional') {
