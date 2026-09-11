@@ -39,10 +39,10 @@ describe('render graph resource versions', () => {
     const texture = graph.createTexture(textureDescriptor);
     let written = texture;
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'write-whole',
       setup(pass) {
-        written = pass.writeTexture(texture, 'color-attachment');
+        written = pass.colorAttachment(0, texture, { load: 'clear', store: 'store' });
         return { written };
       },
       run() {}
@@ -64,18 +64,26 @@ describe('render graph resource versions', () => {
     let first = texture;
     let second = texture;
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'write-mip-zero',
       setup(pass) {
-        first = pass.writeTexture(texture, 'color-attachment', mipRange(0));
+        first = pass.colorAttachment(0, texture, {
+          range: mipRange(0),
+          load: 'clear',
+          store: 'store'
+        });
         return { first };
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'write-mip-one',
       setup(pass) {
-        second = pass.writeTexture(first, 'color-attachment', mipRange(1));
+        second = pass.colorAttachment(0, first, {
+          range: mipRange(1),
+          load: 'clear',
+          store: 'store'
+        });
         return { second };
       },
       run() {}
@@ -108,19 +116,31 @@ describe('render graph resource versions', () => {
     const graph = new RenderGraphBuilder();
     const texture = graph.createTexture(textureDescriptor);
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'first-child',
       setup(pass) {
-        return { first: pass.writeTexture(texture, 'color-attachment', mipRange(0)) };
+        return {
+          first: pass.colorAttachment(0, texture, {
+            range: mipRange(0),
+            load: 'clear',
+            store: 'store'
+          })
+        };
       },
       run() {}
     });
 
     expect(() =>
-      graph.addCopyPass({
+      graph.addRasterPass({
         id: 'forbidden-sibling',
         setup(pass) {
-          return { second: pass.writeTexture(texture, 'color-attachment', mipRange(1)) };
+          return {
+            second: pass.colorAttachment(0, texture, {
+              range: mipRange(1),
+              load: 'clear',
+              store: 'store'
+            })
+          };
         },
         run() {}
       })
@@ -132,10 +152,14 @@ describe('render graph resource versions', () => {
     const texture = graph.createTexture(textureDescriptor);
     let partial = texture;
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'partial-write',
       setup(pass) {
-        partial = pass.writeTexture(texture, 'color-attachment', mipRange(0));
+        partial = pass.colorAttachment(0, texture, {
+          range: mipRange(0),
+          load: 'clear',
+          store: 'store'
+        });
         return { partial };
       },
       run() {}

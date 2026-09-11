@@ -1,4 +1,9 @@
-import type { GraphPassDeclaration, RenderGraphSnapshot, SemanticEdge } from '../builder/builder';
+import {
+  validatePassAccessUsages,
+  type GraphPassDeclaration,
+  type RenderGraphSnapshot,
+  type SemanticEdge
+} from '../builder/builder';
 import {
   deriveRenderGraphHazards,
   type RenderGraphHazardCounters,
@@ -54,6 +59,9 @@ export class RenderGraphCycleError extends Error {
 
 /** Compiles one frozen authoring snapshot into the only retained pass schedule. */
 export function compileRenderGraph(snapshot: RenderGraphSnapshot): CompiledRenderGraph {
+  for (const pass of snapshot.passes) {
+    validatePassAccessUsages(pass);
+  }
   const hazardResult = deriveRenderGraphHazards(snapshot);
   const semanticEdges = snapshot.semanticEdges.map(toCompiledSemanticEdge);
   validatePassReferences(snapshot, hazardResult.edges, semanticEdges);

@@ -23,10 +23,10 @@ describe('render graph pass declarations', () => {
     const transientGraph = new RenderGraphBuilder();
     const transient = transientGraph.createTexture(textureDescriptor);
     expect(() =>
-      transientGraph.addCopyPass({
+      transientGraph.addRasterPass({
         id: 'invalid-present',
         setup(pass) {
-          const output = pass.writeTexture(transient, 'color-attachment');
+          const output = pass.colorAttachment(0, transient, { load: 'clear', store: 'store' });
           pass.present(output, { kind: 'surface-frame', id: 'main' });
           return output;
         },
@@ -43,10 +43,10 @@ describe('render graph pass declarations', () => {
       }
     });
     expect(() =>
-      importedGraph.addCopyPass({
+      importedGraph.addRasterPass({
         id: 'mismatched-present',
         setup(pass) {
-          const output = pass.writeTexture(imported, 'color-attachment');
+          const output = pass.colorAttachment(0, imported, { load: 'clear', store: 'store' });
           pass.present(output, { kind: 'surface-frame', id: 'other' });
           return output;
         },
@@ -59,10 +59,10 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
     const run = vi.fn();
 
-    const token = graph.addCopyPass({
+    const token = graph.addRasterPass({
       id: 'opaque',
       setup(pass) {
-        return { color: pass.writeTexture(texture, 'color-attachment') };
+        return { color: pass.colorAttachment(0, texture, { load: 'clear', store: 'store' }) };
       },
       run
     });
@@ -108,19 +108,19 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
     let exported = texture;
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'export-old-version',
       setup(pass) {
-        exported = pass.writeTexture(texture, 'color-attachment');
+        exported = pass.colorAttachment(0, texture, { load: 'clear', store: 'store' });
         pass.exportResource(exported, 'copy-src');
         return { exported };
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'write-after-export',
       setup(pass) {
-        return { newer: pass.writeTexture(exported, 'color-attachment') };
+        return { newer: pass.colorAttachment(0, exported, { load: 'clear', store: 'store' }) };
       },
       run() {}
     });
@@ -133,10 +133,10 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
 
     expect(() =>
-      graph.addCopyPass({
+      graph.addRasterPass({
         id: 'duplicate-export',
         setup(pass) {
-          const output = pass.writeTexture(texture, 'color-attachment');
+          const output = pass.colorAttachment(0, texture, { load: 'clear', store: 'store' });
           pass.exportResource(output, 'copy-src');
           pass.exportResource(output, 'copy-src');
           return { output };
@@ -151,19 +151,19 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
     let first = texture;
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'first-export',
       setup(pass) {
-        first = pass.writeTexture(texture, 'color-attachment');
+        first = pass.colorAttachment(0, texture, { load: 'clear', store: 'store' });
         pass.exportResource(first, 'copy-src');
         return { first };
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'final-export',
       setup(pass) {
-        const final = pass.writeTexture(first, 'color-attachment');
+        const final = pass.colorAttachment(0, first, { load: 'clear', store: 'store' });
         pass.exportResource(final, 'copy-src');
         return { final };
       },
@@ -215,13 +215,13 @@ describe('render graph pass declarations', () => {
 
   test('only accepts declared descriptor usages', () => {
     const graph = new RenderGraphBuilder();
-    const texture = graph.createTexture(textureDescriptor);
+    const buffer = graph.createBuffer({ ...bufferDescriptor, usage: ['uniform'] });
 
     expect(() =>
-      graph.addCopyPass({
+      graph.addComputePass({
         id: 'invalid-usage',
         setup(pass) {
-          return { texture: pass.writeTexture(texture, 'storage-write') };
+          return { buffer: pass.writeBuffer(buffer, 'storage-write') };
         },
         run() {}
       })
@@ -257,10 +257,10 @@ describe('render graph pass declarations', () => {
     const texture = graph.createTexture(textureDescriptor);
 
     expect(() =>
-      graph.addCopyPass({
+      graph.addRasterPass({
         id: 'failed-setup',
         setup(pass) {
-          const output = pass.writeTexture(texture, 'color-attachment');
+          const output = pass.colorAttachment(0, texture, { load: 'clear', store: 'store' });
           pass.exportResource(output, 'copy-src');
           throw new Error('setup failed');
         },
@@ -268,10 +268,10 @@ describe('render graph pass declarations', () => {
       })
     ).toThrow(/setup failed/i);
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'replacement',
       setup(pass) {
-        const output = pass.writeTexture(texture, 'color-attachment');
+        const output = pass.colorAttachment(0, texture, { load: 'clear', store: 'store' });
         pass.exportResource(output, 'copy-src');
         return { output };
       },
@@ -293,22 +293,29 @@ describe('render graph pass declarations', () => {
         ? graph.createTexture(textureDescriptor)
         : graph.createBuffer(bufferDescriptor);
 
-    expect(() =>
-      graph.addCopyPass({
-        id: `invalid-${kind}-export`,
-        setup(pass) {
-          if (resource.kind === 'texture') {
-            const output = pass.writeTexture(resource, 'color-attachment');
-            pass.exportResource(output, finalState);
+    expect(() => {
+      if (resource.kind === 'texture') {
+        graph.addRasterPass({
+          id: `invalid-${kind}-export`,
+          setup(pass) {
+            const output = pass.colorAttachment(0, resource, { load: 'clear', store: 'store' });
+            pass.exportResource(output, finalState as any);
             return { output };
-          }
-          const output = pass.writeBuffer(resource, 'copy-dst');
-          pass.exportResource(output, finalState);
-          return { output };
-        },
-        run() {}
-      })
-    ).toThrow(/export.*state/i);
+          },
+          run() {}
+        });
+      } else {
+        graph.addCopyPass({
+          id: `invalid-${kind}-export`,
+          setup(pass) {
+            const output = pass.writeBuffer(resource, 'copy-dst');
+            pass.exportResource(output, finalState as any);
+            return { output };
+          },
+          run() {}
+        });
+      }
+    }).toThrow(/export.*state/i);
   });
 
   test.each(['texture', 'buffer'] as const)(
@@ -320,22 +327,29 @@ describe('render graph pass declarations', () => {
           ? graph.createTexture({ ...textureDescriptor, usage: ['color-attachment'] })
           : graph.createBuffer({ ...bufferDescriptor, usage: ['copy-dst'] });
 
-      expect(() =>
-        graph.addCopyPass({
-          id: 'undeclared-export-state',
-          setup(pass) {
-            if (resource.kind === 'texture') {
-              const output = pass.writeTexture(resource, 'color-attachment');
+      expect(() => {
+        if (resource.kind === 'texture') {
+          graph.addRasterPass({
+            id: 'undeclared-export-state',
+            setup(pass) {
+              const output = pass.colorAttachment(0, resource, { load: 'clear', store: 'store' });
               pass.exportResource(output, 'copy-src');
               return { output };
-            }
-            const output = pass.writeBuffer(resource, 'copy-dst');
-            pass.exportResource(output, 'copy-src');
-            return { output };
-          },
-          run() {}
-        })
-      ).toThrow(/descriptor.*usage/i);
+            },
+            run() {}
+          });
+        } else {
+          graph.addCopyPass({
+            id: 'undeclared-export-state',
+            setup(pass) {
+              const output = pass.writeBuffer(resource, 'copy-dst');
+              pass.exportResource(output, 'copy-src');
+              return { output };
+            },
+            run() {}
+          });
+        }
+      }).toThrow(/descriptor.*usage/i);
     }
   );
 
@@ -401,5 +415,71 @@ describe('render graph pass declarations', () => {
         run() {}
       })
     ).not.toThrow();
+  });
+
+  describe('pass write usage validation', () => {
+    test('rejects buffer write in a raster pass', () => {
+      const graph = new RenderGraphBuilder();
+      const buffer = graph.createBuffer(bufferDescriptor);
+
+      expect(() =>
+        graph.addRasterPass({
+          id: 'raster-buffer-write',
+          setup(pass) {
+            (pass as any).writeBuffer(buffer, 'storage-write');
+            return {};
+          },
+          run() {}
+        })
+      ).toThrow(/Raster pass.*cannot declare buffer write/i);
+    });
+
+    test('rejects non-attachment texture write in a raster pass', () => {
+      const graph = new RenderGraphBuilder();
+      const texture = graph.createTexture(textureDescriptor);
+
+      expect(() =>
+        graph.addRasterPass({
+          id: 'raster-storage-write',
+          setup(pass) {
+            (pass as any).writeTexture(texture, 'storage-write');
+            return {};
+          },
+          run() {}
+        })
+      ).toThrow(/Raster pass.*cannot declare texture write usage "storage-write"/i);
+    });
+
+    test('rejects non-storage-write in a compute pass', () => {
+      const graph = new RenderGraphBuilder();
+      const texture = graph.createTexture(textureDescriptor);
+
+      expect(() =>
+        graph.addComputePass({
+          id: 'compute-attachment-write',
+          setup(pass) {
+            (pass as any).writeTexture(texture, 'color-attachment');
+            return {};
+          },
+          run() {}
+        })
+      ).toThrow(/Compute pass cannot declare texture write usage "color-attachment"/i);
+    });
+
+    test('rejects non-copy-dst write in a copy pass', () => {
+      const graph = new RenderGraphBuilder();
+      const texture = graph.createTexture(textureDescriptor);
+
+      expect(() =>
+        graph.addCopyPass({
+          id: 'copy-storage-write',
+          setup(pass) {
+            (pass as any).writeTexture(texture, 'storage-write');
+            return {};
+          },
+          run() {}
+        })
+      ).toThrow(/Copy pass cannot declare texture write usage "storage-write"/i);
+    });
   });
 });

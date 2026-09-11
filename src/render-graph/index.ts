@@ -53,10 +53,14 @@ export type {
   ComputePassBuilder,
   ComputePassContext,
   ComputePassDescriptor,
+  ComputeTextureWriteUsage,
+  ComputeBufferWriteUsage,
   CopyCommands,
   CopyPassBuilder,
   CopyPassContext,
-  CopyPassDescriptor
+  CopyPassDescriptor,
+  CopyTextureWriteUsage,
+  CopyBufferWriteUsage
 } from './types';
 export * from './builder';
 export * from './compiler';

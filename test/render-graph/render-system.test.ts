@@ -236,7 +236,7 @@ describe('RenderSystem facade', () => {
     const registry = new RenderSystemRegistry();
     registry.add({
       id: 'shade',
-      kind: 'compute',
+      kind: 'copy',
       scope: 'global',
       setup(pass) {
         facadeOutput = pass.writeBuffer(pass.createBuffer(BUFFER), 'copy-dst');
@@ -246,7 +246,7 @@ describe('RenderSystem facade', () => {
     });
     registry.add({
       id: 'finish',
-      kind: 'compute',
+      kind: 'copy',
       scope: 'global',
       after: [renderSystemToken('shade')],
       query,
@@ -259,7 +259,7 @@ describe('RenderSystem facade', () => {
     });
     registry.add({
       id: 'discarded',
-      kind: 'compute',
+      kind: 'copy',
       scope: 'global',
       setup(pass) {
         return pass.writeBuffer(pass.createBuffer(BUFFER), 'copy-dst');
@@ -344,5 +344,41 @@ describe('RenderSystem facade', () => {
     expect(Object.isFrozen(first.instances[0]?.query.items)).toBe(true);
     for (const pass of first.plan.compiled.retainedPasses) pass.run({} as never);
     expect(seen).toEqual([querySnapshot, querySnapshot, querySnapshot]);
+  });
+
+  test('lowers CopyRenderSystemDescriptor to a typed copy pass', () => {
+    const registry = new RenderSystemRegistry();
+    registry.add({
+      id: 'copy-sys',
+      kind: 'copy',
+      scope: 'global',
+      setup(pass) {
+        pass.sideEffect('copy work');
+        return {};
+      },
+      run() {}
+    });
+    const result = compileRenderSystems(registry, {
+      views: [],
+      snapshots: { query: () => querySnapshot }
+    });
+    expect(result.plan.compiled.retainedPasses[0]?.passKind).toBe('copy');
+  });
+
+  test('rejects an unsupported system kind during compilation', () => {
+    const registry = new RenderSystemRegistry();
+    registry.add({
+      id: 'invalid-kind',
+      kind: 'invalid' as any,
+      scope: 'global',
+      setup: () => ({}),
+      run: () => {}
+    });
+    expect(() =>
+      compileRenderSystems(registry, {
+        views: [],
+        snapshots: { query: () => querySnapshot }
+      })
+    ).toThrow(/Unsupported render system kind/i);
   });
 });

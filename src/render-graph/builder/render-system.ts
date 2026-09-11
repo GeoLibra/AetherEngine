@@ -8,6 +8,8 @@ import {
 import type {
   ComputePassBuilder,
   ComputePassContext,
+  CopyPassBuilder,
+  CopyPassContext,
   RasterPassBuilder,
   RasterPassContext,
   RenderGraphExecutionPlan,
@@ -70,9 +72,19 @@ export interface ComputeRenderSystemDescriptor<
   run(context: ComputePassContext, resources: TResources, query: RenderQuerySnapshot<TItem>): void;
 }
 
+export interface CopyRenderSystemDescriptor<
+  TResources,
+  TItem = never
+> extends BaseRenderSystemDescriptor<TItem> {
+  readonly kind: 'copy';
+  setup(builder: CopyPassBuilder, context: RenderSystemSetupContext<TItem>): TResources;
+  run(context: CopyPassContext, resources: TResources, query: RenderQuerySnapshot<TItem>): void;
+}
+
 export type RenderSystemDescriptor<TResources, TItem = never> =
   | RasterRenderSystemDescriptor<TResources, TItem>
-  | ComputeRenderSystemDescriptor<TResources, TItem>;
+  | ComputeRenderSystemDescriptor<TResources, TItem>
+  | CopyRenderSystemDescriptor<TResources, TItem>;
 
 export interface RenderSystemSnapshotSource {
   query(spec: RenderQuerySpec<unknown>): RenderQuerySnapshot<unknown>;
@@ -196,31 +208,53 @@ export function compileRenderSystems(
       }
     };
 
-    if (instance.descriptor.kind === 'raster') {
-      const desc = instance.descriptor;
-      graph.defineRasterPass(token, {
-        id: instance.instanceId,
-        setup(pass) {
-          applyPredecessors();
-          return desc.setup(pass, setupContext);
-        },
-        run(context, resources) {
-          desc.run(context, resources, instance.query);
-        }
-      });
-    } else {
-      // The descriptor union leaves only compute; a system must declare a command class explicitly.
-      const desc = instance.descriptor;
-      graph.defineComputePass(token, {
-        id: instance.instanceId,
-        setup(pass) {
-          applyPredecessors();
-          return desc.setup(pass, setupContext);
-        },
-        run(context, resources) {
-          desc.run(context, resources, instance.query);
-        }
-      });
+    switch (instance.descriptor.kind) {
+      case 'raster': {
+        const desc = instance.descriptor;
+        graph.defineRasterPass(token, {
+          id: instance.instanceId,
+          setup(pass) {
+            applyPredecessors();
+            return desc.setup(pass, setupContext);
+          },
+          run(context, resources) {
+            desc.run(context, resources, instance.query);
+          }
+        });
+        break;
+      }
+      case 'compute': {
+        const desc = instance.descriptor;
+        graph.defineComputePass(token, {
+          id: instance.instanceId,
+          setup(pass) {
+            applyPredecessors();
+            return desc.setup(pass, setupContext);
+          },
+          run(context, resources) {
+            desc.run(context, resources, instance.query);
+          }
+        });
+        break;
+      }
+      case 'copy': {
+        const desc = instance.descriptor;
+        graph.defineCopyPass(token, {
+          id: instance.instanceId,
+          setup(pass) {
+            applyPredecessors();
+            return desc.setup(pass, setupContext);
+          },
+          run(context, resources) {
+            desc.run(context, resources, instance.query);
+          }
+        });
+        break;
+      }
+      default: {
+        const exhaustiveCheck: never = instance.descriptor;
+        throw new Error(`Unsupported render system kind: ${(exhaustiveCheck as any)?.kind}`);
+      }
     }
   }
 

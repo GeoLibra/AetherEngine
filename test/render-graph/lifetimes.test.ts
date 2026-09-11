@@ -301,7 +301,7 @@ describe('portable logical transitions', () => {
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addComputePass({
       id: 'second-half',
       setup(pass) {
         second = pass.writeBuffer(first, 'storage-write', { offset: 64, size: 64 });

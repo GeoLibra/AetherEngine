@@ -74,10 +74,14 @@ describe('render graph hazards', () => {
     });
     let first = initial;
 
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'write-first',
       setup(pass) {
-        first = pass.writeTexture(initial, 'color-attachment', mip(0));
+        first = pass.colorAttachment(0, initial, {
+          range: mip(0),
+          load: 'clear',
+          store: 'store'
+        });
         return { first };
       },
       run() {}
@@ -96,10 +100,14 @@ describe('render graph hazards', () => {
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'write-second',
       setup(pass) {
-        const second = pass.writeTexture(first, 'color-attachment', mip(0));
+        const second = pass.colorAttachment(0, first, {
+          range: mip(0),
+          load: 'clear',
+          store: 'store'
+        });
         pass.exportResource(second, 'copy-src');
         return { second };
       },
@@ -116,6 +124,7 @@ describe('render graph hazards', () => {
         expect.objectContaining({ kind: 'waw', fromPassId: 0, toPassId: 3, version: 2 })
       ])
     );
+    expect(result.edges).not.toContainEqual(expect.objectContaining({ toPassId: 2 }));
     expect(result.edges.every((edge) => edge.range.kind === 'texture')).toBe(true);
     expect(result.counters.wholeResourceFallbacks).toBe(0);
   });
@@ -131,7 +140,7 @@ describe('render graph hazards', () => {
     });
     let written = initial;
 
-    graph.addCopyPass({
+    graph.addComputePass({
       id: 'write-buffer',
       setup(pass) {
         written = pass.writeBuffer(initial, 'storage-write', bytes(8, 16));
@@ -173,7 +182,7 @@ describe('render graph hazards', () => {
     });
     let first = initial;
 
-    graph.addCopyPass({
+    graph.addComputePass({
       id: 'write-low',
       setup(pass) {
         first = pass.writeBuffer(initial, 'storage-write', bytes(0, 16));
@@ -188,7 +197,7 @@ describe('render graph hazards', () => {
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addComputePass({
       id: 'write-high',
       setup(pass) {
         const second = pass.writeBuffer(first, 'storage-write', bytes(32, 16));
@@ -221,7 +230,7 @@ describe('render graph hazards', () => {
     });
     let written = initial;
 
-    graph.addCopyPass({
+    graph.addComputePass({
       id: 'write',
       setup(pass) {
         written = pass.writeBuffer(initial, 'storage-write', bytes(0, 16));
@@ -280,10 +289,14 @@ describe('render graph hazards', () => {
       }
     });
     let written = initial;
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'texture-writer',
       setup(pass) {
-        written = pass.writeTexture(initial, 'color-attachment', mip(0));
+        written = pass.colorAttachment(0, initial, {
+          range: mip(0),
+          load: 'clear',
+          store: 'store'
+        });
         return { written };
       },
       run() {}
@@ -323,18 +336,26 @@ describe('render graph hazards', () => {
       }
     });
     let first = initial;
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'write-mip-zero',
       setup(pass) {
-        first = pass.writeTexture(initial, 'color-attachment', mip(0));
+        first = pass.colorAttachment(0, initial, {
+          range: mip(0),
+          load: 'clear',
+          store: 'store'
+        });
         return { first };
       },
       run() {}
     });
-    graph.addCopyPass({
+    graph.addRasterPass({
       id: 'write-mip-one',
       setup(pass) {
-        const second = pass.writeTexture(first, 'color-attachment', mip(1));
+        const second = pass.colorAttachment(0, first, {
+          range: mip(1),
+          load: 'clear',
+          store: 'store'
+        });
         pass.exportResource(second, 'copy-src');
         return { second };
       },
@@ -373,7 +394,7 @@ describe('render graph hazards', () => {
         acquire: { kind: 'external-acquire', id: 'damaged-buffer-read' }
       }
     });
-    graph.addCopyPass({
+    graph.addComputePass({
       id: 'write-low-buffer',
       setup(pass) {
         return { written: pass.writeBuffer(initial, 'storage-write', bytes(0, 16)) };
