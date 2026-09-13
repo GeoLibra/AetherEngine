@@ -1,8 +1,10 @@
+import { fnv1a32Hex } from '../../../core';
 import type { CanonicalSceneDocument } from '../../canonical/types';
 import type {
   AssetDependency,
   AssetImportContext,
   AssetImporter,
+  AssetImportFailureCode,
   AssetImportResult,
   AssetProbe,
   AssetProbeContext,
@@ -10,9 +12,20 @@ import type {
   AssetSource
 } from '../../importer/types';
 import { decodeDataUri, parseGlbContainer, parseGltfJson } from './gltf-raw-parser';
-import { adaptGltfToCanonical, type GltfImportedBundle } from './gltf-scene-adapter';
+import { adaptGltfToCanonical } from './gltf-scene-adapter';
 
 const GLB_MAGIC_BYTES = [0x67, 0x6c, 0x54, 0x46]; // 'glTF' in little-endian
+
+/**
+ * Creates a unique, collision-resistant asset prefix for a glTF resource.
+ * Incorporates a human-readable stem and a 32-bit FNV-1a hash of the full URI.
+ */
+export function createGltfAssetPrefix(uri: string): string {
+  const hash = fnv1a32Hex(uri);
+  const lastSegment = uri.split(/[/]/).pop() ?? '';
+  const stem = lastSegment.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+  return stem ? `gltf:${stem}:${hash}` : `gltf:${hash}`;
+}
 
 /**
  * Standard glTF 2.0 importer implementing probe and import for .gltf and .glb assets.
@@ -163,8 +176,10 @@ export class GltfImporter implements AssetImporter<CanonicalSceneDocument> {
 
       // 2. Adapt to canonical documents
       const bundle = adaptGltfToCanonical(rawContainer, {
-        assetPrefix: uri.replace(/[^a-zA-Z0-9_-]/g, '_'),
-        resolvedImages
+        assetPrefix: createGltfAssetPrefix(uri),
+        resolvedImages,
+        budget: context.budget,
+        diagnostics: context.diagnostics
       });
 
       return Object.freeze({
@@ -190,18 +205,24 @@ export class GltfImporter implements AssetImporter<CanonicalSceneDocument> {
       if (err.message.includes('unsupported extension')) {
         return this.failureResult('unsupported-required-extension', err.message, uri, context);
       }
-      if (err.message.includes('budget exceeded')) {
+      if (
+        err.message.includes('budget exceeded') ||
+        err.message.includes('Allocation budget exceeded')
+      ) {
         return this.failureResult('size-limit-exceeded', err.message, uri, context);
       }
       if (err.message.includes('Invalid GLB magic')) {
         return this.failureResult('invalid-magic', err.message, uri, context);
+      }
+      if (err.message.includes('Unsupported UV set index')) {
+        return this.failureResult('unsupported-profile', err.message, uri, context);
       }
       return this.failureResult('unsupported-format', err.message, uri, context);
     }
   }
 
   private failureResult(
-    code: any,
+    code: AssetImportFailureCode,
     message: string,
     uri: string,
     context: AssetImportContext

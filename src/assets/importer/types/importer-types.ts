@@ -35,6 +35,7 @@ export type AssetImportFailureCode =
   | 'size-limit-exceeded'
   | 'dependency-not-found'
   | 'unsupported-required-extension'
+  | 'unsupported-profile'
   | 'cancelled';
 
 export interface AssetDiagnostic {

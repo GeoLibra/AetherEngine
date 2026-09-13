@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   GltfImporter,
   parseGlbContainer,
-  adaptGltfToCanonical
+  adaptGltfToCanonical,
+  createGltfAssetPrefix
 } from '../../src/assets/importers/gltf';
 import { InMemoryDiagnosticSink } from '../../src/assets/importer/diagnostics';
 import { StandardImportBudget } from '../../src/assets/importer/budget';
@@ -340,6 +341,226 @@ describe('GltfImporter & GLB Ingestion', () => {
     expect(result.kind).toBe('failure');
     if (result.kind === 'failure') {
       expect(result.failure.code).toBe('size-limit-exceeded');
+    }
+  });
+
+  it('generates distinct collision-free asset prefixes for similar URIs', () => {
+    const prefix1 = createGltfAssetPrefix('asset://a/b.glb');
+    const prefix2 = createGltfAssetPrefix('asset://a_b.glb');
+    expect(prefix1).not.toBe(prefix2);
+    expect(prefix1.startsWith('gltf:b:')).toBe(true);
+    expect(prefix2.startsWith('gltf:a_b:')).toBe(true);
+
+    const prefixNoStem = createGltfAssetPrefix('');
+    expect(prefixNoStem.startsWith('gltf:')).toBe(true);
+  });
+
+  it('rejects textures using TEXCOORD_2 or higher with unsupported-profile', async () => {
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      textures: [{ source: 0 }],
+      images: [
+        {
+          uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+        }
+      ],
+      materials: [
+        {
+          pbrMetallicRoughness: {
+            baseColorTexture: {
+              index: 0,
+              texCoord: 2
+            }
+          }
+        }
+      ],
+      meshes: [
+        {
+          primitives: [
+            {
+              attributes: { POSITION: 0 },
+              material: 0
+            }
+          ]
+        }
+      ],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }],
+      accessors: [
+        {
+          bufferView: 0,
+          byteOffset: 0,
+          componentType: 5126,
+          count: 3,
+          type: 'VEC3'
+        }
+      ]
+    };
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const glbData = buildGlb(json, new Uint8Array(positions.buffer));
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'model-uv2.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('unsupported-profile');
+      expect(result.failure.message).toContain('Unsupported UV set index: 2');
+    }
+  });
+
+  it('enforces memory budget before allocating typed arrays for oversized accessor count', async () => {
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            {
+              attributes: { POSITION: 0 }
+            }
+          ]
+        }
+      ],
+      accessors: [
+        {
+          componentType: 5126,
+          count: 10_000_000,
+          type: 'VEC3'
+        }
+      ]
+    };
+    const glbData = buildGlb(json);
+    const importer = new GltfImporter();
+    const budget = new StandardImportBudget({ maxAllocationBytes: 50 * 1024 * 1024 });
+    const context = createMockContext({ budget });
+
+    const result = await importer.import(
+      {
+        uri: 'huge-accessor.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('size-limit-exceeded');
+      expect(result.failure.message.toLowerCase()).toContain('budget exceeded');
+    }
+  });
+
+  it('detects and rejects accessor whose span exceeds bufferView length', async () => {
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            {
+              attributes: { POSITION: 0 }
+            }
+          ]
+        }
+      ],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 12 }],
+      accessors: [
+        {
+          bufferView: 0,
+          byteOffset: 0,
+          componentType: 5126,
+          count: 10,
+          type: 'VEC3'
+        }
+      ]
+    };
+    const positions = new Float32Array([0, 0, 0]);
+    const glbData = buildGlb(json, new Uint8Array(positions.buffer));
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'bad-span.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('unsupported-format');
+      expect(result.failure.message).toContain('exceeds bufferView byteLength');
+    }
+  });
+
+  it('computes real vertex bounds and reports warning when accessor min/max does not enclose vertices', async () => {
+    const positions = new Float32Array([-10, -20, -30, 10, 20, 30, 0, 0, 0]);
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            {
+              attributes: { POSITION: 0 }
+            }
+          ]
+        }
+      ],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: positions.byteLength }],
+      accessors: [
+        {
+          bufferView: 0,
+          byteOffset: 0,
+          componentType: 5126,
+          count: 3,
+          type: 'VEC3',
+          min: [0, 0, 0],
+          max: [1, 1, 1]
+        }
+      ]
+    };
+    const glbData = buildGlb(json, new Uint8Array(positions.buffer));
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'bounds-mismatch.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('success');
+    if (result.kind === 'success') {
+      const bundle = result.bundle as any;
+      expect(bundle).toBeDefined();
+      const mesh = bundle.meshes[0]!;
+      expect(mesh.primitives[0]!.bounds.min).toEqual([-10, -20, -30]);
+      expect(mesh.primitives[0]!.bounds.max).toEqual([10, 20, 30]);
+
+      const warnings = result.diagnostics.filter(
+        (d) => d.severity === 'warning' && d.code === 'bounds-mismatch'
+      );
+      expect(warnings.length).toBe(1);
+      expect(warnings[0]!.message).toContain('does not enclose actual vertex positions');
     }
   });
 });

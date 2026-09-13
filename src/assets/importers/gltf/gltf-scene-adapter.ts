@@ -1,4 +1,4 @@
-import { computePositionBounds3, createBounds3 } from '../../canonical/bounds';
+import { computePositionBounds3 } from '../../canonical/bounds';
 import type {
   Bounds3,
   CanonicalMeshDocument,
@@ -11,7 +11,11 @@ import type {
   CanonicalVertexAttribute,
   CanonicalVertexSemantic
 } from '../../canonical/types';
-import type { AssetImportStatistics } from '../../importer/types';
+import type {
+  AssetDiagnosticSink,
+  AssetImportBudget,
+  AssetImportStatistics
+} from '../../importer/types';
 import type { AssetId } from '../../types';
 import type { GLTFWithBuffers } from '../loaders-gl';
 import { OwnershipTransferTracker } from '../loaders-gl/transfer-ownership';
@@ -39,6 +43,8 @@ export interface ResolvedGltfImage {
 export interface GltfAdapterOptions {
   readonly assetPrefix?: string;
   readonly resolvedImages?: ReadonlyMap<number, ResolvedGltfImage>;
+  readonly budget?: AssetImportBudget;
+  readonly diagnostics?: AssetDiagnosticSink;
 }
 
 const ATTRIBUTE_SEMANTIC_MAP: Readonly<Record<string, CanonicalVertexSemantic>> = Object.freeze({
@@ -58,7 +64,7 @@ export function adaptGltfToCanonical(
   options: GltfAdapterOptions = {}
 ): GltfImportedBundle {
   const startTime = performance.now();
-  const tracker = new OwnershipTransferTracker();
+  const tracker = new OwnershipTransferTracker(options.budget);
   const prefix = options.assetPrefix ?? 'gltf.asset';
   const gltf = gltfWithBuffers.json;
   const buffers = gltfWithBuffers.buffers;
@@ -89,7 +95,13 @@ export function adaptGltfToCanonical(
         : defaultSamplerId;
 
     const transform = unpackTextureUvTransform(info);
-    const texCoord = (transform.texCoord ?? info.texCoord ?? 0) === 1 ? 1 : 0;
+    const requestedCoord = transform.texCoord ?? info.texCoord ?? 0;
+    if (requestedCoord !== 0 && requestedCoord !== 1) {
+      throw new Error(
+        `Unsupported UV set index: ${requestedCoord}. Canonical assets only support texCoord 0 and 1.`
+      );
+    }
+    const texCoord = requestedCoord as 0 | 1;
 
     return Object.freeze({
       textureId,
@@ -112,7 +124,7 @@ export function adaptGltfToCanonical(
   // 6. Extract meshes
   const rawMeshes = Array.isArray(gltf.meshes) ? gltf.meshes : [];
   const meshes = rawMeshes.map((mesh: any, meshIdx: number) =>
-    extractMesh(meshIdx, mesh, gltf, buffers, prefix, materials, tracker)
+    extractMesh(meshIdx, mesh, gltf, buffers, prefix, materials, tracker, options.diagnostics)
   );
 
   // 7. Extract nodes
@@ -161,7 +173,8 @@ function extractMesh(
   buffers: readonly Uint8Array[],
   prefix: string,
   materials: readonly CanonicalStandardPbrMaterial[],
-  tracker: OwnershipTransferTracker
+  tracker: OwnershipTransferTracker,
+  diagnostics?: AssetDiagnosticSink
 ): CanonicalMeshDocument {
   const rawPrimitives = Array.isArray(rawMesh.primitives) ? rawMesh.primitives : [];
   const primitives: CanonicalMeshPrimitive[] = [];
@@ -199,7 +212,7 @@ function extractMesh(
       indices = unpackGltfIndices(accessor, gltf, buffers, tracker);
     }
 
-    const bounds = derivePrimitiveBounds(rawPrim, gltf, positionAttr);
+    const bounds = derivePrimitiveBounds(rawPrim, gltf, positionAttr, diagnostics, meshIndex, i);
     const materialId =
       typeof rawPrim.material === 'number' && materials[rawPrim.material]
         ? materials[rawPrim.material]!.id
@@ -228,8 +241,21 @@ function extractMesh(
 function derivePrimitiveBounds(
   rawPrim: Record<string, any>,
   gltf: Record<string, any>,
-  positionAttr: CanonicalVertexAttribute
+  positionAttr: CanonicalVertexAttribute,
+  diagnostics?: AssetDiagnosticSink,
+  meshIndex?: number,
+  primIndex?: number
 ): Bounds3 {
+  const posData =
+    positionAttr.data instanceof Float32Array
+      ? positionAttr.data
+      : new Float32Array(
+          positionAttr.data.buffer,
+          positionAttr.data.byteOffset,
+          positionAttr.data.byteLength / 4
+        );
+  const computed = computePositionBounds3(posData, positionAttr.count);
+
   const posAccessorIdx = rawPrim.attributes?.POSITION;
   const accessor = posAccessorIdx !== undefined ? gltf.accessors?.[posAccessorIdx] : undefined;
 
@@ -237,15 +263,31 @@ function derivePrimitiveBounds(
     accessor?.min &&
     accessor?.max &&
     Array.isArray(accessor.min) &&
-    Array.isArray(accessor.max)
+    Array.isArray(accessor.max) &&
+    accessor.min.length >= 3 &&
+    accessor.max.length >= 3
   ) {
-    return createBounds3(
-      [accessor.min[0], accessor.min[1], accessor.min[2]],
-      [accessor.max[0], accessor.max[1], accessor.max[2]]
-    );
+    const [minX, minY, minZ] = accessor.min;
+    const [maxX, maxY, maxZ] = accessor.max;
+    const tolerance = 1e-4;
+    const encloses =
+      minX <= computed.min[0] + tolerance &&
+      minY <= computed.min[1] + tolerance &&
+      minZ <= computed.min[2] + tolerance &&
+      maxX >= computed.max[0] - tolerance &&
+      maxY >= computed.max[1] - tolerance &&
+      maxZ >= computed.max[2] - tolerance;
+
+    if (!encloses && diagnostics) {
+      diagnostics.report({
+        code: 'bounds-mismatch',
+        message: `Mesh ${meshIndex ?? 0} primitive ${primIndex ?? 0} accessor min/max does not enclose actual vertex positions. Using computed bounds.`,
+        severity: 'warning'
+      });
+    }
   }
 
-  return computePositionBounds3(positionAttr.data as Float32Array, positionAttr.count);
+  return computed;
 }
 
 function extractSamplers(
