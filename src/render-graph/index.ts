@@ -60,5 +60,8 @@ export type {
   TextureWriteUsage
 } from './types';
 export * from './builder';
+export * from './ranges';
+export * from './history';
+export * from './debug';
 export * from './compiler';
 export * from './executor';

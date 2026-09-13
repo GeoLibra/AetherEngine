@@ -3,8 +3,8 @@ import type { GraphResourceRecord } from '../builder/resources';
 import type { RenderGraphSnapshot } from '../builder/builder';
 import type { CompiledRenderGraph } from '../types';
 import type { RenderGraphExecutionPlan } from '../types';
-import type { AcquiredHistorySlot, HistoryIdentity, HistoryRegistry } from '../compiler/history';
-import type { RenderGraphHistoryDebugBinding } from '../compiler/debug-ir';
+import type { AcquiredHistorySlot, HistoryIdentity, HistoryRegistry } from '../history';
+import type { RenderGraphHistoryDebugBinding } from '../debug';
 import type {
   RHIBuffer,
   RHIDevice,
@@ -21,6 +21,7 @@ import type {
   PreparedDrawResourcesBindings,
   PreparedRenderPipelineBindings
 } from '../builder/prepared-resources';
+import { validateImportedStorageUniqueness } from './executor-physical-validation';
 
 export interface RenderGraphHistoryBinding extends AcquiredHistorySlot {
   readonly registry: HistoryRegistry;
@@ -287,6 +288,7 @@ export function resolveResources(
     validatePhysicalBinding(resource, imported, inputs.device);
     bindAllVersions(physical, resource, imported);
   }
+  validateImportedStorageUniqueness(snapshot, physical);
   return physical;
 }
 

@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
-import { partitionRasterGroups } from '../../src/render-graph/compiler/fusion/partition';
-import { SplitReasonCode } from '../../src/render-graph/compiler/fusion/constants';
+import { partitionRasterGroups, SplitReasonCode } from '../../src/render-graph/compiler/fusion';
 import type { TextureDescriptor } from '../../src/render-graph/types';
 import type { BufferDescriptor } from '../../src/render-graph/types';
 

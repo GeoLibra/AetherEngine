@@ -56,12 +56,15 @@ export type {
   AliasRejection,
   AliasDecision,
   ResourceAliasPlan,
-  HistoryInvalidationReason
+  HistoryInvalidationReason,
+  PortableResourceUsage,
+  PortableTransition
 } from './compiler-types';
 
 export type {
   SurfaceTransientScope,
   TransientAllocationDescriptor,
+  TransientResource,
   TransientResourcePoolCounters,
   RenderGraphExecutionStep,
   RenderGraphExecutionPlan

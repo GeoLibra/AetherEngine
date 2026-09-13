@@ -1,13 +1,8 @@
 import type { GraphPassDeclaration, RenderGraphSnapshot } from '../../builder/builder';
-import type { CompiledRenderGraph, TextureDescriptor } from '../../types';
+import type { CompiledRenderGraph } from '../../types';
 import { SplitReasonCode } from './constants';
-import { lowerPhysicalAttachmentOperations } from './operations';
-import {
-  compareColorSignatures,
-  compareExistingDepthSignatures,
-  extractRasterSignature,
-  type RasterPassSignature
-} from './signature';
+import { lowerPhysicalAttachmentOperations } from './attachment-lowering';
+import { extractRasterSignature } from './signature';
 import type {
   BoundarySplitRecord,
   GroupPartitionResult,
@@ -16,7 +11,9 @@ import type {
   RasterGroupPlan
 } from '../../types';
 import { GroupUsageAccumulator } from './usage';
-import { evaluateResidencyBudget, summarizeFusionResidency } from './residency';
+import { summarizeFusionResidency } from './residency';
+import { evaluateCandidateFusion } from './compatibility';
+import type { ActiveRasterGroup, MutableFusionCounters } from './types';
 
 /** Validates and normalizes pass fusion options according to RenderGraph §13.8. */
 export function validateFusionOptions(options?: PassFusionOptions): NormalizedFusionOptions {
@@ -55,27 +52,9 @@ export function validateFusionOptions(options?: PassFusionOptions): NormalizedFu
   });
 }
 
-interface ActiveRasterGroup {
-  members: GraphPassDeclaration[];
-  signature: RasterPassSignature;
-  usageAccumulator: GroupUsageAccumulator;
-  hasLateDepth: boolean;
-}
-
-interface MutableFusionCounters {
-  retainedLogicalRasterPasses: number;
-  physicalRasterGroups: number;
-  fusedBoundariesCount: number;
-  examinedCandidates: number;
-  usageComparisons: number;
-  stateRestorationCommands: number;
-  physicalLifetimeExpansionBytes: number;
-  peakTransientBytes: number;
-}
-
 /**
  * Deterministically partitions consecutive retained raster passes into physical groups
- * evaluating the 10 compatibility criteria, safe late depth proof, and residency budget.
+ * evaluating the compatibility criteria, safe late depth proof, and residency budget.
  */
 export function partitionRasterGroups(
   snapshot: RenderGraphSnapshot,
@@ -108,40 +87,14 @@ export function partitionRasterGroups(
 
   const splitRecords: BoundarySplitRecord[] = [];
   const groups: RasterGroupPlan[] = [];
-
   let activeGroup: ActiveRasterGroup | undefined;
 
-  function flushActiveGroup(): void {
+  const flushActiveGroup = (): void => {
     if (activeGroup === undefined) return;
-    const members = Object.freeze([...activeGroup.members]);
-    const passIds = Object.freeze(members.map((m) => m.token.passId));
-    const retainedIndices = Object.freeze(members.map((m) => retainedMap.get(m.token.passId)!.idx));
-    const attachments = lowerPhysicalAttachmentOperations(
-      members,
-      snapshot,
-      compiled,
-      activeGroup.hasLateDepth
-    );
-    const usageScope = activeGroup.usageAccumulator.freeze();
-    const boundaryStates = Object.freeze(
-      retainedIndices.map((retainedPassIndex, i) =>
-        Object.freeze({ passId: passIds[i]!, retainedPassIndex })
-      )
-    );
-
-    const groupPlan: RasterGroupPlan = Object.freeze({
-      groupIndex: groups.length,
-      retainedPassIndices: retainedIndices,
-      passIds,
-      attachments,
-      usageScope,
-      boundaryStates
-    });
-
-    groups.push(groupPlan);
+    groups.push(lowerRasterGroupPlan(activeGroup, groups.length, snapshot, compiled, retainedMap));
     counters.physicalRasterGroups++;
     activeGroup = undefined;
-  }
+  };
 
   let lastRasterPassId: number | undefined;
 
@@ -151,8 +104,6 @@ export function partitionRasterGroups(
     const currentPass = item.pass;
 
     // Check 1: Command class (raster only).
-    // Every retained pass is either raster or a non-raster (compute/copy) boundary; the legacy
-    // opaque command class was removed, so a non-raster pass always splits the active group.
     if (currentPass.passKind !== 'raster' || currentPass.rasterDetails === undefined) {
       if (activeGroup !== undefined) {
         const lastMember = activeGroup.members[activeGroup.members.length - 1]!;
@@ -180,16 +131,7 @@ export function partitionRasterGroups(
         );
       }
       lastRasterPassId = currentPass.token.passId;
-      // Emit singleton group
-      const signature = extractRasterSignature(currentPass, snapshot);
-      const usageAccumulator = new GroupUsageAccumulator();
-      usageAccumulator.addPass(currentPass);
-      activeGroup = {
-        members: [currentPass],
-        signature,
-        usageAccumulator,
-        hasLateDepth: false
-      };
+      activeGroup = createSingleActiveGroup(currentPass, snapshot);
       flushActiveGroup();
       continue;
     }
@@ -197,140 +139,30 @@ export function partitionRasterGroups(
 
     // If no active group, start singleton group
     if (activeGroup === undefined) {
-      const signature = extractRasterSignature(currentPass, snapshot);
-      const usageAccumulator = new GroupUsageAccumulator();
-      usageAccumulator.addPass(currentPass);
-      activeGroup = {
-        members: [currentPass],
-        signature,
-        usageAccumulator,
-        hasLateDepth: false
-      };
+      activeGroup = createSingleActiveGroup(currentPass, snapshot);
       continue;
     }
 
     counters.examinedCandidates++;
 
-    // Evaluate candidate against accumulated active group in fixed check order
     const candidateSig = extractRasterSignature(currentPass, snapshot);
     const lastMember = activeGroup.members[activeGroup.members.length - 1]!;
 
-    let splitReason: SplitReasonCode | null = null;
-    let lateDepthSafe = false;
+    const evaluation = evaluateCandidateFusion(
+      activeGroup,
+      currentPass,
+      candidateSig,
+      snapshot,
+      compiled,
+      normalizedOptions,
+      groups,
+      counters
+    );
 
-    // 1. Group pass limit
-    if (
-      normalizedOptions.maxGroupPassCount !== 'unlimited' &&
-      activeGroup.members.length + 1 > normalizedOptions.maxGroupPassCount
-    ) {
-      splitReason = SplitReasonCode.GroupPassLimit;
-    }
-
-    // 2. Color attachments compatibility
-    if (splitReason === null) {
-      splitReason = compareColorSignatures(activeGroup.signature, candidateSig);
-    }
-
-    // 3. Initial operations check (intervening clear requires boundary)
-    if (splitReason === null) {
-      for (const color of currentPass.rasterDetails.colorAttachments) {
-        if (color.options.load === 'clear') {
-          splitReason = SplitReasonCode.IntermediateClear;
-          break;
-        }
-      }
-      if (
-        splitReason === null &&
-        activeGroup.signature.depthStencil !== undefined &&
-        candidateSig.depthStencil !== undefined
-      ) {
-        if (currentPass.rasterDetails.depthStencilAttachment?.options.depthLoad === 'clear') {
-          splitReason = SplitReasonCode.IntermediateClear;
-        }
-      }
-    }
-
-    // 4. Resolve boundary (no intermediate resolve)
-    if (splitReason === null) {
-      for (const m of activeGroup.members) {
-        if (m.rasterDetails!.resolveAttachments.length > 0) {
-          splitReason = SplitReasonCode.ResolveBoundary;
-          break;
-        }
-      }
-    }
-
-    // 5. Depth/stencil compatibility and Safe Late Depth Introduction
-    if (splitReason === null) {
-      const accDepth = activeGroup.signature.depthStencil;
-      const candDepth = candidateSig.depthStencil;
-
-      if (accDepth !== undefined && candDepth !== undefined) {
-        splitReason = compareExistingDepthSignatures(accDepth, candDepth);
-      } else if (accDepth !== undefined && candDepth === undefined) {
-        // Absent trailing depth without explicit proof
-        splitReason = SplitReasonCode.DepthIntroductionUnproven;
-      } else if (accDepth === undefined && candDepth !== undefined) {
-        // Safe late depth introduction proof
-        const candDepthAttachment = currentPass.rasterDetails.depthStencilAttachment!;
-        const clearsDepth = candDepthAttachment.options.depthLoad === 'clear';
-        const depthResourceId = candDepth.resourceId;
-
-        // Condition 1: Candidate must clear depth
-        if (!clearsDepth) {
-          splitReason = SplitReasonCode.DepthIntroductionUnproven;
-        } else {
-          // Condition 2: No earlier member accesses the depth resource in any role
-          let depthAccessedEarlier = false;
-          for (const m of activeGroup.members) {
-            for (const access of m.accesses) {
-              if (access.handle.resourceId === depthResourceId) {
-                depthAccessedEarlier = true;
-                break;
-              }
-            }
-            if (depthAccessedEarlier) break;
-          }
-
-          if (depthAccessedEarlier) {
-            splitReason = SplitReasonCode.DepthIntroductionUnproven;
-          } else {
-            lateDepthSafe = true;
-          }
-        }
-      }
-    }
-
-    // 6. Usage scope check
-    if (splitReason === null) {
-      counters.usageComparisons++;
-      if (activeGroup.usageAccumulator.hasUsageConflictWith(currentPass)) {
-        splitReason = SplitReasonCode.UsageScopeConflict;
-      }
-    }
-
-    // 7. Residency budget
-    if (splitReason === null && normalizedOptions.maxResidencyExpansionBytes !== 'unlimited') {
-      const budgetResult = evaluateResidencyBudget(
-        activeGroup.members,
-        currentPass,
-        snapshot,
-        compiled,
-        normalizedOptions.maxResidencyExpansionBytes,
-        groups.map((group) =>
-          group.retainedPassIndices.map((index) => compiled.retainedPasses[index]!)
-        )
-      );
-      if (budgetResult !== null) {
-        splitReason = budgetResult;
-      }
-    }
-
-    if (splitReason === null) {
-      // Accepted! Commit candidate to active group
+    if (evaluation.splitReason === null) {
       activeGroup.members.push(currentPass);
       activeGroup.usageAccumulator.addPass(currentPass);
-      if (lateDepthSafe) {
+      if (evaluation.lateDepthSafe) {
         activeGroup.hasLateDepth = true;
         activeGroup.signature = Object.freeze({
           ...activeGroup.signature,
@@ -339,25 +171,15 @@ export function partitionRasterGroups(
       }
       counters.fusedBoundariesCount++;
     } else {
-      // Split boundary
       splitRecords.push(
         Object.freeze({
           predecessorPassId: lastMember.token.passId,
           candidatePassId: currentPass.token.passId,
-          reason: splitReason
+          reason: evaluation.splitReason
         })
       );
       flushActiveGroup();
-
-      const signature = extractRasterSignature(currentPass, snapshot);
-      const usageAccumulator = new GroupUsageAccumulator();
-      usageAccumulator.addPass(currentPass);
-      activeGroup = {
-        members: [currentPass],
-        signature,
-        usageAccumulator,
-        hasLateDepth: false
-      };
+      activeGroup = createSingleActiveGroup(currentPass, snapshot);
     }
   }
 
@@ -373,5 +195,53 @@ export function partitionRasterGroups(
     groups: Object.freeze(groups),
     splitRecords: Object.freeze(splitRecords),
     counters: Object.freeze(counters)
+  });
+}
+
+function createSingleActiveGroup(
+  pass: GraphPassDeclaration,
+  snapshot: RenderGraphSnapshot
+): ActiveRasterGroup {
+  const signature = extractRasterSignature(pass, snapshot);
+  const usageAccumulator = new GroupUsageAccumulator();
+  usageAccumulator.addPass(pass);
+  return {
+    members: [pass],
+    signature,
+    usageAccumulator,
+    hasLateDepth: false
+  };
+}
+
+function lowerRasterGroupPlan(
+  activeGroup: ActiveRasterGroup,
+  groupIndex: number,
+  snapshot: RenderGraphSnapshot,
+  compiled: CompiledRenderGraph,
+  retainedMap: ReadonlyMap<number, { pass: GraphPassDeclaration; idx: number }>
+): RasterGroupPlan {
+  const members = Object.freeze([...activeGroup.members]);
+  const passIds = Object.freeze(members.map((m) => m.token.passId));
+  const retainedIndices = Object.freeze(members.map((m) => retainedMap.get(m.token.passId)!.idx));
+  const attachments = lowerPhysicalAttachmentOperations(
+    members,
+    snapshot,
+    compiled,
+    activeGroup.hasLateDepth
+  );
+  const usageScope = activeGroup.usageAccumulator.freeze();
+  const boundaryStates = Object.freeze(
+    retainedIndices.map((retainedPassIndex, i) =>
+      Object.freeze({ passId: passIds[i]!, retainedPassIndex })
+    )
+  );
+
+  return Object.freeze({
+    groupIndex,
+    retainedPassIndices: retainedIndices,
+    passIds,
+    attachments,
+    usageScope,
+    boundaryStates
   });
 }

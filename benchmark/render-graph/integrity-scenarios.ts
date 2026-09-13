@@ -4,11 +4,8 @@ import {
   compileRenderSystems,
   renderSystemToken
 } from '../../src/render-graph/builder';
-import {
-  compileRenderGraph,
-  HistoryRegistry,
-  type HistoryIdentity
-} from '../../src/render-graph/compiler';
+import { compileRenderGraph } from '../../src/render-graph/compiler';
+import { HistoryRegistry, type HistoryIdentity } from '../../src/render-graph/history';
 import {
   RenderGraphExecutor,
   createRenderGraphExecutionPlan,

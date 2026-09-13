@@ -1,5 +1,5 @@
 import type { GraphAccess } from '../builder/builder';
-import type { TextureGraphRange } from '../compiler/ranges';
+import type { TextureGraphRange } from '../ranges';
 import type { GraphResourceRecord } from '../builder/resources';
 import { toViewDescriptor } from '../executor/executor-resource-utils';
 import type {

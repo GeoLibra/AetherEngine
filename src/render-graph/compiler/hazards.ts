@@ -7,7 +7,7 @@ import {
   rangesOverlap,
   type GraphRange,
   type TextureGraphRange
-} from './ranges';
+} from '../ranges';
 import type { GraphResourceRecord, InitializationInterval } from '../builder/resources';
 import type { BufferRange, GraphResourceKind, TextureRange } from '../types';
 import type {

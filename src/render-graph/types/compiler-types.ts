@@ -4,7 +4,7 @@ import type {
   GraphResourceKind,
   TextureUsage
 } from './render-graph-types';
-import type { GraphRange } from '../compiler/ranges';
+import type { GraphRange } from '../ranges';
 import type { GraphPassDeclaration, RenderGraphSnapshot } from '../builder/builder';
 
 export type RenderGraphHazardKind = 'raw' | 'war' | 'waw';
@@ -105,3 +105,16 @@ export type HistoryInvalidationReason =
   | 'view-destroyed'
   | 'submission-failed'
   | 'device-lost';
+
+export type PortableResourceUsage = TextureUsage | BufferUsage | ExternalResourceState | 'present';
+
+export interface PortableTransition {
+  readonly resourceId: number;
+  readonly resourceKind: GraphResourceKind;
+  readonly range: GraphRange;
+  readonly beforeUsage: PortableResourceUsage;
+  readonly afterUsage: PortableResourceUsage;
+  readonly fromPassId: number | null;
+  readonly toPassId: number;
+  readonly submissionIndex: number;
+}

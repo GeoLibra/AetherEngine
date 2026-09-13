@@ -1,8 +1,31 @@
 /**
- * Constants and reason codes for compiler-driven raster pass fusion.
+ * Reason codes for compiler-driven raster pass fusion boundaries.
+ *
+ * Categorized by verification nature:
+ *
+ * ### Category A: Stateless / Immediate Criteria (Pairwise or Local Pass Inspection)
+ * Fast, stateless checks between the candidate pass and the active group signature or pass kinds:
+ * - `OptimizationDisabled`: Pass fusion is explicitly disabled by options.
+ * - `NonRasterBoundary`: Pass is a non-raster pass (compute/copy), which cannot share a raster encoder.
+ * - `AttachmentIdentityMismatch`: Color or depth attachment resource identities do not match.
+ * - `AttachmentViewMismatch`: Texture mip level, array layer, or aspect range differs.
+ * - `AttachmentLayoutMismatch`: Texture sample counts, dimensions, or pixel formats differ.
+ * - `IntermediateClear`: Intermediate pass requests a clear loadOp, which would erase prior draws.
+ * - `ResolveBoundary`: Group members contain MSAA resolves which must conclude at pass boundaries.
+ * - `PipelineAttachmentMismatch`: Static pipeline attachment layout incompatible with active pass.
+ * - `SynchronizationBoundary`: Explicit sync edge or barrier separating the passes.
+ * - `InstrumentationBoundary`: Debug marker or profiling boundary prohibiting fusion.
+ * - `GroupPassLimit`: Enforced maximum limit of logical passes permitted in a single group.
+ *
+ * ### Category B: Cumulative State & Budget Criteria (Multi-Pass History Inspection)
+ * Stateful checks requiring accumulated state machine verification across all earlier group members:
+ * - `UsageScopeConflict`: Intra-pass resource role hazard (e.g. attachment vs sampled/storage-read, or buffer RAW/WAR).
+ * - `DepthIntroductionUnproven`: Late depth introduction fails safe proof (earlier member accessed depth resource or lacks clear).
+ * - `ResidencyBudget`: Physical lifetime widening causes transient memory footprint to exceed residency budget.
+ * - `ResidencyEstimateUnavailable`: Required memory footprint estimation metrics unavailable for transient textures.
  */
-
 export const SplitReasonCode = Object.freeze({
+  // Category A: Stateless / Immediate Pass & Signature Checks
   OptimizationDisabled: 'optimization-disabled',
   NonRasterBoundary: 'non-raster-boundary',
   AttachmentIdentityMismatch: 'attachment-identity-mismatch',
@@ -10,13 +33,15 @@ export const SplitReasonCode = Object.freeze({
   AttachmentLayoutMismatch: 'attachment-layout-mismatch',
   IntermediateClear: 'intermediate-clear',
   ResolveBoundary: 'resolve-boundary',
-  UsageScopeConflict: 'usage-scope-conflict',
   PipelineAttachmentMismatch: 'pipeline-attachment-mismatch',
-  DepthIntroductionUnproven: 'depth-introduction-unproven',
   SynchronizationBoundary: 'synchronization-boundary',
   InstrumentationBoundary: 'instrumentation-boundary',
-  ResidencyBudget: 'residency-budget',
   GroupPassLimit: 'group-pass-limit',
+
+  // Category B: Cumulative State & Budget Checks
+  UsageScopeConflict: 'usage-scope-conflict',
+  DepthIntroductionUnproven: 'depth-introduction-unproven',
+  ResidencyBudget: 'residency-budget',
   ResidencyEstimateUnavailable: 'residency-estimate-unavailable'
 } as const);
 

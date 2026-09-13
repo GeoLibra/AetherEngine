@@ -1,7 +1,7 @@
 import type { RHIBuffer, RHITexture } from '../../rhi/contracts';
 import type { GraphAccess } from '../builder/builder';
 import { containsRange, normalizeRequestedRange } from '../executor/executor-resource-utils';
-import type { GraphRange } from '../compiler/ranges';
+import type { GraphRange } from '../ranges';
 import type { GraphResourceRecord } from '../builder/resources';
 import type { BufferRange, BufferUsage, GraphHandle, TextureRange, TextureUsage } from '../types';
 

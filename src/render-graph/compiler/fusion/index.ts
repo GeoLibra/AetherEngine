@@ -1,8 +1,4 @@
-export * from './constants';
-export * from './signature';
-export * from './usage';
-export * from './operations';
-export * from './diagnostics';
-export * from './partition';
-export * from './lifetimes';
-export * from './residency';
+export { SplitReasonCode } from './constants';
+export { partitionRasterGroups, validateFusionOptions } from './partition';
+export { widenLifetimesForRasterGroups } from './lifetime-widening';
+export type { ActiveRasterGroup, FusionEvaluation, MutableFusionCounters } from './types';

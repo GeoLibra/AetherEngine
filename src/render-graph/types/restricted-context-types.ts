@@ -9,7 +9,7 @@ import type {
   RHIDevice,
   RHIRenderPipelineDescriptor
 } from '../../rhi/contracts';
-import type { TextureGraphRange } from '../compiler/ranges';
+import type { TextureGraphRange } from '../ranges';
 
 export interface RestrictedBindGroupEntry {
   readonly binding: number;

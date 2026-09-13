@@ -6,11 +6,8 @@ import {
   renderSystemToken,
   type RenderSystemDescriptor
 } from '../../src/render-graph/builder';
-import {
-  compileRenderGraph,
-  RenderGraphCycleError,
-  createRenderGraphDebugIR
-} from '../../src/render-graph/compiler';
+import { compileRenderGraph, RenderGraphCycleError } from '../../src/render-graph/compiler';
+import { createRenderGraphDebugIR } from '../../src/render-graph/debug';
 import type { BufferHandle, BufferDescriptor } from '../../src/render-graph/types';
 import type {
   RenderEntityView,

@@ -1,24 +1,29 @@
 import type { GraphPassDeclaration, RenderGraphSnapshot } from '../builder/builder';
-import { isCompiledRenderGraph, isCompiledRenderGraphForSnapshot } from '../compiler/compiler';
-import { partitionRasterGroups } from '../compiler/fusion/partition';
 import {
+  isCompiledRenderGraph,
+  isCompiledRenderGraphForSnapshot,
+  partitionRasterGroups,
   analyzeResourceLifetimes,
   planResourceAliases,
-  type ResourceAliasPlan
-} from '../compiler/lifetimes';
+  derivePortableTransitions
+} from '../compiler';
 import type {
   CompiledRenderGraph,
   PassFusionOptions,
   RasterGroupPlan,
   RenderGraphExecutionPlan,
-  RenderGraphExecutionStep
+  RenderGraphExecutionStep,
+  ResourceAliasPlan
 } from '../types';
+import { validatePhysicalTransitionsAndPassBoundaries } from './executor-physical-validation';
 
 export type { RenderGraphExecutionPlan, RenderGraphExecutionStep } from '../types';
 
 const CANONICAL_EXECUTION_PLANS = new WeakSet<object>();
 
-export interface ExecutionPlanOptions extends PassFusionOptions {}
+export interface ExecutionPlanOptions extends PassFusionOptions {
+  readonly submissionIndex?: number;
+}
 
 export function createRenderGraphExecutionPlan(
   snapshot: RenderGraphSnapshot,
@@ -29,6 +34,9 @@ export function createRenderGraphExecutionPlan(
     throw nonCanonical('compiled graph provenance does not match the snapshot');
   }
   const partition = partitionRasterGroups(snapshot, compiled, options);
+  const transitions = derivePortableTransitions(snapshot, compiled, {
+    submissionIndex: options?.submissionIndex ?? 0
+  });
   const plan = Object.freeze({
     snapshot,
     compiled,
@@ -38,8 +46,10 @@ export function createRenderGraphExecutionPlan(
     ),
     schedule: createRenderGraphExecutionSchedule(compiled, partition.groups),
     rasterGroups: partition.groups,
-    fusion: partition
+    fusion: partition,
+    transitions
   });
+  validatePhysicalTransitionsAndPassBoundaries(plan);
   CANONICAL_EXECUTION_PLANS.add(plan);
   return plan;
 }
@@ -97,6 +107,8 @@ export function assertRenderGraphExecutionPlan(
     !('schedule' in value) ||
     !('rasterGroups' in value) ||
     !('fusion' in value) ||
+    !('transitions' in value) ||
+    !Array.isArray(value.transitions) ||
     !Array.isArray(value.schedule) ||
     !CANONICAL_EXECUTION_PLANS.has(value)
   ) {
@@ -204,6 +216,11 @@ export function validateRenderGraphExecutionPlan(plan: RenderGraphExecutionPlan)
       throw nonCanonical('scheduled passes do not reproduce compiled order exactly');
     }
   }
+
+  if (!Array.isArray(plan.transitions)) {
+    throw nonCanonical('plan transitions must be an array');
+  }
+  validatePhysicalTransitionsAndPassBoundaries(plan);
 }
 
 export function requiredScheduledPass(

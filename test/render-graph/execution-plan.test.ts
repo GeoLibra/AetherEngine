@@ -124,4 +124,28 @@ describe('RenderGraphExecutionPlan validation', () => {
     expect(calls).toEqual([]);
     expect(device.queue.metrics().submitted).toBe(0);
   });
+
+  test('derives portable transitions as part of canonical execution plan and shares them with Debug IR', () => {
+    const plan = planWithTwoPasses([]);
+    expect(plan.transitions).toBeDefined();
+    expect(Array.isArray(plan.transitions)).toBe(true);
+
+    const device = new NullDevice();
+    const executor = new RenderGraphExecutor();
+    const result = executor.execute(plan, { device }, { captureDebug: true });
+    expect(result.debug.transitions).toEqual(plan.transitions);
+  });
+
+  test('rejects execution plan when transitions property is forged or invalid', () => {
+    const valid = planWithTwoPasses([]);
+    const device = new NullDevice();
+    const invalidTransitions = Object.freeze({
+      ...valid,
+      transitions: 'invalid' as unknown as []
+    });
+
+    expect(() => new RenderGraphExecutor().execute(invalidTransitions, { device })).toThrow(
+      /canonical render graph execution plan/i
+    );
+  });
 });

@@ -16,10 +16,10 @@ import {
   type AliasPlanningOptions,
   type PortableTransition,
   type ResourceLifetime
-} from './lifetimes';
-import type { HistoryInvalidationReason, HistorySlotDebugState } from './history';
+} from '../compiler/resources';
+import type { HistoryInvalidationReason, HistorySlotDebugState } from '../history';
 
-const HISTORY_INVALIDATION_REASONS = new Set<HistoryInvalidationReason>([
+export const HISTORY_INVALIDATION_REASONS = new Set<HistoryInvalidationReason>([
   'new',
   'generation-changed',
   'resize',
@@ -47,6 +47,8 @@ export interface RenderGraphDebugIROptions extends AliasPlanningOptions {
   readonly historyStates?: ReadonlyMap<number, RenderGraphHistoryDebugBinding>;
   /** Physical raster grouping produced for this exact compiled graph. */
   readonly fusion?: GroupPartitionResult;
+  /** Portable usage transitions across passes; reuses plan.transitions if supplied. */
+  readonly transitions?: readonly PortableTransition[];
 }
 
 /** Serializable evidence for compiler-selected physical raster grouping. */
@@ -128,9 +130,11 @@ export function createRenderGraphDebugIR(
       ? logicalLifetimes
       : analyzeResourceLifetimes(snapshot, compiled, options.fusion.groups);
   const aliasPlan = planResourceAliases(snapshot, lifetimes, options);
-  const transitions = derivePortableTransitions(snapshot, compiled, {
-    submissionIndex: options.submissionIndex ?? 0
-  });
+  const transitions =
+    options.transitions ??
+    derivePortableTransitions(snapshot, compiled, {
+      submissionIndex: options.submissionIndex ?? 0
+    });
   const retained = new Set(compiled.order);
   const cullReasons = new Map(compiled.culledPasses.map((pass) => [pass.passId, pass.reason]));
   const passes: RenderGraphDebugPass[] = snapshot.passes.map((pass) => {
@@ -276,10 +280,6 @@ function cloneUsageScope(
         Object.freeze({ resourceId, usages: Object.freeze([...usages]) })
       )
   );
-}
-
-export function toRenderGraphDebugJSON(plan: RenderGraphDebugIR): string {
-  return JSON.stringify(plan);
 }
 
 function dispositionFor(

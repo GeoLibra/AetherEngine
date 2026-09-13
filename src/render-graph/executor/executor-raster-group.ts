@@ -6,7 +6,7 @@ import type {
   RHITexture,
   RHITextureView
 } from '../../rhi/contracts';
-import { normalizeTextureRange } from '../compiler/ranges';
+import { normalizeTextureRange } from '../ranges';
 import { RasterPassContextImpl } from '../context/raster-context';
 import { RestrictedContext } from '../context/restricted-context';
 import type { EndableRenderPass } from './executor-cleanup';

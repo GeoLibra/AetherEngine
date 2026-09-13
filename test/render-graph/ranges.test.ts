@@ -9,7 +9,7 @@ import {
   rangesOverlap,
   subtractGraphRange,
   textureRangesOverlap
-} from '../../src/render-graph/compiler';
+} from '../../src/render-graph/ranges';
 import type { BufferDescriptor, TextureDescriptor } from '../../src/render-graph/types';
 
 const textureDescriptor: TextureDescriptor = {

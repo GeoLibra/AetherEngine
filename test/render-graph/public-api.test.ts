@@ -83,4 +83,25 @@ describe('RenderGraph public API', () => {
       ])
     );
   });
+
+  test('does not publish compiler schedule, topology and fusion internal helpers', () => {
+    expect(Object.keys(renderGraphApi)).not.toEqual(
+      expect.arrayContaining([
+        'sortPassDeclarations',
+        'detectCycles',
+        'cullUnusedPasses',
+        'validatePassDeclarations',
+        'evaluateCandidateFusion',
+        'summarizeFusionResidency',
+        'evaluateResidencyBudget',
+        'lowerPhysicalAttachmentOperations',
+        'compareColorSignatures',
+        'compareExistingDepthSignatures',
+        'extractRasterSignature',
+        'rasterSignatureMatches',
+        'GroupUsageAccumulator',
+        'createFusionDiagnostics'
+      ])
+    );
+  });
 });

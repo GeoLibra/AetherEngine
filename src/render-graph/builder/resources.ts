@@ -7,7 +7,7 @@ import {
   type BufferGraphRange,
   type GraphRange,
   type TextureGraphRange
-} from '../compiler/ranges';
+} from '../ranges';
 import { assertGraphHandle, createGraphHandle } from './handles';
 import type {
   BufferDescriptor,

@@ -9,16 +9,16 @@ import type {
 import type {
   SurfaceTransientScope,
   TransientAllocationDescriptor,
+  TransientResource,
   TransientResourcePoolCounters
 } from '../types';
 
 export type {
   SurfaceTransientScope,
   TransientAllocationDescriptor,
+  TransientResource,
   TransientResourcePoolCounters
 } from '../types';
-
-export type TransientResource = RHIBuffer | RHITexture;
 
 interface PoolEntry {
   readonly key: string;

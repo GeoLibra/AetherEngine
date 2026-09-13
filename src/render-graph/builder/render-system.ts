@@ -1,6 +1,6 @@
 import { RenderGraphBuilder } from './builder';
-import { compileRenderGraph } from '../compiler/compiler';
-import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../compiler/debug-ir';
+import { compileRenderGraph } from '../compiler';
+import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../debug';
 import {
   createRenderGraphExecutionPlan,
   type ExecutionPlanOptions

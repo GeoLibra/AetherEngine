@@ -5,11 +5,8 @@ import {
   createRenderGraphExecutionPlan,
   type RenderGraphExecutionPlan
 } from '../../src/render-graph/executor';
-import {
-  compileRenderGraph,
-  HistoryRegistry,
-  type HistoryIdentity
-} from '../../src/render-graph/compiler';
+import { compileRenderGraph } from '../../src/render-graph/compiler';
+import { HistoryRegistry, type HistoryIdentity } from '../../src/render-graph/history';
 import type {
   BufferDescriptor,
   ComputePassContext,

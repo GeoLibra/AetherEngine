@@ -7,7 +7,8 @@ import type {
   RenderGraphWorkloadOptions
 } from './types';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
-import { compileRenderGraph, createRenderGraphDebugIR } from '../../src/render-graph/compiler';
+import { compileRenderGraph } from '../../src/render-graph/compiler';
+import { createRenderGraphDebugIR } from '../../src/render-graph/debug';
 import {
   RenderGraphExecutor,
   createRenderGraphExecutionPlan,

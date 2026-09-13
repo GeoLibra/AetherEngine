@@ -1,5 +1,12 @@
-import type { GPUBufferDescriptor, GPUTextureDescriptor } from '../../rhi/contracts';
-import type { CompiledRenderGraph, ResourceAliasPlan } from './compiler-types';
+import type {
+  GPUBufferDescriptor,
+  GPUTextureDescriptor,
+  RHIBuffer,
+  RHITexture
+} from '../../rhi/contracts';
+import type { CompiledRenderGraph, PortableTransition, ResourceAliasPlan } from './compiler-types';
+
+export type TransientResource = RHIBuffer | RHITexture;
 import type { RenderGraphSnapshot } from '../builder/builder';
 import type { GroupPartitionResult, RasterGroupPlan } from './fusion-types';
 
@@ -41,4 +48,6 @@ export interface RenderGraphExecutionPlan {
   readonly rasterGroups: readonly RasterGroupPlan[];
   /** Immutable fusion partition and diagnostics used to create this physical schedule. */
   readonly fusion: GroupPartitionResult;
+  /** Portable usage transitions across passes and exports for this execution plan. */
+  readonly transitions: readonly PortableTransition[];
 }

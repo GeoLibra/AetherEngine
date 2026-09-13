@@ -4,11 +4,8 @@ import {
   type GraphAccess,
   type RenderGraphSnapshot
 } from '../../src/render-graph/builder';
-import {
-  deriveRenderGraphHazards,
-  fullBufferRange,
-  fullTextureRange
-} from '../../src/render-graph/compiler';
+import { deriveRenderGraphHazards } from '../../src/render-graph/compiler';
+import { fullBufferRange, fullTextureRange } from '../../src/render-graph/ranges';
 import type {
   BufferDescriptor,
   BufferRange,

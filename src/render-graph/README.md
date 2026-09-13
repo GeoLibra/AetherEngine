@@ -8,7 +8,10 @@ RenderGraph separates declarative render work from physical RHI execution. Syste
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `types/`    | Shared logical resource, restricted capability, compiler result, and execution-plan types.                                                |
 | `builder/`  | Logical handles, versioned resource declarations, pass setup, prepared-resource tokens, and RenderSystem contribution.                    |
-| `compiler/` | Range normalization, hazard analysis, culling, lifetime and alias planning, raster pass fusion partitioning, history state, and Debug IR. |
+| `ranges/`   | Texture and buffer range types, normalization, subresource interval intersection, subtraction, and overlap algorithms.                    |
+| `history/`  | Multi-frame resource history registry, double/triple-buffering slot acquisition, view invalidation, and retirement lifecycles.            |
+| `debug/`    | Read-only projection, serialization, and deterministic checksum generation of compiled and executed render graph plans.                   |
+| `compiler/` | DAG validation, hazard analysis, culling, topology, lifetime/alias/transition planning, and raster pass fusion partitioning.              |
 | `context/`  | Internal pass-local capability resolution, encoder proxies, descriptor lowering, and owned-resource retirement.                           |
 | `executor/` | Canonical plan validation, surface-frame ownership, physical resource binding, transient pooling, encoding, submission, and presentation. |
 | `index.ts`  | Stable public RenderGraph exports. Internal `context` and executor helper modules are intentionally excluded.                             |
