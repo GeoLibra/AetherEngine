@@ -3,6 +3,7 @@ import type { BrowserWebGL2TextureFacts } from './resource-port';
 export interface BrowserWebGL2TextureSubresource {
   readonly texture: object;
   readonly mipLevel: number;
+  readonly arrayLayer: number;
   readonly width: number;
   readonly height: number;
   readonly facts: BrowserWebGL2TextureFacts;
@@ -14,6 +15,7 @@ export function textureSubresource(
   fields: Readonly<{
     texture: string;
     mipLevel: string;
+    arrayLayer: string;
     width: string;
     height: string;
   }>
@@ -28,11 +30,17 @@ export function textureSubresource(
   if (mipLevel < 0 || mipLevel >= facts.mipLevelCount) {
     throw new Error(`WebGL2 texture mip level ${mipLevel} is outside [0, ${facts.mipLevelCount}).`);
   }
+  const arrayLayer = optionalInteger(value, fields.arrayLayer, 0);
+  if (arrayLayer < 0 || arrayLayer >= facts.depthOrArrayLayers) {
+    throw new Error(
+      `WebGL2 texture array layer ${arrayLayer} is outside [0, ${facts.depthOrArrayLayers}).`
+    );
+  }
   const width = mipDimension(facts.width, mipLevel);
   const height = mipDimension(facts.height, mipLevel);
   validateOptionalDimension(value, fields.width, width);
   validateOptionalDimension(value, fields.height, height);
-  return { texture, mipLevel, width, height, facts };
+  return { texture, mipLevel, arrayLayer, width, height, facts };
 }
 
 function optionalInteger(value: object, field: string, fallback: number): number {

@@ -104,6 +104,7 @@ function attachmentSubresource(
   return textureSubresource(attachment, facts, {
     texture: 'view',
     mipLevel: 'mipLevel',
+    arrayLayer: 'arrayLayer',
     width: 'width',
     height: 'height'
   });

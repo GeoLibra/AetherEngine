@@ -77,6 +77,45 @@ describe('browser WebGL2 native operations', () => {
     ).toThrow(/unsupported WebGL2 texture format/i);
   });
 
+  test('allocates, binds, and attaches a selected 2D-array depth layer', () => {
+    const gl = new FakeOperationsGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+    const shadowMap = port.createTexture?.({
+      size: { width: 64, height: 64, depthOrArrayLayers: 4 },
+      format: 'depth24plus',
+      usage: 0x14
+    });
+    if (shadowMap === undefined) throw new Error('Missing shadow-map texture.');
+    const framebuffer = port.createFramebuffer?.({
+      colorAttachments: [],
+      depthStencilAttachment: {
+        view: shadowMap,
+        arrayLayer: 3,
+        depthLoadOp: 'clear',
+        depthStoreOp: 'store'
+      }
+    });
+    if (framebuffer === undefined) throw new Error('Missing shadow-map framebuffer.');
+    const shadowSampler = port.createSampler?.({
+      compare: 'less-equal',
+      minFilter: 'linear',
+      magFilter: 'linear'
+    });
+    if (shadowSampler === undefined) throw new Error('Missing shadow-map sampler.');
+
+    port.bindTexture?.(7, shadowMap);
+
+    expect(gl.calls).toEqual(
+      expect.arrayContaining([
+        ['texStorage3D', gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT24, 64, 64, 4],
+        ['framebufferTextureLayer', gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, shadowMap, 0, 3],
+        ['bindTexture', gl.TEXTURE_2D_ARRAY, shadowMap],
+        ['samplerParameteri', shadowSampler, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE],
+        ['samplerParameteri', shadowSampler, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL]
+      ])
+    );
+  });
+
   test('uploads and copies buffers before issuing one terminal fence flush', async () => {
     const gl = new FakeOperationsGL();
     const port = createBrowserWebGL2OperationPort(gl);
@@ -488,6 +527,8 @@ class FakeOperationsGL {
   readonly ELEMENT_ARRAY_BUFFER = 0x8893;
   readonly DYNAMIC_DRAW = 0x88e8;
   readonly TEXTURE_2D = 0x0de1;
+  readonly TEXTURE_2D_ARRAY = 0x8c1a;
+  readonly TEXTURE0 = 0x84c0;
   readonly RGBA8 = 0x8058;
   readonly DEPTH_COMPONENT24 = 0x81a6;
   readonly TEXTURE_MIN_FILTER = 0x2801;
@@ -495,6 +536,9 @@ class FakeOperationsGL {
   readonly TEXTURE_WRAP_S = 0x2802;
   readonly TEXTURE_WRAP_T = 0x2803;
   readonly TEXTURE_WRAP_R = 0x8072;
+  readonly TEXTURE_COMPARE_MODE = 0x884c;
+  readonly TEXTURE_COMPARE_FUNC = 0x884d;
+  readonly COMPARE_REF_TO_TEXTURE = 0x884e;
   readonly CLAMP_TO_EDGE = 0x812f;
   readonly LINEAR = 0x2601;
   readonly NEAREST = 0x2600;
@@ -559,8 +603,14 @@ class FakeOperationsGL {
   bindTexture(...args: unknown[]): void {
     this.calls.push(['bindTexture', ...args]);
   }
+  activeTexture(...args: unknown[]): void {
+    this.calls.push(['activeTexture', ...args]);
+  }
   texStorage2D(...args: unknown[]): void {
     this.calls.push(['texStorage2D', ...args]);
+  }
+  texStorage3D(...args: unknown[]): void {
+    this.calls.push(['texStorage3D', ...args]);
   }
   texParameteri(...args: unknown[]): void {
     this.calls.push(['texParameteri', ...args]);
@@ -588,6 +638,9 @@ class FakeOperationsGL {
   }
   framebufferTexture2D(...args: unknown[]): void {
     this.calls.push(['framebufferTexture2D', ...args]);
+  }
+  framebufferTextureLayer(...args: unknown[]): void {
+    this.calls.push(['framebufferTextureLayer', ...args]);
   }
   drawBuffers(...args: unknown[]): void {
     this.calls.push(['drawBuffers', ...args]);

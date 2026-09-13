@@ -38,6 +38,7 @@ export function queryWebGL2Formats(
   const sampleCounts = maxSamples >= 4 ? [1, 4] : [1];
   const formats = new Map<GPUTextureFormat, FormatCapabilities>();
   formats.set('rgba8unorm', format(true, true, true, true, sampleCounts));
+  formats.set('rgba8unorm-srgb', format(true, true, true, true, sampleCounts));
   // RGBA32UI color rendering and integer sampling are core WebGL2 capabilities.
   formats.set('rgba32uint', format(true, false, true, false, [1]));
   formats.set('depth24plus', format(false, false, true, false, sampleCounts));

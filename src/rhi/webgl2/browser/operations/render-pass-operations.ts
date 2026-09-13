@@ -25,6 +25,7 @@ export function createBrowserWebGL2RenderPassOperations(
         const subresource = textureSubresource(attachment, textureFacts, {
           texture: 'view',
           mipLevel: 'mipLevel',
+          arrayLayer: 'arrayLayer',
           width: 'width',
           height: 'height'
         });
@@ -71,12 +72,14 @@ export function createBrowserWebGL2RenderPassOperations(
         const sourceSubresource = textureSubresource(attachment, textureFacts, {
           texture: 'view',
           mipLevel: 'mipLevel',
+          arrayLayer: 'arrayLayer',
           width: 'width',
           height: 'height'
         });
         const targetSubresource = textureSubresource(attachment, textureFacts, {
           texture: 'resolveTarget',
           mipLevel: 'resolveTargetMipLevel',
+          arrayLayer: 'resolveTargetArrayLayer',
           width: 'resolveTargetWidth',
           height: 'resolveTargetHeight'
         });

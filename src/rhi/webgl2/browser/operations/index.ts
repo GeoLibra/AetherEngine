@@ -26,7 +26,7 @@ export function createBrowserWebGL2OperationPort(
     ...createBrowserWebGL2FramebufferPort(gl, textureFacts, framebufferState),
     ...createBrowserWebGL2TextureCopyPort(gl, textureFacts),
     ...createBrowserWebGL2RenderPassOperations(gl, textureFacts, framebufferState),
-    ...createBrowserWebGL2BindingPort(gl),
+    ...createBrowserWebGL2BindingPort(gl, textureFacts),
     ...createBrowserWebGL2ProgramPort(gl)
   };
 }

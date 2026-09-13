@@ -2,9 +2,11 @@ import type { WebGL2NativeContextPort } from '../../types';
 import { constant } from '../capability-query';
 import { glCall } from '../gl-call';
 import type { BrowserWebGL2Object } from '../types';
+import type { BrowserWebGL2TextureFacts } from './resource-port';
 
 export function createBrowserWebGL2BindingPort(
-  gl: BrowserWebGL2Object
+  gl: BrowserWebGL2Object,
+  textureFacts: WeakMap<object, BrowserWebGL2TextureFacts>
 ): Pick<WebGL2NativeContextPort, 'bindUniformBuffer' | 'bindTexture' | 'bindSampler'> {
   return {
     bindUniformBuffer(binding, buffer, offset, size): void {
@@ -17,8 +19,9 @@ export function createBrowserWebGL2BindingPort(
       ]);
     },
     bindTexture(unit, texture): void {
+      const target = textureFacts.get(texture)?.target ?? 'TEXTURE_2D';
       glCall(gl, 'activeTexture', [constant(gl, 'TEXTURE0') + unit]);
-      glCall(gl, 'bindTexture', [constant(gl, 'TEXTURE_2D'), texture]);
+      glCall(gl, 'bindTexture', [constant(gl, target), texture]);
     },
     bindSampler(unit, sampler): void {
       glCall(gl, 'bindSampler', [unit, sampler]);

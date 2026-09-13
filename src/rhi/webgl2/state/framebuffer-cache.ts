@@ -57,6 +57,7 @@ export class WebGL2FramebufferCache {
             ...attachment,
             view: getWebGL2Handle(attachment.view, this.owner),
             mipLevel: attachment.view.descriptor.baseMipLevel ?? 0,
+            arrayLayer: attachment.view.descriptor.baseArrayLayer ?? 0,
             width: attachment.view.width,
             height: attachment.view.height,
             ...(attachment.resolveTarget === undefined
@@ -77,6 +78,7 @@ export class WebGL2FramebufferCache {
               ...descriptor.depthStencilAttachment,
               view: getWebGL2Handle(descriptor.depthStencilAttachment.view, this.owner),
               mipLevel: descriptor.depthStencilAttachment.view.descriptor.baseMipLevel ?? 0,
+              arrayLayer: descriptor.depthStencilAttachment.view.descriptor.baseArrayLayer ?? 0,
               width: descriptor.depthStencilAttachment.view.width,
               height: descriptor.depthStencilAttachment.view.height
             })

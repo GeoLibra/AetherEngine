@@ -6,6 +6,8 @@ import type { BrowserWebGL2Object } from '../types';
 export interface BrowserWebGL2TextureFacts {
   readonly width: number;
   readonly height: number;
+  readonly depthOrArrayLayers: number;
+  readonly target: 'TEXTURE_2D' | 'TEXTURE_2D_ARRAY';
   readonly format: string;
   readonly aspect: 'color' | 'depth' | 'depth-stencil';
   readonly mipLevelCount: number;
@@ -55,42 +57,61 @@ export function createBrowserWebGL2ResourcePort(
       const size = requiredRecord(descriptor, 'size');
       const width = requiredNumber(size, 'width');
       const height = requiredNumber(size, 'height');
+      const depthOrArrayLayers = optionalNumber(size, 'depthOrArrayLayers') ?? 1;
+      if (!Number.isInteger(depthOrArrayLayers) || depthOrArrayLayers < 1) {
+        throw new TypeError('Texture depthOrArrayLayers must be a positive integer.');
+      }
       const texture = glObject(gl, 'createTexture');
-      glCall(gl, 'bindTexture', [constant(gl, 'TEXTURE_2D'), texture]);
+      const target: BrowserWebGL2TextureFacts['target'] =
+        depthOrArrayLayers === 1 ? 'TEXTURE_2D' : 'TEXTURE_2D_ARRAY';
+      glCall(gl, 'bindTexture', [constant(gl, target), texture]);
       const format = textureFormat(gl, descriptor.format);
       const mipLevelCount = optionalNumber(descriptor, 'mipLevelCount') ?? 1;
-      glCall(gl, 'texStorage2D', [
-        constant(gl, 'TEXTURE_2D'),
-        mipLevelCount,
-        format.internalFormat,
-        width,
-        height
-      ]);
+      if (target === 'TEXTURE_2D') {
+        glCall(gl, 'texStorage2D', [
+          constant(gl, target),
+          mipLevelCount,
+          format.internalFormat,
+          width,
+          height
+        ]);
+      } else {
+        glCall(gl, 'texStorage3D', [
+          constant(gl, target),
+          mipLevelCount,
+          format.internalFormat,
+          width,
+          height,
+          depthOrArrayLayers
+        ]);
+      }
       // WebGL defaults require a complete mip chain. RHI textures must remain complete when
       // textureLoad/texelFetch is used without a separately bound sampler.
       glCall(gl, 'texParameteri', [
-        constant(gl, 'TEXTURE_2D'),
+        constant(gl, target),
         constant(gl, 'TEXTURE_MIN_FILTER'),
         constant(gl, 'NEAREST')
       ]);
       glCall(gl, 'texParameteri', [
-        constant(gl, 'TEXTURE_2D'),
+        constant(gl, target),
         constant(gl, 'TEXTURE_MAG_FILTER'),
         constant(gl, 'NEAREST')
       ]);
       glCall(gl, 'texParameteri', [
-        constant(gl, 'TEXTURE_2D'),
+        constant(gl, target),
         constant(gl, 'TEXTURE_WRAP_S'),
         constant(gl, 'CLAMP_TO_EDGE')
       ]);
       glCall(gl, 'texParameteri', [
-        constant(gl, 'TEXTURE_2D'),
+        constant(gl, target),
         constant(gl, 'TEXTURE_WRAP_T'),
         constant(gl, 'CLAMP_TO_EDGE')
       ]);
       textureFacts.set(texture, {
         width,
         height,
+        depthOrArrayLayers,
+        target,
         format: String(descriptor.format),
         aspect: format.aspect,
         mipLevelCount
@@ -134,6 +155,18 @@ export function createBrowserWebGL2ResourcePort(
           wrapMode(gl, descriptor.addressModeW)
         ]);
       }
+      if (typeof descriptor.compare === 'string') {
+        glCall(gl, 'samplerParameteri', [
+          sampler,
+          constant(gl, 'TEXTURE_COMPARE_MODE'),
+          constant(gl, 'COMPARE_REF_TO_TEXTURE')
+        ]);
+        glCall(gl, 'samplerParameteri', [
+          sampler,
+          constant(gl, 'TEXTURE_COMPARE_FUNC'),
+          compareFunction(gl, descriptor.compare)
+        ]);
+      }
       return sampler;
     },
     deleteSampler(sampler): void {
@@ -147,6 +180,8 @@ function textureFormat(
   value: unknown
 ): { readonly internalFormat: number; readonly aspect: BrowserWebGL2TextureFacts['aspect'] } {
   if (value === 'rgba8unorm') return { internalFormat: constant(gl, 'RGBA8'), aspect: 'color' };
+  if (value === 'rgba8unorm-srgb')
+    return { internalFormat: constant(gl, 'SRGB8_ALPHA8'), aspect: 'color' };
   if (value === 'rgba32uint') return { internalFormat: constant(gl, 'RGBA32UI'), aspect: 'color' };
   if (value === 'depth24plus')
     return { internalFormat: constant(gl, 'DEPTH_COMPONENT24'), aspect: 'depth' };
@@ -174,6 +209,22 @@ function samplerMinFilter(gl: BrowserWebGL2Object, min: unknown, mipmap: unknown
     return constant(gl, min === 'linear' ? 'LINEAR_MIPMAP_NEAREST' : 'NEAREST_MIPMAP_NEAREST');
   }
   return constant(gl, min === 'linear' ? 'LINEAR' : 'NEAREST');
+}
+
+function compareFunction(gl: BrowserWebGL2Object, value: string): number {
+  const names: Readonly<Record<string, string>> = {
+    never: 'NEVER',
+    less: 'LESS',
+    equal: 'EQUAL',
+    'less-equal': 'LEQUAL',
+    greater: 'GREATER',
+    'not-equal': 'NOTEQUAL',
+    'greater-equal': 'GEQUAL',
+    always: 'ALWAYS'
+  };
+  const name = names[value];
+  if (name === undefined) throw new Error(`Unsupported WebGL2 sampler compare function: ${value}.`);
+  return constant(gl, name);
 }
 
 export function requiredRecord(

@@ -32,13 +32,7 @@ export function createBrowserWebGL2FramebufferPort(
             throw new TypeError('Framebuffer color attachment is invalid.');
           const subresource = attachmentSubresource(attachment, textureFacts);
           const attachmentPoint = constant(gl, 'COLOR_ATTACHMENT0') + index;
-          glCall(gl, 'framebufferTexture2D', [
-            constant(gl, 'FRAMEBUFFER'),
-            attachmentPoint,
-            constant(gl, 'TEXTURE_2D'),
-            subresource.texture,
-            subresource.mipLevel
-          ]);
+          attachFramebufferTexture(gl, attachmentPoint, subresource);
           drawBuffers.push(attachmentPoint);
         });
       if (drawBuffers.length > 0) {
@@ -50,18 +44,16 @@ export function createBrowserWebGL2FramebufferPort(
       const depth = descriptor.depthStencilAttachment;
       if (typeof depth === 'object' && depth !== null) {
         const subresource = attachmentSubresource(depth, textureFacts);
-        glCall(gl, 'framebufferTexture2D', [
-          constant(gl, 'FRAMEBUFFER'),
+        attachFramebufferTexture(
+          gl,
           constant(
             gl,
             subresource.facts.aspect === 'depth-stencil'
               ? 'DEPTH_STENCIL_ATTACHMENT'
               : 'DEPTH_ATTACHMENT'
           ),
-          constant(gl, 'TEXTURE_2D'),
-          subresource.texture,
-          subresource.mipLevel
-        ]);
+          subresource
+        );
       }
       return framebuffer;
     },
@@ -122,6 +114,7 @@ function validateAttachmentExtents(
       const target = textureSubresource(attachment, textureFacts, {
         texture: 'resolveTarget',
         mipLevel: 'resolveTargetMipLevel',
+        arrayLayer: 'resolveTargetArrayLayer',
         width: 'resolveTargetWidth',
         height: 'resolveTargetHeight'
       });
@@ -243,7 +236,32 @@ function attachmentSubresource(
   return textureSubresource(attachment, facts, {
     texture: 'view',
     mipLevel: 'mipLevel',
+    arrayLayer: 'arrayLayer',
     width: 'width',
     height: 'height'
   });
+}
+
+function attachFramebufferTexture(
+  gl: BrowserWebGL2Object,
+  attachmentPoint: number,
+  subresource: ReturnType<typeof attachmentSubresource>
+): void {
+  if (subresource.facts.target === 'TEXTURE_2D_ARRAY') {
+    glCall(gl, 'framebufferTextureLayer', [
+      constant(gl, 'FRAMEBUFFER'),
+      attachmentPoint,
+      subresource.texture,
+      subresource.mipLevel,
+      subresource.arrayLayer
+    ]);
+    return;
+  }
+  glCall(gl, 'framebufferTexture2D', [
+    constant(gl, 'FRAMEBUFFER'),
+    attachmentPoint,
+    constant(gl, 'TEXTURE_2D'),
+    subresource.texture,
+    subresource.mipLevel
+  ]);
 }

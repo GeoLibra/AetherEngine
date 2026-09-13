@@ -132,11 +132,12 @@ function textureCopy(
   if (
     textureFacts === undefined ||
     (textureFacts.format !== 'rgba8unorm' &&
+      textureFacts.format !== 'rgba8unorm-srgb' &&
       textureFacts.format !== 'rgba32uint' &&
       textureFacts.format !== 'rgba16float')
   )
     throw new Error(
-      'WebGL2 texture copy supports owned RGBA8Unorm, RGBA16Float and RGBA32Uint textures only.'
+      'WebGL2 texture copy supports owned RGBA8Unorm, RGBA8Unorm-sRGB, RGBA16Float and RGBA32Uint textures only.'
     );
   const origin =
     typeof value.origin === 'object' && value.origin !== null
