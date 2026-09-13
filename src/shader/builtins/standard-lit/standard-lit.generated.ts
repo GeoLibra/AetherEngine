@@ -13,8 +13,8 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit.wgsl',
-    contentHash: '606b9d74d04c6c1cbcdcd118cee40ff020a5a37d1e822ef2a1e4fe63c616c56a',
-    byteLength: 11661
+    contentHash: 'b2288a4b96244b877b50013fa166293cc3c3e8a873c9ae721652563bd69bcea3',
+    byteLength: 13045
   },
   entryPoints: [
     {
@@ -265,13 +265,6 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
           size: 12,
           alignment: 16,
           typeName: 'vec3<f32>'
-        },
-        {
-          path: 'padding',
-          offset: 76,
-          size: 4,
-          alignment: 4,
-          typeName: 'f32'
         }
       ]
     },
@@ -279,7 +272,7 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
       group: 2,
       binding: 0,
       name: 'materialData',
-      byteSize: 80,
+      byteSize: 240,
       alignment: 16,
       fields: [
         {
@@ -374,11 +367,74 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
           typeName: 'u32'
         },
         {
-          path: 'padding0',
-          offset: 72,
+          path: 'baseColorTransform',
+          offset: 80,
+          size: 16,
+          alignment: 16,
+          typeName: 'vec4<f32>'
+        },
+        {
+          path: 'baseColorOffset',
+          offset: 96,
           size: 8,
           alignment: 8,
-          typeName: 'vec2<u32>'
+          typeName: 'vec2<f32>'
+        },
+        {
+          path: 'metallicRoughnessTransform',
+          offset: 112,
+          size: 16,
+          alignment: 16,
+          typeName: 'vec4<f32>'
+        },
+        {
+          path: 'metallicRoughnessOffset',
+          offset: 128,
+          size: 8,
+          alignment: 8,
+          typeName: 'vec2<f32>'
+        },
+        {
+          path: 'normalTransform',
+          offset: 144,
+          size: 16,
+          alignment: 16,
+          typeName: 'vec4<f32>'
+        },
+        {
+          path: 'normalOffset',
+          offset: 160,
+          size: 8,
+          alignment: 8,
+          typeName: 'vec2<f32>'
+        },
+        {
+          path: 'occlusionTransform',
+          offset: 176,
+          size: 16,
+          alignment: 16,
+          typeName: 'vec4<f32>'
+        },
+        {
+          path: 'occlusionOffset',
+          offset: 192,
+          size: 8,
+          alignment: 8,
+          typeName: 'vec2<f32>'
+        },
+        {
+          path: 'emissiveTransform',
+          offset: 208,
+          size: 16,
+          alignment: 16,
+          typeName: 'vec4<f32>'
+        },
+        {
+          path: 'emissiveOffset',
+          offset: 224,
+          size: 8,
+          alignment: 8,
+          typeName: 'vec2<f32>'
         }
       ]
     },
@@ -409,13 +465,6 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
           size: 12,
           alignment: 16,
           typeName: 'vec3<f32>'
-        },
-        {
-          path: 'padding',
-          offset: 28,
-          size: 4,
-          alignment: 4,
-          typeName: 'f32'
         }
       ]
     }
@@ -444,6 +493,11 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
     {
       location: 4,
       name: 'tangent',
+      typeName: 'vec4<f32>'
+    },
+    {
+      location: 5,
+      name: 'color0',
       typeName: 'vec4<f32>'
     }
   ],
@@ -474,14 +528,12 @@ struct ObjectData {
 struct ViewData {
   viewProjection: mat4x4<f32>, // 64 bytes
   cameraPosition: vec3<f32>,   // 12 bytes, alignment 16
-  padding: f32,                // 4 bytes
 };
 
 /// Per-material PBR surface parameters.
 /// - baseColor: Linear sRGB color with alpha.
 /// - metallic: Normalized [0.0 = dielectric, 1.0 = pure metal].
 /// - roughness: Normalized perceptual roughness [0.0 = mirror smooth, 1.0 = completely rough].
-/// - padding0, padding1: Explicit tail padding to complete 32-byte alignment.
 struct MaterialData {
   baseColor: vec4<f32>,
   emissiveFactor: vec3<f32>,
@@ -496,20 +548,27 @@ struct MaterialData {
   occlusionUvSet: u32,
   emissiveUvSet: u32,
   alphaMask: u32,
-  padding0: vec2<u32>,
+  baseColorTransform: vec4<f32>,
+  baseColorOffset: vec2<f32>,
+  metallicRoughnessTransform: vec4<f32>,
+  metallicRoughnessOffset: vec2<f32>,
+  normalTransform: vec4<f32>,
+  normalOffset: vec2<f32>,
+  occlusionTransform: vec4<f32>,
+  occlusionOffset: vec2<f32>,
+  emissiveTransform: vec4<f32>,
+  emissiveOffset: vec2<f32>,
 };
 
 /// Directional light source parameters.
 /// - direction: Normalized direction vector pointing from surface to light (or light heading).
 /// - illuminance: Reserved for HDR physically-based lighting; intentionally unused by current LDR baseline.
 /// - color: Linear light color (rgb).
-/// - padding: Explicit tail padding to complete 32-byte alignment.
 struct DirectionalLightData {
   direction: vec3<f32>,
   // Reserved for HDR physically-based lighting; intentionally unused by current LDR baseline.
   illuminance: f32,
   color: vec3<f32>,
-  padding: f32,
 };
 
 // ----------------------------------------------------------------------------
@@ -524,6 +583,7 @@ struct StandardLitVertexOutput {
   @location(2) uv0: vec2<f32>,
   @location(3) uv1: vec2<f32>,
   @location(4) tangent: vec4<f32>,
+  @location(5) color: vec4<f32>,
 };
 
 /// Interpolated fragment input in world coordinate space.
@@ -533,6 +593,7 @@ struct StandardLitFragmentInput {
   @location(2) uv0: vec2<f32>,
   @location(3) uv1: vec2<f32>,
   @location(4) tangent: vec4<f32>,
+  @location(5) color: vec4<f32>,
 };
 
 // ----------------------------------------------------------------------------
@@ -659,7 +720,8 @@ fn standardLitVertex(
   @location(1) normal: vec3<f32>,
   @location(2) uv0: vec2<f32>,
   @location(3) uv1: vec2<f32>,
-  @location(4) tangent: vec4<f32>
+  @location(4) tangent: vec4<f32>,
+  @location(5) color0: vec4<f32>
 ) -> StandardLitVertexOutput {
   // Transform vertex position to world space
   let worldPosition = objectData.world * vec4<f32>(position, 1.0);
@@ -677,12 +739,20 @@ fn standardLitVertex(
     worldPosition.xyz,
     uv0,
     uv1,
-    vec4<f32>(worldTangent, tangent.w * transformSign)
+    vec4<f32>(worldTangent, tangent.w * transformSign),
+    color0
   );
 }
 
 fn selectUv(index: u32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
   return select(uv0, uv1, index == 1u);
+}
+
+fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(
+    matrix.x * uv.x + matrix.y * uv.y + offset.x,
+    matrix.z * uv.x + matrix.w * uv.y + offset.y
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -691,16 +761,46 @@ fn selectUv(index: u32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
 
 @fragment
 fn standardLitFragment(
-  fragmentInput: StandardLitFragmentInput
+  fragmentInput: StandardLitFragmentInput,
+  @builtin(front_facing) frontFacing: bool
 ) -> @location(0) vec4<f32> {
-  let baseSample = textureSample(baseColorTexture, surfaceSampler, selectUv(materialData.baseColorUvSet, fragmentInput.uv0, fragmentInput.uv1));
-  let mrSample = textureSample(metallicRoughnessTexture, surfaceSampler, selectUv(materialData.metallicRoughnessUvSet, fragmentInput.uv0, fragmentInput.uv1));
-  let normalSample = textureSample(normalTexture, surfaceSampler, selectUv(materialData.normalUvSet, fragmentInput.uv0, fragmentInput.uv1)).xyz * 2.0 - vec3<f32>(1.0);
-  let ao = 1.0 + materialData.occlusionStrength * (textureSample(occlusionTexture, surfaceSampler, selectUv(materialData.occlusionUvSet, fragmentInput.uv0, fragmentInput.uv1)).r - 1.0);
-  let emissive = materialData.emissiveFactor * textureSample(emissiveTexture, surfaceSampler, selectUv(materialData.emissiveUvSet, fragmentInput.uv0, fragmentInput.uv1)).rgb;
-  let baseColor = materialData.baseColor * baseSample;
+  let bcUv = transformUv(
+    selectUv(materialData.baseColorUvSet, fragmentInput.uv0, fragmentInput.uv1),
+    materialData.baseColorTransform,
+    materialData.baseColorOffset
+  );
+  let mrUv = transformUv(
+    selectUv(materialData.metallicRoughnessUvSet, fragmentInput.uv0, fragmentInput.uv1),
+    materialData.metallicRoughnessTransform,
+    materialData.metallicRoughnessOffset
+  );
+  let normUv = transformUv(
+    selectUv(materialData.normalUvSet, fragmentInput.uv0, fragmentInput.uv1),
+    materialData.normalTransform,
+    materialData.normalOffset
+  );
+  let occUv = transformUv(
+    selectUv(materialData.occlusionUvSet, fragmentInput.uv0, fragmentInput.uv1),
+    materialData.occlusionTransform,
+    materialData.occlusionOffset
+  );
+  let emUv = transformUv(
+    selectUv(materialData.emissiveUvSet, fragmentInput.uv0, fragmentInput.uv1),
+    materialData.emissiveTransform,
+    materialData.emissiveOffset
+  );
+
+  let baseSample = textureSample(baseColorTexture, surfaceSampler, bcUv);
+  let mrSample = textureSample(metallicRoughnessTexture, surfaceSampler, mrUv);
+  let normalSample = textureSample(normalTexture, surfaceSampler, normUv).xyz * 2.0 - vec3<f32>(1.0);
+  let emissive = materialData.emissiveFactor * textureSample(emissiveTexture, surfaceSampler, emUv).rgb;
+  let aoSample = textureSample(occlusionTexture, surfaceSampler, occUv).r;
+  let ao = 1.0 + materialData.occlusionStrength * (aoSample - 1.0);
+  let baseColor = materialData.baseColor * baseSample * fragmentInput.color;
   if (materialData.alphaMask != 0u && baseColor.a < materialData.alphaCutoff) { discard; }
-  let geometricNormal = normalize(fragmentInput.normal);
+
+  let rawNormal = normalize(fragmentInput.normal);
+  let geometricNormal = select(-rawNormal, rawNormal, frontFacing);
   let tangent = normalize(fragmentInput.tangent.xyz);
   let bitangent = cross(geometricNormal, tangent) * fragmentInput.tangent.w;
   let mapped = normalize(vec3<f32>(normalSample.xy * materialData.normalScale, normalSample.z));
@@ -718,7 +818,11 @@ fn standardLitFragment(
     lightData.color
   );
 
-  return vec4<f32>(lit * ao + emissive, baseColor.a);
+  // In glTF PBR specification, ambient occlusion strictly modulates indirect diffuse/ambient light.
+  // Direct sunlight (lit) must not be multiplied by ao.
+  let indirectDiffuse = vec3<f32>(0.0);
+  let ambient = indirectDiffuse * ao;
+  return vec4<f32>(lit + ambient + emissive, baseColor.a);
 }
 `,
     glslEs300: {
@@ -735,7 +839,6 @@ struct ObjectData {
 struct ViewData {
     mat4x4 viewProjection;
     vec3 cameraPosition;
-    float padding;
 };
 struct MaterialData {
     vec4 baseColor;
@@ -751,13 +854,21 @@ struct MaterialData {
     uint occlusionUvSet;
     uint emissiveUvSet;
     uint alphaMask;
-    uvec2 padding0_;
+    vec4 baseColorTransform;
+    vec2 baseColorOffset;
+    vec4 metallicRoughnessTransform;
+    vec2 metallicRoughnessOffset;
+    vec4 normalTransform;
+    vec2 normalOffset;
+    vec4 occlusionTransform;
+    vec2 occlusionOffset;
+    vec4 emissiveTransform;
+    vec2 emissiveOffset;
 };
 struct DirectionalLightData {
     vec3 direction;
     float illuminance;
     vec3 color;
-    float padding;
 };
 struct StandardLitVertexOutput {
     vec4 position;
@@ -766,6 +877,7 @@ struct StandardLitVertexOutput {
     vec2 uv0_;
     vec2 uv1_;
     vec4 tangent;
+    vec4 color;
 };
 struct StandardLitFragmentInput {
     vec3 normal;
@@ -773,6 +885,7 @@ struct StandardLitFragmentInput {
     vec2 uv0_;
     vec2 uv1_;
     vec4 tangent;
+    vec4 color;
 };
 layout(std140) uniform ViewData_block_0Fragment { ViewData _group_1_binding_0_fs; };
 
@@ -795,6 +908,7 @@ smooth in vec3 _vs2fs_location1;
 smooth in vec2 _vs2fs_location2;
 smooth in vec2 _vs2fs_location3;
 smooth in vec4 _vs2fs_location4;
+smooth in vec4 _vs2fs_location5;
 layout(location = 0) out vec4 _fs2p_location0;
 
 float fifthPower(float value) {
@@ -864,57 +978,81 @@ vec2 selectUv(uint index, vec2 uv0_1, vec2 uv1_1) {
     return ((index == 1u) ? uv1_1 : uv0_1);
 }
 
+vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
+    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
+}
+
 void main() {
-    StandardLitFragmentInput fragmentInput = StandardLitFragmentInput(_vs2fs_location0, _vs2fs_location1, _vs2fs_location2, _vs2fs_location3, _vs2fs_location4);
+    StandardLitFragmentInput fragmentInput = StandardLitFragmentInput(_vs2fs_location0, _vs2fs_location1, _vs2fs_location2, _vs2fs_location3, _vs2fs_location4, _vs2fs_location5);
+    bool frontFacing = gl_FrontFacing;
     bool local = false;
-    uint _e5 = _group_2_binding_0_fs.baseColorUvSet;
-    vec2 _e8 = selectUv(_e5, fragmentInput.uv0_, fragmentInput.uv1_);
-    vec4 baseSample = texture(_group_2_binding_1_fs, vec2(_e8));
-    uint _e14 = _group_2_binding_0_fs.metallicRoughnessUvSet;
-    vec2 _e17 = selectUv(_e14, fragmentInput.uv0_, fragmentInput.uv1_);
-    vec4 mrSample = texture(_group_2_binding_2_fs, vec2(_e17));
-    uint _e23 = _group_2_binding_0_fs.normalUvSet;
-    vec2 _e26 = selectUv(_e23, fragmentInput.uv0_, fragmentInput.uv1_);
-    vec4 _e27 = texture(_group_2_binding_3_fs, vec2(_e26));
-    vec3 normalSample = ((_e27.xyz * 2.0) - vec3(1.0));
-    float _e36 = _group_2_binding_0_fs.occlusionStrength;
-    uint _e41 = _group_2_binding_0_fs.occlusionUvSet;
-    vec2 _e44 = selectUv(_e41, fragmentInput.uv0_, fragmentInput.uv1_);
-    vec4 _e45 = texture(_group_2_binding_4_fs, vec2(_e44));
-    float ao = (1.0 + (_e36 * (_e45.x - 1.0)));
-    vec3 _e54 = _group_2_binding_0_fs.emissiveFactor;
-    uint _e59 = _group_2_binding_0_fs.emissiveUvSet;
-    vec2 _e62 = selectUv(_e59, fragmentInput.uv0_, fragmentInput.uv1_);
-    vec4 _e63 = texture(_group_2_binding_5_fs, vec2(_e62));
-    vec3 emissive = (_e54 * _e63.xyz);
-    vec4 _e68 = _group_2_binding_0_fs.baseColor;
-    vec4 baseColor_1 = (_e68 * baseSample);
-    uint _e72 = _group_2_binding_0_fs.alphaMask;
-    if ((_e72 != 0u)) {
-        float _e80 = _group_2_binding_0_fs.alphaCutoff;
-        local = (baseColor_1.w < _e80);
+    uint _e4 = _group_2_binding_0_fs.baseColorUvSet;
+    vec2 _e7 = selectUv(_e4, fragmentInput.uv0_, fragmentInput.uv1_);
+    vec4 _e10 = _group_2_binding_0_fs.baseColorTransform;
+    vec2 _e13 = _group_2_binding_0_fs.baseColorOffset;
+    vec2 _e14 = transformUv(_e7, _e10, _e13);
+    uint _e17 = _group_2_binding_0_fs.metallicRoughnessUvSet;
+    vec2 _e20 = selectUv(_e17, fragmentInput.uv0_, fragmentInput.uv1_);
+    vec4 _e23 = _group_2_binding_0_fs.metallicRoughnessTransform;
+    vec2 _e26 = _group_2_binding_0_fs.metallicRoughnessOffset;
+    vec2 _e27 = transformUv(_e20, _e23, _e26);
+    uint _e30 = _group_2_binding_0_fs.normalUvSet;
+    vec2 _e33 = selectUv(_e30, fragmentInput.uv0_, fragmentInput.uv1_);
+    vec4 _e36 = _group_2_binding_0_fs.normalTransform;
+    vec2 _e39 = _group_2_binding_0_fs.normalOffset;
+    vec2 _e40 = transformUv(_e33, _e36, _e39);
+    uint _e43 = _group_2_binding_0_fs.occlusionUvSet;
+    vec2 _e46 = selectUv(_e43, fragmentInput.uv0_, fragmentInput.uv1_);
+    vec4 _e49 = _group_2_binding_0_fs.occlusionTransform;
+    vec2 _e52 = _group_2_binding_0_fs.occlusionOffset;
+    vec2 _e53 = transformUv(_e46, _e49, _e52);
+    uint _e56 = _group_2_binding_0_fs.emissiveUvSet;
+    vec2 _e59 = selectUv(_e56, fragmentInput.uv0_, fragmentInput.uv1_);
+    vec4 _e62 = _group_2_binding_0_fs.emissiveTransform;
+    vec2 _e65 = _group_2_binding_0_fs.emissiveOffset;
+    vec2 _e66 = transformUv(_e59, _e62, _e65);
+    vec4 baseSample = texture(_group_2_binding_1_fs, vec2(_e14));
+    vec4 mrSample = texture(_group_2_binding_2_fs, vec2(_e27));
+    vec4 _e75 = texture(_group_2_binding_3_fs, vec2(_e40));
+    vec3 normalSample = ((_e75.xyz * 2.0) - vec3(1.0));
+    vec3 _e84 = _group_2_binding_0_fs.emissiveFactor;
+    vec4 _e87 = texture(_group_2_binding_5_fs, vec2(_e66));
+    vec3 emissive = (_e84 * _e87.xyz);
+    vec4 _e92 = texture(_group_2_binding_4_fs, vec2(_e53));
+    float aoSample = _e92.x;
+    float _e96 = _group_2_binding_0_fs.occlusionStrength;
+    float ao = (1.0 + (_e96 * (aoSample - 1.0)));
+    vec4 _e104 = _group_2_binding_0_fs.baseColor;
+    vec4 baseColor_1 = ((_e104 * baseSample) * fragmentInput.color);
+    uint _e110 = _group_2_binding_0_fs.alphaMask;
+    if ((_e110 != 0u)) {
+        float _e118 = _group_2_binding_0_fs.alphaCutoff;
+        local = (baseColor_1.w < _e118);
     } else {
         local = false;
     }
-    bool _e83 = local;
-    if (_e83) {
+    bool _e121 = local;
+    if (_e121) {
         discard;
     }
-    vec3 geometricNormal = normalize(fragmentInput.normal);
+    vec3 rawNormal = normalize(fragmentInput.normal);
+    vec3 geometricNormal = (frontFacing ? rawNormal : -(rawNormal));
     vec3 tangent_1 = normalize(fragmentInput.tangent.xyz);
     vec3 bitangent = (cross(geometricNormal, tangent_1) * fragmentInput.tangent.w);
-    float _e96 = _group_2_binding_0_fs.normalScale;
-    vec3 mapped = normalize(vec3((normalSample.xy * _e96), normalSample.z));
+    float _e136 = _group_2_binding_0_fs.normalScale;
+    vec3 mapped = normalize(vec3((normalSample.xy * _e136), normalSample.z));
     vec3 normal_4 = normalize((((tangent_1 * mapped.x) + (bitangent * mapped.y)) + (geometricNormal * mapped.z)));
-    vec3 _e112 = _group_3_binding_0_fs.direction;
-    vec3 lightDirection_2 = -(normalize(_e112));
-    vec3 _e117 = _group_1_binding_0_fs.cameraPosition;
-    vec3 viewDirection_2 = normalize((_e117 - fragmentInput.worldPosition));
-    float _e124 = _group_2_binding_0_fs.metallic;
-    float _e129 = _group_2_binding_0_fs.roughness;
-    vec3 _e134 = _group_3_binding_0_fs.color;
-    vec3 _e135 = cookTorranceDirect(normal_4, viewDirection_2, lightDirection_2, baseColor_1.xyz, (_e124 * mrSample.z), (_e129 * mrSample.y), _e134);
-    _fs2p_location0 = vec4(((_e135 * ao) + emissive), baseColor_1.w);
+    vec3 _e152 = _group_3_binding_0_fs.direction;
+    vec3 lightDirection_2 = -(normalize(_e152));
+    vec3 _e157 = _group_1_binding_0_fs.cameraPosition;
+    vec3 viewDirection_2 = normalize((_e157 - fragmentInput.worldPosition));
+    float _e164 = _group_2_binding_0_fs.metallic;
+    float _e169 = _group_2_binding_0_fs.roughness;
+    vec3 _e174 = _group_3_binding_0_fs.color;
+    vec3 _e175 = cookTorranceDirect(normal_4, viewDirection_2, lightDirection_2, baseColor_1.xyz, (_e164 * mrSample.z), (_e169 * mrSample.y), _e174);
+    vec3 indirectDiffuse = vec3(0.0);
+    vec3 ambient = (indirectDiffuse * ao);
+    _fs2p_location0 = vec4(((_e175 + ambient) + emissive), baseColor_1.w);
     return;
 }
 
@@ -1019,7 +1157,6 @@ struct ObjectData {
 struct ViewData {
     mat4x4 viewProjection;
     vec3 cameraPosition;
-    float padding;
 };
 struct MaterialData {
     vec4 baseColor;
@@ -1035,13 +1172,21 @@ struct MaterialData {
     uint occlusionUvSet;
     uint emissiveUvSet;
     uint alphaMask;
-    uvec2 padding0_;
+    vec4 baseColorTransform;
+    vec2 baseColorOffset;
+    vec4 metallicRoughnessTransform;
+    vec2 metallicRoughnessOffset;
+    vec4 normalTransform;
+    vec2 normalOffset;
+    vec4 occlusionTransform;
+    vec2 occlusionOffset;
+    vec4 emissiveTransform;
+    vec2 emissiveOffset;
 };
 struct DirectionalLightData {
     vec3 direction;
     float illuminance;
     vec3 color;
-    float padding;
 };
 struct StandardLitVertexOutput {
     vec4 position;
@@ -1050,6 +1195,7 @@ struct StandardLitVertexOutput {
     vec2 uv0_;
     vec2 uv1_;
     vec4 tangent;
+    vec4 color;
 };
 struct StandardLitFragmentInput {
     vec3 normal;
@@ -1057,6 +1203,7 @@ struct StandardLitFragmentInput {
     vec2 uv0_;
     vec2 uv1_;
     vec4 tangent;
+    vec4 color;
 };
 layout(std140) uniform ObjectData_block_0Vertex { ObjectData _group_0_binding_0_vs; };
 
@@ -1067,11 +1214,13 @@ layout(location = 1) in vec3 _p2vs_location1;
 layout(location = 2) in vec2 _p2vs_location2;
 layout(location = 3) in vec2 _p2vs_location3;
 layout(location = 4) in vec4 _p2vs_location4;
+layout(location = 5) in vec4 _p2vs_location5;
 smooth out vec3 _vs2fs_location0;
 smooth out vec3 _vs2fs_location1;
 smooth out vec2 _vs2fs_location2;
 smooth out vec2 _vs2fs_location3;
 smooth out vec4 _vs2fs_location4;
+smooth out vec4 _vs2fs_location5;
 
 float fifthPower(float value) {
     float squared = (value * value);
@@ -1140,32 +1289,38 @@ vec2 selectUv(uint index, vec2 uv0_1, vec2 uv1_1) {
     return ((index == 1u) ? uv1_1 : uv0_1);
 }
 
+vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
+    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
+}
+
 void main() {
     vec3 position = _p2vs_location0;
     vec3 normal = _p2vs_location1;
     vec2 uv0_ = _p2vs_location2;
     vec2 uv1_ = _p2vs_location3;
     vec4 tangent = _p2vs_location4;
-    mat4x4 _e7 = _group_0_binding_0_vs.world;
-    vec4 worldPosition = (_e7 * vec4(position, 1.0));
-    mat4x4 _e13 = _group_0_binding_0_vs.normalWorld;
-    vec3 worldNormal = normalize((_e13 * vec4(normal, 0.0)).xyz);
-    mat4x4 _e21 = _group_0_binding_0_vs.world;
-    vec3 rawWorldTangent = (_e21 * vec4(tangent.xyz, 0.0)).xyz;
+    vec4 color0_ = _p2vs_location5;
+    mat4x4 _e8 = _group_0_binding_0_vs.world;
+    vec4 worldPosition = (_e8 * vec4(position, 1.0));
+    mat4x4 _e14 = _group_0_binding_0_vs.normalWorld;
+    vec3 worldNormal = normalize((_e14 * vec4(normal, 0.0)).xyz);
+    mat4x4 _e22 = _group_0_binding_0_vs.world;
+    vec3 rawWorldTangent = (_e22 * vec4(tangent.xyz, 0.0)).xyz;
     vec3 worldTangent = normalize((rawWorldTangent - (worldNormal * dot(worldNormal, rawWorldTangent))));
-    vec4 _e34 = _group_0_binding_0_vs.world[0];
-    vec4 _e39 = _group_0_binding_0_vs.world[1];
-    vec4 _e44 = _group_0_binding_0_vs.world[2];
-    mat3x3 world3_ = mat3x3(_e34.xyz, _e39.xyz, _e44.xyz);
+    vec4 _e35 = _group_0_binding_0_vs.world[0];
+    vec4 _e40 = _group_0_binding_0_vs.world[1];
+    vec4 _e45 = _group_0_binding_0_vs.world[2];
+    mat3x3 world3_ = mat3x3(_e35.xyz, _e40.xyz, _e45.xyz);
     float transformSign = ((determinant(world3_) >= 0.0) ? 1.0 : -1.0);
-    mat4x4 _e55 = _group_1_binding_0_vs.viewProjection;
-    StandardLitVertexOutput _tmp_return = StandardLitVertexOutput((_e55 * worldPosition), worldNormal, worldPosition.xyz, uv0_, uv1_, vec4(worldTangent, (tangent.w * transformSign)));
+    mat4x4 _e56 = _group_1_binding_0_vs.viewProjection;
+    StandardLitVertexOutput _tmp_return = StandardLitVertexOutput((_e56 * worldPosition), worldNormal, worldPosition.xyz, uv0_, uv1_, vec4(worldTangent, (tangent.w * transformSign)), color0_);
     gl_Position = _tmp_return.position;
     _vs2fs_location0 = _tmp_return.normal;
     _vs2fs_location1 = _tmp_return.worldPosition;
     _vs2fs_location2 = _tmp_return.uv0_;
     _vs2fs_location3 = _tmp_return.uv1_;
     _vs2fs_location4 = _tmp_return.tangent;
+    _vs2fs_location5 = _tmp_return.color;
     gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
     return;
 }

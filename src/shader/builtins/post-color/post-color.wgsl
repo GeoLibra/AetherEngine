@@ -1,8 +1,5 @@
 struct PostColorData {
   exposure: f32,
-  padding0: f32,
-  padding1: f32,
-  padding2: f32,
 };
 
 @group(0) @binding(0) var sceneColor: texture_2d<f32>;

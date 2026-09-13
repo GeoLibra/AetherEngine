@@ -18,7 +18,9 @@ import type {
   RHIRenderPipeline,
   RHITexture,
   RHIResource,
-  RHISubmission
+  RHISubmission,
+  GPUVertexBufferLayout,
+  GPUBlendState
 } from '../../rhi/contracts';
 import {
   compileBindingLayoutPlan,
@@ -72,6 +74,7 @@ import {
   createBaselineUniformBuffer as uniformBuffer,
   packBaselineMaterialUniform as materialUniform,
   packBaselineObjectUniform as objectUniform,
+  packBaselineShadowMaterialUniform as shadowMaterialUniform,
   packBaselineViewUniform as viewUniform
 } from './baseline-uniforms';
 import { prepareBackground, type PreparedBackgroundFrame } from '../background/prepare';
@@ -132,6 +135,8 @@ export class BaselineStandardLitPreparation {
   private readonly disabledShadowTexture: RHITexture;
   private readonly shadowFormat: 'depth32float' | 'depth24plus';
   readonly postColor: BaselinePostColorPreparation;
+  private readonly defaultColorBuffer: RHIBuffer;
+  private readonly hasColor0: boolean;
   private readonly postColorOwnedResources: readonly RHIResource[];
   private readonly lightListRecorder:
     PreparedWebGpuLightListRecorder | PreparedWebGlLightListRecorder;
@@ -143,6 +148,13 @@ export class BaselineStandardLitPreparation {
   constructor(private readonly options: RegisteredOptions) {
     const { device } = options.graphics;
     this.shadowFormat = shadowDepthFormat(options.graphics.backend);
+    this.hasColor0 = options.mesh.data.streams.some((s) => s.semantic === 'COLOR_0');
+    this.defaultColorBuffer = device.createBuffer({
+      size: 16,
+      usage: (1 << 3) | (1 << 5)
+    });
+    device.queue.writeBuffer(this.defaultColorBuffer, 0, new Float32Array([1, 1, 1, 1]));
+
     const shaderArtifact =
       options.graphics.backend === 'webgpu'
         ? STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT
@@ -174,8 +186,11 @@ export class BaselineStandardLitPreparation {
     this.bindGroupLayouts = layout.layout.bindGroupLayouts;
     this.pipelineLayout = layout.layout.pipelineLayout;
     this.shaderModule = device.createShaderModule({
-      label: 'aether-standard-lit',
-      code: shaderModule
+      label: 'aether-standard-lit-list',
+      code:
+        target === 'webgl2'
+          ? STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE
+          : STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE
     });
     const shadowManifest = createCookedShaderBindingManifest(
       STANDARD_SHADOW_SHADER_ARTIFACT,
@@ -220,8 +235,9 @@ export class BaselineStandardLitPreparation {
       ...(options.materialResources === undefined ? {} : { resolver: options.materialResources })
     });
     this.disabledShadowBuffer = uniformBuffer(device, new Uint32Array(96));
+    // The standard-lit binding is always a depth texture array, even when CSM is disabled.
     this.disabledShadowTexture = device.createTexture({
-      size: [1, 1, 1],
+      size: [1, 1, 4],
       format: this.shadowFormat,
       usage: (1 << 2) | (1 << 4)
     });
@@ -255,37 +271,74 @@ export class BaselineStandardLitPreparation {
       options.graphics.backend === 'webgpu'
         ? prepareWebGpuLightListRecorder(device)
         : prepareWebGlLightListRecorder(device);
+
+    const cullMode = options.material.material.asset.renderState.cullMode ?? 'back';
+    const vertexBuffersLayout: GPUVertexBufferLayout[] = options.mesh.data.streams.map(
+      (stream) => ({
+        arrayStride: stream.stride,
+        attributes: [
+          {
+            format: stream.format,
+            offset: stream.offset,
+            shaderLocation: standardLitShaderLocation(stream.semantic)
+          }
+        ]
+      })
+    );
+    if (!this.hasColor0) {
+      vertexBuffersLayout.push({
+        arrayStride: 16,
+        stepMode: 'instance',
+        attributes: [
+          {
+            format: 'float32x4',
+            offset: 0,
+            shaderLocation: 5
+          }
+        ]
+      });
+    }
+
+    const isTransparent = options.material.material.asset.renderState.surface === 'transparent';
+    const blend: GPUBlendState | undefined = isTransparent
+      ? {
+          color: {
+            srcFactor: 'src-alpha',
+            dstFactor: 'one-minus-src-alpha',
+            operation: 'add'
+          },
+          alpha: {
+            srcFactor: 'one',
+            dstFactor: 'one-minus-src-alpha',
+            operation: 'add'
+          }
+        }
+      : undefined;
+
     this.pipeline = device.createRenderPipeline({
-      label: 'aether-standard-lit',
+      label: 'aether-standard-lit-forward',
       layout: this.pipelineLayout,
       vertex: {
         module: this.shaderModule,
         entryPoint: 'standardLitVertex',
-        buffers: options.mesh.data.streams.map((stream) => ({
-          arrayStride: stream.stride,
-          attributes: [
-            {
-              format: stream.format,
-              offset: stream.offset,
-              shaderLocation: standardLitShaderLocation(stream.semantic)
-            }
-          ]
-        }))
+        buffers: vertexBuffersLayout
       },
       primitive: {
         topology: 'triangle-list',
         frontFace: options.mesh.data.frontFace,
-        cullMode: 'back'
+        cullMode
       },
       depthStencil: {
         format: 'depth24plus',
-        depthWriteEnabled: true,
+        depthWriteEnabled: options.material.material.asset.renderState.depthWrite ?? true,
         depthCompare: 'less'
       },
       fragment: {
         module: this.shaderModule,
         entryPoint: 'standardLitFragment',
-        targets: [{ format: 'rgba16float' }]
+        targets: [
+          blend !== undefined ? { format: 'rgba16float', blend } : { format: 'rgba16float' }
+        ]
       }
     });
     this.shadowPipeline = device.createRenderPipeline({
@@ -294,21 +347,12 @@ export class BaselineStandardLitPreparation {
       vertex: {
         module: this.shadowShaderModule,
         entryPoint: 'standardShadowVertex',
-        buffers: options.mesh.data.streams.map((stream) => ({
-          arrayStride: stream.stride,
-          attributes: [
-            {
-              format: stream.format,
-              offset: stream.offset,
-              shaderLocation: standardLitShaderLocation(stream.semantic)
-            }
-          ]
-        }))
+        buffers: vertexBuffersLayout
       },
       primitive: {
         topology: 'triangle-list',
         frontFace: options.mesh.data.frontFace,
-        cullMode: 'back'
+        cullMode
       },
       depthStencil: {
         format: this.shadowFormat,
@@ -346,14 +390,14 @@ export class BaselineStandardLitPreparation {
       primitiveStateHash: createCanonicalKey({
         topology: options.mesh.data.topology,
         frontFace: options.mesh.data.frontFace,
-        cullMode: 'back'
+        cullMode
       }).hash,
       depthStencilStateHash: createCanonicalKey({
         depthTest: true,
-        depthWrite: true,
+        depthWrite: options.material.material.asset.renderState.depthWrite ?? true,
         format: 'depth24plus'
       }).hash,
-      blendStateHash: createCanonicalKey({ colorWrite: 'all', blend: null }).hash,
+      blendStateHash: createCanonicalKey({ colorWrite: 'all', blend: blend ?? null }).hash,
       attachmentFormats: ['rgba16float'],
       depthStencilFormat: 'depth24plus',
       sampleCount: 1,
@@ -413,24 +457,16 @@ export class BaselineStandardLitPreparation {
     if (input.viewProjection.length !== 16) {
       throw new Error('Standard shadow view-projection matrix must contain sixteen values.');
     }
+    if (this.options.material.material.asset.renderState.surface === 'transparent') {
+      throw new Error(
+        'Transparent materials cannot cast ordinary depth shadows (gltf-render.transparent-shadow-unsupported).'
+      );
+    }
     const { device } = this.options.graphics;
-    const parameters = this.options.material.material.instance.parameters;
-    const baseColor = parameters.get(StandardLitMaterialSchema.fields.baseColor);
-    const floats = new Float32Array([
-      ...baseColor,
-      parameters.get(StandardLitMaterialSchema.fields.alphaCutoff),
-      0,
-      0,
-      0
-    ]);
-    const materialWords = new Uint32Array(floats.buffer);
-    materialWords[5] = parameters.get(StandardLitMaterialSchema.fields.baseColorUvSet);
-    materialWords[6] =
-      this.options.material.material.asset.renderState.surface === 'alpha-mask' ? 1 : 0;
     const buffers = [
       uniformBuffer(device, Array.from(input.transform.matrix)),
       uniformBuffer(device, Array.from(input.viewProjection)),
-      uniformBuffer(device, materialWords)
+      uniformBuffer(device, shadowMaterialUniform(this.options.material.material))
     ];
     const bindGroups: RHIBindGroup[] = [];
     try {
@@ -647,6 +683,7 @@ export class BaselineStandardLitPreparation {
       ]);
     }
     disposeResources(this.postColorOwnedResources);
+    this.defaultColorBuffer.dispose();
     this.shaderModule.dispose();
     this.shadowShaderModule.dispose();
     this.pipelineLayout.dispose();
@@ -682,9 +719,11 @@ export class BaselineStandardLitPreparation {
       entity,
       phase:
         overrides?.phase ??
-        (this.options.material.material.asset.renderState.surface === 'alpha-mask'
-          ? 'alpha-test'
-          : 'opaque'),
+        (this.options.material.material.asset.renderState.surface === 'transparent'
+          ? 'transparent'
+          : this.options.material.material.asset.renderState.surface === 'alpha-mask'
+            ? 'alpha-test'
+            : 'opaque'),
       pipelineKey: overrides?.pipelineKey ?? this.pipelineKey,
       materialKey: this.options.material.handle.assetId,
       meshKey: this.options.mesh.handle.assetId,
@@ -699,7 +738,9 @@ export class BaselineStandardLitPreparation {
         dynamicOffsetsByGroup: Object.freeze(bindGroups.map(() => EMPTY_DYNAMIC_OFFSETS)),
         deviceGeneration: this.options.graphics.device.generation
       }),
-      vertexBuffers: this.mesh.vertexBuffers,
+      vertexBuffers: this.hasColor0
+        ? this.mesh.vertexBuffers
+        : Object.freeze([...this.mesh.vertexBuffers, this.defaultColorBuffer]),
       indexBuffer: this.mesh.indexBuffer!,
       indexFormat: this.mesh.layout.indexFormat!,
       firstIndex: submesh.start,
@@ -727,28 +768,40 @@ export class BaselineStandardLitPreparation {
     });
   }
 
-  private assertLive(): void {
-    if (this.disposed) throw new Error('Standard-lit preparation has been disposed.');
+  /** Releases submission-held resources when the device loses context. */
+  invalidateDevice(): void {
+    for (const pending of this.pendingSubmissions) void pending;
+    this.pendingSubmissions.clear();
   }
 
-  private ownedLightListFrame<T extends Omit<BaselineLightListFrame, 'release' | 'retain'>>(
-    value: T
-  ): BaselineLightListFrame {
+  private assertLive(): void {
+    if (this.disposed) throw new Error('Baseline standard-lit preparation is disposed.');
+  }
+
+  private ownedLightListFrame(frame: {
+    source: 'gpu-compute' | 'webgl-fragment';
+    lights: RHIBuffer | RHITexture;
+    receivers: RHIBuffer | RHITexture;
+    receiverCount?: number;
+    maxTextureDimension2D?: number;
+    recorder: PreparedWebGpuLightListRecorder | PreparedWebGlLightListRecorder;
+    forwardBindGroupLayoutToken: ReturnType<typeof createPreparedBindGroupLayoutToken>;
+    forwardBindGroupLayout: RHIBindGroupLayout;
+  }): BaselineLightListFrame {
     let released = false;
     let retained = false;
-    const resources: readonly RHIResource[] = [value.lights, value.receivers];
     return Object.freeze({
-      ...value,
+      ...frame,
       release: () => {
         if (released) return;
         released = true;
-        if (!retained) disposeResources(resources);
+        if (!retained) disposeResources([frame.lights, frame.receivers]);
       },
       retain: (submission: RHISubmission) => {
         if (released || retained) throw new Error('Baseline LightList frame cannot be retained.');
         retained = true;
         const pending = submission.done.finally(() => {
-          disposeResources(resources);
+          disposeResources([frame.lights, frame.receivers]);
           this.pendingSubmissions.delete(pending);
         });
         this.pendingSubmissions.add(pending);
@@ -773,6 +826,8 @@ function standardLitShaderLocation(semantic: string): number {
       return 3;
     case 'TANGENT':
       return 4;
+    case 'COLOR_0':
+      return 5;
     default:
       throw new Error(`Standard-lit mesh semantic "${semantic}" is unsupported.`);
   }

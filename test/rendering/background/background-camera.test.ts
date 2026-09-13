@@ -1,10 +1,70 @@
 import { describe, expect, it } from 'vitest';
-import { Mat4, Quat, STANDARD_DEPTH, REVERSE_DEPTH, Vec3Math } from '../../../src/math';
+import {
+  Mat4,
+  Quat,
+  STANDARD_DEPTH,
+  REVERSE_DEPTH,
+  Vec3Math,
+  type Quaternion,
+  type Vec3
+} from '../../../src/math';
 import {
   computeFullscreenVertexDirections,
   directionToEquirectUv,
-  reconstructFragmentDirection
+  extractCameraRotationMatrix
 } from '../../../src/rendering/background/coordinates';
+
+/**
+ * Analytical camera unprojection oracle for verifying vertex ray interpolation error budgets.
+ */
+function reconstructFragmentDirection(options: {
+  pixelX: number;
+  pixelY: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  viewMatrix: ArrayLike<number>;
+  projectionMatrix: ArrayLike<number>;
+  projectionKind: 'perspective' | 'orthographic';
+  depthMode: 'standard' | 'reverse';
+  environmentRotation?: Quaternion | undefined;
+}): Vec3 {
+  const {
+    pixelX,
+    pixelY,
+    viewportWidth,
+    viewportHeight,
+    viewMatrix,
+    projectionMatrix,
+    projectionKind,
+    depthMode,
+    environmentRotation
+  } = options;
+
+  const viewToWorldRot = extractCameraRotationMatrix(viewMatrix);
+  let finalRot = viewToWorldRot;
+  if (environmentRotation !== undefined) {
+    const invEnv = Quat.invert(environmentRotation);
+    const envMat = Mat4.fromTRS([0, 0, 0], invEnv, [1, 1, 1]);
+    finalRot = Mat4.multiply(envMat, viewToWorldRot);
+  }
+
+  if (projectionKind === 'orthographic') {
+    return Vec3Math.normalize(Mat4.transformDirection(finalRot, [0, 0, -1]));
+  }
+
+  const u = (pixelX + 0.5) / viewportWidth;
+  const v = (pixelY + 0.5) / viewportHeight;
+  const clipX = 2 * u - 1;
+  const clipY = 1 - 2 * v;
+  const zNear = depthMode === 'reverse' ? 1.0 : 0.0;
+
+  const invProj = Mat4.invert(projectionMatrix);
+  const viewRay = Mat4.transformPointHomogeneous(invProj, [clipX, clipY, zNear, 1.0]);
+  const w = viewRay[3];
+  const unnormalizedView: Vec3 = [viewRay[0] / w, viewRay[1] / w, viewRay[2] / w];
+
+  return Vec3Math.normalize(Mat4.transformDirection(finalRot, unnormalizedView));
+}
 
 describe('background camera direction reconstruction and invariance', () => {
   it('guarantees translation invariance between origin and 1e8 world units', () => {

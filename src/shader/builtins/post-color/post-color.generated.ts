@@ -13,8 +13,8 @@ export const POST_COLOR_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/post-color.wgsl',
-    contentHash: '585cdc907a5c9be31eb17800126030a5d07fb42ce8bb950c7ca34c734b530a0f',
-    byteLength: 1131
+    contentHash: 'f0bd55665706f0beb7bec57e5abf415190567e27f506ca68202c6df52a18adfb',
+    byteLength: 1080
   },
   entryPoints: [
     {
@@ -90,33 +90,12 @@ export const POST_COLOR_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
       group: 1,
       binding: 0,
       name: 'postColor',
-      byteSize: 16,
+      byteSize: 4,
       alignment: 4,
       fields: [
         {
           path: 'exposure',
           offset: 0,
-          size: 4,
-          alignment: 4,
-          typeName: 'f32'
-        },
-        {
-          path: 'padding0',
-          offset: 4,
-          size: 4,
-          alignment: 4,
-          typeName: 'f32'
-        },
-        {
-          path: 'padding1',
-          offset: 8,
-          size: 4,
-          alignment: 4,
-          typeName: 'f32'
-        },
-        {
-          path: 'padding2',
-          offset: 12,
           size: 4,
           alignment: 4,
           typeName: 'f32'
@@ -135,9 +114,6 @@ export const POST_COLOR_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   modules: {
     wgsl: `struct PostColorData {
   exposure: f32,
-  padding0: f32,
-  padding1: f32,
-  padding2: f32,
 };
 
 @group(0) @binding(0) var sceneColor: texture_2d<f32>;
@@ -184,9 +160,6 @@ precision highp int;
 
 struct PostColorData {
     float exposure;
-    float padding0_;
-    float padding1_;
-    float padding2_;
 };
 struct FullscreenOutput {
     vec4 position;
@@ -245,9 +218,6 @@ precision highp int;
 
 struct PostColorData {
     float exposure;
-    float padding0_;
-    float padding1_;
-    float padding2_;
 };
 struct FullscreenOutput {
     vec4 position;

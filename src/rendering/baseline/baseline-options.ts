@@ -76,6 +76,9 @@ export function validateOptions(
     featurePolicyKey,
     ...(mesh === undefined ? {} : { mesh }),
     ...(material === undefined ? {} : { material }),
+    ...(options.materialResources === undefined
+      ? {}
+      : { materialResources: options.materialResources }),
     environment,
     environmentLighting,
     ...(background === undefined ? {} : { background }),

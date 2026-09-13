@@ -38,7 +38,8 @@ describe('standard-lit built-in shader', () => {
       { location: 1, name: 'normal', type: 'vec3<f32>' },
       { location: 2, name: 'uv0', type: 'vec2<f32>' },
       { location: 3, name: 'uv1', type: 'vec2<f32>' },
-      { location: 4, name: 'tangent', type: 'vec4<f32>' }
+      { location: 4, name: 'tangent', type: 'vec4<f32>' },
+      { location: 5, name: 'color0', type: 'vec4<f32>' }
     ]);
     expect(
       manifest.groups.map(({ group, entries }) => ({
@@ -76,12 +77,11 @@ describe('standard-lit built-in shader', () => {
       byteSize: 80,
       fields: [
         { path: 'viewProjection', offset: 0 },
-        { path: 'cameraPosition', offset: 64 },
-        { path: 'padding', offset: 76 }
+        { path: 'cameraPosition', offset: 64 }
       ]
     });
     expect(manifest.buffers.find(({ name }) => name === 'materialData')).toMatchObject({
-      byteSize: 80,
+      byteSize: 240,
       fields: [
         { path: 'baseColor', offset: 0 },
         { path: 'emissiveFactor', offset: 16 },
@@ -96,7 +96,16 @@ describe('standard-lit built-in shader', () => {
         { path: 'occlusionUvSet', offset: 60 },
         { path: 'emissiveUvSet', offset: 64 },
         { path: 'alphaMask', offset: 68 },
-        { path: 'padding0', offset: 72 }
+        { path: 'baseColorTransform', offset: 80 },
+        { path: 'baseColorOffset', offset: 96 },
+        { path: 'metallicRoughnessTransform', offset: 112 },
+        { path: 'metallicRoughnessOffset', offset: 128 },
+        { path: 'normalTransform', offset: 144 },
+        { path: 'normalOffset', offset: 160 },
+        { path: 'occlusionTransform', offset: 176 },
+        { path: 'occlusionOffset', offset: 192 },
+        { path: 'emissiveTransform', offset: 208 },
+        { path: 'emissiveOffset', offset: 224 }
       ]
     });
     expect(manifest.buffers.find(({ name }) => name === 'lightData')).toMatchObject({
@@ -104,8 +113,7 @@ describe('standard-lit built-in shader', () => {
       fields: [
         { path: 'direction', offset: 0 },
         { path: 'illuminance', offset: 12 },
-        { path: 'color', offset: 16 },
-        { path: 'padding', offset: 28 }
+        { path: 'color', offset: 16 }
       ]
     });
   });

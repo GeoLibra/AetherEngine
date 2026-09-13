@@ -20,7 +20,8 @@ describe('standard-lit LightList built-in shader', () => {
       { location: 1, name: 'normal', type: 'vec3<f32>' },
       { location: 2, name: 'uv0', type: 'vec2<f32>' },
       { location: 3, name: 'uv1', type: 'vec2<f32>' },
-      { location: 4, name: 'tangent', type: 'vec4<f32>' }
+      { location: 4, name: 'tangent', type: 'vec4<f32>' },
+      { location: 5, name: 'color0', type: 'vec4<f32>' }
     ]);
     expect(
       manifest.groups

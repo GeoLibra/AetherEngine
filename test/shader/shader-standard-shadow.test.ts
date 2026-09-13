@@ -15,7 +15,8 @@ describe('standard-shadow built-in shader', () => {
     expect(manifest.vertexInputs).toEqual([
       { location: 0, name: 'position', type: 'vec3<f32>' },
       { location: 2, name: 'uv0', type: 'vec2<f32>' },
-      { location: 3, name: 'uv1', type: 'vec2<f32>' }
+      { location: 3, name: 'uv1', type: 'vec2<f32>' },
+      { location: 5, name: 'color0', type: 'vec4<f32>' }
     ]);
 
     const wgsl = STANDARD_SHADOW_SHADER_ARTIFACT.modules.wgsl;

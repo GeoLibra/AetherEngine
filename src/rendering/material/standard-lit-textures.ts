@@ -15,6 +15,7 @@ export interface StandardLitResourceResolver {
 export interface PreparedStandardLitTextureBindings {
   readonly views: readonly RHITextureView[];
   readonly sampler: RHISampler;
+  readonly samplers?: readonly RHISampler[];
   dispose(): void;
 }
 
@@ -27,11 +28,12 @@ const BUILTIN_TEXTURES = Object.freeze({
 
 const TEXTURE_USAGE = (1 << 1) | (1 << 2);
 
-/** Resolves and validates the six immutable StandardLit material resources. */
+/** Resolves and validates the immutable StandardLit material resources. */
 export function prepareStandardLitTextureBindings(input: {
   readonly device: RHIDevice;
   readonly textureIds: readonly [string, string, string, string, string];
   readonly samplerId: string;
+  readonly samplerIds?: readonly [string, string, string, string, string];
   readonly resolver?: StandardLitResourceResolver;
 }): PreparedStandardLitTextureBindings {
   const expected: readonly StandardLitTextureSemantic[] = [
@@ -42,6 +44,7 @@ export function prepareStandardLitTextureBindings(input: {
     'color'
   ];
   const ownedTextures: RHITexture[] = [];
+  const ownedSamplers: RHISampler[] = [];
   const views: RHITextureView[] = [];
   let ownedSampler: RHISampler | undefined;
   try {
@@ -76,18 +79,48 @@ export function prepareStandardLitTextureBindings(input: {
     if (sampler === undefined)
       throw new Error(`Standard-lit sampler "${input.samplerId}" is not ready.`);
     assertLiveGeneration(sampler, input.device.generation, input.samplerId);
+
+    let resolvedSamplers: RHISampler[] | undefined;
+    if (input.samplerIds !== undefined) {
+      resolvedSamplers = [];
+      for (const sId of input.samplerIds) {
+        const res = input.resolver?.resolveSampler(sId);
+        const s =
+          res ??
+          (sId === 'aether.sampler.linear-repeat'
+            ? (() => {
+                const created = input.device.createSampler({
+                  minFilter: 'linear',
+                  magFilter: 'linear',
+                  mipmapFilter: 'linear',
+                  addressModeU: 'repeat',
+                  addressModeV: 'repeat'
+                });
+                ownedSamplers.push(created);
+                return created;
+              })()
+            : undefined);
+        if (s === undefined) throw new Error(`Standard-lit sampler "${sId}" is not ready.`);
+        assertLiveGeneration(s, input.device.generation, sId);
+        resolvedSamplers.push(s);
+      }
+    }
+
     return Object.freeze({
       views: Object.freeze(views),
       sampler,
+      ...(resolvedSamplers !== undefined ? { samplers: Object.freeze(resolvedSamplers) } : {}),
       dispose() {
         for (const view of [...views].reverse()) view.dispose();
         for (const texture of [...ownedTextures].reverse()) texture.dispose();
+        for (const s of [...ownedSamplers].reverse()) s.dispose();
         ownedSampler?.dispose();
       }
     });
   } catch (error) {
     for (const view of [...views].reverse()) view.dispose();
     for (const texture of [...ownedTextures].reverse()) texture.dispose();
+    for (const s of [...ownedSamplers].reverse()) s.dispose();
     ownedSampler?.dispose();
     throw error;
   }

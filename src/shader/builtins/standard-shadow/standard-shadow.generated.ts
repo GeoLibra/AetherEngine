@@ -13,8 +13,8 @@ export const STANDARD_SHADOW_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-shadow.wgsl',
-    contentHash: '4eb045a2f5bfe34cf8f6a7fc48b5f99b87c308c14cf64292a1208bc899ce9752',
-    byteLength: 1394
+    contentHash: 'a1e04cae985a84aee564ca0df77f01f590424d679b397d6028b67e67e2c89817',
+    byteLength: 1871
   },
   entryPoints: [
     {
@@ -159,7 +159,7 @@ export const STANDARD_SHADOW_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact
       group: 2,
       binding: 0,
       name: 'shadowMaterialData',
-      byteSize: 32,
+      byteSize: 64,
       alignment: 16,
       fields: [
         {
@@ -191,11 +191,18 @@ export const STANDARD_SHADOW_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact
           typeName: 'u32'
         },
         {
-          path: 'padding',
-          offset: 28,
-          size: 4,
-          alignment: 4,
-          typeName: 'u32'
+          path: 'baseColorTransform',
+          offset: 32,
+          size: 16,
+          alignment: 16,
+          typeName: 'vec4<f32>'
+        },
+        {
+          path: 'baseColorOffset',
+          offset: 48,
+          size: 8,
+          alignment: 8,
+          typeName: 'vec2<f32>'
         }
       ]
     }
@@ -215,6 +222,11 @@ export const STANDARD_SHADOW_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact
       location: 3,
       name: 'uv1',
       typeName: 'vec2<f32>'
+    },
+    {
+      location: 5,
+      name: 'color0',
+      typeName: 'vec4<f32>'
     }
   ],
   fragmentOutputs: [],
@@ -232,13 +244,15 @@ struct ShadowMaterialData {
   alphaCutoff: f32,
   baseColorUvSet: u32,
   alphaMask: u32,
-  padding: u32,
+  baseColorTransform: vec4<f32>,
+  baseColorOffset: vec2<f32>,
 };
 
 struct ShadowVertexOutput {
   @builtin(position) position: vec4<f32>,
   @location(0) uv0: vec2<f32>,
   @location(1) uv1: vec2<f32>,
+  @location(2) color: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> objectData: ShadowObjectData;
@@ -251,17 +265,31 @@ struct ShadowVertexOutput {
 fn standardShadowVertex(
   @location(0) position: vec3<f32>,
   @location(2) uv0: vec2<f32>,
-  @location(3) uv1: vec2<f32>
+  @location(3) uv1: vec2<f32>,
+  @location(5) color0: vec4<f32>
 ) -> ShadowVertexOutput {
   let worldPosition = objectData.world * vec4<f32>(position, 1.0);
-  return ShadowVertexOutput(shadowViewData.viewProjection * worldPosition, uv0, uv1);
+  return ShadowVertexOutput(shadowViewData.viewProjection * worldPosition, uv0, uv1, color0);
+}
+
+fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(
+    matrix.x * uv.x + matrix.y * uv.y + offset.x,
+    matrix.z * uv.x + matrix.w * uv.y + offset.y
+  );
 }
 
 @fragment
 fn standardShadowFragment(input: ShadowVertexOutput) {
-  let baseColorUv = select(input.uv0, input.uv1, shadowMaterialData.baseColorUvSet == 1u);
+  let rawUv = select(input.uv0, input.uv1, shadowMaterialData.baseColorUvSet == 1u);
+  let baseColorUv = transformUv(
+    rawUv,
+    shadowMaterialData.baseColorTransform,
+    shadowMaterialData.baseColorOffset
+  );
   let alpha = shadowMaterialData.baseColorFactor.a *
-    textureSample(baseColorTexture, surfaceSampler, baseColorUv).a;
+    textureSample(baseColorTexture, surfaceSampler, baseColorUv).a *
+    input.color.a;
   if (shadowMaterialData.alphaMask != 0u && alpha < shadowMaterialData.alphaCutoff) { discard; }
 }
 `,
@@ -283,12 +311,14 @@ struct ShadowMaterialData {
     float alphaCutoff;
     uint baseColorUvSet;
     uint alphaMask;
-    uint padding;
+    vec4 baseColorTransform;
+    vec2 baseColorOffset;
 };
 struct ShadowVertexOutput {
     vec4 position;
     vec2 uv0_;
     vec2 uv1_;
+    vec4 color;
 };
 layout(std140) uniform ShadowMaterialData_block_0Fragment { ShadowMaterialData _group_2_binding_0_fs; };
 
@@ -296,24 +326,32 @@ uniform highp sampler2D _group_2_binding_1_fs;
 
 smooth in vec2 _vs2fs_location0;
 smooth in vec2 _vs2fs_location1;
+smooth in vec4 _vs2fs_location2;
+
+vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
+    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
+}
 
 void main() {
-    ShadowVertexOutput input_ = ShadowVertexOutput(gl_FragCoord, _vs2fs_location0, _vs2fs_location1);
+    ShadowVertexOutput input_ = ShadowVertexOutput(gl_FragCoord, _vs2fs_location0, _vs2fs_location1, _vs2fs_location2);
     bool local = false;
     uint _e5 = _group_2_binding_0_fs.baseColorUvSet;
-    vec2 baseColorUv = ((_e5 == 1u) ? input_.uv1_ : input_.uv0_);
-    float _e12 = _group_2_binding_0_fs.baseColorFactor.w;
-    vec4 _e15 = texture(_group_2_binding_1_fs, vec2(baseColorUv));
-    float alpha = (_e12 * _e15.w);
-    uint _e20 = _group_2_binding_0_fs.alphaMask;
-    if ((_e20 != 0u)) {
-        float _e27 = _group_2_binding_0_fs.alphaCutoff;
-        local = (alpha < _e27);
+    vec2 rawUv = ((_e5 == 1u) ? input_.uv1_ : input_.uv0_);
+    vec4 _e11 = _group_2_binding_0_fs.baseColorTransform;
+    vec2 _e14 = _group_2_binding_0_fs.baseColorOffset;
+    vec2 _e15 = transformUv(rawUv, _e11, _e14);
+    float _e19 = _group_2_binding_0_fs.baseColorFactor.w;
+    vec4 _e22 = texture(_group_2_binding_1_fs, vec2(_e15));
+    float alpha = ((_e19 * _e22.w) * input_.color.w);
+    uint _e30 = _group_2_binding_0_fs.alphaMask;
+    if ((_e30 != 0u)) {
+        float _e37 = _group_2_binding_0_fs.alphaCutoff;
+        local = (alpha < _e37);
     } else {
         local = false;
     }
-    bool _e30 = local;
-    if (_e30) {
+    bool _e40 = local;
+    if (_e40) {
         discard;
     } else {
         return;
@@ -361,12 +399,14 @@ struct ShadowMaterialData {
     float alphaCutoff;
     uint baseColorUvSet;
     uint alphaMask;
-    uint padding;
+    vec4 baseColorTransform;
+    vec2 baseColorOffset;
 };
 struct ShadowVertexOutput {
     vec4 position;
     vec2 uv0_;
     vec2 uv1_;
+    vec4 color;
 };
 layout(std140) uniform ShadowObjectData_block_0Vertex { ShadowObjectData _group_0_binding_0_vs; };
 
@@ -375,20 +415,28 @@ layout(std140) uniform ShadowViewData_block_1Vertex { ShadowViewData _group_1_bi
 layout(location = 0) in vec3 _p2vs_location0;
 layout(location = 2) in vec2 _p2vs_location2;
 layout(location = 3) in vec2 _p2vs_location3;
+layout(location = 5) in vec4 _p2vs_location5;
 smooth out vec2 _vs2fs_location0;
 smooth out vec2 _vs2fs_location1;
+smooth out vec4 _vs2fs_location2;
+
+vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
+    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
+}
 
 void main() {
     vec3 position = _p2vs_location0;
     vec2 uv0_ = _p2vs_location2;
     vec2 uv1_ = _p2vs_location3;
-    mat4x4 _e5 = _group_0_binding_0_vs.world;
-    vec4 worldPosition = (_e5 * vec4(position, 1.0));
-    mat4x4 _e11 = _group_1_binding_0_vs.viewProjection;
-    ShadowVertexOutput _tmp_return = ShadowVertexOutput((_e11 * worldPosition), uv0_, uv1_);
+    vec4 color0_ = _p2vs_location5;
+    mat4x4 _e6 = _group_0_binding_0_vs.world;
+    vec4 worldPosition = (_e6 * vec4(position, 1.0));
+    mat4x4 _e12 = _group_1_binding_0_vs.viewProjection;
+    ShadowVertexOutput _tmp_return = ShadowVertexOutput((_e12 * worldPosition), uv0_, uv1_, color0_);
     gl_Position = _tmp_return.position;
     _vs2fs_location0 = _tmp_return.uv0_;
     _vs2fs_location1 = _tmp_return.uv1_;
+    _vs2fs_location2 = _tmp_return.color;
     gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
     return;
 }

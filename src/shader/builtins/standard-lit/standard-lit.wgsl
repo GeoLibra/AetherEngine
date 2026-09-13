@@ -17,14 +17,12 @@ struct ObjectData {
 struct ViewData {
   viewProjection: mat4x4<f32>, // 64 bytes
   cameraPosition: vec3<f32>,   // 12 bytes, alignment 16
-  padding: f32,                // 4 bytes
 };
 
 /// Per-material PBR surface parameters.
 /// - baseColor: Linear sRGB color with alpha.
 /// - metallic: Normalized [0.0 = dielectric, 1.0 = pure metal].
 /// - roughness: Normalized perceptual roughness [0.0 = mirror smooth, 1.0 = completely rough].
-/// - padding0, padding1: Explicit tail padding to complete 32-byte alignment.
 struct MaterialData {
   baseColor: vec4<f32>,
   emissiveFactor: vec3<f32>,
@@ -39,20 +37,27 @@ struct MaterialData {
   occlusionUvSet: u32,
   emissiveUvSet: u32,
   alphaMask: u32,
-  padding0: vec2<u32>,
+  baseColorTransform: vec4<f32>,
+  baseColorOffset: vec2<f32>,
+  metallicRoughnessTransform: vec4<f32>,
+  metallicRoughnessOffset: vec2<f32>,
+  normalTransform: vec4<f32>,
+  normalOffset: vec2<f32>,
+  occlusionTransform: vec4<f32>,
+  occlusionOffset: vec2<f32>,
+  emissiveTransform: vec4<f32>,
+  emissiveOffset: vec2<f32>,
 };
 
 /// Directional light source parameters.
 /// - direction: Normalized direction vector pointing from surface to light (or light heading).
 /// - illuminance: Reserved for HDR physically-based lighting; intentionally unused by current LDR baseline.
 /// - color: Linear light color (rgb).
-/// - padding: Explicit tail padding to complete 32-byte alignment.
 struct DirectionalLightData {
   direction: vec3<f32>,
   // Reserved for HDR physically-based lighting; intentionally unused by current LDR baseline.
   illuminance: f32,
   color: vec3<f32>,
-  padding: f32,
 };
 
 // ----------------------------------------------------------------------------
@@ -67,6 +72,7 @@ struct StandardLitVertexOutput {
   @location(2) uv0: vec2<f32>,
   @location(3) uv1: vec2<f32>,
   @location(4) tangent: vec4<f32>,
+  @location(5) color: vec4<f32>,
 };
 
 /// Interpolated fragment input in world coordinate space.
@@ -76,6 +82,7 @@ struct StandardLitFragmentInput {
   @location(2) uv0: vec2<f32>,
   @location(3) uv1: vec2<f32>,
   @location(4) tangent: vec4<f32>,
+  @location(5) color: vec4<f32>,
 };
 
 // ----------------------------------------------------------------------------
@@ -202,7 +209,8 @@ fn standardLitVertex(
   @location(1) normal: vec3<f32>,
   @location(2) uv0: vec2<f32>,
   @location(3) uv1: vec2<f32>,
-  @location(4) tangent: vec4<f32>
+  @location(4) tangent: vec4<f32>,
+  @location(5) color0: vec4<f32>
 ) -> StandardLitVertexOutput {
   // Transform vertex position to world space
   let worldPosition = objectData.world * vec4<f32>(position, 1.0);
@@ -220,12 +228,20 @@ fn standardLitVertex(
     worldPosition.xyz,
     uv0,
     uv1,
-    vec4<f32>(worldTangent, tangent.w * transformSign)
+    vec4<f32>(worldTangent, tangent.w * transformSign),
+    color0
   );
 }
 
 fn selectUv(index: u32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
   return select(uv0, uv1, index == 1u);
+}
+
+fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(
+    matrix.x * uv.x + matrix.y * uv.y + offset.x,
+    matrix.z * uv.x + matrix.w * uv.y + offset.y
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -234,16 +250,46 @@ fn selectUv(index: u32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
 
 @fragment
 fn standardLitFragment(
-  fragmentInput: StandardLitFragmentInput
+  fragmentInput: StandardLitFragmentInput,
+  @builtin(front_facing) frontFacing: bool
 ) -> @location(0) vec4<f32> {
-  let baseSample = textureSample(baseColorTexture, surfaceSampler, selectUv(materialData.baseColorUvSet, fragmentInput.uv0, fragmentInput.uv1));
-  let mrSample = textureSample(metallicRoughnessTexture, surfaceSampler, selectUv(materialData.metallicRoughnessUvSet, fragmentInput.uv0, fragmentInput.uv1));
-  let normalSample = textureSample(normalTexture, surfaceSampler, selectUv(materialData.normalUvSet, fragmentInput.uv0, fragmentInput.uv1)).xyz * 2.0 - vec3<f32>(1.0);
-  let ao = 1.0 + materialData.occlusionStrength * (textureSample(occlusionTexture, surfaceSampler, selectUv(materialData.occlusionUvSet, fragmentInput.uv0, fragmentInput.uv1)).r - 1.0);
-  let emissive = materialData.emissiveFactor * textureSample(emissiveTexture, surfaceSampler, selectUv(materialData.emissiveUvSet, fragmentInput.uv0, fragmentInput.uv1)).rgb;
-  let baseColor = materialData.baseColor * baseSample;
+  let bcUv = transformUv(
+    selectUv(materialData.baseColorUvSet, fragmentInput.uv0, fragmentInput.uv1),
+    materialData.baseColorTransform,
+    materialData.baseColorOffset
+  );
+  let mrUv = transformUv(
+    selectUv(materialData.metallicRoughnessUvSet, fragmentInput.uv0, fragmentInput.uv1),
+    materialData.metallicRoughnessTransform,
+    materialData.metallicRoughnessOffset
+  );
+  let normUv = transformUv(
+    selectUv(materialData.normalUvSet, fragmentInput.uv0, fragmentInput.uv1),
+    materialData.normalTransform,
+    materialData.normalOffset
+  );
+  let occUv = transformUv(
+    selectUv(materialData.occlusionUvSet, fragmentInput.uv0, fragmentInput.uv1),
+    materialData.occlusionTransform,
+    materialData.occlusionOffset
+  );
+  let emUv = transformUv(
+    selectUv(materialData.emissiveUvSet, fragmentInput.uv0, fragmentInput.uv1),
+    materialData.emissiveTransform,
+    materialData.emissiveOffset
+  );
+
+  let baseSample = textureSample(baseColorTexture, surfaceSampler, bcUv);
+  let mrSample = textureSample(metallicRoughnessTexture, surfaceSampler, mrUv);
+  let normalSample = textureSample(normalTexture, surfaceSampler, normUv).xyz * 2.0 - vec3<f32>(1.0);
+  let emissive = materialData.emissiveFactor * textureSample(emissiveTexture, surfaceSampler, emUv).rgb;
+  let aoSample = textureSample(occlusionTexture, surfaceSampler, occUv).r;
+  let ao = 1.0 + materialData.occlusionStrength * (aoSample - 1.0);
+  let baseColor = materialData.baseColor * baseSample * fragmentInput.color;
   if (materialData.alphaMask != 0u && baseColor.a < materialData.alphaCutoff) { discard; }
-  let geometricNormal = normalize(fragmentInput.normal);
+
+  let rawNormal = normalize(fragmentInput.normal);
+  let geometricNormal = select(-rawNormal, rawNormal, frontFacing);
   let tangent = normalize(fragmentInput.tangent.xyz);
   let bitangent = cross(geometricNormal, tangent) * fragmentInput.tangent.w;
   let mapped = normalize(vec3<f32>(normalSample.xy * materialData.normalScale, normalSample.z));
@@ -261,5 +307,9 @@ fn standardLitFragment(
     lightData.color
   );
 
-  return vec4<f32>(lit * ao + emissive, baseColor.a);
+  // In glTF PBR specification, ambient occlusion strictly modulates indirect diffuse/ambient light.
+  // Direct sunlight (lit) must not be multiplied by ao.
+  let indirectDiffuse = vec3<f32>(0.0);
+  let ambient = indirectDiffuse * ao;
+  return vec4<f32>(lit + ambient + emissive, baseColor.a);
 }
