@@ -1,12 +1,28 @@
 import { createMaterialAsset, createMaterialInstance, resolveMaterialAsset } from '../asset';
 import { defineMaterialSchema } from '../schema';
+import {
+  createMaterialSamplerReference,
+  createMaterialTextureReference,
+  defineOffsetField,
+  defineTextureField,
+  defineTransformField,
+  defineUvField
+} from '../schema-helpers';
 import { createMaterialTechniqueRole } from '../technique';
+import {
+  assertNonNegativeScalar,
+  assertNonNegativeVector,
+  assertNormalizedScalar,
+  assertNormalizedVector
+} from '../validation';
 import type {
-  MaterialAsset,
-  MaterialInstance,
-  MaterialSamplerReference,
-  MaterialTextureReference,
-  ResolvedMaterialAsset
+  StandardLitAlphaMode,
+  StandardLitMaterial,
+  StandardLitMaterialOptions,
+  StandardLitSamplers,
+  StandardLitTextureTransforms,
+  StandardLitUvSets,
+  TextureUvAffineTransform
 } from '../types';
 import {
   STANDARD_LIT_SHADER_ABI_VERSION,
@@ -14,18 +30,22 @@ import {
 } from '../../shader/builtins';
 import { createCookedShaderBindingManifest } from '../../shader/layout';
 
+export type {
+  StandardLitAlphaMode,
+  StandardLitMaterial,
+  StandardLitMaterialOptions,
+  StandardLitSamplers,
+  StandardLitTextureTransforms,
+  StandardLitUvSets,
+  TextureUvAffineTransform
+};
+
 export const STANDARD_LIT_SHADER_MODULE_KEY = 'aether.shader.standard-lit.v2';
 export const STANDARD_LIT_BINDING_LAYOUT_HASH = createCookedShaderBindingManifest(
   STANDARD_LIT_SHADER_ARTIFACT,
   STANDARD_LIT_SHADER_ABI_VERSION
 ).layoutHash;
 export const STANDARD_LIT_FORWARD_ROLE = createMaterialTechniqueRole('standard-forward');
-
-/** Canonical parameter schema for the baseline standard-lit material. */
-const texture = (assetId: string): MaterialTextureReference =>
-  Object.freeze({ kind: 'texture', assetId });
-const sampler = (assetId: string): MaterialSamplerReference =>
-  Object.freeze({ kind: 'sampler', assetId });
 
 export const StandardLitMaterialSchema = defineMaterialSchema({
   id: 'aether.material.standard-lit.schema',
@@ -80,31 +100,31 @@ export const StandardLitMaterialSchema = defineMaterialSchema({
       defaultValue: 0.5,
       bindingPath: 'material.alphaCutoff'
     },
-    baseColorTexture: textureField(
+    baseColorTexture: defineTextureField(
       'base-color-texture',
       'baseColorTexture',
       'aether.texture.white-srgb',
       'material.baseColorTexture'
     ),
-    metallicRoughnessTexture: textureField(
+    metallicRoughnessTexture: defineTextureField(
       'metallic-roughness-texture',
       'metallicRoughnessTexture',
       'aether.texture.white-data',
       'material.metallicRoughnessTexture'
     ),
-    normalTexture: textureField(
+    normalTexture: defineTextureField(
       'normal-texture',
       'normalTexture',
       'aether.texture.flat-normal',
       'material.normalTexture'
     ),
-    occlusionTexture: textureField(
+    occlusionTexture: defineTextureField(
       'occlusion-texture',
       'occlusionTexture',
       'aether.texture.white-data',
       'material.occlusionTexture'
     ),
-    emissiveTexture: textureField(
+    emissiveTexture: defineTextureField(
       'emissive-texture',
       'emissiveTexture',
       'aether.texture.black-srgb',
@@ -114,51 +134,32 @@ export const StandardLitMaterialSchema = defineMaterialSchema({
       fieldId: 'surface-sampler',
       name: 'sampler',
       valueType: { kind: 'sampler-reference' },
-      defaultValue: sampler('aether.sampler.linear-repeat'),
+      defaultValue: createMaterialSamplerReference('aether.sampler.linear-repeat'),
       bindingPath: 'material.surfaceSampler'
     },
-    baseColorUvSet: uvField('base-color-uv-set', 'baseColorUvSet'),
-    metallicRoughnessUvSet: uvField('metallic-roughness-uv-set', 'metallicRoughnessUvSet'),
-    normalUvSet: uvField('normal-uv-set', 'normalUvSet'),
-    occlusionUvSet: uvField('occlusion-uv-set', 'occlusionUvSet'),
-    emissiveUvSet: uvField('emissive-uv-set', 'emissiveUvSet')
+    baseColorUvSet: defineUvField('base-color-uv-set', 'baseColorUvSet'),
+    metallicRoughnessUvSet: defineUvField('metallic-roughness-uv-set', 'metallicRoughnessUvSet'),
+    normalUvSet: defineUvField('normal-uv-set', 'normalUvSet'),
+    occlusionUvSet: defineUvField('occlusion-uv-set', 'occlusionUvSet'),
+    emissiveUvSet: defineUvField('emissive-uv-set', 'emissiveUvSet'),
+    baseColorTransform: defineTransformField('base-color-transform', 'baseColorTransform'),
+    baseColorOffset: defineOffsetField('base-color-offset', 'baseColorOffset'),
+    metallicRoughnessTransform: defineTransformField(
+      'metallic-roughness-transform',
+      'metallicRoughnessTransform'
+    ),
+    metallicRoughnessOffset: defineOffsetField(
+      'metallic-roughness-offset',
+      'metallicRoughnessOffset'
+    ),
+    normalTransform: defineTransformField('normal-transform', 'normalTransform'),
+    normalOffset: defineOffsetField('normal-offset', 'normalOffset'),
+    occlusionTransform: defineTransformField('occlusion-transform', 'occlusionTransform'),
+    occlusionOffset: defineOffsetField('occlusion-offset', 'occlusionOffset'),
+    emissiveTransform: defineTransformField('emissive-transform', 'emissiveTransform'),
+    emissiveOffset: defineOffsetField('emissive-offset', 'emissiveOffset')
   }
 });
-
-export type StandardLitAlphaMode = 'opaque' | 'mask';
-export interface StandardLitUvSets {
-  readonly baseColor?: 0 | 1;
-  readonly metallicRoughness?: 0 | 1;
-  readonly normal?: 0 | 1;
-  readonly occlusion?: 0 | 1;
-  readonly emissive?: 0 | 1;
-}
-
-export interface StandardLitMaterialOptions {
-  readonly baseColor?: readonly [number, number, number, number];
-  readonly metallic?: number;
-  readonly roughness?: number;
-  readonly emissiveFactor?: readonly [number, number, number];
-  readonly normalScale?: number;
-  readonly occlusionStrength?: number;
-  readonly alphaMode?: StandardLitAlphaMode;
-  readonly alphaCutoff?: number;
-  readonly doubleSided?: boolean;
-  readonly baseColorTexture?: MaterialTextureReference;
-  readonly metallicRoughnessTexture?: MaterialTextureReference;
-  readonly normalTexture?: MaterialTextureReference;
-  readonly occlusionTexture?: MaterialTextureReference;
-  readonly emissiveTexture?: MaterialTextureReference;
-  readonly sampler?: MaterialSamplerReference;
-  readonly uvSets?: StandardLitUvSets;
-}
-
-/** Immutable built-in asset ownership bundle returned to renderer composition. */
-export interface StandardLitMaterial {
-  readonly asset: MaterialAsset;
-  readonly resolved: ResolvedMaterialAsset;
-  readonly instance: MaterialInstance;
-}
 
 /**
  * Creates one standard-lit material instance using normalized linear surface parameters.
@@ -168,14 +169,27 @@ export interface StandardLitMaterial {
 export function createStandardLitMaterial(
   options: StandardLitMaterialOptions = {}
 ): StandardLitMaterial {
-  const baseColor = normalizedVector(options.baseColor ?? [1, 1, 1, 1], 'baseColor');
-  const metallic = normalized(options.metallic ?? 0, 'metallic');
-  const roughness = normalized(options.roughness ?? 0.5, 'roughness');
-  const emissiveFactor = nonNegativeVector(options.emissiveFactor ?? [0, 0, 0], 'emissiveFactor');
-  const normalScale = nonNegative(options.normalScale ?? 1, 'normalScale');
-  const occlusionStrength = normalized(options.occlusionStrength ?? 1, 'occlusionStrength');
-  const alphaCutoff = normalized(options.alphaCutoff ?? 0.5, 'alphaCutoff');
+  const baseColor = assertNormalizedVector(
+    options.baseColor ?? [1, 1, 1, 1],
+    4,
+    'baseColor'
+  ) as readonly [number, number, number, number];
+  const metallic = assertNormalizedScalar(options.metallic ?? 0, 'metallic');
+  const roughness = assertNormalizedScalar(options.roughness ?? 0.5, 'roughness');
+  const emissiveFactor = assertNonNegativeVector(
+    options.emissiveFactor ?? [0, 0, 0],
+    3,
+    'emissiveFactor'
+  ) as readonly [number, number, number];
+  const normalScale = assertNonNegativeScalar(options.normalScale ?? 1, 'normalScale');
+  const occlusionStrength = assertNormalizedScalar(
+    options.occlusionStrength ?? 1,
+    'occlusionStrength'
+  );
+  const alphaCutoff = assertNormalizedScalar(options.alphaCutoff ?? 0.5, 'alphaCutoff');
   const alphaMode = options.alphaMode ?? 'opaque';
+  const surface =
+    alphaMode === 'mask' ? 'alpha-mask' : alphaMode === 'blend' ? 'transparent' : 'opaque';
   const asset = createMaterialAsset({
     id: 'aether.material.standard-lit',
     version: 2,
@@ -204,9 +218,9 @@ export function createStandardLitMaterial(
       }
     ],
     renderState: {
-      surface: alphaMode === 'mask' ? 'alpha-mask' : 'opaque',
+      surface,
       depthTest: true,
-      depthWrite: true,
+      depthWrite: alphaMode !== 'blend',
       cullMode: options.doubleSided === true ? 'none' : 'back'
     }
   });
@@ -224,28 +238,34 @@ export function createStandardLitMaterial(
     draft.set(StandardLitMaterialSchema.fields.alphaCutoff, alphaCutoff);
     draft.set(
       StandardLitMaterialSchema.fields.baseColorTexture,
-      options.baseColorTexture ?? texture('aether.texture.white-srgb')
+      options.baseColorTexture ?? createMaterialTextureReference('aether.texture.white-srgb')
     );
     draft.set(
       StandardLitMaterialSchema.fields.metallicRoughnessTexture,
-      options.metallicRoughnessTexture ?? texture('aether.texture.white-data')
+      options.metallicRoughnessTexture ??
+        createMaterialTextureReference('aether.texture.white-data')
     );
     draft.set(
       StandardLitMaterialSchema.fields.normalTexture,
-      options.normalTexture ?? texture('aether.texture.flat-normal')
+      options.normalTexture ?? createMaterialTextureReference('aether.texture.flat-normal')
     );
     draft.set(
       StandardLitMaterialSchema.fields.occlusionTexture,
-      options.occlusionTexture ?? texture('aether.texture.white-data')
+      options.occlusionTexture ?? createMaterialTextureReference('aether.texture.white-data')
     );
     draft.set(
       StandardLitMaterialSchema.fields.emissiveTexture,
-      options.emissiveTexture ?? texture('aether.texture.black-srgb')
+      options.emissiveTexture ?? createMaterialTextureReference('aether.texture.black-srgb')
     );
-    draft.set(
-      StandardLitMaterialSchema.fields.sampler,
-      options.sampler ?? sampler('aether.sampler.linear-repeat')
-    );
+    const primarySampler =
+      options.sampler ??
+      options.samplers?.baseColor ??
+      options.samplers?.metallicRoughness ??
+      options.samplers?.normal ??
+      options.samplers?.occlusion ??
+      options.samplers?.emissive ??
+      createMaterialSamplerReference('aether.sampler.linear-repeat');
+    draft.set(StandardLitMaterialSchema.fields.sampler, primarySampler);
     draft.set(StandardLitMaterialSchema.fields.baseColorUvSet, options.uvSets?.baseColor ?? 0);
     draft.set(
       StandardLitMaterialSchema.fields.metallicRoughnessUvSet,
@@ -254,65 +274,55 @@ export function createStandardLitMaterial(
     draft.set(StandardLitMaterialSchema.fields.normalUvSet, options.uvSets?.normal ?? 0);
     draft.set(StandardLitMaterialSchema.fields.occlusionUvSet, options.uvSets?.occlusion ?? 0);
     draft.set(StandardLitMaterialSchema.fields.emissiveUvSet, options.uvSets?.emissive ?? 0);
+    if (options.transforms?.baseColor) {
+      draft.set(
+        StandardLitMaterialSchema.fields.baseColorTransform,
+        options.transforms.baseColor.matrix
+      );
+      draft.set(
+        StandardLitMaterialSchema.fields.baseColorOffset,
+        options.transforms.baseColor.offset
+      );
+    }
+    if (options.transforms?.metallicRoughness) {
+      draft.set(
+        StandardLitMaterialSchema.fields.metallicRoughnessTransform,
+        options.transforms.metallicRoughness.matrix
+      );
+      draft.set(
+        StandardLitMaterialSchema.fields.metallicRoughnessOffset,
+        options.transforms.metallicRoughness.offset
+      );
+    }
+    if (options.transforms?.normal) {
+      draft.set(StandardLitMaterialSchema.fields.normalTransform, options.transforms.normal.matrix);
+      draft.set(StandardLitMaterialSchema.fields.normalOffset, options.transforms.normal.offset);
+    }
+    if (options.transforms?.occlusion) {
+      draft.set(
+        StandardLitMaterialSchema.fields.occlusionTransform,
+        options.transforms.occlusion.matrix
+      );
+      draft.set(
+        StandardLitMaterialSchema.fields.occlusionOffset,
+        options.transforms.occlusion.offset
+      );
+    }
+    if (options.transforms?.emissive) {
+      draft.set(
+        StandardLitMaterialSchema.fields.emissiveTransform,
+        options.transforms.emissive.matrix
+      );
+      draft.set(
+        StandardLitMaterialSchema.fields.emissiveOffset,
+        options.transforms.emissive.offset
+      );
+    }
   });
-  return Object.freeze({ asset, resolved, instance }) as StandardLitMaterial;
-}
-
-function textureField(fieldId: string, name: string, assetId: string, bindingPath: string) {
-  return {
-    fieldId,
-    name,
-    valueType: { kind: 'texture-reference' } as const,
-    defaultValue: texture(assetId),
-    bindingPath
-  };
-}
-
-function uvField(fieldId: string, name: string) {
-  return {
-    fieldId,
-    name,
-    valueType: { kind: 'number', format: 'u32' } as const,
-    defaultValue: 0,
-    bindingPath: `material.${name}`
-  };
-}
-
-function nonNegative(value: number, field: 'normalScale'): number {
-  if (!Number.isFinite(value) || value < 0)
-    throw new Error(`Standard-lit ${field} must contain finite non-negative values.`);
-  return value;
-}
-
-function nonNegativeVector(
-  value: readonly number[],
-  field: 'emissiveFactor'
-): readonly [number, number, number] {
-  if (value.length !== 3 || value.some((entry) => !Number.isFinite(entry) || entry < 0)) {
-    throw new Error(`Standard-lit ${field} must contain finite non-negative values.`);
-  }
-  return Object.freeze([value[0]!, value[1]!, value[2]!]);
-}
-
-function normalized(
-  value: number,
-  field: 'metallic' | 'roughness' | 'occlusionStrength' | 'alphaCutoff'
-): number {
-  if (!Number.isFinite(value) || value < 0 || value > 1) {
-    throw new Error(`Standard-lit ${field} must contain finite normalized values.`);
-  }
-  return value;
-}
-
-function normalizedVector(
-  value: readonly number[],
-  field: 'baseColor'
-): readonly [number, number, number, number] {
-  if (
-    value.length !== 4 ||
-    value.some((entry) => !Number.isFinite(entry) || entry < 0 || entry > 1)
-  ) {
-    throw new Error(`Standard-lit ${field} must contain finite normalized values.`);
-  }
-  return Object.freeze([value[0]!, value[1]!, value[2]!, value[3]!]);
+  return Object.freeze({
+    asset,
+    resolved,
+    instance,
+    ...(options.samplers ? { samplers: options.samplers } : {})
+  }) as StandardLitMaterial;
 }

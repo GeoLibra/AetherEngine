@@ -1,6 +1,20 @@
 export { MaterialDiagnosticError } from './diagnostics';
 export * from './builtins';
 export { defineMaterialSchema } from './schema';
+export {
+  createMaterialSamplerReference,
+  createMaterialTextureReference,
+  defineOffsetField,
+  defineTextureField,
+  defineTransformField,
+  defineUvField
+} from './schema-helpers';
+export {
+  assertNonNegativeScalar,
+  assertNonNegativeVector,
+  assertNormalizedScalar,
+  assertNormalizedVector
+} from './validation';
 export { createMaterialTechniqueRole, selectMaterialTechnique } from './technique';
 export { resolveMaterialRenderState } from './render-state';
 export type {
