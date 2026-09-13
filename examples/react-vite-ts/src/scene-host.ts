@@ -13,21 +13,33 @@ import { mountAetherScene, type AetherSceneOptions, type MountedAetherScene } fr
  * 2. An in-flight mount from an aborted lifecycle run is awaited and destroyed before the next mount acquires the canvas.
  * 3. Never permits concurrent graphics sessions on the same canvas.
  */
-export class AetherSceneHost {
+export interface DestroyableScene {
+  destroy(): Promise<void>;
+}
+
+export class AetherSceneHost<
+  TScene extends DestroyableScene = MountedAetherScene,
+  TOptions = AetherSceneOptions
+> {
   private inFlightOperation: Promise<void> = Promise.resolve();
-  private currentScene: MountedAetherScene | null = null;
+  private currentScene: TScene | null = null;
   private currentCanvas: HTMLCanvasElement | null = null;
   private abortController: AbortController | null = null;
   private generation = 0;
+  private readonly mountFn: (canvas: HTMLCanvasElement, options?: TOptions) => Promise<TScene>;
+
+  constructor(mountFn?: (canvas: HTMLCanvasElement, options?: TOptions) => Promise<TScene>) {
+    this.mountFn =
+      mountFn ??
+      ((canvas: HTMLCanvasElement, options?: TOptions) =>
+        mountAetherScene(canvas, options as AetherSceneOptions) as unknown as Promise<TScene>);
+  }
 
   /**
-   * Mounts the Aether scene on the specified canvas.
+   * Mounts the scene on the specified canvas.
    * If a mount or teardown is already in flight, this operation queues behind it.
    */
-  async mount(
-    canvas: HTMLCanvasElement,
-    options: AetherSceneOptions = {}
-  ): Promise<MountedAetherScene> {
+  async mount(canvas: HTMLCanvasElement, options?: TOptions): Promise<TScene> {
     const mountGen = ++this.generation;
     this.abortController?.abort();
     const controller = new AbortController();
@@ -49,7 +61,7 @@ export class AetherSceneHost {
           throw new Error('Scene mount cancelled by subsequent lifecycle event.');
         }
 
-        const scene = await mountAetherScene(canvas, options);
+        const scene = await this.mountFn(canvas, options);
 
         if (controller.signal.aborted || this.generation !== mountGen) {
           await scene.destroy();
@@ -94,7 +106,7 @@ export class AetherSceneHost {
   }
 
   /** Gets the currently active scene, if any. */
-  get activeScene(): MountedAetherScene | null {
+  get activeScene(): TScene | null {
     return this.currentScene;
   }
 }

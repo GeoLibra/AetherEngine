@@ -69,6 +69,35 @@ test('renders the public React example and survives surface suspension', async (
   });
 });
 
+test('navigates to DamagedHelmet demo and renders glTF PBR model', async ({ page }, info) => {
+  page.on('console', (msg) => console.log(`[PAGE LOG] ${msg.type()}: ${msg.text()}`));
+  page.on('pageerror', (err) => console.log(`[PAGE ERROR] ${err.message}`));
+  page.on('response', (res) => {
+    if (res.status() >= 400) console.log(`[HTTP ${res.status()}] ${res.url()}`);
+  });
+  page.on('requestfailed', (req) => {
+    console.log(`[FAILED REQUEST] ${req.url()}: ${req.failure()?.errorText}`);
+  });
+  const backend = info.project.name.endsWith('webgl2') ? 'webgl2' : 'webgpu';
+  await page.goto(`/damaged-helmet?backend=${backend}`);
+
+  const statusLocator = page.locator('.status-ready');
+  await expect(statusLocator).toBeVisible({ timeout: 25_000 });
+  await expect(statusLocator).toContainText(`Rendering glTF PBR with ${backend}`);
+
+  await expect(page.locator('.model-badges')).toContainText('14,556');
+  await expect(page.locator('.model-badges')).toContainText('MikkTSpace');
+  await expect(page.locator('.model-badges')).toContainText('5 Slots');
+
+  const boxTab = page.getByRole('button', { name: /CSM Box PBR/i });
+  await boxTab.click({ force: true });
+  await expect(page).toHaveURL(`/?backend=${backend}`);
+
+  const helmetTab = page.getByRole('button', { name: /Damaged Helmet/i });
+  await helmetTab.click({ force: true });
+  await expect(page).toHaveURL(`/damaged-helmet?backend=${backend}`);
+});
+
 function expectBackendClean(state: Record<string, unknown>, backend: string): void {
   expect(state.runtimeErrors, JSON.stringify(state)).toEqual([]);
   expect(state.validationErrors, JSON.stringify(state)).toEqual([]);

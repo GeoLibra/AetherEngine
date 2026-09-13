@@ -91,8 +91,8 @@ export interface AetherSceneOptions {
   readonly animate?: boolean;
   /** Spawns a ground receiver mesh; defaults to true. */
   readonly ground?: boolean;
-  /** Environment IBL lighting source: 'hdr' (Venice Sunset) or 'synthetic' (fallback). Defaults to 'hdr'. */
-  readonly environment?: 'hdr' | 'synthetic';
+  /** Environment IBL lighting source: 'hdr' (Venice Sunset), 'relax_inn' (Relax Inn 4K HDR), or 'synthetic' (fallback). Defaults to 'hdr'. */
+  readonly environment?: 'hdr' | 'relax_inn' | 'synthetic';
   /** Background skybox mode: 'hdr' (radiance level 0), 'solid', or 'none'. Defaults to 'hdr' if environment is loaded, otherwise 'solid'. */
   readonly background?: 'hdr' | 'solid' | 'none' | ViewBackground;
   /** Multiplier applied to HDR background radiance. Defaults to 1.0. */
@@ -125,7 +125,7 @@ const INITIAL_CSM_DIAGNOSTICS: CsmSceneDiagnostics = Object.freeze({
   acceptedRequests: 0
 });
 
-/** Fetches cooked Venice Sunset HDR artifacts from the public assets directory. */
+/** Fetches cooked HDR environment artifacts from the public assets directory. */
 async function loadDemoEnvironmentAsset(
   basePath = '/assets/environment/venice_sunset'
 ): Promise<EnvironmentAsset> {
@@ -138,7 +138,7 @@ async function loadDemoEnvironmentAsset(
   ]);
 
   if (!manifestRes.ok || !irrRes.ok || !radRes.ok || !lutManifestRes.ok || !lutBinRes.ok) {
-    throw new Error('Failed to fetch Venice Sunset HDR environment artifacts.');
+    throw new Error(`Failed to fetch HDR environment artifacts from ${basePath}.`);
   }
 
   const [manifestJson, irrBuf, radBuf, lutJson, lutBuf] = await Promise.all([
@@ -149,8 +149,9 @@ async function loadDemoEnvironmentAsset(
     lutBinRes.arrayBuffer()
   ]);
 
+  const envId = basePath.split('/').pop() || 'environment';
   return Object.freeze({
-    assetId: 'environment.venice_sunset' as any,
+    assetId: `environment.${envId}` as any,
     artifact: manifestJson,
     irradianceBytes: new Uint8Array(irrBuf),
     radianceBytes: new Uint8Array(radBuf),
@@ -213,9 +214,14 @@ export async function mountAetherScene(
   let environmentAsset: EnvironmentAsset | undefined;
   let activeEnvironmentMode: 'hdr' | 'synthetic' = 'synthetic';
 
-  if (options.environment !== 'synthetic') {
+  const envChoice = options.environment ?? 'hdr';
+  const isRelaxInn = envChoice === 'relax_inn';
+  if (envChoice !== 'synthetic') {
     try {
-      environmentAsset = await loadDemoEnvironmentAsset();
+      const envPath = isRelaxInn
+        ? '/assets/environment/relax_inn'
+        : '/assets/environment/venice_sunset';
+      environmentAsset = await loadDemoEnvironmentAsset(envPath);
       activeEnvironmentMode = 'hdr';
     } catch (error) {
       console.warn('Could not load HDR environment, falling back to synthetic:', error);
@@ -259,7 +265,18 @@ export async function mountAetherScene(
     graphics,
     mesh: { handle: meshHandle, payloadVersion: 1, data: mesh },
     material: { handle: materialHandle, payloadVersion: 1, material },
-    ...(environmentAsset ? { environment: environmentAsset } : {}),
+    ...(environmentAsset
+      ? {
+          environment: {
+            asset: environmentAsset,
+            lighting: {
+              intensity: 1.0,
+              radianceTint: isRelaxInn ? [120, 120, 120] : [100, 120, 180],
+              diffuseIrradiance: isRelaxInn ? [250, 250, 250] : [300, 350, 500]
+            }
+          }
+        }
+      : {}),
     background: activeBackground
   });
 

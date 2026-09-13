@@ -185,7 +185,7 @@ describe('AetherSceneHost', () => {
 
       return {
         backend: 'webgpu',
-        environmentMode: options?.environment ?? 'hdr',
+        environmentMode: options?.environment === 'synthetic' ? 'synthetic' : 'hdr',
         resize: vi.fn(),
         setRotation: vi.fn(),
         setCastsShadow: vi.fn(),

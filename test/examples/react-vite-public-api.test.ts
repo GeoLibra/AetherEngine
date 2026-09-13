@@ -12,6 +12,11 @@ describe('React Vite public API example', () => {
       'examples/react-vite-ts/src/App.tsx',
       'examples/react-vite-ts/src/aether-scene.ts',
       'examples/react-vite-ts/src/demand-driven-runner.ts',
+      'examples/react-vite-ts/src/demos/csm-box/CsmBoxDemo.tsx',
+      'examples/react-vite-ts/src/demos/damaged-helmet/DamagedHelmetDemo.tsx',
+      'examples/react-vite-ts/src/demos/damaged-helmet/damaged-helmet-scene.ts',
+      'examples/react-vite-ts/src/demos/registry.ts',
+      'examples/react-vite-ts/src/demos/types.ts',
       'examples/react-vite-ts/src/main.tsx',
       'examples/react-vite-ts/src/scene-host.ts'
     ]);

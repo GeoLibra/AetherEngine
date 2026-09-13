@@ -1,0 +1,23 @@
+{
+  "axes": "nv-perceptual-roughness",
+  "channels": "fresnel-scale-bias",
+  "integratorVersion": "aether-smith-ggx@1",
+  "payload": {
+    "blobHash": "5ef02369ea36aeb86f1ede5473d28a0f1b6450ebdbddaee656d4096b90461d56",
+    "byteLength": 131072,
+    "format": "rgba16float",
+    "levels": [
+      {
+        "byteLength": 131072,
+        "byteOffset": 0,
+        "contentHash": "5ef02369ea36aeb86f1ede5473d28a0f1b6450ebdbddaee656d4096b90461d56",
+        "height": 128,
+        "level": 0,
+        "width": 128
+      }
+    ]
+  },
+  "recipeHash": "f22ace177f3569f1e0edc1ffcb81f348f395afa84ad3013d2944e9eab228722b",
+  "samplingAbi": "ibl-equirect-ggx@1",
+  "schema": "BrdfLutArtifact@1"
+}
