@@ -24,6 +24,12 @@ import {
   createVFSStreamFixture,
   vfsByteChecksum
 } from '../../benchmark/asset-pipeline/vfs-read';
+import {
+  createSyntheticGlbFixture,
+  createSyntheticMeshDocument,
+  executeGlbIngestBenchmark
+} from '../../benchmark/asset-pipeline/gltf-ingestion';
+import { cookCanonicalMeshDocument } from '../../src/assets/cooker';
 
 describe('asset pipeline benchmark semantic oracle', () => {
   test('bucketed scheduler matches the full-sort reference with merged consumers and budgets', () => {
@@ -123,5 +129,21 @@ describe('asset pipeline benchmark semantic oracle', () => {
       const completion = await openResult.session.completion;
       expect(completion.kind).toBe('complete');
     }
+  });
+
+  test('executes deterministic synthetic GLB ingestion benchmark oracle', () => {
+    const fixture = createSyntheticGlbFixture(300);
+    const result = executeGlbIngestBenchmark(fixture);
+    expect(result.vertexCount).toBe(300);
+    expect(result.indexCount).toBe(300);
+    expect(result.checksum).toBeGreaterThan(0);
+  });
+
+  test('executes deterministic mesh cooking benchmark oracle', () => {
+    const meshDoc = createSyntheticMeshDocument(300);
+    const result = cookCanonicalMeshDocument(meshDoc);
+    expect(result.primitives[0]!.hasGeneratedTangents).toBe(true);
+    expect(result.primitives[0]!.meshData.vertexCount).toBe(300);
+    expect(result.totalByteLength).toBeGreaterThan(0);
   });
 });

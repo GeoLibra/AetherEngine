@@ -25,6 +25,12 @@ import {
   createCookGarbageCollectionFixture,
   planCookGarbageCollectionFixture
 } from './asset-pipeline/cook-garbage-collection';
+import {
+  createSyntheticGlbFixture,
+  createSyntheticMeshDocument,
+  executeGlbIngestBenchmark
+} from './asset-pipeline/gltf-ingestion';
+import { cookCanonicalMeshDocument } from '../src/assets/cooker';
 
 const profile = process.env.AETHER_BENCH_PROFILE ?? 'smoke';
 const vfsByteLength = profile === 'nightly' ? 1_048_576 : profile === 'standard' ? 65_536 : 1_024;
@@ -145,5 +151,22 @@ for (const objectCount of cookNodeCounts) {
     const result = planCookGarbageCollectionFixture(fixture);
     expect(result.deleteHashes.length).toBe(Math.floor(objectCount / 2));
     expect(result.deleteBytes).toBe(Math.floor(objectCount / 2) * 64);
+  });
+}
+
+const glbVertexCounts = profile === 'nightly' ? [10_000] : profile === 'standard' ? [3_000] : [300];
+for (const count of glbVertexCounts) {
+  const glbFixture = createSyntheticGlbFixture(count);
+  bench(`ingests and adapts synthetic GLB (${count} vertices)`, () => {
+    const result = executeGlbIngestBenchmark(glbFixture);
+    expect(result.vertexCount).toBe(count);
+    expect(result.checksum).toBeGreaterThan(0);
+  });
+
+  const meshDoc = createSyntheticMeshDocument(count);
+  bench(`cooks canonical mesh with tangent generation (${count} vertices)`, () => {
+    const result = cookCanonicalMeshDocument(meshDoc);
+    expect(result.primitives[0]!.hasGeneratedTangents).toBe(true);
+    expect(result.totalByteLength).toBeGreaterThan(0);
   });
 }

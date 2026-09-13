@@ -1,6 +1,11 @@
 export * from './asset-handle';
+export * from './canonical';
 export * from './cook';
+export * from './cooker';
 export * from './environment';
+export * from './importer';
+export * from './importers/loaders-gl';
+export * from './importers/gltf';
 export * from './render-artifact-package';
 export type * from './types';
 export * from './vfs';

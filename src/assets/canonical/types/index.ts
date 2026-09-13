@@ -1,0 +1,22 @@
+export type {
+  Bounds3,
+  CanonicalAssetBundle,
+  CanonicalAssetDocument,
+  CanonicalAssetKind,
+  CanonicalIndexData,
+  CanonicalMeshDocument,
+  CanonicalMeshPrimitive,
+  CanonicalNodeDocument,
+  CanonicalNormalTextureSlot,
+  CanonicalOcclusionTextureSlot,
+  CanonicalSamplerDocument,
+  CanonicalSceneDocument,
+  CanonicalStandardPbrMaterial,
+  CanonicalTextureDocument,
+  CanonicalTextureSlot,
+  CanonicalTransform,
+  CanonicalVertexAttribute,
+  CanonicalVertexFormat,
+  CanonicalVertexSemantic,
+  TextureUvTransform
+} from './canonical-types';
