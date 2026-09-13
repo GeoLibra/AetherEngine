@@ -1,5 +1,2 @@
-#!/bin/sh
-set -eu
-
 pnpm run format:staged
 pnpm run verify:commit
