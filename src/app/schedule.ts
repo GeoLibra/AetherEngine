@@ -6,7 +6,7 @@ import type {
   SystemDescriptor,
   SystemRegistration
 } from './types';
-import { isPromiseLike } from './utils';
+import { isPromiseLike } from '../core';
 
 /**
  * Representation of a system in the scheduler graph.

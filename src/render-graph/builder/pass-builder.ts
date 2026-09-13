@@ -1,7 +1,7 @@
 import { assertGraphHandle, isGraphHandle } from './handles';
 import type { GraphResourceCreateOptions } from './resources';
 import type { GraphAccess, GraphTerminal } from './builder';
-import type { GraphRange } from '../compiler/ranges';
+import type { GraphRange } from '../ranges';
 import type {
   BufferDescriptor,
   BufferHandle,
@@ -59,8 +59,6 @@ export function validatePassDescriptor<TResources, TContext>(descriptor: {
     throw new Error('Render graph passes require setup and run callbacks.');
   }
 }
-
-export { isPromiseLike } from '../../core';
 
 export function snapshotSetupValue<T>(
   value: T,

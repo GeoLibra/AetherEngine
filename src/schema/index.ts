@@ -5,14 +5,7 @@ export { applyPrefabOverride, createPrefabOverridePath } from './prefab-path';
 export { ReferenceResolutionError } from './reference-transaction';
 export { mapSchemaReferences, visitSchemaReferences } from './references';
 export { SchemaRegistry, SchemaRegistryResource } from './registry';
-export {
-  cloneRecord,
-  cloneUnknown,
-  freezeRecord,
-  freezeUnknown,
-  isPlainRecord,
-  isRecord
-} from './utils';
+export { cloneRecord, cloneUnknown, freezeRecord, freezeUnknown } from './utils';
 
 export type {
   DecodedSchemaPayload,

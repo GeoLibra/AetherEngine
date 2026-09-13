@@ -1,4 +1,5 @@
-import { cloneUnknown, isRecord } from './utils';
+import { isRecord } from '../core';
+import { cloneUnknown } from './utils';
 import type {
   FieldSchema,
   FieldId,

@@ -467,8 +467,6 @@ export function lowerGraphToIR(
   });
 }
 
-export { emitWgslFromIR } from './emitter';
-
 /**
  * Convenience entry point to typecheck and lower a ShaderGraph into TypedGraphIR and standard WGSL.
  */

@@ -9,8 +9,9 @@ import type {
   ValueType,
   ValueTypeDefinition
 } from './types';
+import { isRecord } from '../core';
 import { FIELD_ID_PATTERN, SCHEMA_ID_PATTERN } from './constants';
-import { cloneUnknown, freezeUnknown, isRecord } from './utils';
+import { cloneUnknown, freezeUnknown } from './utils';
 
 /**
  * Validates, constructs, and deeply freezes a `TypeSchema<T>` contract.

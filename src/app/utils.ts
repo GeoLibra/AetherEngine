@@ -29,8 +29,6 @@ export function serviceFactory<T>(
   return { kind: 'factory', create, options };
 }
 
-export { isPromiseLike } from '../core';
-
 export function definePlugin(config: Plugin): Plugin {
   return config;
 }

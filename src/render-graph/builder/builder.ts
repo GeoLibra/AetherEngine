@@ -3,12 +3,12 @@ import {
   type GraphResourceCreateOptions,
   type GraphResourceRecord
 } from './resources';
-import type { GraphRange } from '../compiler/ranges';
+import type { GraphRange } from '../ranges';
 import { assertGraphHandle } from './handles';
+import { isPromiseLike } from '../../core';
 import {
   snapshotSetupValue,
   validatePassDescriptor,
-  isPromiseLike,
   type RenderGraphPassContextDelegate,
   type SurfaceFrameToken
 } from './pass-builder';

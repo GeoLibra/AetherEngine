@@ -1,5 +1,4 @@
 import { isPlainRecord, isRecord } from '../core';
-export { isPlainRecord, isRecord };
 
 /**
  * Creates a deep clone of a schema-compatible value, preserving arrays, typed arrays,

@@ -1,4 +1,4 @@
-import { isRecord } from '../core';
+import { compareCodeUnits, isRecord } from '../core';
 import { MaterialDiagnosticError } from './diagnostics';
 import {
   cloneMaterialValue,
@@ -8,7 +8,7 @@ import {
   getMaterialParameterBlockState,
   materialValuesEqual
 } from './parameter-block';
-import { compareCodeUnits, getMaterialSchemaInternals } from './schema';
+import { getMaterialSchemaInternals } from './schema';
 import { validateMaterialTechniques } from './technique-validation';
 import type {
   MaterialAsset,

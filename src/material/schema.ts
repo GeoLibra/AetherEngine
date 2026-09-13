@@ -266,8 +266,6 @@ function canonicalType(type: MaterialValueType): unknown {
       );
 }
 
-export { compareCodeUnits };
-
 function toSharedValueType(type: MaterialValueType): ValueTypeDefinition {
   switch (type.kind) {
     case 'number':

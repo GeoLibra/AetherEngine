@@ -1,4 +1,5 @@
-import { cloneUnknown, freezeUnknown, isRecord } from './utils';
+import { isRecord } from '../core';
+import { cloneUnknown, freezeUnknown } from './utils';
 import type {
   DecodedSchemaPayload,
   KnownSchemaPayload,

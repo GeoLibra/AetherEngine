@@ -19,8 +19,9 @@ import type {
   SchemaViewKind,
   TypeSchema
 } from './types';
+import { isRecord } from '../core';
 import { defineResource } from '../ecs/resource';
-import { cloneRecord, cloneUnknown, freezeRecord, freezeUnknown, isRecord } from './utils';
+import { cloneRecord, cloneUnknown, freezeRecord, freezeUnknown } from './utils';
 import { decodeKnownPayload, encodeDecodedPayload, freezePayload } from './payload';
 import { mapSchemaReferences, visitSchemaReferences } from './references';
 import { freezeResolvedEntries, ReferenceResolutionError } from './reference-transaction';

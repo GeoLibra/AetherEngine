@@ -37,8 +37,6 @@ export interface PreparedEnvironmentBundle {
   release(): void;
 }
 
-export { type PreparedBackgroundBundle } from '../../background/types';
-
 /**
  * Cache managing GPU environment texture allocations scoped to an RHIDevice.
  *

@@ -1,6 +1,6 @@
 import type { GraphPassDeclaration, GraphTerminal } from '../builder/builder';
 import type { GraphHandle } from '../types';
-import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../compiler/debug-ir';
+import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../debug';
 import {
   releaseTransients,
   safelyDispose,
@@ -47,17 +47,6 @@ import {
   type RenderGraphHistoryBinding,
   type SurfaceBinding
 } from './executor-bindings';
-
-export type { RenderGraphExecutionInputs, RenderGraphHistoryBinding } from './executor-bindings';
-
-export {
-  assertRenderGraphExecutionPlan,
-  createRenderGraphExecutionPlan,
-  createRenderGraphExecutionSchedule,
-  requiredScheduledPass,
-  validateRenderGraphExecutionPlan
-} from './execution-plan';
-export type { RenderGraphExecutionPlan, RenderGraphExecutionStep } from '../types';
 
 export interface RenderGraphExecutionCounters {
   readonly scheduledSteps: number;
@@ -232,6 +221,7 @@ export class RenderGraphExecutor {
               ...createRenderGraphDebugIR(plan.snapshot, plan.compiled, {
                 schedule: plan.schedule,
                 fusion: plan.fusion,
+                transitions: plan.transitions,
                 historyStates: historyDebugStates(plan, inputs)
               }),
               commandStats,
