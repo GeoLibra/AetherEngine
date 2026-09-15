@@ -9,4 +9,5 @@ export * from './range';
 export * from './coalescer';
 export * from './stream';
 export type * from './types';
+export * from './incremental-sha256';
 export * from './virtual-file-system';

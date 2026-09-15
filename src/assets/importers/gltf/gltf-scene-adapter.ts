@@ -82,11 +82,22 @@ export function adaptGltfToCanonical(
   // 4. Helper for material texture slots
   const getTextureSlot = (
     info: Record<string, any> | undefined,
-    _role: 'color' | 'data' | 'normal'
+    _role: 'color' | 'data' | 'normal',
+    slotPath?: string
   ): CanonicalTextureSlot | null => {
-    if (!info || typeof info.index !== 'number') return null;
+    if (info === undefined || info === null) return null;
+    const path = slotPath ?? 'texture';
+    if (typeof info.index !== 'number' || !Number.isSafeInteger(info.index) || info.index < 0) {
+      throw new Error(
+        `Invalid texture index "${info.index}" at ${path}: index must be a non-negative integer.`
+      );
+    }
     const gltfTex = gltf.textures?.[info.index];
-    if (!gltfTex) return null;
+    if (!gltfTex) {
+      throw new Error(
+        `Missing texture dependency at ${path}: texture index ${info.index} not found in glTF textures (total: ${gltf.textures?.length ?? 0}).`
+      );
+    }
 
     const textureId = `${prefix}:texture:${info.index}` as AssetId;
     const samplerId =

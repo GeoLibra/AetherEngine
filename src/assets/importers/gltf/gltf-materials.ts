@@ -12,7 +12,8 @@ export interface GltfMaterialContext {
   readonly defaultSamplerId: AssetId;
   readonly getTextureSlot: (
     textureInfo: Record<string, any> | undefined,
-    role: 'color' | 'data' | 'normal'
+    role: 'color' | 'data' | 'normal',
+    slotPath?: string
   ) => CanonicalTextureSlot | null;
 }
 
@@ -42,13 +43,25 @@ export function unpackGltfMaterial(
     number
   ];
 
-  const baseColorTexture = context.getTextureSlot(pbr.baseColorTexture, 'color');
-  const metallicRoughnessTexture = context.getTextureSlot(pbr.metallicRoughnessTexture, 'data');
+  const baseColorTexture = context.getTextureSlot(
+    pbr.baseColorTexture,
+    'color',
+    `materials[${materialIndex}].pbrMetallicRoughness.baseColorTexture`
+  );
+  const metallicRoughnessTexture = context.getTextureSlot(
+    pbr.metallicRoughnessTexture,
+    'data',
+    `materials[${materialIndex}].pbrMetallicRoughness.metallicRoughnessTexture`
+  );
 
   const rawNormal = gltfMaterial.normalTexture;
   let normalTexture: CanonicalNormalTextureSlot | null = null;
   if (rawNormal) {
-    const slot = context.getTextureSlot(rawNormal, 'normal');
+    const slot = context.getTextureSlot(
+      rawNormal,
+      'normal',
+      `materials[${materialIndex}].normalTexture`
+    );
     if (slot) {
       normalTexture = Object.freeze({
         ...slot,
@@ -60,7 +73,11 @@ export function unpackGltfMaterial(
   const rawOcclusion = gltfMaterial.occlusionTexture;
   let occlusionTexture: CanonicalOcclusionTextureSlot | null = null;
   if (rawOcclusion) {
-    const slot = context.getTextureSlot(rawOcclusion, 'data');
+    const slot = context.getTextureSlot(
+      rawOcclusion,
+      'data',
+      `materials[${materialIndex}].occlusionTexture`
+    );
     if (slot) {
       occlusionTexture = Object.freeze({
         ...slot,
@@ -69,11 +86,28 @@ export function unpackGltfMaterial(
     }
   }
 
-  const emissiveTexture = context.getTextureSlot(gltfMaterial.emissiveTexture, 'color');
+  const emissiveTexture = context.getTextureSlot(
+    gltfMaterial.emissiveTexture,
+    'color',
+    `materials[${materialIndex}].emissiveTexture`
+  );
 
-  const rawAlphaMode = (gltfMaterial.alphaMode ?? 'OPAQUE').toUpperCase();
-  const alphaMode =
-    rawAlphaMode === 'MASK' ? 'mask' : rawAlphaMode === 'BLEND' ? 'blend' : 'opaque';
+  let alphaMode: 'opaque' | 'mask' | 'blend' = 'opaque';
+  if (gltfMaterial.alphaMode !== undefined) {
+    const rawMode = gltfMaterial.alphaMode;
+    if (rawMode === 'OPAQUE') {
+      alphaMode = 'opaque';
+    } else if (rawMode === 'MASK') {
+      alphaMode = 'mask';
+    } else if (rawMode === 'BLEND') {
+      alphaMode = 'blend';
+    } else {
+      throw new Error(
+        `Invalid alphaMode "${rawMode}" in material ${materialIndex}: must be one of "OPAQUE", "MASK", or "BLEND".`
+      );
+    }
+  }
+
   const alphaCutoff = typeof gltfMaterial.alphaCutoff === 'number' ? gltfMaterial.alphaCutoff : 0.5;
   const doubleSided = Boolean(gltfMaterial.doubleSided);
 

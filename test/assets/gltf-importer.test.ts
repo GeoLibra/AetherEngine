@@ -563,4 +563,184 @@ describe('GltfImporter & GLB Ingestion', () => {
       expect(warnings[0]!.message).toContain('does not enclose actual vertex positions');
     }
   });
+
+  it('generates 256-bit SHA-256 collision-resistant asset prefixes for same-name URIs', () => {
+    const sameStemA = createGltfAssetPrefix('https://a.com/models/DamagedHelmet.glb');
+    const sameStemB = createGltfAssetPrefix('https://b.com/models/DamagedHelmet.glb');
+    expect(sameStemA).not.toBe(sameStemB);
+    expect(sameStemA).toMatch(/^gltf:DamagedHelmet:[0-9a-f]{64}$/);
+    expect(sameStemB).toMatch(/^gltf:DamagedHelmet:[0-9a-f]{64}$/);
+  });
+
+  it('fails fast on missing texture dependency with slot path', async () => {
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      textures: [{ source: 0 }],
+      images: [
+        {
+          uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+        }
+      ],
+      materials: [
+        {
+          pbrMetallicRoughness: {
+            baseColorTexture: {
+              index: 99 // Out-of-bounds texture index
+            }
+          }
+        }
+      ],
+      meshes: [
+        {
+          primitives: [
+            {
+              attributes: { POSITION: 0 },
+              material: 0
+            }
+          ]
+        }
+      ],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }],
+      accessors: [
+        {
+          bufferView: 0,
+          byteOffset: 0,
+          componentType: 5126,
+          count: 3,
+          type: 'VEC3'
+        }
+      ]
+    };
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const glbData = buildGlb(json, new Uint8Array(positions.buffer));
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'model-bad-tex.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('dependency-not-found');
+      expect(result.failure.message).toContain(
+        'materials[0].pbrMetallicRoughness.baseColorTexture'
+      );
+      expect(result.failure.message).toContain('texture index 99 not found');
+    }
+  });
+
+  it('rejects invalid alphaMode with unsupported-format', async () => {
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      materials: [
+        {
+          alphaMode: 'TRANSLUCENT' // Invalid: only OPAQUE, MASK, BLEND allowed
+        }
+      ],
+      meshes: [
+        {
+          primitives: [
+            {
+              attributes: { POSITION: 0 },
+              material: 0
+            }
+          ]
+        }
+      ],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }],
+      accessors: [
+        {
+          bufferView: 0,
+          byteOffset: 0,
+          componentType: 5126,
+          count: 3,
+          type: 'VEC3'
+        }
+      ]
+    };
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const glbData = buildGlb(json, new Uint8Array(positions.buffer));
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'model-bad-alpha.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('unsupported-format');
+      expect(result.failure.message).toContain('Invalid alphaMode "TRANSLUCENT"');
+    }
+  });
+
+  it('rejects invalid sparse count with unsupported-format', async () => {
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            {
+              attributes: { POSITION: 0 }
+            }
+          ]
+        }
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 36 },
+        { buffer: 0, byteOffset: 36, byteLength: 12 },
+        { buffer: 0, byteOffset: 48, byteLength: 36 }
+      ],
+      accessors: [
+        {
+          bufferView: 0,
+          byteOffset: 0,
+          componentType: 5126,
+          count: 3,
+          type: 'VEC3',
+          sparse: {
+            count: 0, // Invalid: must be 1 <= count <= accessor.count
+            indices: { bufferView: 1, byteOffset: 0, componentType: 5123 },
+            values: { bufferView: 2, byteOffset: 0 }
+          }
+        }
+      ]
+    };
+    const bin = new Uint8Array(84);
+    const glbData = buildGlb(json, bin);
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'model-bad-sparse.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('unsupported-format');
+      expect(result.failure.message).toContain('Invalid sparse count 0');
+    }
+  });
 });

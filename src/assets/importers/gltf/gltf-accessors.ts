@@ -393,9 +393,20 @@ function applySparseIndices(
 ): void {
   if (!accessor.sparse) return;
   const sparse = accessor.sparse;
+  if (!sparse || !sparse.indices || !sparse.values) {
+    throw new Error('Malformed glTF accessor sparse: missing indices or values.');
+  }
   const count = sparse.count as number;
-  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count <= 0) {
-    return;
+  const accessorCount = accessor.count as number;
+  if (
+    typeof count !== 'number' ||
+    !Number.isSafeInteger(count) ||
+    count < 1 ||
+    count > accessorCount
+  ) {
+    throw new Error(
+      `Invalid sparse count ${count}: must be an integer between 1 and accessor count (${accessorCount}).`
+    );
   }
 
   const idxCompType = sparse.indices.componentType as number;
@@ -470,9 +481,20 @@ function applySparseFloats(
 ): void {
   if (!accessor.sparse) return;
   const sparse = accessor.sparse;
+  if (!sparse || !sparse.indices || !sparse.values) {
+    throw new Error('Malformed glTF accessor sparse: missing indices or values.');
+  }
   const count = sparse.count as number;
-  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count <= 0) {
-    return;
+  const accessorCount = accessor.count as number;
+  if (
+    typeof count !== 'number' ||
+    !Number.isSafeInteger(count) ||
+    count < 1 ||
+    count > accessorCount
+  ) {
+    throw new Error(
+      `Invalid sparse count ${count}: must be an integer between 1 and accessor count (${accessorCount}).`
+    );
   }
 
   const idxCompType = sparse.indices.componentType as number;

@@ -184,3 +184,14 @@ function toHex32(value: number): string {
   const b3 = u32 & 0xff;
   return HEX[b0]! + HEX[b1]! + HEX[b2]! + HEX[b3]!;
 }
+
+const SHA256_TEXT_ENCODER = new TextEncoder();
+
+/**
+ * Computes the 256-bit SHA-256 cryptographic digest of a string or byte array,
+ * returning a 64-character lowercase hexadecimal string.
+ */
+export function sha256Hex(input: string | Uint8Array): string {
+  const bytes = typeof input === 'string' ? SHA256_TEXT_ENCODER.encode(input) : input;
+  return new IncrementalSha256().update(bytes).digest();
+}
