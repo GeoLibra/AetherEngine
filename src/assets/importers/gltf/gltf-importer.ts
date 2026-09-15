@@ -120,7 +120,9 @@ export class GltfImporter implements AssetImporter<CanonicalSceneDocument> {
             const bufDesc = parsedJson.buffers[i];
             if (bufDesc.uri) {
               if (bufDesc.uri.startsWith('data:')) {
-                buffers.push(decodeDataUri(bufDesc.uri).data);
+                const decoded = decodeDataUri(bufDesc.uri, context.budget);
+                context.budget.recordRead(decoded.data.byteLength);
+                buffers.push(decoded.data);
               } else {
                 const resolvedUri = context.dependencies.resolve(uri, bufDesc.uri);
                 dependencies.push({ uri: resolvedUri, kind: 'buffer', required: true });
@@ -145,7 +147,8 @@ export class GltfImporter implements AssetImporter<CanonicalSceneDocument> {
           if (!img) continue;
           if (img.uri) {
             if (img.uri.startsWith('data:')) {
-              const decoded = decodeDataUri(img.uri);
+              const decoded = decodeDataUri(img.uri, context.budget);
+              context.budget.recordRead(decoded.data.byteLength);
               resolvedImages.set(i, {
                 data: decoded.data,
                 mimeType: decoded.mimeType ?? img.mimeType
@@ -219,7 +222,10 @@ export class GltfImporter implements AssetImporter<CanonicalSceneDocument> {
       }
       if (
         err.message.includes('Missing texture dependency') ||
-        err.message.includes('Invalid texture index')
+        err.message.includes('Invalid texture index') ||
+        err.message.includes('Invalid texture source') ||
+        err.message.includes('Invalid mesh index') ||
+        err.message.includes('references image')
       ) {
         return this.failureResult('dependency-not-found', err.message, uri, context);
       }

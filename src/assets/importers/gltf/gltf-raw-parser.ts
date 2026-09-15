@@ -117,8 +117,12 @@ export function parseGltfJson(
 
 /**
  * Decodes a data URI into binary bytes and an optional MIME type.
+ * Enforces memory allocation budget prior to allocating byte buffers.
  */
-export function decodeDataUri(dataUri: string): {
+export function decodeDataUri(
+  dataUri: string,
+  budget?: { checkAllocated(bytes: number): void }
+): {
   readonly data: Uint8Array;
   readonly mimeType?: string;
 } {
@@ -129,6 +133,7 @@ export function decodeDataUri(dataUri: string): {
   const base64 = dataUri.substring(commaIdx + 1);
   const binaryString = atob(base64);
   const len = binaryString.length;
+  budget?.checkAllocated(len);
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i += 1) {
     bytes[i] = binaryString.charCodeAt(i);

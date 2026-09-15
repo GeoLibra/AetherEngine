@@ -743,4 +743,288 @@ describe('GltfImporter & GLB Ingestion', () => {
       expect(result.failure.message).toContain('Invalid sparse count 0');
     }
   });
+
+  it('enforces memory budget on large data URI image decoding', async () => {
+    // Generate a ~200KB base64 string
+    const largeBase64 = 'AAAA'.repeat(50_000);
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      textures: [{ source: 0 }],
+      images: [{ uri: `data:image/png;base64,${largeBase64}` }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }],
+      accessors: [{ bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' }]
+    };
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const glbData = buildGlb(json, new Uint8Array(positions.buffer));
+    const importer = new GltfImporter();
+    // Budget limited to 50KB allocation
+    const budget = new StandardImportBudget({ maxAllocationBytes: 50 * 1024 });
+    const context = createMockContext({ budget });
+
+    const result = await importer.import(
+      {
+        uri: 'model-huge-datauri.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('size-limit-exceeded');
+      expect(result.failure.message.toLowerCase()).toContain('budget exceeded');
+    }
+  });
+
+  it('enforces memory budget on embedded bufferView image slicing', async () => {
+    const bigImgBytes = new Uint8Array(200 * 1024); // 200 KB image
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const binChunk = new Uint8Array(positions.byteLength + bigImgBytes.byteLength);
+    binChunk.set(new Uint8Array(positions.buffer), 0);
+    binChunk.set(bigImgBytes, positions.byteLength);
+
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      textures: [{ source: 0 }],
+      images: [{ bufferView: 1, mimeType: 'image/png' }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: positions.byteLength },
+        { buffer: 0, byteOffset: positions.byteLength, byteLength: bigImgBytes.byteLength }
+      ],
+      accessors: [{ bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' }]
+    };
+    const glbData = buildGlb(json, binChunk);
+    const importer = new GltfImporter();
+    // Budget limited to 100KB allocation
+    const budget = new StandardImportBudget({ maxAllocationBytes: 100 * 1024 });
+    const context = createMockContext({ budget });
+
+    const result = await importer.import(
+      {
+        uri: 'model-huge-embedded-img.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('size-limit-exceeded');
+      expect(result.failure.message.toLowerCase()).toContain('budget exceeded');
+    }
+  });
+
+  it('fails fast when texture.source references out-of-bounds image index', async () => {
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      textures: [{ source: 5 }], // Out-of-bounds: images only has 1 element
+      images: [
+        {
+          uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+        }
+      ],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }],
+      accessors: [{ bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' }]
+    };
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const glbData = buildGlb(json, new Uint8Array(positions.buffer));
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'model-bad-tex-source.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('dependency-not-found');
+      expect(result.failure.message).toContain('Invalid texture source at textures[0]');
+    }
+  });
+
+  it('fails fast when node.mesh references out-of-bounds mesh index', async () => {
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 99 }], // Out-of-bounds: meshes only has 1 element
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }],
+      accessors: [{ bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' }]
+    };
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const glbData = buildGlb(json, new Uint8Array(positions.buffer));
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'model-bad-node-mesh.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('dependency-not-found');
+      expect(result.failure.message).toContain('Invalid mesh index 99 in glTF node 0');
+    }
+  });
+
+  it('rejects invalid sampler wrapMode with unsupported-format', async () => {
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      samplers: [{ wrapS: 99999 }], // Invalid wrapMode
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }],
+      accessors: [{ bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' }]
+    };
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const glbData = buildGlb(json, new Uint8Array(positions.buffer));
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'model-bad-sampler.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('unsupported-format');
+      expect(result.failure.message).toContain('Invalid sampler wrapS 99999');
+    }
+  });
+
+  it('rejects non-unsigned integer componentType for sparse indices', async () => {
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 36 },
+        { buffer: 0, byteOffset: 36, byteLength: 4 },
+        { buffer: 0, byteOffset: 40, byteLength: 12 }
+      ],
+      accessors: [
+        {
+          bufferView: 0,
+          byteOffset: 0,
+          componentType: 5126,
+          count: 3,
+          type: 'VEC3',
+          sparse: {
+            count: 1,
+            indices: { bufferView: 1, byteOffset: 0, componentType: 5120 }, // 5120 is signed BYTE (illegal for sparse indices)
+            values: { bufferView: 2, byteOffset: 0 }
+          }
+        }
+      ]
+    };
+    const bin = new Uint8Array(52);
+    const glbData = buildGlb(json, bin);
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'model-signed-sparse-idx.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('unsupported-format');
+      expect(result.failure.message).toContain('Unsupported sparse indices componentType: 5120');
+    }
+  });
+
+  it('rejects sparse indices that are not strictly increasing', async () => {
+    // 2 sparse index entries: [2, 1] which violates strictly increasing order
+    const indices = new Uint16Array([2, 1]);
+    const values = new Float32Array([1, 1, 1, 2, 2, 2]);
+    const positions = new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+    const bin = new Uint8Array(positions.byteLength + indices.byteLength + values.byteLength);
+    bin.set(new Uint8Array(positions.buffer), 0);
+    bin.set(new Uint8Array(indices.buffer), positions.byteLength);
+    bin.set(new Uint8Array(values.buffer), positions.byteLength + indices.byteLength);
+
+    const json = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: positions.byteLength },
+        { buffer: 0, byteOffset: positions.byteLength, byteLength: indices.byteLength },
+        {
+          buffer: 0,
+          byteOffset: positions.byteLength + indices.byteLength,
+          byteLength: values.byteLength
+        }
+      ],
+      accessors: [
+        {
+          bufferView: 0,
+          byteOffset: 0,
+          componentType: 5126,
+          count: 3,
+          type: 'VEC3',
+          sparse: {
+            count: 2,
+            indices: { bufferView: 1, byteOffset: 0, componentType: 5123 },
+            values: { bufferView: 2, byteOffset: 0 }
+          }
+        }
+      ]
+    };
+    const glbData = buildGlb(json, bin);
+    const importer = new GltfImporter();
+    const context = createMockContext();
+
+    const result = await importer.import(
+      {
+        uri: 'model-non-monotonic-sparse.glb',
+        kind: 'buffer',
+        buffer: glbData
+      },
+      context
+    );
+
+    expect(result.kind).toBe('failure');
+    if (result.kind === 'failure') {
+      expect(result.failure.code).toBe('unsupported-format');
+      expect(result.failure.message).toContain(
+        'Sparse indices must be in strictly increasing order'
+      );
+    }
+  });
 });

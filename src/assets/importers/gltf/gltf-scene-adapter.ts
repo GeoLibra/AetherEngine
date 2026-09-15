@@ -140,12 +140,24 @@ export function adaptGltfToCanonical(
 
   // 7. Extract nodes
   const rawNodes = Array.isArray(gltf.nodes) ? gltf.nodes : [];
-  const nodes = unpackGltfNodes(rawNodes, { assetPrefix: prefix });
+  const nodes = unpackGltfNodes(rawNodes, { assetPrefix: prefix, meshCount: meshes.length });
 
   // 8. Extract scene
   const sceneIndex = typeof gltf.scene === 'number' ? gltf.scene : 0;
   const rawScene = gltf.scenes?.[sceneIndex];
   const rootNodes = Array.isArray(rawScene?.nodes) ? (rawScene.nodes as number[]) : [];
+  for (const rootNode of rootNodes) {
+    if (
+      typeof rootNode !== 'number' ||
+      !Number.isSafeInteger(rootNode) ||
+      rootNode < 0 ||
+      rootNode >= nodes.length
+    ) {
+      throw new Error(
+        `Invalid root node index ${rootNode} in glTF scene ${sceneIndex}: must reference a valid node in nodes[] (total nodes: ${nodes.length}).`
+      );
+    }
+  }
 
   const scene: CanonicalSceneDocument = Object.freeze({
     id: `${prefix}:scene:${sceneIndex}` as AssetId,
@@ -310,16 +322,19 @@ function extractSamplers(
 
   for (let i = 0; i < rawSamplers.length; i += 1) {
     const s = rawSamplers[i]!;
-    const minFilter = mapMinFilter(s.minFilter);
+    const wrapS = mapWrapMode(s.wrapS, i, 'wrapS');
+    const wrapT = mapWrapMode(s.wrapT, i, 'wrapT');
+    const magFilter = mapMagFilter(s.magFilter, i);
+    const minFilter = mapMinFilter(s.minFilter, i);
     result.push(
       Object.freeze({
         id: `${prefix}:sampler:${i}` as AssetId,
         kind: 'sampler',
         version: 1,
         ...(s.name ? { name: s.name } : {}),
-        wrapS: mapWrapMode(s.wrapS),
-        wrapT: mapWrapMode(s.wrapT),
-        magFilter: s.magFilter === 9728 ? 'nearest' : 'linear',
+        wrapS,
+        wrapT,
+        magFilter,
         ...(minFilter ? { minFilter } : {})
       })
     );
@@ -342,20 +357,43 @@ function extractSamplers(
   return Object.freeze(result);
 }
 
-function mapWrapMode(mode?: number): 'repeat' | 'clamp-to-edge' | 'mirrored-repeat' {
+function mapWrapMode(
+  mode: number | undefined,
+  samplerIndex: number,
+  axis: 'wrapS' | 'wrapT'
+): 'repeat' | 'clamp-to-edge' | 'mirrored-repeat' {
+  if (mode === undefined) return 'repeat';
+  if (mode === 10497) return 'repeat';
   if (mode === 33071) return 'clamp-to-edge';
   if (mode === 33648) return 'mirrored-repeat';
-  return 'repeat';
+  throw new Error(
+    `Invalid sampler ${axis} ${mode} in sampler ${samplerIndex}: must be 10497 (REPEAT), 33071 (CLAMP_TO_EDGE), or 33648 (MIRRORED_REPEAT).`
+  );
 }
 
-function mapMinFilter(mode?: number): CanonicalSamplerDocument['minFilter'] {
+function mapMagFilter(mode: number | undefined, samplerIndex: number): 'nearest' | 'linear' {
+  if (mode === undefined) return 'linear';
+  if (mode === 9728) return 'nearest';
+  if (mode === 9729) return 'linear';
+  throw new Error(
+    `Invalid sampler magFilter ${mode} in sampler ${samplerIndex}: must be 9728 (NEAREST) or 9729 (LINEAR).`
+  );
+}
+
+function mapMinFilter(
+  mode: number | undefined,
+  samplerIndex: number
+): CanonicalSamplerDocument['minFilter'] {
+  if (mode === undefined) return undefined;
   if (mode === 9728) return 'nearest';
   if (mode === 9729) return 'linear';
   if (mode === 9984) return 'nearest-mipmap-nearest';
   if (mode === 9985) return 'linear-mipmap-nearest';
   if (mode === 9986) return 'nearest-mipmap-linear';
   if (mode === 9987) return 'linear-mipmap-linear';
-  return 'linear';
+  throw new Error(
+    `Invalid sampler minFilter ${mode} in sampler ${samplerIndex}: must be one of 9728, 9729, 9984, 9985, 9986, or 9987.`
+  );
 }
 
 function extractTextures(
@@ -371,32 +409,71 @@ function extractTextures(
   for (let i = 0; i < rawTextures.length; i += 1) {
     const t = rawTextures[i]!;
     const imageIndex = t.source as number | undefined;
-    const rawImage = imageIndex !== undefined ? gltf.images?.[imageIndex] : undefined;
-    const resolved = imageIndex !== undefined ? resolvedImages?.get(imageIndex) : undefined;
-
-    let data: Uint8Array | undefined = resolved?.data;
-    let uri: string | undefined = resolved?.uri ?? rawImage?.uri;
-    let mimeType: string | undefined = resolved?.mimeType ?? rawImage?.mimeType;
-
-    // Decode inline data URI if present directly on rawImage.uri
-    if (!data && rawImage?.uri?.startsWith('data:')) {
-      const decoded = decodeDataUri(rawImage.uri);
-      data = decoded.data;
-      if (decoded.mimeType) mimeType = decoded.mimeType;
-      tracker.recordCopy(data.byteLength);
+    if (
+      imageIndex === undefined ||
+      typeof imageIndex !== 'number' ||
+      !Number.isSafeInteger(imageIndex) ||
+      imageIndex < 0 ||
+      !gltf.images ||
+      imageIndex >= gltf.images.length ||
+      !gltf.images[imageIndex]
+    ) {
+      throw new Error(
+        `Invalid texture source at textures[${i}]: source must be a valid non-negative integer referencing images[] (found: ${t.source}).`
+      );
     }
 
-    if (!data && rawImage?.bufferView !== undefined) {
-      const bv = gltf.bufferViews?.[rawImage.bufferView];
-      if (bv) {
-        const buffer = buffers[bv.buffer];
-        if (buffer) {
-          const byteOffset = bv.byteOffset ?? 0;
-          const byteLength = bv.byteLength ?? buffer.byteLength - byteOffset;
-          data = buffer.slice(byteOffset, byteOffset + byteLength);
-          tracker.recordCopy(byteLength);
-        }
+    const rawImage = gltf.images[imageIndex]!;
+    const resolved = resolvedImages?.get(imageIndex);
+
+    let data: Uint8Array | undefined = resolved?.data;
+    let uri: string | undefined = resolved?.uri ?? rawImage.uri;
+    let mimeType: string | undefined = resolved?.mimeType ?? rawImage.mimeType;
+
+    // Decode inline data URI if present directly on rawImage.uri
+    if (!data && rawImage.uri?.startsWith('data:')) {
+      const decoded = decodeDataUri(rawImage.uri, tracker);
+      data = decoded.data;
+      if (decoded.mimeType) mimeType = decoded.mimeType;
+    }
+
+    if (!data && rawImage.bufferView !== undefined) {
+      if (
+        typeof rawImage.bufferView !== 'number' ||
+        !Number.isSafeInteger(rawImage.bufferView) ||
+        rawImage.bufferView < 0 ||
+        !gltf.bufferViews ||
+        rawImage.bufferView >= gltf.bufferViews.length ||
+        !gltf.bufferViews[rawImage.bufferView]
+      ) {
+        throw new Error(
+          `Invalid bufferView index ${rawImage.bufferView} for image ${imageIndex} in texture ${i}.`
+        );
       }
+      const bv = gltf.bufferViews[rawImage.bufferView]!;
+      const bufferIndex = bv.buffer as number;
+      const buffer = buffers[bufferIndex];
+      if (!buffer) {
+        throw new Error(
+          `Buffer ${bufferIndex} required by bufferView ${rawImage.bufferView} for image ${imageIndex} not found.`
+        );
+      }
+      const byteOffset = (bv.byteOffset as number | undefined) ?? 0;
+      const byteLength = (bv.byteLength as number | undefined) ?? buffer.byteLength - byteOffset;
+      if (byteOffset < 0 || byteLength < 0 || byteOffset + byteLength > buffer.byteLength) {
+        throw new Error(
+          `BufferView ${rawImage.bufferView} span [${byteOffset}, ${byteOffset + byteLength}) exceeds buffer ${bufferIndex} length ${buffer.byteLength}.`
+        );
+      }
+      const target = tracker.allocateTypedArray(Uint8Array, byteLength);
+      target.set(buffer.subarray(byteOffset, byteOffset + byteLength));
+      data = target;
+    }
+
+    if (!data && !uri) {
+      throw new Error(
+        `Texture ${i} references image ${imageIndex} which contains neither valid URI nor buffer data.`
+      );
     }
 
     result.push(

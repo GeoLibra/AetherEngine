@@ -410,10 +410,16 @@ function applySparseIndices(
   }
 
   const idxCompType = sparse.indices.componentType as number;
-  const idxCompByteSize = GLTF_COMPONENT_BYTES[idxCompType as keyof typeof GLTF_COMPONENT_BYTES];
-  if (!idxCompByteSize) {
-    throw new Error(`Unsupported sparse indices componentType: ${idxCompType}.`);
+  if (
+    idxCompType !== GLTF_COMPONENT_TYPES.UNSIGNED_BYTE &&
+    idxCompType !== GLTF_COMPONENT_TYPES.UNSIGNED_SHORT &&
+    idxCompType !== GLTF_COMPONENT_TYPES.UNSIGNED_INT
+  ) {
+    throw new Error(
+      `Unsupported sparse indices componentType: ${idxCompType}. Must be UNSIGNED_BYTE (5121), UNSIGNED_SHORT (5123), or UNSIGNED_INT (5125).`
+    );
   }
+  const idxCompByteSize = GLTF_COMPONENT_BYTES[idxCompType as keyof typeof GLTF_COMPONENT_BYTES];
 
   const valCompType = accessor.componentType as number;
   const valCompByteSize = GLTF_COMPONENT_BYTES[valCompType as keyof typeof GLTF_COMPONENT_BYTES];
@@ -445,6 +451,7 @@ function applySparseIndices(
   );
   const valView = new DataView(valuesBytes.buffer, valuesBytes.byteOffset, valuesBytes.byteLength);
 
+  let previousIndex = -1;
   for (let i = 0; i < count; i += 1) {
     const targetIdx =
       idxCompType === GLTF_COMPONENT_TYPES.UNSIGNED_BYTE
@@ -453,7 +460,14 @@ function applySparseIndices(
           ? idxView.getUint16(i * 2, true)
           : idxView.getUint32(i * 4, true);
 
-    if (targetIdx < 0 || targetIdx >= target.length) {
+    if (targetIdx <= previousIndex) {
+      throw new Error(
+        `Sparse indices must be in strictly increasing order. Found index ${targetIdx} following ${previousIndex} at position ${i}.`
+      );
+    }
+    previousIndex = targetIdx;
+
+    if (targetIdx >= target.length) {
       throw new Error(
         `Sparse index ${targetIdx} is out of bounds for target index buffer of length ${target.length}.`
       );
@@ -498,10 +512,16 @@ function applySparseFloats(
   }
 
   const idxCompType = sparse.indices.componentType as number;
-  const idxCompByteSize = GLTF_COMPONENT_BYTES[idxCompType as keyof typeof GLTF_COMPONENT_BYTES];
-  if (!idxCompByteSize) {
-    throw new Error(`Unsupported sparse indices componentType: ${idxCompType}.`);
+  if (
+    idxCompType !== GLTF_COMPONENT_TYPES.UNSIGNED_BYTE &&
+    idxCompType !== GLTF_COMPONENT_TYPES.UNSIGNED_SHORT &&
+    idxCompType !== GLTF_COMPONENT_TYPES.UNSIGNED_INT
+  ) {
+    throw new Error(
+      `Unsupported sparse indices componentType: ${idxCompType}. Must be UNSIGNED_BYTE (5121), UNSIGNED_SHORT (5123), or UNSIGNED_INT (5125).`
+    );
   }
+  const idxCompByteSize = GLTF_COMPONENT_BYTES[idxCompType as keyof typeof GLTF_COMPONENT_BYTES];
 
   const valCompType = accessor.componentType as number;
   const valCompByteSize = GLTF_COMPONENT_BYTES[valCompType as keyof typeof GLTF_COMPONENT_BYTES];
@@ -533,6 +553,7 @@ function applySparseFloats(
   );
   const valView = new DataView(valuesBytes.buffer, valuesBytes.byteOffset, valuesBytes.byteLength);
 
+  let previousElemIdx = -1;
   for (let i = 0; i < count; i += 1) {
     const targetElemIdx =
       idxCompType === GLTF_COMPONENT_TYPES.UNSIGNED_BYTE
@@ -541,7 +562,14 @@ function applySparseFloats(
           ? idxView.getUint16(i * 2, true)
           : idxView.getUint32(i * 4, true);
 
-    if (targetElemIdx < 0 || (targetElemIdx + 1) * components > target.length) {
+    if (targetElemIdx <= previousElemIdx) {
+      throw new Error(
+        `Sparse indices must be in strictly increasing order. Found index ${targetElemIdx} following ${previousElemIdx} at position ${i}.`
+      );
+    }
+    previousElemIdx = targetElemIdx;
+
+    if ((targetElemIdx + 1) * components > target.length) {
       throw new Error(
         `Sparse vertex attribute index ${targetElemIdx} is out of bounds for target array length ${target.length}.`
       );

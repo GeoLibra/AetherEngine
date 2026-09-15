@@ -3,6 +3,7 @@ import type { AssetId } from '../../types';
 
 export interface GltfNodeContext {
   readonly assetPrefix: string;
+  readonly meshCount?: number;
 }
 
 /**
@@ -18,10 +19,21 @@ export function unpackGltfNodes(
     const rawNode = gltfNodes[i]!;
     const transform = parseNodeTransform(rawNode, i);
     const children = Array.isArray(rawNode.children) ? (rawNode.children as number[]) : [];
-    const meshId =
-      rawNode.mesh !== undefined
-        ? (`${context.assetPrefix}:mesh:${rawNode.mesh}` as AssetId)
-        : undefined;
+
+    let meshId: AssetId | undefined;
+    if (rawNode.mesh !== undefined) {
+      if (
+        typeof rawNode.mesh !== 'number' ||
+        !Number.isSafeInteger(rawNode.mesh) ||
+        rawNode.mesh < 0 ||
+        (context.meshCount !== undefined && rawNode.mesh >= context.meshCount)
+      ) {
+        throw new Error(
+          `Invalid mesh index ${rawNode.mesh} in glTF node ${i}: must reference a valid mesh in meshes[] (total meshes: ${context.meshCount ?? 0}).`
+        );
+      }
+      meshId = `${context.assetPrefix}:mesh:${rawNode.mesh}` as AssetId;
+    }
 
     result.push(
       Object.freeze({
