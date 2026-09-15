@@ -94,7 +94,7 @@ export function createFeaturePolicyPlugin(options: FeaturePolicyPluginOptions) {
         }
       });
     },
-    async finish() {
+    async prepare() {
       const result = await runtime.stage(options.input());
       if (result.status === 'failed') throw result.result.error;
       if (result.status !== 'prepared') {
@@ -102,6 +102,8 @@ export function createFeaturePolicyPlugin(options: FeaturePolicyPluginOptions) {
           `Initial FeaturePolicy staging ended in unexpected state "${result.status}".`
         );
       }
+    },
+    finish() {
       for (const source of options.sources ?? []) {
         unsubscribes.push(source.subscribe(handleSourceEvent));
       }

@@ -1,53 +1,82 @@
 import type { World } from '../ecs/world';
 import type {
-  AccessToken,
   ScheduleLabel,
-  System,
   SystemDescriptor,
-  SystemRegistration
+  SystemRegistration,
+  SystemSetDescriptor
 } from './types';
 import { isPromiseLike } from '../core';
+import {
+  type CompiledSetNode,
+  type CompiledSystemNode,
+  compileScheduleOrder
+} from './schedule-compiler';
 
-/**
- * Representation of a system in the scheduler graph.
- * Couples system execution pointers with metadata and ordering directives.
- */
-interface SystemNode {
-  id: string;
-  run: System;
-  before: readonly string[];
-  after: readonly string[];
-  optionalBefore: readonly string[];
-  optionalAfter: readonly string[];
-  reads: readonly AccessToken[];
-  writes: readonly AccessToken[];
-  runIf?: (world: World) => boolean;
+export type { CompiledSetNode, CompiledSystemNode } from './schedule-compiler';
+
+export interface ScheduleTelemetrySpanRecorder {
+  recordSpan(schedule: string, systemId: string, durationMs: number): void;
+  now(): number;
 }
 
 /**
  * Stage scheduler that organizes systems into an execution sequence.
- * Computes execution ordering topologically using specified dependency parameters.
+ * Computes execution ordering topologically using virtual SystemSet nodes and deterministic tie-breaking.
  */
 export class Schedule {
   readonly label: ScheduleLabel;
 
-  private readonly systems: SystemNode[] = [];
-  private executionOrder: SystemNode[] = [];
+  private readonly systems: CompiledSystemNode[] = [];
+  private readonly sets: CompiledSetNode[] = [];
+  private executionOrder: readonly CompiledSystemNode[] = [];
   private isDirty = true;
+  private nextRegistrationIndex = 0;
 
   constructor(label: ScheduleLabel) {
     this.label = label;
   }
 
-  addSystem(descriptor: SystemDescriptor): SystemRegistration {
-    const node = this.createNode(descriptor);
-    if (this.systems.some((system) => system.id === node.id)) {
-      throw new Error(`System "${node.id}" already exists in schedule "${this.label}".`);
+  addSystem(descriptor: SystemDescriptor, ownerPlugin?: string): SystemRegistration {
+    if (descriptor.id.trim() === '') {
+      throw new Error(`Schedule "${this.label}" requires a non-empty system id.`);
     }
+
+    const node: CompiledSystemNode = {
+      id: descriptor.id,
+      run: descriptor.run,
+      inSet: descriptor.inSet,
+      before: Object.freeze([...(descriptor.before ?? [])]),
+      after: Object.freeze([...(descriptor.after ?? [])]),
+      optionalBefore: Object.freeze([...(descriptor.optionalBefore ?? [])]),
+      optionalAfter: Object.freeze([...(descriptor.optionalAfter ?? [])]),
+      reads: Object.freeze([...(descriptor.reads ?? [])]),
+      writes: Object.freeze([...(descriptor.writes ?? [])]),
+      runIf: descriptor.runIf,
+      ownerPlugin,
+      registrationIndex: this.nextRegistrationIndex++
+    };
 
     this.systems.push(node);
     this.isDirty = true;
     return { schedule: this.label, id: node.id };
+  }
+
+  addSystemSet(descriptor: SystemSetDescriptor, ownerPlugin?: string): void {
+    if (descriptor.id.trim() === '') {
+      throw new Error(`Schedule "${this.label}" requires a non-empty system set id.`);
+    }
+
+    const setNode: CompiledSetNode = {
+      id: descriptor.id,
+      before: Object.freeze([...(descriptor.before ?? [])]),
+      after: Object.freeze([...(descriptor.after ?? [])]),
+      runIf: descriptor.runIf,
+      ownerPlugin,
+      registrationIndex: this.nextRegistrationIndex++
+    };
+
+    this.sets.push(setNode);
+    this.isDirty = true;
   }
 
   removeSystem(registration: SystemRegistration): boolean {
@@ -63,20 +92,55 @@ export class Schedule {
     return true;
   }
 
+  removeSystemSet(id: string): boolean {
+    const index = this.sets.findIndex((s) => s.id === id);
+    if (index < 0) {
+      return false;
+    }
+    this.sets.splice(index, 1);
+    this.isDirty = true;
+    return true;
+  }
+
+  /**
+   * Compiles the schedule DAG eagerly before startup.
+   * Throws immediately on missing targets or cycles.
+   */
+  compile(): readonly CompiledSystemNode[] {
+    if (this.isDirty) {
+      this.executionOrder = compileScheduleOrder(this.label, this.systems, this.sets);
+      this.isDirty = false;
+    }
+    return this.executionOrder;
+  }
+
   /**
    * Executes all systems sequentially in topological order.
    * Awaits any asynchronous systems. Used for startup phases.
    */
-  async run(world: World): Promise<void> {
-    const executionOrder = this.getExecutionOrder();
+  async run(world: World, telemetry?: ScheduleTelemetrySpanRecorder): Promise<void> {
+    const executionOrder = this.compile();
+    const setConditionCache = this.evaluateSetConditions(world);
 
     for (const node of executionOrder) {
+      if (node.inSet !== undefined && setConditionCache?.get(node.inSet) === false) {
+        continue;
+      }
       if (node.runIf && !node.runIf(world)) {
         continue;
       }
-      await world.runTrackedSystemAsync(`${this.label}:${node.id}`, async () => {
-        await node.run(world);
-      });
+
+      if (telemetry) {
+        const start = telemetry.now();
+        await world.runTrackedSystemAsync(`${this.label}:${node.id}`, async () => {
+          await node.run(world);
+        });
+        telemetry.recordSpan(this.label, node.id, telemetry.now() - start);
+      } else {
+        await world.runTrackedSystemAsync(`${this.label}:${node.id}`, async () => {
+          await node.run(world);
+        });
+      }
     }
   }
 
@@ -84,187 +148,50 @@ export class Schedule {
    * Executes all systems synchronously. Throws if any system returns a Promise.
    * Used for high-frequency frame loops to guarantee zero promise/microtask allocations.
    */
-  runSync(world: World, kind: 'startup' | 'frame' = 'frame'): void {
-    const executionOrder = this.getExecutionOrder();
+  runSync(
+    world: World,
+    kind: 'startup' | 'frame' = 'frame',
+    telemetry?: ScheduleTelemetrySpanRecorder
+  ): void {
+    const executionOrder = this.compile();
+    const setConditionCache = this.evaluateSetConditions(world);
 
     for (const node of executionOrder) {
+      if (node.inSet !== undefined && setConditionCache?.get(node.inSet) === false) {
+        continue;
+      }
       if (node.runIf && !node.runIf(world)) {
         continue;
       }
 
-      const result = world.runTrackedSystem(`${this.label}:${node.id}`, () => node.run(world));
-      if (isPromiseLike(result)) {
-        throw new Error(
-          `Async system "${node.id}" cannot run in ${kind} schedule "${this.label}".`
-        );
-      }
-    }
-  }
-
-  private createNode(descriptor: SystemDescriptor): SystemNode {
-    if (descriptor.id.trim() === '') {
-      throw new Error(`Schedule "${this.label}" requires a non-empty system id.`);
-    }
-    const node: SystemNode = {
-      id: descriptor.id,
-      run: descriptor.run,
-      before: descriptor.before ?? [],
-      after: descriptor.after ?? [],
-      optionalBefore: descriptor.optionalBefore ?? [],
-      optionalAfter: descriptor.optionalAfter ?? [],
-      reads: [...(descriptor.reads ?? [])],
-      writes: [...(descriptor.writes ?? [])]
-    };
-
-    if (descriptor.runIf) {
-      node.runIf = descriptor.runIf;
-    }
-
-    return node;
-  }
-
-  /**
-   * Performs a topological sort (Kahn's algorithm) based on before/after constraints.
-   * Maps user-facing target names to internal unique ids to assemble graph edges.
-   */
-  private computeExecutionOrder(): SystemNode[] {
-    const nodeMap = new Map<string, SystemNode>();
-    const dependents = new Map<string, Set<string>>();
-    const inDegree = new Map<string, number>();
-
-    // Index systems by their unique internal ID.
-    for (const node of this.systems) {
-      nodeMap.set(node.id, node);
-      dependents.set(node.id, new Set());
-      inDegree.set(node.id, 0);
-    }
-
-    const addEdge = (from: string, to: string): void => {
-      if (!nodeMap.has(from) || !nodeMap.has(to)) {
-        return;
-      }
-
-      const edges = dependents.get(from);
-      if (!edges || edges.has(to)) {
-        return;
-      }
-
-      edges.add(to);
-      inDegree.set(to, (inDegree.get(to) ?? 0) + 1);
-    };
-
-    for (const node of this.systems) {
-      for (const target of node.before) {
-        this.assertOrderingTarget(node.id, target, nodeMap);
-        addEdge(node.id, target);
-      }
-      for (const dependency of node.after) {
-        this.assertOrderingTarget(node.id, dependency, nodeMap);
-        addEdge(dependency, node.id);
-      }
-      for (const target of node.optionalBefore) {
-        if (nodeMap.has(target)) {
-          addEdge(node.id, target);
+      if (telemetry) {
+        const start = telemetry.now();
+        const result = world.runTrackedSystem(`${this.label}:${node.id}`, () => node.run(world));
+        if (isPromiseLike(result)) {
+          throw new Error(
+            `Async system "${node.id}" cannot run in ${kind} schedule "${this.label}".`
+          );
         }
-      }
-      for (const dependency of node.optionalAfter) {
-        if (nodeMap.has(dependency)) {
-          addEdge(dependency, node.id);
+        telemetry.recordSpan(this.label, node.id, telemetry.now() - start);
+      } else {
+        const result = world.runTrackedSystem(`${this.label}:${node.id}`, () => node.run(world));
+        if (isPromiseLike(result)) {
+          throw new Error(
+            `Async system "${node.id}" cannot run in ${kind} schedule "${this.label}".`
+          );
         }
       }
     }
-
-    const queue = this.systems.filter((node) => inDegree.get(node.id) === 0).map((node) => node.id);
-    const ordered: SystemNode[] = [];
-
-    while (queue.length > 0) {
-      const name = queue.shift();
-      if (!name) {
-        continue;
-      }
-
-      const node = nodeMap.get(name);
-      if (node) {
-        ordered.push(node);
-      }
-
-      for (const dependent of dependents.get(name) ?? []) {
-        const nextDegree = (inDegree.get(dependent) ?? 0) - 1;
-        inDegree.set(dependent, nextDegree);
-        if (nextDegree === 0) {
-          queue.push(dependent);
-        }
-      }
-    }
-
-    if (ordered.length !== this.systems.length) {
-      const cycle = findCyclePath(
-        this.systems.map((node) => node.id),
-        dependents
-      );
-      throw new Error(`Schedule "${this.label}" contains a cycle: ${cycle.join(' -> ')}.`);
-    }
-
-    return ordered;
   }
 
-  private getExecutionOrder(): SystemNode[] {
-    if (this.isDirty) {
-      this.executionOrder = this.computeExecutionOrder();
-      this.isDirty = false;
-    }
-
-    return this.executionOrder;
-  }
-
-  private assertOrderingTarget(
-    systemId: string,
-    target: string,
-    nodeMap: ReadonlyMap<string, SystemNode>
-  ): void {
-    if (!nodeMap.has(target)) {
-      throw new Error(
-        `Schedule "${this.label}" system "${systemId}" references missing ordering target "${target}".`
-      );
-    }
-  }
-}
-
-function findCyclePath(
-  nodeIds: readonly string[],
-  dependents: ReadonlyMap<string, ReadonlySet<string>>
-): string[] {
-  const visited = new Set<string>();
-  const active = new Set<string>();
-  const path: string[] = [];
-
-  const visit = (nodeId: string): string[] | undefined => {
-    visited.add(nodeId);
-    active.add(nodeId);
-    path.push(nodeId);
-    for (const dependent of dependents.get(nodeId) ?? []) {
-      if (!visited.has(dependent)) {
-        const cycle = visit(dependent);
-        if (cycle) {
-          return cycle;
-        }
-      } else if (active.has(dependent)) {
-        const start = path.indexOf(dependent);
-        return [...path.slice(start), dependent];
+  private evaluateSetConditions(world: World): Map<string, boolean> | undefined {
+    let map: Map<string, boolean> | undefined;
+    for (const s of this.sets) {
+      if (s.runIf) {
+        map ??= new Map();
+        map.set(s.id, s.runIf(world));
       }
     }
-    path.pop();
-    active.delete(nodeId);
-    return undefined;
-  };
-
-  for (const nodeId of nodeIds) {
-    if (!visited.has(nodeId)) {
-      const cycle = visit(nodeId);
-      if (cycle) {
-        return cycle;
-      }
-    }
+    return map;
   }
-  return [];
 }

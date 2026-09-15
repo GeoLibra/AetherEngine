@@ -9,6 +9,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'engine/design/v2/01-foundation/03-time-events-commands.md',
         'engine/design/v2/02-runtime/01-app-plugin.md',
         'engine/design/v2/02-runtime/04-dynamic-plugin-runtime.md',
+        'engine/design/v2/02-runtime/05-plugin-composition-hardening.md',
         'src/app/',
         'src/events/'
       ])
@@ -169,6 +170,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'engine/design/v2/01-foundation/03-time-events-commands.md',
         'engine/design/v2/02-runtime/01-app-plugin.md',
         'engine/design/v2/02-runtime/03-jobs-workers.md',
+        'engine/design/v2/02-runtime/05-plugin-composition-hardening.md',
         'src/app/',
         'src/ecs/command-buffer.ts',
         'src/events/',

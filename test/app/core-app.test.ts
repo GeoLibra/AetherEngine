@@ -152,7 +152,8 @@ describe('V2 public App surface', () => {
     expect(LifecycleDiagnosticCode.FrameCleanupFailed).toBe('FRAME_CLEANUP_FAILED');
     expect(LifecycleDiagnosticCode.ServiceDisposalFailed).toBe('SERVICE_DISPOSAL_FAILED');
     expect(LifecycleDiagnosticCode.ContributionCleanupFailed).toBe('CONTRIBUTION_CLEANUP_FAILED');
-    expect(Object.keys(LifecycleDiagnosticCode).length).toBe(6);
+    expect(LifecycleDiagnosticCode.ScheduleValidationFailed).toBe('SCHEDULE_VALIDATION_FAILED');
+    expect(Object.keys(LifecycleDiagnosticCode).length).toBe(7);
   });
 });
 

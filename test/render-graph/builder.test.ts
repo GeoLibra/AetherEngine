@@ -143,7 +143,7 @@ describe('render graph pass declarations', () => {
         },
         run() {}
       })
-    ).toThrow(/terminal/i);
+    ).toThrow(/already has a terminal operation for this version/i);
   });
 
   test('redeclaring a terminal on a newer version replaces the stale terminal', () => {

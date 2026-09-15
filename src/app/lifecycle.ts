@@ -9,7 +9,8 @@ const DIAGNOSTIC_CODE_BY_PHASE: Readonly<
   shutdown: LifecycleDiagnosticCode.PluginShutdownFailed,
   'frame-cleanup': LifecycleDiagnosticCode.FrameCleanupFailed,
   'service-disposal': LifecycleDiagnosticCode.ServiceDisposalFailed,
-  'contribution-cleanup': LifecycleDiagnosticCode.ContributionCleanupFailed
+  'contribution-cleanup': LifecycleDiagnosticCode.ContributionCleanupFailed,
+  'schedule-validation': LifecycleDiagnosticCode.ScheduleValidationFailed
 });
 
 export function createLifecycleDiagnostic(

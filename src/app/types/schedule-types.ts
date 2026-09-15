@@ -13,13 +13,21 @@ export type AccessToken = ComponentType<object> | RelationType | ResourceToken<u
 export interface SystemDescriptor {
   readonly id: string;
   readonly run: System;
-  readonly before?: readonly string[];
-  readonly after?: readonly string[];
-  readonly optionalBefore?: readonly string[];
-  readonly optionalAfter?: readonly string[];
-  readonly reads?: readonly AccessToken[];
-  readonly writes?: readonly AccessToken[];
-  readonly runIf?: (world: World) => boolean;
+  readonly inSet?: string | undefined;
+  readonly before?: readonly string[] | undefined;
+  readonly after?: readonly string[] | undefined;
+  readonly optionalBefore?: readonly string[] | undefined;
+  readonly optionalAfter?: readonly string[] | undefined;
+  readonly reads?: readonly AccessToken[] | undefined;
+  readonly writes?: readonly AccessToken[] | undefined;
+  readonly runIf?: ((world: World) => boolean) | undefined;
+}
+
+export interface SystemSetDescriptor {
+  readonly id: string;
+  readonly before?: readonly string[] | undefined;
+  readonly after?: readonly string[] | undefined;
+  readonly runIf?: ((world: World) => boolean) | undefined;
 }
 
 export interface SystemRegistration {

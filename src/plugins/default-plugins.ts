@@ -1,14 +1,22 @@
-import type { Plugin, PluginGroup } from '../app/types';
+import { PluginGroupBuilder } from '../app/plugin-group';
 import { TimePlugin } from './time-plugin';
 
-export class MinimalPlugins implements PluginGroup {
-  plugins(): readonly Plugin[] {
-    return Object.freeze([TimePlugin]);
+/**
+ * Minimal determinism profile providing frame, fixed-step, and diagnostic time resources.
+ * Contains only TimePlugin.
+ */
+export class MinimalPlugins extends PluginGroupBuilder {
+  constructor() {
+    super([TimePlugin]);
   }
 }
 
-export class DefaultPlugins implements PluginGroup {
-  plugins(): readonly Plugin[] {
-    return Object.freeze([TimePlugin]);
+/**
+ * Standard default plugins profile.
+ * Extensible via PluginGroupBuilder methods: set(), enable(), disable().
+ */
+export class DefaultPlugins extends PluginGroupBuilder {
+  constructor() {
+    super([TimePlugin]);
   }
 }

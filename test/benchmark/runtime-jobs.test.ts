@@ -9,6 +9,11 @@ import {
   runRuntimeIntegritySubject
 } from '../../benchmark/runtime-jobs/integrity-scenarios';
 
+import {
+  runScheduleSystemSetReference,
+  runScheduleSystemSetSubject
+} from '../../benchmark/runtime-jobs/schedule-scenarios';
+
 describe('runtime/jobs benchmark model', () => {
   test('matches the independent stable queue ordering oracle', () => {
     const fixture = createQueuedJobFixture(2_048);
@@ -32,6 +37,16 @@ describe('runtime/jobs benchmark model', () => {
         metricsUpdates: scale
       });
       expect(subject.checksum).toMatch(/^[0-9a-f]{8}$/);
+    }
+  });
+
+  test('executes schedule SystemSet fanout and condition evaluation matching closed-form oracle', async () => {
+    for (const scale of [4, 16]) {
+      const subject = await runScheduleSystemSetSubject(scale);
+      const reference = runScheduleSystemSetReference(scale);
+      expect(subject).toEqual(reference);
+      expect(subject.conditionEvaluations).toBe(scale);
+      expect(subject.executedCount).toBe((scale / 2) * 4);
     }
   });
 });

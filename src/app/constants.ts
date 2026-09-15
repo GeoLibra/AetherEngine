@@ -74,7 +74,8 @@ export const LifecycleDiagnosticCode = Object.freeze({
   PluginShutdownFailed: 'PLUGIN_SHUTDOWN_FAILED',
   FrameCleanupFailed: 'FRAME_CLEANUP_FAILED',
   ServiceDisposalFailed: 'SERVICE_DISPOSAL_FAILED',
-  ContributionCleanupFailed: 'CONTRIBUTION_CLEANUP_FAILED'
+  ContributionCleanupFailed: 'CONTRIBUTION_CLEANUP_FAILED',
+  ScheduleValidationFailed: 'SCHEDULE_VALIDATION_FAILED'
 } as const);
 
 export type LifecycleDiagnosticCode =
