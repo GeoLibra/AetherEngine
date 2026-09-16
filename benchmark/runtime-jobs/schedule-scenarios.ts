@@ -1,4 +1,4 @@
-import { App, definePlugin } from '../../src';
+import { App, Schedule, definePlugin, type RunnerContext } from '../../src';
 
 export interface ScheduleSystemSetObservation {
   readonly executedCount: number;
@@ -52,7 +52,7 @@ export async function runScheduleSystemSetSubject(
   await app.startup();
 
   await app.run({
-    run: async (ctx: any) => {
+    run: async (ctx: RunnerContext) => {
       ctx.frame(0.016);
       return { reason: 'stop', frames: 1 };
     },
@@ -97,4 +97,98 @@ function checksum(value: string): string {
     hash = Math.imul(hash, 0x01000193);
   }
   return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+export interface ScheduleCompilationObservation {
+  readonly compiledCount: number;
+  readonly checksum: string;
+}
+
+/**
+ * Measures schedule compilation scaling over a deterministic dependency chain.
+ */
+export function runScheduleCompilationSubject(systemCount: number): ScheduleCompilationObservation {
+  const schedule = new Schedule('benchmark-compilation');
+  for (let i = 0; i < systemCount; i++) {
+    schedule.addSystem({
+      id: `sys-${i}`,
+      ...(i > 0 ? { after: [`sys-${i - 1}`] } : {}),
+      run: () => undefined
+    });
+  }
+  const order = schedule.compile();
+  return Object.freeze({
+    compiledCount: order.length,
+    checksum: checksum(order.map((n) => n.id).join(','))
+  });
+}
+
+export function runScheduleCompilationReference(
+  systemCount: number
+): ScheduleCompilationObservation {
+  const ids: string[] = [];
+  for (let i = 0; i < systemCount; i++) {
+    ids.push(`sys-${i}`);
+  }
+  return Object.freeze({
+    compiledCount: systemCount,
+    checksum: checksum(ids.join(','))
+  });
+}
+
+export interface TelemetryOverheadObservation {
+  readonly clockSamples: number;
+  readonly emittedEvents: number;
+  readonly framesExecuted: number;
+}
+
+/**
+ * Asserts empirical clock sampling counts under enabled vs disabled telemetry.
+ */
+export async function runTelemetryOverheadSubject(
+  enabled: boolean,
+  frames: number
+): Promise<TelemetryOverheadObservation> {
+  let clockSamples = 0;
+  const app = new App({
+    telemetry: {
+      enabled,
+      recordSystemSpans: enabled,
+      clock: { now: () => ++clockSamples }
+    }
+  });
+
+  app.addPlugin(
+    definePlugin({
+      id: 'telemetry-benchmark-plugin',
+      build(builder) {
+        builder.addSystem('Update', {
+          id: 'bench-sys',
+          run: () => undefined
+        });
+      }
+    })
+  );
+
+  await app.startup();
+  clockSamples = 0;
+
+  await app.run({
+    run: async (ctx: RunnerContext) => {
+      for (let f = 0; f < frames; f++) {
+        ctx.frame(f * 0.016);
+      }
+      return { reason: 'stop', frames };
+    },
+    requestStop: () => undefined
+  });
+
+  const emittedEvents = app.telemetryEvents.getEvents().length;
+  await app.destroy();
+
+  return Object.freeze({
+    clockSamples,
+    emittedEvents,
+    framesExecuted: frames
+  });
 }
