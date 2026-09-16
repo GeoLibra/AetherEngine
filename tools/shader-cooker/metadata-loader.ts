@@ -6,9 +6,11 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import {
   validateWgslShaderMetadata,
-  type ValidateWgslMetadataOptions
+  type ValidateWgslMetadataOptions,
+  type ValidateWgslMetadataRootOptions,
+  type ValidateWgslMetadataModuleOptions
 } from '../../src/shader/authoring';
-import type { WgslShaderMetadata } from '../../src/shader/types';
+import type { WgslModuleMetadata, WgslShaderMetadata } from '../../src/shader/types';
 
 /**
  * Pluggable file system reader for loading metadata.
@@ -27,14 +29,24 @@ const defaultFsAdapter: MetadataFileSystemAdapter = Object.freeze({
  * @param metadataPath Path to the `.wgsl.meta.json` or `.shader.json` file.
  * @param fs File system adapter (defaults to node:fs/promises).
  * @param options Validation options (e.g. kind: 'module' | 'shader-root').
- * @returns Validated, frozen WgslShaderMetadata snapshot.
+ * @returns Validated, frozen WgslShaderMetadata or WgslModuleMetadata snapshot.
  * @throws {Error} On I/O failure, malformed JSON, or schema validation violations.
  */
 export async function loadWgslMetadata(
   metadataPath: string,
+  fs?: MetadataFileSystemAdapter,
+  options?: ValidateWgslMetadataRootOptions
+): Promise<WgslShaderMetadata>;
+export async function loadWgslMetadata(
+  metadataPath: string,
+  fs: MetadataFileSystemAdapter | undefined,
+  options: ValidateWgslMetadataModuleOptions
+): Promise<WgslModuleMetadata>;
+export async function loadWgslMetadata(
+  metadataPath: string,
   fs: MetadataFileSystemAdapter = defaultFsAdapter,
   options: ValidateWgslMetadataOptions = {}
-): Promise<WgslShaderMetadata> {
+): Promise<WgslShaderMetadata | WgslModuleMetadata> {
   const content = await fs.readFile(metadataPath, 'utf8');
 
   let parsed: unknown;
@@ -55,13 +67,21 @@ export async function loadWgslMetadata(
  *
  * @param metadataPath Path to the `.wgsl.meta.json` or `.shader.json` file.
  * @param options Validation options (e.g. kind: 'module' | 'shader-root').
- * @returns Validated, frozen WgslShaderMetadata snapshot.
+ * @returns Validated, frozen WgslShaderMetadata or WgslModuleMetadata snapshot.
  * @throws {Error} On I/O failure, malformed JSON, or schema validation violations.
  */
 export function loadWgslMetadataSync(
   metadataPath: string,
+  options?: ValidateWgslMetadataRootOptions
+): WgslShaderMetadata;
+export function loadWgslMetadataSync(
+  metadataPath: string,
+  options: ValidateWgslMetadataModuleOptions
+): WgslModuleMetadata;
+export function loadWgslMetadataSync(
+  metadataPath: string,
   options: ValidateWgslMetadataOptions = {}
-): WgslShaderMetadata {
+): WgslShaderMetadata | WgslModuleMetadata {
   const content = readFileSync(metadataPath, 'utf8');
 
   let parsed: unknown;

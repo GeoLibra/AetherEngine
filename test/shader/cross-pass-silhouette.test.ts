@@ -110,46 +110,37 @@ describe('Cross-Pass Silhouette & Coverage Conformance', () => {
     }
   });
 
-  it('evaluates identical alpha coverage masks across sample points for lit and shadow passes', () => {
-    // Exact mathematical oracle for evaluateAlphaCoverage(alpha, cutoff, alphaMask)
-    function evaluateAlphaCoverageOracle(
-      alpha: number,
-      alphaCutoff: number,
-      alphaMask: number
-    ): boolean {
-      if (alphaMask !== 0 && alpha < alphaCutoff) {
-        return false;
-      }
-      return true;
-    }
+  it('enforces exact structural coverage discard conditions in lit and shadow shader artifacts', () => {
+    const shadowWgsl = STANDARD_SHADOW_SHADER_ARTIFACT.modules.wgsl;
+    const litWgsl = STANDARD_LIT_SHADER_ARTIFACT.modules.wgsl;
+    const litListWebGpu = STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT.modules.wgsl;
+    const litListWebGlFragment =
+      STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT.modules.glslEs300['fragment:standardLitFragment']
+        ?.source;
 
-    const testCutoffs = [0.1, 0.25, 0.5, 0.75, 0.9];
-    const testMaskStates = [0, 1];
-    const steps = 50;
+    // 1. Both passes call evaluateAlphaCoverage with (alpha, cutoff, alphaMask)
+    expect(shadowWgsl).toMatch(
+      /evaluateAlphaCoverage\s*\(\s*alpha\s*,\s*shadowMaterialData\.alphaCutoff\s*,\s*shadowMaterialData\.alphaMask\s*\)/
+    );
+    expect(litWgsl).toMatch(
+      /evaluateAlphaCoverage\s*\(\s*surface\.baseColor\.a\s*,\s*materialData\.alphaCutoff\s*,\s*materialData\.alphaMask\s*\)/
+    );
+    expect(litListWebGpu).toMatch(
+      /evaluateAlphaCoverage\s*\(\s*surface\.baseColor\.a\s*,\s*materialData\.alphaCutoff\s*,\s*materialData\.alphaMask\s*\)/
+    );
+    expect(litListWebGlFragment).toContain('evaluateAlphaCoverage');
 
-    for (const cutoff of testCutoffs) {
-      for (const mask of testMaskStates) {
-        const shadowResults: boolean[] = [];
-        const litResults: boolean[] = [];
+    // 2. Both passes discard when evaluateAlphaCoverage evaluates to false
+    expect(shadowWgsl).toMatch(/if\s*\(\s*!evaluateAlphaCoverage[^{]+\)\s*\{\s*discard;\s*\}/);
+    expect(litWgsl).toMatch(/if\s*\(\s*!evaluateAlphaCoverage[^{]+\)\s*\{\s*discard;\s*\}/);
+    expect(litListWebGpu).toMatch(/if\s*\(\s*!evaluateAlphaCoverage[^{]+\)\s*\{\s*discard;\s*\}/);
 
-        for (let i = 0; i <= steps; i++) {
-          const alpha = i / steps;
-          const shadowPass = evaluateAlphaCoverageOracle(alpha, cutoff, mask);
-          const litPass = evaluateAlphaCoverageOracle(alpha, cutoff, mask);
-          shadowResults.push(shadowPass);
-          litResults.push(litPass);
-        }
-
-        // Must produce identical boolean survival mask across all alpha steps
-        expect(shadowResults).toEqual(litResults);
-
-        // When mask is active, verify threshold behavior
-        if (mask === 1) {
-          const discarded = shadowResults.filter((survives) => !survives).length;
-          expect(discarded).toBeGreaterThan(0);
-        }
-      }
-    }
+    // 3. evaluateAlphaCoverage predicate definition in linked artifacts enforces cutoff threshold when alphaMask != 0u
+    const coverageDefinition =
+      /fn evaluateAlphaCoverage\s*\(\s*alpha:\s*f32,\s*alphaCutoff:\s*f32,\s*alphaMask:\s*u32\s*\)\s*->\s*bool\s*\{[\s\S]*?if\s*\(\s*alphaMask\s*!=\s*0u\s*&&\s*alpha\s*<\s*alphaCutoff\s*\)\s*\{\s*return false;\s*\}[\s\S]*?return true;\s*\}/;
+    expect(shadowWgsl).toMatch(coverageDefinition);
+    expect(litWgsl).toMatch(coverageDefinition);
+    expect(litListWebGpu).toMatch(coverageDefinition);
   });
 
   it('shadow caster pass does not leak BRDF, IBL, or surface normal evaluation', () => {

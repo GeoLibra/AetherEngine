@@ -124,14 +124,16 @@ const VALID_STAGES = new Set(['vertex', 'fragment', 'compute']);
 /**
  * Options for validating WGSL shader or module metadata.
  */
-export interface ValidateWgslMetadataOptions {
-  /**
-   * Validation target kind:
-   * - 'shader-root': Executable shader requiring at least one entry point (default).
-   * - 'module': Reusable library module where entry points may be omitted.
-   */
-  readonly kind?: 'shader-root' | 'module';
+export interface ValidateWgslMetadataRootOptions {
+  readonly kind?: 'shader-root';
 }
+
+export interface ValidateWgslMetadataModuleOptions {
+  readonly kind: 'module';
+}
+
+export type ValidateWgslMetadataOptions =
+  ValidateWgslMetadataRootOptions | ValidateWgslMetadataModuleOptions;
 
 /**
  * Validates and normalizes untrusted parsed JSON metadata against the WGSL shader sidecar contract.
@@ -140,14 +142,26 @@ export interface ValidateWgslMetadataOptions {
  * For shared library modules, see `validateWgslModuleMetadata`.
  *
  * @param value Untrusted JSON value.
- * @param options Optional configuration including target kind ('shader-root' | 'module').
- * @returns Frozen WgslShaderMetadata snapshot.
+ * @param options Optional configuration specifying 'shader-root' (default) or 'module'.
+ * @returns Frozen WgslShaderMetadata snapshot for roots, or WgslModuleMetadata for modules.
  * @throws {Error} On schema violations, unknown keys, missing entry points (for roots), duplicate entry points, or malformed fields.
  */
 export function validateWgslShaderMetadata(
   value: unknown,
+  options?: ValidateWgslMetadataRootOptions
+): WgslShaderMetadata;
+export function validateWgslShaderMetadata(
+  value: unknown,
+  options: ValidateWgslMetadataModuleOptions
+): WgslModuleMetadata;
+export function validateWgslShaderMetadata(
+  value: unknown,
+  options: ValidateWgslMetadataOptions
+): WgslShaderMetadata | WgslModuleMetadata;
+export function validateWgslShaderMetadata(
+  value: unknown,
   options: ValidateWgslMetadataOptions = {}
-): WgslShaderMetadata {
+): WgslShaderMetadata | WgslModuleMetadata {
   const targetKind = options.kind ?? 'shader-root';
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('WGSL shader metadata must be a non-null object.');
@@ -376,7 +390,7 @@ export function validateWgslShaderMetadata(
     });
   }
 
-  return Object.freeze({
+  const result = Object.freeze({
     schemaVersion: 1 as const,
     ...(frozenEntryPoints !== undefined ? { entryPoints: frozenEntryPoints } : {}),
     ...(frozenImports !== undefined ? { imports: frozenImports } : {}),
@@ -384,7 +398,9 @@ export function validateWgslShaderMetadata(
     ...(frozenCapabilities !== undefined ? { capabilityRequirements: frozenCapabilities } : {}),
     ...(frozenMaterialBindings !== undefined ? { materialBindings: frozenMaterialBindings } : {}),
     ...(frozenCookPolicy !== undefined ? { cookPolicy: frozenCookPolicy } : {})
-  }) as WgslShaderMetadata;
+  });
+
+  return result as WgslShaderMetadata | WgslModuleMetadata;
 }
 
 /**

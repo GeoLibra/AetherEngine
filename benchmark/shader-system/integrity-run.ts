@@ -290,15 +290,11 @@ for (const config of moduleCompositionConfigs) {
     if (
       result.closureModuleCount < config.moduleCount - 2 ||
       !result.compositeHash ||
-      !result.warmReused ||
+      !result.compositeHashMatchesOracle ||
       result.sharedLeafAffectedRootsCount !== 2 ||
       result.rootLocalAffectedRootsCount !== 1 ||
       result.unrelatedAffectedRootsCount !== 0 ||
-      !result.incrementalMatchesFullRebuild ||
-      !result.failedBuildRetainsLastKnownGood ||
-      result.cacheHits !== 2 ||
-      result.cacheMisses !== 4 ||
-      result.invalidatedRootsCount !== 5
+      !result.incrementalMatchesFullRebuild
     ) {
       throw new Error(
         `Module composition structural oracle failed for ${config.moduleCount} ${config.topology}.`

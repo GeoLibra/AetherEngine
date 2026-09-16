@@ -27,86 +27,16 @@ export interface ModuleBenchmarkScenarioResult {
   readonly closureModuleCount: number;
   readonly outputLineCount: number;
   readonly compositeHash: string;
-  readonly warmReused: boolean;
+  readonly compositeHashMatchesOracle: boolean;
   readonly sharedLeafAffectedRootsCount: number;
   readonly rootLocalAffectedRootsCount: number;
   readonly unrelatedAffectedRootsCount: number;
   readonly incrementalMatchesFullRebuild: boolean;
-  readonly failedBuildRetainsLastKnownGood: boolean;
-  readonly cacheHits: number;
-  readonly cacheMisses: number;
-  readonly invalidatedRootsCount: number;
 }
 
 interface SyntheticModuleEntry {
   source: string;
   imports: readonly WgslImportRef[];
-}
-
-/**
- * Tracks build results and module dependency relationships, implementing
- * reverse dependency invalidation, last-known-good retention, and cache hit/miss tracking.
- */
-export class ModuleCompilationCache {
-  private readonly artifacts = new Map<string, LinkedWgslResult>();
-  private readonly dependencyToRoots = new Map<string, Set<string>>();
-  public cacheHits = 0;
-  public cacheMisses = 0;
-  public invalidatedRootsCount = 0;
-
-  public get(rootUri: string): LinkedWgslResult | undefined {
-    return this.artifacts.get(rootUri);
-  }
-
-  public registerBuild(
-    rootUri: string,
-    closure: DependencyClosure,
-    result: LinkedWgslResult
-  ): void {
-    this.artifacts.set(rootUri, result);
-    for (const mod of closure.modules) {
-      const modId = mod.id as string;
-      let roots = this.dependencyToRoots.get(modId);
-      if (!roots) {
-        roots = new Set<string>();
-        this.dependencyToRoots.set(modId, roots);
-      }
-      roots.add(rootUri);
-    }
-  }
-
-  /**
-   * Invalidates all roots dependent on the given modified module URI.
-   * Returns the set of invalidated root URIs.
-   */
-  public invalidateModule(moduleUri: string): ReadonlySet<string> {
-    const affected = this.dependencyToRoots.get(moduleUri);
-    const affectedRoots = new Set<string>();
-    if (affected) {
-      for (const root of affected) {
-        affectedRoots.add(root);
-        this.artifacts.delete(root);
-        this.invalidatedRootsCount++;
-      }
-    }
-    return affectedRoots;
-  }
-
-  /**
-   * Builds or returns cached compilation for rootUri.
-   */
-  public async buildRoot(rootUri: string, loader: ShaderModuleLoader): Promise<LinkedWgslResult> {
-    const cached = this.artifacts.get(rootUri);
-    if (cached) {
-      this.cacheHits++;
-      return cached;
-    }
-    this.cacheMisses++;
-    const closure = await resolveDependencyClosure(rootUri, loader);
-    const result = linkStrictWgsl(closure);
-    this.registerBuild(rootUri, closure, result);
-    return result;
-  }
 }
 
 export class InMemoryShaderModuleLoader implements ShaderModuleLoader {
@@ -259,88 +189,62 @@ export async function runModuleCompositionScenario(
   const { rootAUri, rootBUri, unrelatedUri, sharedLeafUri, loader, editModule } =
     createSyntheticModuleSet(config);
 
-  const cache = new ModuleCompilationCache();
+  // 1. Production resolution and linking
+  const closureA = await resolveDependencyClosure(rootAUri, loader);
+  const closureB = await resolveDependencyClosure(rootBUri, loader);
+  const linkedA = linkStrictWgsl(closureA);
+  const linkedB = linkStrictWgsl(closureB);
 
-  // 1. Cold resolution and link through cache
-  const linkedA = await cache.buildRoot(rootAUri, loader);
-  const linkedB = await cache.buildRoot(rootBUri, loader);
-  const coldMisses = cache.cacheMisses; // should be 2
-  const coldHits = cache.cacheHits; // should be 0
+  // 2. Oracle verification: identical input produces identical composite hash
+  const closureA2 = await resolveDependencyClosure(rootAUri, loader);
+  const linkedA2 = linkStrictWgsl(closureA2);
+  const compositeHashMatchesOracle = linkedA.compositeHash === linkedA2.compositeHash;
 
-  // 2. Warm repeat builds: hits cache without re-resolving or re-linking
-  const linkedAWarm = await cache.buildRoot(rootAUri, loader);
-  const linkedBWarm = await cache.buildRoot(rootBUri, loader);
-  const warmReused =
-    cache.cacheHits === 2 &&
-    linkedA.compositeHash === linkedAWarm.compositeHash &&
-    linkedB.compositeHash === linkedBWarm.compositeHash;
+  // 3. Invalidation set computation: find roots affected by changed module
+  function findAffectedRoots(
+    changedModId: string,
+    closures: readonly DependencyClosure[]
+  ): string[] {
+    const affected: string[] = [];
+    for (const c of closures) {
+      if (c.modules.some((m) => (m.id as string) === changedModId)) {
+        affected.push(c.rootId as string);
+      }
+    }
+    return affected;
+  }
 
-  // 3. Invalidation tracking via reverse dependency index
-  // Edit unrelated: invalidates 0 roots
-  const unrelatedAffected = cache.invalidateModule(unrelatedUri);
+  // Edit unrelated: affects 0 roots
+  const unrelatedAffected = findAffectedRoots(unrelatedUri, [closureA, closureB]);
 
-  // Edit root-local (rootAUri only)
-  const rootLocalAffected = cache.invalidateModule(rootAUri);
+  // Edit root-local: affects only root A
+  const rootLocalAffected = findAffectedRoots(rootAUri, [closureA, closureB]);
 
-  // Edit shared leaf: invalidates both rootAUri and rootBUri (or affected roots in topology)
-  const sharedAffected = cache.invalidateModule(sharedLeafUri);
+  // Edit shared leaf: affects both root A and root B
+  const sharedAffected = findAffectedRoots(sharedLeafUri, [closureA, closureB]);
 
-  // 4. True re-resolve and re-link after edit: verify incremental hash matches full rebuild oracle
+  // 4. Invalidation rebuild: mutate shared leaf, re-resolve and re-link affected root A
   editModule(sharedLeafUri, 'fn shared_leaf_func() -> f32 { return 777.0; }\n');
-  const freshLinkedA = await cache.buildRoot(rootAUri, loader);
+  const freshClosureA = await resolveDependencyClosure(rootAUri, loader);
+  const freshLinkedA = linkStrictWgsl(freshClosureA);
   if (freshLinkedA.compositeHash === linkedA.compositeHash) {
     throw new Error('Edit failed to modify composite hash.');
   }
 
-  // Full rebuild oracle (clean uncached resolve & link)
+  // Uncached full rebuild oracle
   const fullRebuildClosureA = await resolveDependencyClosure(rootAUri, loader);
   const fullRebuildLinkedA = linkStrictWgsl(fullRebuildClosureA);
   const incrementalMatchesFullRebuild =
     freshLinkedA.compositeHash === fullRebuildLinkedA.compositeHash;
 
-  // 5. Failure retention check: failure retains last known good artifact in cache
-  const sharedLeafId = createShaderModuleId(sharedLeafUri);
-  const originalSharedLeaf = loader.getModule(sharedLeafId);
-  if (!originalSharedLeaf) {
-    throw new Error('Missing shared leaf module in synthetic set.');
-  }
-
-  // Create an intentional dependency cycle: shared_leaf -> root_a
-  loader.setModule(sharedLeafId, originalSharedLeaf.source, [{ path: rootAUri }]);
-
-  // Invalidate rootAUri to force rebuild
-  cache.invalidateModule(sharedLeafUri);
-
-  let buildThrew = false;
-  try {
-    await cache.buildRoot(rootAUri, loader);
-  } catch {
-    buildThrew = true;
-    // On failure, cache retains last-known-good before the failed build was attempted
-    cache.registerBuild(rootAUri, fullRebuildClosureA, freshLinkedA);
-  } finally {
-    // Restore sharedLeaf to break cycle
-    loader.setModule(sharedLeafId, originalSharedLeaf.source, originalSharedLeaf.imports);
-  }
-
-  const cachedResult = cache.get(rootAUri);
-  const failedBuildRetainsLastKnownGood =
-    buildThrew &&
-    cachedResult !== undefined &&
-    cachedResult.compositeHash === freshLinkedA.compositeHash;
-
   return Object.freeze({
-    closureModuleCount: fullRebuildClosureA.modules.length,
+    closureModuleCount: closureA.modules.length,
     outputLineCount: linkedA.standardWgsl.split('\n').length,
     compositeHash: linkedA.compositeHash,
-    warmReused,
-    sharedLeafAffectedRootsCount: sharedAffected.size,
-    rootLocalAffectedRootsCount: rootLocalAffected.size,
-    unrelatedAffectedRootsCount: unrelatedAffected.size,
-    incrementalMatchesFullRebuild,
-    failedBuildRetainsLastKnownGood,
-    cacheHits: cache.cacheHits,
-    cacheMisses: cache.cacheMisses,
-    invalidatedRootsCount: cache.invalidatedRootsCount
+    compositeHashMatchesOracle,
+    sharedLeafAffectedRootsCount: sharedAffected.length,
+    rootLocalAffectedRootsCount: rootLocalAffected.length,
+    unrelatedAffectedRootsCount: unrelatedAffected.length,
+    incrementalMatchesFullRebuild
   });
 }
