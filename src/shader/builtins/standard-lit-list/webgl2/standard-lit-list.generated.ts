@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl',
-    contentHash: 'eff46841f73e82fac609f9d76a799bfa94e3c13600e260035d3808fc0c676e5c',
-    byteLength: 20885
+    contentHash: 'bfcd91ce9daac7ca7f24b6515c2cc8aa46e7d3f0d9e01d2576e38dffc5e27e27',
+    byteLength: 23736
   },
   entryPoints: [
     {
@@ -947,7 +947,7 @@ uint directionalIndex(uint index_2) {
 
 ReceiverLightHeader receiverLightHeader() {
     uint texel = 0u;
-    bool local_1 = false;
+    bool local = false;
     uvec2 dimensions_1 = uvec2(textureSize(_group_3_binding_2_fs, 0).xy);
     bool loop_init = true;
     while(true) {
@@ -968,11 +968,11 @@ ReceiverLightHeader receiverLightHeader() {
             if (((_e15 & 2147483648u) != 0u)) {
                 uint _e23 = textureWord(_group_3_binding_2_fs, base);
                 uint _e26 = _group_0_binding_0_fs.receiver;
-                local_1 = (_e23 == _e26);
+                local = (_e23 == _e26);
             } else {
-                local_1 = false;
+                local = false;
             }
-            bool _e29 = local_1;
+            bool _e29 = local;
             if (_e29) {
                 uint _e30 = texel;
                 uint _e34 = textureWord(_group_3_binding_2_fs, (base + 2u));
@@ -990,24 +990,42 @@ uint receiverLightIndex(ReceiverLightHeader header, uint index_3) {
     return _e18;
 }
 
+vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
+    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
+}
+
+bool evaluateAlphaCoverage(float alpha, float alphaCutoff, uint alphaMask) {
+    bool local_1 = false;
+    if ((alphaMask != 0u)) {
+        local_1 = (alpha < alphaCutoff);
+    } else {
+        local_1 = false;
+    }
+    bool _e9 = local_1;
+    if (_e9) {
+        return false;
+    }
+    return true;
+}
+
 float fifthPower(float value) {
     float squared = (value * value);
     return ((squared * squared) * value);
 }
 
 float distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {
-    float alpha_1 = (roughness * roughness);
+    float alpha_2 = (roughness * roughness);
     float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);
     vec3 normalCrossHalf = cross(normal_1, halfDirection);
     float oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
-    float alphaNormalDotHalf = (alpha_1 * normalDotHalf);
+    float alphaNormalDotHalf = (alpha_2 * normalDotHalf);
     float denominator = (oneMinusNormalDotHalfSquared + (alphaNormalDotHalf * alphaNormalDotHalf));
-    float alphaOverDenominator = (alpha_1 / denominator);
+    float alphaOverDenominator = (alpha_2 / denominator);
     return ((alphaOverDenominator * alphaOverDenominator) / 3.1415927);
 }
 
-float geometrySmithGgx(float normalDotDirection, float alpha) {
-    float alphaSquared = (alpha * alpha);
+float geometrySmithGgx(float normalDotDirection, float alpha_1) {
+    float alphaSquared = (alpha_1 * alpha_1);
     float root = sqrt((alphaSquared + (((1.0 - alphaSquared) * normalDotDirection) * normalDotDirection)));
     return ((2.0 * normalDotDirection) / (normalDotDirection + root));
 }
@@ -1015,9 +1033,9 @@ float geometrySmithGgx(float normalDotDirection, float alpha) {
 float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_1) {
     float normalDotView = max(dot(normal_2, viewDirection), 0.0);
     float normalDotLight = max(dot(normal_2, lightDirection), 0.0);
-    float alpha_2 = (roughness_1 * roughness_1);
-    float _e11 = geometrySmithGgx(normalDotView, alpha_2);
-    float _e12 = geometrySmithGgx(normalDotLight, alpha_2);
+    float alpha_3 = (roughness_1 * roughness_1);
+    float _e11 = geometrySmithGgx(normalDotView, alpha_3);
+    float _e12 = geometrySmithGgx(normalDotLight, alpha_3);
     return (_e11 * _e12);
 }
 
@@ -1055,10 +1073,6 @@ vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection
 
 vec2 selectUv(uint index_4, vec2 uv0_1, vec2 uv1_1) {
     return ((index_4 == 1u) ? uv1_1 : uv0_1);
-}
-
-vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
-    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
 }
 
 StandardLitSurface sampleStandardLitSurface(StandardLitFragmentInput input_, bool frontFacing_1) {
@@ -1298,71 +1312,65 @@ vec3 evaluateIbl(vec3 normal_6, vec3 viewDirection_3, StandardLitSurface surface
 void main() {
     StandardLitFragmentInput fragmentInput = StandardLitFragmentInput(_vs2fs_location0, _vs2fs_location1, _vs2fs_location2, _vs2fs_location3, _vs2fs_location4, _vs2fs_location5);
     bool frontFacing = gl_FrontFacing;
-    bool local = false;
     vec3 lit = vec3(0.0);
     uint index = 0u;
     uint index_1 = 0u;
     StandardLitSurface _e2 = sampleStandardLitSurface(fragmentInput, frontFacing);
-    uint _e5 = _group_2_binding_0_fs.alphaMask;
-    if ((_e5 != 0u)) {
-        float _e14 = _group_2_binding_0_fs.alphaCutoff;
-        local = (_e2.baseColor.w < _e14);
-    } else {
-        local = false;
-    }
-    bool _e17 = local;
-    if (_e17) {
+    float _e7 = _group_2_binding_0_fs.alphaCutoff;
+    uint _e10 = _group_2_binding_0_fs.alphaMask;
+    bool _e11 = evaluateAlphaCoverage(_e2.baseColor.w, _e7, _e10);
+    if (!(_e11)) {
         discard;
     }
     vec3 normal_7 = _e2.normal;
-    vec3 _e21 = _group_1_binding_0_fs.cameraPosition;
-    vec3 viewDirection_4 = normalize((_e21 - fragmentInput.worldPosition));
-    vec3 _e25 = evaluateIbl(normal_7, viewDirection_4, _e2);
-    lit = _e25;
-    uint _e27 = directionalLightCount();
+    vec3 _e16 = _group_1_binding_0_fs.cameraPosition;
+    vec3 viewDirection_4 = normalize((_e16 - fragmentInput.worldPosition));
+    vec3 _e20 = evaluateIbl(normal_7, viewDirection_4, _e2);
+    lit = _e20;
+    uint _e22 = directionalLightCount();
     bool loop_init_4 = true;
     while(true) {
         if (!loop_init_4) {
-            uint _e38 = index;
-            index = (_e38 + 1u);
+            uint _e33 = index;
+            index = (_e33 + 1u);
         }
         loop_init_4 = false;
-        uint _e30 = index;
-        if ((_e30 < _e27)) {
+        uint _e25 = index;
+        if ((_e25 < _e22)) {
         } else {
             break;
         }
         {
-            vec3 _e32 = lit;
-            uint _e33 = index;
-            uint _e34 = directionalIndex(_e33);
-            vec3 _e36 = evaluatePackedLight(_e34, fragmentInput.worldPosition, normal_7, viewDirection_4, _e2);
-            lit = (_e32 + _e36);
+            vec3 _e27 = lit;
+            uint _e28 = index;
+            uint _e29 = directionalIndex(_e28);
+            vec3 _e31 = evaluatePackedLight(_e29, fragmentInput.worldPosition, normal_7, viewDirection_4, _e2);
+            lit = (_e27 + _e31);
         }
     }
-    ReceiverLightHeader _e41 = receiverLightHeader();
+    ReceiverLightHeader _e36 = receiverLightHeader();
     bool loop_init_5 = true;
     while(true) {
         if (!loop_init_5) {
-            uint _e53 = index_1;
-            index_1 = (_e53 + 1u);
+            uint _e48 = index_1;
+            index_1 = (_e48 + 1u);
         }
         loop_init_5 = false;
-        uint _e44 = index_1;
-        if ((_e44 < _e41.count)) {
+        uint _e39 = index_1;
+        if ((_e39 < _e36.count)) {
         } else {
             break;
         }
         {
-            vec3 _e47 = lit;
-            uint _e48 = index_1;
-            uint _e49 = receiverLightIndex(_e41, _e48);
-            vec3 _e51 = evaluatePackedLight(_e49, fragmentInput.worldPosition, normal_7, viewDirection_4, _e2);
-            lit = (_e47 + _e51);
+            vec3 _e42 = lit;
+            uint _e43 = index_1;
+            uint _e44 = receiverLightIndex(_e36, _e43);
+            vec3 _e46 = evaluatePackedLight(_e44, fragmentInput.worldPosition, normal_7, viewDirection_4, _e2);
+            lit = (_e42 + _e46);
         }
     }
-    vec3 _e56 = lit;
-    _fs2p_location0 = vec4((_e56 + _e2.emissive), _e2.baseColor.w);
+    vec3 _e51 = lit;
+    _fs2p_location0 = vec4((_e51 + _e2.emissive), _e2.baseColor.w);
     return;
 }
 
@@ -1664,24 +1672,42 @@ uint textureWord(highp usampler2D source, uint word) {
     return _e13[(word % 4u)];
 }
 
+vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
+    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
+}
+
+bool evaluateAlphaCoverage(float alpha, float alphaCutoff, uint alphaMask) {
+    bool local_1 = false;
+    if ((alphaMask != 0u)) {
+        local_1 = (alpha < alphaCutoff);
+    } else {
+        local_1 = false;
+    }
+    bool _e9 = local_1;
+    if (_e9) {
+        return false;
+    }
+    return true;
+}
+
 float fifthPower(float value) {
     float squared = (value * value);
     return ((squared * squared) * value);
 }
 
 float distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {
-    float alpha_1 = (roughness * roughness);
+    float alpha_2 = (roughness * roughness);
     float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);
     vec3 normalCrossHalf = cross(normal_1, halfDirection);
     float oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
-    float alphaNormalDotHalf = (alpha_1 * normalDotHalf);
+    float alphaNormalDotHalf = (alpha_2 * normalDotHalf);
     float denominator = (oneMinusNormalDotHalfSquared + (alphaNormalDotHalf * alphaNormalDotHalf));
-    float alphaOverDenominator = (alpha_1 / denominator);
+    float alphaOverDenominator = (alpha_2 / denominator);
     return ((alphaOverDenominator * alphaOverDenominator) / 3.1415927);
 }
 
-float geometrySmithGgx(float normalDotDirection, float alpha) {
-    float alphaSquared = (alpha * alpha);
+float geometrySmithGgx(float normalDotDirection, float alpha_1) {
+    float alphaSquared = (alpha_1 * alpha_1);
     float root = sqrt((alphaSquared + (((1.0 - alphaSquared) * normalDotDirection) * normalDotDirection)));
     return ((2.0 * normalDotDirection) / (normalDotDirection + root));
 }
@@ -1689,9 +1715,9 @@ float geometrySmithGgx(float normalDotDirection, float alpha) {
 float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_1) {
     float normalDotView = max(dot(normal_2, viewDirection), 0.0);
     float normalDotLight = max(dot(normal_2, lightDirection), 0.0);
-    float alpha_2 = (roughness_1 * roughness_1);
-    float _e11 = geometrySmithGgx(normalDotView, alpha_2);
-    float _e12 = geometrySmithGgx(normalDotLight, alpha_2);
+    float alpha_3 = (roughness_1 * roughness_1);
+    float _e11 = geometrySmithGgx(normalDotView, alpha_3);
+    float _e12 = geometrySmithGgx(normalDotLight, alpha_3);
     return (_e11 * _e12);
 }
 
@@ -1729,10 +1755,6 @@ vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection
 
 vec2 selectUv(uint index_4, vec2 uv0_1, vec2 uv1_1) {
     return ((index_4 == 1u) ? uv1_1 : uv0_1);
-}
-
-vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
-    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
 }
 
 vec2 directionToEquirectangularUv(vec3 direction) {

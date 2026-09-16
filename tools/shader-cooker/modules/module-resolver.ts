@@ -236,7 +236,12 @@ export class FileSystemShaderModuleLoader implements ShaderModuleLoader {
         }
       }
 
-      filePath = resolve(mappedDir, moduleSubPath);
+      let resolvedSubPath = moduleSubPath;
+      if (authority === 'aether' && moduleSubPath.startsWith('shader-modules/')) {
+        resolvedSubPath = `modules/${moduleSubPath.slice('shader-modules/'.length)}`;
+      }
+
+      filePath = resolve(mappedDir, resolvedSubPath);
       baseDir = mappedDir;
     }
 

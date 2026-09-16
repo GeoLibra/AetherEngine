@@ -125,148 +125,13 @@ struct StandardLitFragmentInput {
 @group(3) @binding(12) var directionalShadowSampler: sampler_comparison;
 
 // ----------------------------------------------------------------------------
-// PBR Mathematical Helpers & Cook-Torrance BRDF Implementation
+// Surface Sampling & Shading Implementation
 // ----------------------------------------------------------------------------
-
-/// Computes (value)^5 using multiplication squaring: (x^2)^2 * x.
-/// Used in the Fresnel-Schlick approximation.
-fn fifthPower(value: f32) -> f32 {
-  let squared = value * value;
-  return squared * squared * value;
-}
-
-/// Normal Distribution Function (NDF / D-term): GGX / Trowbridge-Reitz.
-/// Calculates the probability density of microfacets aligning with the half-vector H.
-/// Uses alpha = roughness^2 following Disney's perceptual roughness mapping.
-fn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {
-  let alpha = roughness * roughness;
-  let normalDotHalf = max(dot(normal, halfDirection), 0.0);
-  let normalCrossHalf = cross(normal, halfDirection);
-  let oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
-  let alphaNormalDotHalf = alpha * normalDotHalf;
-  let denominator = oneMinusNormalDotHalfSquared + alphaNormalDotHalf * alphaNormalDotHalf;
-  let alphaOverDenominator = alpha / denominator;
-  return alphaOverDenominator * alphaOverDenominator / 3.14159265359;
-}
-
-/// Exact separable Smith-GGX masking term for one direction.
-fn geometrySmithGgx(normalDotDirection: f32, alpha: f32) -> f32 {
-  let alphaSquared = alpha * alpha;
-  let root = sqrt(
-    alphaSquared + (1.0 - alphaSquared) * normalDotDirection * normalDotDirection
-  );
-  return 2.0 * normalDotDirection / (normalDotDirection + root);
-}
-
-/// Geometric Shadowing Function (G-term): Smith's method.
-/// Accounts for microfacets shadowing light incoming rays and masking outgoing view rays:
-/// G(N, V, L) = G1(N . V) * G1(N . L)
-fn geometrySmith(
-  normal: vec3<f32>,
-  viewDirection: vec3<f32>,
-  lightDirection: vec3<f32>,
-  roughness: f32
-) -> f32 {
-  let normalDotView = max(dot(normal, viewDirection), 0.0);
-  let normalDotLight = max(dot(normal, lightDirection), 0.0);
-  let alpha = roughness * roughness;
-  return geometrySmithGgx(normalDotView, alpha) * geometrySmithGgx(normalDotLight, alpha);
-}
-
-/// Fresnel Equation (F-term): Fresnel-Schlick approximation.
-/// Computes the ratio of reflected vs refracted light at normal incidence F0:
-/// F(cosTheta) = F0 + (1 - F0) * (1 - cosTheta)^5
-fn fresnelSchlick(cosine: f32, f0: vec3<f32>) -> vec3<f32> {
-  let cosTheta = clamp(cosine, 0.0, 1.0);
-  return f0 + (vec3<f32>(1.0) - f0) * fifthPower(1.0 - cosTheta);
-}
-
-/// Evaluates direct Cook-Torrance microfacet BRDF + Lambertian diffuse:
-/// Out = (k_d * f_diffuse + f_specular) * Radiance * (N . L)
-fn cookTorranceDirect(
-  normal: vec3<f32>,
-  viewDirection: vec3<f32>,
-  lightDirection: vec3<f32>,
-  baseColor: vec3<f32>,
-  metallic: f32,
-  roughness: f32,
-  radiance: vec3<f32>
-) -> vec3<f32> {
-  let normalDotLight = max(dot(normal, lightDirection), 0.0);
-  let normalDotView = max(dot(normal, viewDirection), 0.0);
-  if (normalDotLight <= 0.0 || normalDotView <= 0.0) {
-    return vec3<f32>(0.0);
-  }
-
-  let halfDirection = normalize(viewDirection + lightDirection);
-
-  // Clamp metallic and roughness to prevent non-physical energy amplification and numerical instability
-  let clampedMetallic = clamp(metallic, 0.0, 1.0);
-  let clampedRoughness = clamp(roughness, 0.045, 1.0);
-
-  // Evaluate D (distribution), G (geometry shadowing), and F (Fresnel) terms
-  let distribution = distributionGgx(normal, halfDirection, clampedRoughness);
-  let geometry = geometrySmith(normal, viewDirection, lightDirection, clampedRoughness);
-
-  // Dielectric surfaces have ~0.04 base specular reflectance; conductors use baseColor
-  let f0 = vec3<f32>(0.04) * (1.0 - clampedMetallic) + baseColor * clampedMetallic;
-  let fresnel = fresnelSchlick(max(dot(viewDirection, halfDirection), 0.0), f0);
-
-  // Energy conservation: diffuse fraction kd = (1 - ks) * (1 - metallic)
-  let diffuseWeight = (vec3<f32>(1.0) - fresnel) * (1.0 - clampedMetallic);
-  let diffuse = diffuseWeight * baseColor / 3.14159265359;
-
-  // Cook-Torrance specular term: (D * G * F) / (4 * (N.V) * (N.L))
-  let specular = distribution * geometry * fresnel /
-    (4.0 * normalDotView * normalDotLight);
-
-  return (diffuse + specular) * radiance * normalDotLight;
-}
-
-// ----------------------------------------------------------------------------
-// Vertex Shader Stage
-// ----------------------------------------------------------------------------
-
-@vertex
-fn standardLitVertex(
-  @location(0) position: vec3<f32>,
-  @location(1) normal: vec3<f32>,
-  @location(2) uv0: vec2<f32>,
-  @location(3) uv1: vec2<f32>,
-  @location(4) tangent: vec4<f32>,
-  @location(5) color0: vec4<f32>
-) -> StandardLitVertexOutput {
-  // Transform vertex position to world space
-  let worldPosition = objectData.world * vec4<f32>(position, 1.0);
-
-  // Transform normal vector to world space via normal matrix
-  let worldNormal = normalize((objectData.normalWorld * vec4<f32>(normal, 0.0)).xyz);
-  let rawWorldTangent = (objectData.world * vec4<f32>(tangent.xyz, 0.0)).xyz;
-  let worldTangent = normalize(rawWorldTangent - worldNormal * dot(worldNormal, rawWorldTangent));
-  let world3 = mat3x3<f32>(objectData.world[0].xyz, objectData.world[1].xyz, objectData.world[2].xyz);
-  let transformSign = select(-1.0, 1.0, determinant(world3) >= 0.0);
-
-  return StandardLitVertexOutput(
-    viewData.viewProjection * worldPosition, // Projected clip position
-    worldNormal,                             // World normal for fragment shading
-    worldPosition.xyz,
-    uv0,
-    uv1,
-    vec4<f32>(worldTangent, tangent.w * transformSign),
-    color0
-  );
-}
 
 fn selectUv(index: u32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
   return select(uv0, uv1, index == 1u);
 }
 
-fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
-  return vec2<f32>(
-    matrix.x * uv.x + matrix.y * uv.y + offset.x,
-    matrix.z * uv.x + matrix.w * uv.y + offset.y
-  );
-}
 
 fn sampleStandardLitSurface(input: StandardLitFragmentInput, frontFacing: bool) -> StandardLitSurface {
   let bcUv = transformUv(
@@ -448,32 +313,4 @@ fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>, surface: StandardLit
   return (diffuse * surface.occlusion + specular) * environmentData.intensity;
 }
 
-// ----------------------------------------------------------------------------
-// Fragment Shader Stage
-// ----------------------------------------------------------------------------
 
-@fragment
-fn standardLitFragment(
-  fragmentInput: StandardLitFragmentInput,
-  @builtin(front_facing) frontFacing: bool
-) -> @location(0) vec4<f32> {
-  let surface = sampleStandardLitSurface(fragmentInput, frontFacing);
-  if (materialData.alphaMask != 0u && surface.baseColor.a < materialData.alphaCutoff) { discard; }
-  let normal = surface.normal;
-  let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
-  var lit = evaluateIbl(normal, viewDirection, surface);
-  let directionalCount = directionalLightCount();
-  for (var index = 0u; index < directionalCount; index += 1u) {
-    lit += evaluatePackedLight(
-      directionalIndex(index), fragmentInput.worldPosition, normal, viewDirection, surface
-    );
-  }
-  let header = receiverLightHeader();
-  for (var index = 0u; index < header.count; index += 1u) {
-    lit += evaluatePackedLight(
-      receiverLightIndex(header, index), fragmentInput.worldPosition, normal, viewDirection, surface
-    );
-  }
-
-  return vec4<f32>(lit + surface.emissive, surface.baseColor.a);
-}

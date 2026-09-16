@@ -13,8 +13,8 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit.wgsl',
-    contentHash: 'b2288a4b96244b877b50013fa166293cc3c3e8a873c9ae721652563bd69bcea3',
-    byteLength: 13045
+    contentHash: '8ca1fbfc37035019aedb8469fad118791b298e274aeee8e943dba7db583494e7',
+    byteLength: 15771
   },
   entryPoints: [
     {
@@ -510,6 +510,172 @@ export const STANDARD_LIT_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   ],
   modules: {
     wgsl: `// ============================================================================
+// AetherEngine Shared Shader Module - UV Operations
+// Pure 2D texture coordinate affine transformations and UV set selection.
+// ============================================================================
+
+/// Transforms a 2D texture coordinate \`(u, v)\` via a 2x2 affine matrix and translation offset:
+///   u' = matrix.x * uv.x + matrix.y * uv.y + offset.x
+///   v' = matrix.z * uv.x + matrix.w * uv.y + offset.y
+///
+/// Coordinate space: Normalized UV space [0.0, 1.0].
+///
+/// Parameters:
+/// - \`uv\`: Raw authored 2D texture coordinate from vertex attribute.
+/// - \`matrix\`: 2x2 affine transform matrix components (scale and rotation) packed as \`(m00, m01, m10, m11)\`.
+/// - \`offset\`: 2D translation offset \`(tx, ty)\`.
+///
+/// Returns:
+/// Transformed 2D texture coordinate vector.
+fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(
+    matrix.x * uv.x + matrix.y * uv.y + offset.x,
+    matrix.z * uv.x + matrix.w * uv.y + offset.y
+  );
+}
+
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Surface Coverage
+// Pure alpha testing and silhouette coverage evaluation predicate.
+// ============================================================================
+
+/// Evaluates whether a surface fragment passes the alpha cutoff test.
+///
+/// Parameters:
+/// - \`alpha\`: Sampled and factor-modulated surface alpha in [0.0, 1.0].
+/// - \`alphaCutoff\`: Threshold value below which fragments are discarded.
+/// - \`alphaMask\`: Flag indicating if alpha masking/cutoff is active (non-zero = active).
+///
+/// Returns:
+/// \`true\` if the fragment survives the alpha test (keep), \`false\` if it should be discarded.
+fn evaluateAlphaCoverage(alpha: f32, alphaCutoff: f32, alphaMask: u32) -> bool {
+  if (alphaMask != 0u && alpha < alphaCutoff) {
+    return false;
+  }
+  return true;
+}
+
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Cook-Torrance Microfacet BRDF
+// Pure microfacet specular (GGX + Smith + Fresnel-Schlick) and Lambertian diffuse direct lighting.
+// ============================================================================
+
+/// Computes (value)^5 using multiplication squaring: (x^2)^2 * x.
+/// Used in the Fresnel-Schlick approximation.
+fn fifthPower(value: f32) -> f32 {
+  let squared = value * value;
+  return squared * squared * value;
+}
+
+/// Normal Distribution Function (NDF / D-term): GGX / Trowbridge-Reitz.
+/// Calculates the probability density of microfacets aligning with the half-vector H.
+/// Uses alpha = roughness^2 following Disney's perceptual roughness mapping.
+///
+/// Parameters:
+/// - \`normal\`: Normalized surface normal vector in world space.
+/// - \`halfDirection\`: Normalized half-vector between view and light directions \`normalize(V + L)\`.
+/// - \`roughness\`: Perceptual roughness in [0.045, 1.0].
+fn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {
+  let alpha = roughness * roughness;
+  let normalDotHalf = max(dot(normal, halfDirection), 0.0);
+  let normalCrossHalf = cross(normal, halfDirection);
+  let oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
+  let alphaNormalDotHalf = alpha * normalDotHalf;
+  let denominator = oneMinusNormalDotHalfSquared + alphaNormalDotHalf * alphaNormalDotHalf;
+  let alphaOverDenominator = alpha / denominator;
+  return alphaOverDenominator * alphaOverDenominator / 3.14159265359;
+}
+
+/// Exact separable Smith-GGX masking term for one direction.
+fn geometrySmithGgx(normalDotDirection: f32, alpha: f32) -> f32 {
+  let alphaSquared = alpha * alpha;
+  let root = sqrt(
+    alphaSquared + (1.0 - alphaSquared) * normalDotDirection * normalDotDirection
+  );
+  return 2.0 * normalDotDirection / (normalDotDirection + root);
+}
+
+/// Geometric Shadowing Function (G-term): Smith's method.
+/// Accounts for microfacets shadowing light incoming rays and masking outgoing view rays:
+/// G(N, V, L) = G1(N . V) * G1(N . L)
+fn geometrySmith(
+  normal: vec3<f32>,
+  viewDirection: vec3<f32>,
+  lightDirection: vec3<f32>,
+  roughness: f32
+) -> f32 {
+  let normalDotView = max(dot(normal, viewDirection), 0.0);
+  let normalDotLight = max(dot(normal, lightDirection), 0.0);
+  let alpha = roughness * roughness;
+  return geometrySmithGgx(normalDotView, alpha) * geometrySmithGgx(normalDotLight, alpha);
+}
+
+/// Fresnel Equation (F-term): Fresnel-Schlick approximation.
+/// Computes the ratio of reflected vs refracted light at normal incidence F0:
+/// F(cosTheta) = F0 + (1 - F0) * (1 - cosTheta)^5
+fn fresnelSchlick(cosine: f32, f0: vec3<f32>) -> vec3<f32> {
+  let cosTheta = clamp(cosine, 0.0, 1.0);
+  return f0 + (vec3<f32>(1.0) - f0) * fifthPower(1.0 - cosTheta);
+}
+
+/// Evaluates direct Cook-Torrance microfacet BRDF + Lambertian diffuse:
+/// Out = (k_d * f_diffuse + f_specular) * Radiance * (N . L)
+///
+/// Parameters:
+/// - \`normal\`: Normalized surface normal in world space.
+/// - \`viewDirection\`: Normalized unit vector from fragment to camera position.
+/// - \`lightDirection\`: Normalized unit vector from fragment toward light source.
+/// - \`baseColor\`: Linear sRGB diffuse albedo color \`vec3<f32>\`.
+/// - \`metallic\`: Surface metallicity in [0.0, 1.0].
+/// - \`roughness\`: Perceptual roughness in [0.0, 1.0] (clamped to 0.045 floor internally).
+/// - \`radiance\`: Incoming light radiance spectrum \`vec3<f32>\`.
+///
+/// Returns:
+/// Reflected radiance towards view direction in linear sRGB.
+fn cookTorranceDirect(
+  normal: vec3<f32>,
+  viewDirection: vec3<f32>,
+  lightDirection: vec3<f32>,
+  baseColor: vec3<f32>,
+  metallic: f32,
+  roughness: f32,
+  radiance: vec3<f32>
+) -> vec3<f32> {
+  let normalDotLight = max(dot(normal, lightDirection), 0.0);
+  let normalDotView = max(dot(normal, viewDirection), 0.0);
+  if (normalDotLight <= 0.0 || normalDotView <= 0.0) {
+    return vec3<f32>(0.0);
+  }
+
+  let halfDirection = normalize(viewDirection + lightDirection);
+
+  // Clamp metallic and roughness to prevent non-physical energy amplification and numerical instability
+  let clampedMetallic = clamp(metallic, 0.0, 1.0);
+  let clampedRoughness = clamp(roughness, 0.045, 1.0);
+
+  // Evaluate D (distribution), G (geometry shadowing), and F (Fresnel) terms
+  let distribution = distributionGgx(normal, halfDirection, clampedRoughness);
+  let geometry = geometrySmith(normal, viewDirection, lightDirection, clampedRoughness);
+
+  // Dielectric surfaces have ~0.04 base specular reflectance; conductors use baseColor
+  let f0 = vec3<f32>(0.04) * (1.0 - clampedMetallic) + baseColor * clampedMetallic;
+  let fresnel = fresnelSchlick(max(dot(viewDirection, halfDirection), 0.0), f0);
+
+  // Energy conservation: diffuse fraction kd = (1 - ks) * (1 - metallic)
+  let diffuseWeight = (vec3<f32>(1.0) - fresnel) * (1.0 - clampedMetallic);
+  let diffuse = diffuseWeight * baseColor / 3.14159265359;
+
+  // Cook-Torrance specular term: (D * G * F) / (4 * (N.V) * (N.L))
+  let specular = distribution * geometry * fresnel /
+    (4.0 * normalDotView * normalDotLight);
+
+  return (diffuse + specular) * radiance * normalDotLight;
+}
+
+
+// ============================================================================
 // AetherEngine Standard PBR Shader (Metallic-Roughness Workflow)
 // Cook-Torrance microfacet specular BRDF + Lambertian diffuse direct lighting.
 // ============================================================================
@@ -612,105 +778,6 @@ struct StandardLitFragmentInput {
 @group(3) @binding(0) var<uniform> lightData: DirectionalLightData;       // Group 3: Per-scene / Per-light
 
 // ----------------------------------------------------------------------------
-// PBR Mathematical Helpers & Cook-Torrance BRDF Implementation
-// ----------------------------------------------------------------------------
-
-/// Computes (value)^5 using multiplication squaring: (x^2)^2 * x.
-/// Used in the Fresnel-Schlick approximation.
-fn fifthPower(value: f32) -> f32 {
-  let squared = value * value;
-  return squared * squared * value;
-}
-
-/// Normal Distribution Function (NDF / D-term): GGX / Trowbridge-Reitz.
-/// Calculates the probability density of microfacets aligning with the half-vector H.
-/// Uses alpha = roughness^2 following Disney's perceptual roughness mapping.
-fn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {
-  let alpha = roughness * roughness;
-  let normalDotHalf = max(dot(normal, halfDirection), 0.0);
-  let normalCrossHalf = cross(normal, halfDirection);
-  let oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
-  let alphaNormalDotHalf = alpha * normalDotHalf;
-  let denominator = oneMinusNormalDotHalfSquared + alphaNormalDotHalf * alphaNormalDotHalf;
-  let alphaOverDenominator = alpha / denominator;
-  return alphaOverDenominator * alphaOverDenominator / 3.14159265359;
-}
-
-/// Exact separable Smith-GGX masking term for one direction.
-fn geometrySmithGgx(normalDotDirection: f32, alpha: f32) -> f32 {
-  let alphaSquared = alpha * alpha;
-  let root = sqrt(
-    alphaSquared + (1.0 - alphaSquared) * normalDotDirection * normalDotDirection
-  );
-  return 2.0 * normalDotDirection / (normalDotDirection + root);
-}
-
-/// Geometric Shadowing Function (G-term): Smith's method.
-/// Accounts for microfacets shadowing light incoming rays and masking outgoing view rays:
-/// G(N, V, L) = G1(N . V) * G1(N . L)
-fn geometrySmith(
-  normal: vec3<f32>,
-  viewDirection: vec3<f32>,
-  lightDirection: vec3<f32>,
-  roughness: f32
-) -> f32 {
-  let normalDotView = max(dot(normal, viewDirection), 0.0);
-  let normalDotLight = max(dot(normal, lightDirection), 0.0);
-  let alpha = roughness * roughness;
-  return geometrySmithGgx(normalDotView, alpha) * geometrySmithGgx(normalDotLight, alpha);
-}
-
-/// Fresnel Equation (F-term): Fresnel-Schlick approximation.
-/// Computes the ratio of reflected vs refracted light at normal incidence F0:
-/// F(cosTheta) = F0 + (1 - F0) * (1 - cosTheta)^5
-fn fresnelSchlick(cosine: f32, f0: vec3<f32>) -> vec3<f32> {
-  let cosTheta = clamp(cosine, 0.0, 1.0);
-  return f0 + (vec3<f32>(1.0) - f0) * fifthPower(1.0 - cosTheta);
-}
-
-/// Evaluates direct Cook-Torrance microfacet BRDF + Lambertian diffuse:
-/// Out = (k_d * f_diffuse + f_specular) * Radiance * (N . L)
-fn cookTorranceDirect(
-  normal: vec3<f32>,
-  viewDirection: vec3<f32>,
-  lightDirection: vec3<f32>,
-  baseColor: vec3<f32>,
-  metallic: f32,
-  roughness: f32,
-  radiance: vec3<f32>
-) -> vec3<f32> {
-  let normalDotLight = max(dot(normal, lightDirection), 0.0);
-  let normalDotView = max(dot(normal, viewDirection), 0.0);
-  if (normalDotLight <= 0.0 || normalDotView <= 0.0) {
-    return vec3<f32>(0.0);
-  }
-
-  let halfDirection = normalize(viewDirection + lightDirection);
-
-  // Clamp metallic and roughness to prevent non-physical energy amplification and numerical instability
-  let clampedMetallic = clamp(metallic, 0.0, 1.0);
-  let clampedRoughness = clamp(roughness, 0.045, 1.0);
-
-  // Evaluate D (distribution), G (geometry shadowing), and F (Fresnel) terms
-  let distribution = distributionGgx(normal, halfDirection, clampedRoughness);
-  let geometry = geometrySmith(normal, viewDirection, lightDirection, clampedRoughness);
-
-  // Dielectric surfaces have ~0.04 base specular reflectance; conductors use baseColor
-  let f0 = vec3<f32>(0.04) * (1.0 - clampedMetallic) + baseColor * clampedMetallic;
-  let fresnel = fresnelSchlick(max(dot(viewDirection, halfDirection), 0.0), f0);
-
-  // Energy conservation: diffuse fraction kd = (1 - ks) * (1 - metallic)
-  let diffuseWeight = (vec3<f32>(1.0) - fresnel) * (1.0 - clampedMetallic);
-  let diffuse = diffuseWeight * baseColor / 3.14159265359;
-
-  // Cook-Torrance specular term: (D * G * F) / (4 * (N.V) * (N.L))
-  let specular = distribution * geometry * fresnel /
-    (4.0 * normalDotView * normalDotLight);
-
-  return (diffuse + specular) * radiance * normalDotLight;
-}
-
-// ----------------------------------------------------------------------------
 // Vertex Shader Stage
 // ----------------------------------------------------------------------------
 
@@ -748,12 +815,7 @@ fn selectUv(index: u32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
   return select(uv0, uv1, index == 1u);
 }
 
-fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
-  return vec2<f32>(
-    matrix.x * uv.x + matrix.y * uv.y + offset.x,
-    matrix.z * uv.x + matrix.w * uv.y + offset.y
-  );
-}
+
 
 // ----------------------------------------------------------------------------
 // Fragment Shader Stage
@@ -797,7 +859,9 @@ fn standardLitFragment(
   let aoSample = textureSample(occlusionTexture, surfaceSampler, occUv).r;
   let ao = 1.0 + materialData.occlusionStrength * (aoSample - 1.0);
   let baseColor = materialData.baseColor * baseSample * fragmentInput.color;
-  if (materialData.alphaMask != 0u && baseColor.a < materialData.alphaCutoff) { discard; }
+  if (!evaluateAlphaCoverage(baseColor.a, materialData.alphaCutoff, materialData.alphaMask)) {
+    discard;
+  }
 
   let rawNormal = normalize(fragmentInput.normal);
   let geometricNormal = select(-rawNormal, rawNormal, frontFacing);
@@ -911,24 +975,42 @@ smooth in vec4 _vs2fs_location4;
 smooth in vec4 _vs2fs_location5;
 layout(location = 0) out vec4 _fs2p_location0;
 
+vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
+    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
+}
+
+bool evaluateAlphaCoverage(float alpha, float alphaCutoff, uint alphaMask) {
+    bool local = false;
+    if ((alphaMask != 0u)) {
+        local = (alpha < alphaCutoff);
+    } else {
+        local = false;
+    }
+    bool _e9 = local;
+    if (_e9) {
+        return false;
+    }
+    return true;
+}
+
 float fifthPower(float value) {
     float squared = (value * value);
     return ((squared * squared) * value);
 }
 
 float distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {
-    float alpha_1 = (roughness * roughness);
+    float alpha_2 = (roughness * roughness);
     float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);
     vec3 normalCrossHalf = cross(normal_1, halfDirection);
     float oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
-    float alphaNormalDotHalf = (alpha_1 * normalDotHalf);
+    float alphaNormalDotHalf = (alpha_2 * normalDotHalf);
     float denominator = (oneMinusNormalDotHalfSquared + (alphaNormalDotHalf * alphaNormalDotHalf));
-    float alphaOverDenominator = (alpha_1 / denominator);
+    float alphaOverDenominator = (alpha_2 / denominator);
     return ((alphaOverDenominator * alphaOverDenominator) / 3.1415927);
 }
 
-float geometrySmithGgx(float normalDotDirection, float alpha) {
-    float alphaSquared = (alpha * alpha);
+float geometrySmithGgx(float normalDotDirection, float alpha_1) {
+    float alphaSquared = (alpha_1 * alpha_1);
     float root = sqrt((alphaSquared + (((1.0 - alphaSquared) * normalDotDirection) * normalDotDirection)));
     return ((2.0 * normalDotDirection) / (normalDotDirection + root));
 }
@@ -936,9 +1018,9 @@ float geometrySmithGgx(float normalDotDirection, float alpha) {
 float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_1) {
     float normalDotView = max(dot(normal_2, viewDirection), 0.0);
     float normalDotLight = max(dot(normal_2, lightDirection), 0.0);
-    float alpha_2 = (roughness_1 * roughness_1);
-    float _e11 = geometrySmithGgx(normalDotView, alpha_2);
-    float _e12 = geometrySmithGgx(normalDotLight, alpha_2);
+    float alpha_3 = (roughness_1 * roughness_1);
+    float _e11 = geometrySmithGgx(normalDotView, alpha_3);
+    float _e12 = geometrySmithGgx(normalDotLight, alpha_3);
     return (_e11 * _e12);
 }
 
@@ -978,14 +1060,9 @@ vec2 selectUv(uint index, vec2 uv0_1, vec2 uv1_1) {
     return ((index == 1u) ? uv1_1 : uv0_1);
 }
 
-vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
-    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
-}
-
 void main() {
     StandardLitFragmentInput fragmentInput = StandardLitFragmentInput(_vs2fs_location0, _vs2fs_location1, _vs2fs_location2, _vs2fs_location3, _vs2fs_location4, _vs2fs_location5);
     bool frontFacing = gl_FrontFacing;
-    bool local = false;
     uint _e4 = _group_2_binding_0_fs.baseColorUvSet;
     vec2 _e7 = selectUv(_e4, fragmentInput.uv0_, fragmentInput.uv1_);
     vec4 _e10 = _group_2_binding_0_fs.baseColorTransform;
@@ -1024,35 +1101,30 @@ void main() {
     float ao = (1.0 + (_e96 * (aoSample - 1.0)));
     vec4 _e104 = _group_2_binding_0_fs.baseColor;
     vec4 baseColor_1 = ((_e104 * baseSample) * fragmentInput.color);
-    uint _e110 = _group_2_binding_0_fs.alphaMask;
-    if ((_e110 != 0u)) {
-        float _e118 = _group_2_binding_0_fs.alphaCutoff;
-        local = (baseColor_1.w < _e118);
-    } else {
-        local = false;
-    }
-    bool _e121 = local;
-    if (_e121) {
+    float _e111 = _group_2_binding_0_fs.alphaCutoff;
+    uint _e114 = _group_2_binding_0_fs.alphaMask;
+    bool _e115 = evaluateAlphaCoverage(baseColor_1.w, _e111, _e114);
+    if (!(_e115)) {
         discard;
     }
     vec3 rawNormal = normalize(fragmentInput.normal);
     vec3 geometricNormal = (frontFacing ? rawNormal : -(rawNormal));
     vec3 tangent_1 = normalize(fragmentInput.tangent.xyz);
     vec3 bitangent = (cross(geometricNormal, tangent_1) * fragmentInput.tangent.w);
-    float _e136 = _group_2_binding_0_fs.normalScale;
-    vec3 mapped = normalize(vec3((normalSample.xy * _e136), normalSample.z));
+    float _e131 = _group_2_binding_0_fs.normalScale;
+    vec3 mapped = normalize(vec3((normalSample.xy * _e131), normalSample.z));
     vec3 normal_4 = normalize((((tangent_1 * mapped.x) + (bitangent * mapped.y)) + (geometricNormal * mapped.z)));
-    vec3 _e152 = _group_3_binding_0_fs.direction;
-    vec3 lightDirection_2 = -(normalize(_e152));
-    vec3 _e157 = _group_1_binding_0_fs.cameraPosition;
-    vec3 viewDirection_2 = normalize((_e157 - fragmentInput.worldPosition));
-    float _e164 = _group_2_binding_0_fs.metallic;
-    float _e169 = _group_2_binding_0_fs.roughness;
-    vec3 _e174 = _group_3_binding_0_fs.color;
-    vec3 _e175 = cookTorranceDirect(normal_4, viewDirection_2, lightDirection_2, baseColor_1.xyz, (_e164 * mrSample.z), (_e169 * mrSample.y), _e174);
+    vec3 _e147 = _group_3_binding_0_fs.direction;
+    vec3 lightDirection_2 = -(normalize(_e147));
+    vec3 _e152 = _group_1_binding_0_fs.cameraPosition;
+    vec3 viewDirection_2 = normalize((_e152 - fragmentInput.worldPosition));
+    float _e159 = _group_2_binding_0_fs.metallic;
+    float _e164 = _group_2_binding_0_fs.roughness;
+    vec3 _e169 = _group_3_binding_0_fs.color;
+    vec3 _e170 = cookTorranceDirect(normal_4, viewDirection_2, lightDirection_2, baseColor_1.xyz, (_e159 * mrSample.z), (_e164 * mrSample.y), _e169);
     vec3 indirectDiffuse = vec3(0.0);
     vec3 ambient = (indirectDiffuse * ao);
-    _fs2p_location0 = vec4(((_e175 + ambient) + emissive), baseColor_1.w);
+    _fs2p_location0 = vec4(((_e170 + ambient) + emissive), baseColor_1.w);
     return;
 }
 
@@ -1222,24 +1294,42 @@ smooth out vec2 _vs2fs_location3;
 smooth out vec4 _vs2fs_location4;
 smooth out vec4 _vs2fs_location5;
 
+vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
+    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
+}
+
+bool evaluateAlphaCoverage(float alpha, float alphaCutoff, uint alphaMask) {
+    bool local = false;
+    if ((alphaMask != 0u)) {
+        local = (alpha < alphaCutoff);
+    } else {
+        local = false;
+    }
+    bool _e9 = local;
+    if (_e9) {
+        return false;
+    }
+    return true;
+}
+
 float fifthPower(float value) {
     float squared = (value * value);
     return ((squared * squared) * value);
 }
 
 float distributionGgx(vec3 normal_1, vec3 halfDirection, float roughness) {
-    float alpha_1 = (roughness * roughness);
+    float alpha_2 = (roughness * roughness);
     float normalDotHalf = max(dot(normal_1, halfDirection), 0.0);
     vec3 normalCrossHalf = cross(normal_1, halfDirection);
     float oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
-    float alphaNormalDotHalf = (alpha_1 * normalDotHalf);
+    float alphaNormalDotHalf = (alpha_2 * normalDotHalf);
     float denominator = (oneMinusNormalDotHalfSquared + (alphaNormalDotHalf * alphaNormalDotHalf));
-    float alphaOverDenominator = (alpha_1 / denominator);
+    float alphaOverDenominator = (alpha_2 / denominator);
     return ((alphaOverDenominator * alphaOverDenominator) / 3.1415927);
 }
 
-float geometrySmithGgx(float normalDotDirection, float alpha) {
-    float alphaSquared = (alpha * alpha);
+float geometrySmithGgx(float normalDotDirection, float alpha_1) {
+    float alphaSquared = (alpha_1 * alpha_1);
     float root = sqrt((alphaSquared + (((1.0 - alphaSquared) * normalDotDirection) * normalDotDirection)));
     return ((2.0 * normalDotDirection) / (normalDotDirection + root));
 }
@@ -1247,9 +1337,9 @@ float geometrySmithGgx(float normalDotDirection, float alpha) {
 float geometrySmith(vec3 normal_2, vec3 viewDirection, vec3 lightDirection, float roughness_1) {
     float normalDotView = max(dot(normal_2, viewDirection), 0.0);
     float normalDotLight = max(dot(normal_2, lightDirection), 0.0);
-    float alpha_2 = (roughness_1 * roughness_1);
-    float _e11 = geometrySmithGgx(normalDotView, alpha_2);
-    float _e12 = geometrySmithGgx(normalDotLight, alpha_2);
+    float alpha_3 = (roughness_1 * roughness_1);
+    float _e11 = geometrySmithGgx(normalDotView, alpha_3);
+    float _e12 = geometrySmithGgx(normalDotLight, alpha_3);
     return (_e11 * _e12);
 }
 
@@ -1287,10 +1377,6 @@ vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection
 
 vec2 selectUv(uint index, vec2 uv0_1, vec2 uv1_1) {
     return ((index == 1u) ? uv1_1 : uv0_1);
-}
-
-vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
-    return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
 }
 
 void main() {

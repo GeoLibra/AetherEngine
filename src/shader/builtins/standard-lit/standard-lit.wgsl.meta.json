@@ -1,5 +1,10 @@
 {
   "schemaVersion": 1,
+  "imports": [
+    { "path": "asset://aether/shader-modules/shared/uv.wgsl" },
+    { "path": "asset://aether/shader-modules/surface/coverage.wgsl" },
+    { "path": "asset://aether/shader-modules/lighting/brdf.wgsl" }
+  ],
   "entryPoints": [
     { "name": "standardLitVertex", "stage": "vertex" },
     { "name": "standardLitFragment", "stage": "fragment" }

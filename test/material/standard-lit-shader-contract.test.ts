@@ -156,10 +156,11 @@ describe('StandardLit WGSL single-source-of-truth shader contract', () => {
       expect(wgsl).toContain('clamp(metallic, 0.0, 1.0)');
       expect(wgsl).toContain('clamp(roughness, 0.045, 1.0)');
 
-      // Alpha coverage: conditional discard in mask mode based on alphaCutoff
+      // Alpha coverage: conditional discard in mask mode based on alphaCutoff via shared coverage module
       expect(wgsl).toContain(
-        'if (materialData.alphaMask != 0u && baseColor.a < materialData.alphaCutoff) { discard; }'
+        'if (!evaluateAlphaCoverage(baseColor.a, materialData.alphaCutoff, materialData.alphaMask)) {\n    discard;\n  }'
       );
+      expect(wgsl).toContain('fn evaluateAlphaCoverage');
     });
 
     test('standard-lit-list WGSL defines consistent StandardLitSurface sampling struct and clamps', () => {

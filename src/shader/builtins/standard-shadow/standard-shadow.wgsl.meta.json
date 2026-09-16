@@ -1,5 +1,9 @@
 {
   "schemaVersion": 1,
+  "imports": [
+    { "path": "asset://aether/shader-modules/shared/uv.wgsl" },
+    { "path": "asset://aether/shader-modules/surface/coverage.wgsl" }
+  ],
   "entryPoints": [
     { "name": "standardShadowVertex", "stage": "vertex" },
     { "name": "standardShadowFragment", "stage": "fragment" }
