@@ -17,6 +17,7 @@ export type { CompiledSetNode, CompiledSystemNode } from './schedule-compiler';
 export interface ScheduleTelemetrySpanRecorder {
   recordSpan(schedule: string, systemId: string, durationMs: number): void;
   now(): number;
+  readonly shouldRecordSystemSpans?: boolean;
 }
 
 /**
@@ -121,16 +122,28 @@ export class Schedule {
   async run(world: World, telemetry?: ScheduleTelemetrySpanRecorder): Promise<void> {
     const executionOrder = this.compile();
     const setConditionCache = this.evaluateSetConditions(world);
+    const shouldRecordSpans = telemetry?.shouldRecordSystemSpans ?? Boolean(telemetry);
 
     for (const node of executionOrder) {
       if (node.inSet !== undefined && setConditionCache?.get(node.inSet) === false) {
         continue;
       }
-      if (node.runIf && !node.runIf(world)) {
-        continue;
+      if (node.runIf) {
+        const cond = node.runIf(world) as unknown;
+        if (typeof cond !== 'boolean') {
+          if (isPromiseLike(cond)) {
+            void Promise.resolve(cond).catch(() => undefined);
+          }
+          throw new Error(
+            `System "${node.id}" runIf condition must return a boolean, got ${typeof cond}.`
+          );
+        }
+        if (!cond) {
+          continue;
+        }
       }
 
-      if (telemetry) {
+      if (telemetry && shouldRecordSpans) {
         const start = telemetry.now();
         await world.runTrackedSystemAsync(`${this.label}:${node.id}`, async () => {
           await node.run(world);
@@ -155,16 +168,28 @@ export class Schedule {
   ): void {
     const executionOrder = this.compile();
     const setConditionCache = this.evaluateSetConditions(world);
+    const shouldRecordSpans = telemetry?.shouldRecordSystemSpans ?? Boolean(telemetry);
 
     for (const node of executionOrder) {
       if (node.inSet !== undefined && setConditionCache?.get(node.inSet) === false) {
         continue;
       }
-      if (node.runIf && !node.runIf(world)) {
-        continue;
+      if (node.runIf) {
+        const cond = node.runIf(world) as unknown;
+        if (typeof cond !== 'boolean') {
+          if (isPromiseLike(cond)) {
+            void Promise.resolve(cond).catch(() => undefined);
+          }
+          throw new Error(
+            `System "${node.id}" runIf condition must return a boolean, got ${typeof cond}.`
+          );
+        }
+        if (!cond) {
+          continue;
+        }
       }
 
-      if (telemetry) {
+      if (telemetry && shouldRecordSpans) {
         const start = telemetry.now();
         const result = world.runTrackedSystem(`${this.label}:${node.id}`, () => node.run(world));
         if (isPromiseLike(result)) {
@@ -189,7 +214,16 @@ export class Schedule {
     for (const s of this.sets) {
       if (s.runIf) {
         map ??= new Map();
-        map.set(s.id, s.runIf(world));
+        const res = s.runIf(world) as unknown;
+        if (typeof res !== 'boolean') {
+          if (isPromiseLike(res)) {
+            void Promise.resolve(res).catch(() => undefined);
+          }
+          throw new Error(
+            `SystemSet "${s.id}" runIf condition must return a boolean, got ${typeof res}.`
+          );
+        }
+        map.set(s.id, res);
       }
     }
     return map;

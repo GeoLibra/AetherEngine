@@ -50,6 +50,7 @@ export class AppTelemetry implements ScheduleTelemetrySpanRecorder {
   }
 
   now(): number {
+    if (!this.enabled) return 0;
     return this.clock.now();
   }
 
