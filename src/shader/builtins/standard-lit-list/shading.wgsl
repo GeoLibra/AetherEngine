@@ -1,7 +1,8 @@
 // ============================================================================
 // AetherEngine Standard PBR Shader (Metallic-Roughness Workflow)
 // Cook-Torrance microfacet specular BRDF + Lambertian diffuse direct lighting.
-// Shared shading logic: vertex stage, PBR evaluation, IBL, and light loops.
+// Shared shading logic: vertex stage, PBR evaluation, and light loops.
+// IBL and shadow receiver functions are imported from shared shader modules.
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -62,21 +63,6 @@ struct StandardLitSurface {
 
 struct ReceiverLightHeader { offset: u32, count: u32 };
 
-struct EnvironmentData {
-  diffuseIrradiance: vec3<f32>,
-  intensity: f32,
-  prefilteredRadiance: vec3<f32>,
-  maxValidRadianceLod: f32,
-};
-
-struct DirectionalShadowData {
-  viewProjection: array<mat4x4<f32>, 4>,
-  cameraView: mat4x4<f32>,
-  splitDepths: vec4<f32>,
-  params: vec4<f32>, // enabled, constant bias, slope bias, inverse resolution
-  lightIndex: u32,
-};
-
 // ----------------------------------------------------------------------------
 // Stage Input / Output Interfaces
 // ----------------------------------------------------------------------------
@@ -115,14 +101,9 @@ struct StandardLitFragmentInput {
 @group(2) @binding(4) var occlusionTexture: texture_2d<f32>;
 @group(2) @binding(5) var emissiveTexture: texture_2d<f32>;
 @group(2) @binding(6) var surfaceSampler: sampler;
-@group(3) @binding(5) var<uniform> environmentData: EnvironmentData;
-@group(3) @binding(6) var irradianceMap: texture_2d<f32>;
-@group(3) @binding(7) var prefilteredRadianceMap: texture_2d<f32>;
-@group(3) @binding(8) var environmentBrdfLut: texture_2d<f32>;
-@group(3) @binding(9) var environmentSampler: sampler;
-@group(3) @binding(10) var<uniform> directionalShadowData: DirectionalShadowData;
-@group(3) @binding(11) var directionalShadowMap: texture_depth_2d_array;
-@group(3) @binding(12) var directionalShadowSampler: sampler_comparison;
+
+// Group 3 bindings 5..9 (environment) and 10..12 (shadow) are declared in
+// imported modules: lighting/ibl.wgsl and lighting/shadow-receiver.wgsl.
 
 // ----------------------------------------------------------------------------
 // Surface Sampling & Shading Implementation
@@ -232,85 +213,23 @@ fn evaluatePackedLight(
   );
 }
 
-fn directionalShadowVisibility(
-  lightIndex: u32,
-  worldPosition: vec3<f32>,
+// ----------------------------------------------------------------------------
+// Image-Based Lighting Facade
+// ----------------------------------------------------------------------------
+
+/// Evaluates image-based lighting for a StandardLitSurface by unpacking surface
+/// properties and delegating to the shared evaluateIbl module function.
+fn evaluateSurfaceIbl(
   normal: vec3<f32>,
-  lightDirection: vec3<f32>
-) -> f32 {
-  if (directionalShadowData.params.x < 0.5 || lightIndex != directionalShadowData.lightIndex) {
-    return 1.0;
-  }
-  let viewPosition = directionalShadowData.cameraView * vec4<f32>(worldPosition, 1.0);
-  let viewDepth = -viewPosition.z;
-  var cascade = 4u;
-  for (var index = 0u; index < 4u; index += 1u) {
-    if (cascade == 4u && viewDepth <= directionalShadowData.splitDepths[index]) {
-      cascade = index;
-    }
-  }
-  if (cascade == 4u) { return 1.0; }
-  let clip = directionalShadowData.viewProjection[cascade] * vec4<f32>(worldPosition, 1.0);
-  let projected = clip.xyz / clip.w;
-  let uv = projected.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
-  if (projected.z < 0.0 || projected.z > 1.0 || any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) {
-    return 1.0;
-  }
-  let normalDotLight = clamp(dot(normal, lightDirection), 0.0, 1.0);
-  let bias = directionalShadowData.params.y + directionalShadowData.params.z * (1.0 - normalDotLight);
-  let texel = directionalShadowData.params.w;
-  var visibility = 0.0;
-  for (var y = -1; y <= 1; y += 1) {
-    for (var x = -1; x <= 1; x += 1) {
-      visibility += textureSampleCompareLevel(
-        directionalShadowMap,
-        directionalShadowSampler,
-        uv + vec2<f32>(f32(x), f32(y)) * texel,
-        i32(cascade),
-        projected.z - bias
-      );
-    }
-  }
-  return visibility / 9.0;
-}
-
-// ----------------------------------------------------------------------------
-// Image-Based Lighting (IBL)
-// ----------------------------------------------------------------------------
-
-fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
-  let normalized = normalize(direction);
-  return vec2<f32>(
-    atan2(normalized.z, normalized.x) * 0.15915494309 + 0.5,
-    acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830988618
+  viewDirection: vec3<f32>,
+  surface: StandardLitSurface
+) -> vec3<f32> {
+  return evaluateIbl(
+    normal,
+    viewDirection,
+    surface.baseColor.rgb,
+    surface.metallic,
+    surface.roughness,
+    surface.occlusion
   );
 }
-
-fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>, surface: StandardLitSurface) -> vec3<f32> {
-  let metallic = surface.metallic;
-  let roughness = surface.roughness;
-  let f0 = vec3<f32>(0.04) * (1.0 - metallic) + surface.baseColor.rgb * metallic;
-  let fresnel = fresnelSchlick(max(dot(normal, viewDirection), 0.0), f0);
-  let irradianceUv = directionToEquirectangularUv(normal);
-  let reflection = reflect(-viewDirection, normal);
-  let radianceUv = directionToEquirectangularUv(reflection);
-  let irradiance = textureSample(irradianceMap, environmentSampler, irradianceUv).rgb *
-    environmentData.diffuseIrradiance;
-  let lod = clamp(roughness, 0.0, 1.0) * environmentData.maxValidRadianceLod;
-  let prefiltered = textureSampleLevel(
-    prefilteredRadianceMap, environmentSampler, radianceUv, lod
-  ).rgb * environmentData.prefilteredRadiance;
-  let brdf = textureSample(
-    environmentBrdfLut,
-    environmentSampler,
-    vec2<f32>(max(dot(normal, viewDirection), 0.0), roughness)
-  ).rg;
-  let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
-    surface.baseColor.rgb * irradiance / 3.14159265359;
-  let singleScattering = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
-  let energyCompensation = vec3<f32>(1.0) + f0 * (1.0 / max(brdf.x, 0.00001) - 1.0);
-  let specular = singleScattering * energyCompensation;
-  return (diffuse * surface.occlusion + specular) * environmentData.intensity;
-}
-
-

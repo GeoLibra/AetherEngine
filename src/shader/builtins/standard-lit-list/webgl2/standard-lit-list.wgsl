@@ -52,7 +52,7 @@ fn standardLitFragment(
   }
   let normal = surface.normal;
   let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
-  var lit = evaluateIbl(normal, viewDirection, surface);
+  var lit = evaluateSurfaceIbl(normal, viewDirection, surface);
   let directionalCount = directionalLightCount();
   for (var index = 0u; index < directionalCount; index += 1u) {
     lit += evaluatePackedLight(

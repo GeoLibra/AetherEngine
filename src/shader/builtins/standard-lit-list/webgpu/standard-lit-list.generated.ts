@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl',
-    contentHash: 'ca2c6349f4eb6c2eae87851a8b142513c2bd38ed6a01ebbd3cf77dea469bb543',
-    byteLength: 23586
+    contentHash: '63cba9490e8a1d4abf2834ed778bcb4d7d1c2e688cccd5d21ae681c1611bfde3',
+    byteLength: 27007
   },
   entryPoints: [
     {
@@ -1085,9 +1085,175 @@ fn cookTorranceDirect(
 
 
 // ============================================================================
+// AetherEngine Shared Shader Module - Cascaded Directional Shadow Receiver
+// Cascaded shadow map sampling with 3x3 PCF filter.
+// ============================================================================
+
+/// Cascaded directional shadow uniform buffer data structure.
+/// - \`viewProjection\`: Light view-projection matrices for each cascade slice.
+/// - \`cameraView\`: View matrix of the active rendering camera.
+/// - \`splitDepths\`: Far split depths in view space for cascade selection.
+/// - \`params\`: vec4(enabled, constantBias, slopeBias, inverseResolution).
+/// - \`lightIndex\`: Index of the active shadow-casting directional light.
+struct DirectionalShadowData {
+  viewProjection: array<mat4x4<f32>, 4>,
+  cameraView: mat4x4<f32>,
+  splitDepths: vec4<f32>,
+  params: vec4<f32>,
+  lightIndex: u32,
+};
+
+@group(3) @binding(10) var<uniform> directionalShadowData: DirectionalShadowData;
+@group(3) @binding(11) var directionalShadowMap: texture_depth_2d_array;
+@group(3) @binding(12) var directionalShadowSampler: sampler_comparison;
+
+/// Evaluates directional cascaded shadow visibility factor in [0.0, 1.0].
+/// Performs cascade selection by view depth, clip projection, boundary rejection,
+/// slope-scaled depth biasing, and 3x3 PCF percentage-closer filtering.
+///
+/// Parameters:
+/// - \`lightIndex\`: Index of the light being evaluated.
+/// - \`worldPosition\`: World space fragment position.
+/// - \`normal\`: Surface normal in world space.
+/// - \`lightDirection\`: Normalized direction towards the light source.
+///
+/// Returns:
+/// Shadow visibility factor in [0.0 (fully shadowed), 1.0 (fully lit)].
+fn directionalShadowVisibility(
+  lightIndex: u32,
+  worldPosition: vec3<f32>,
+  normal: vec3<f32>,
+  lightDirection: vec3<f32>
+) -> f32 {
+  if (directionalShadowData.params.x < 0.5 || lightIndex != directionalShadowData.lightIndex) {
+    return 1.0;
+  }
+  let viewPosition = directionalShadowData.cameraView * vec4<f32>(worldPosition, 1.0);
+  let viewDepth = -viewPosition.z;
+  var cascade = 4u;
+  for (var index = 0u; index < 4u; index += 1u) {
+    if (cascade == 4u && viewDepth <= directionalShadowData.splitDepths[index]) {
+      cascade = index;
+    }
+  }
+  if (cascade == 4u) {
+    return 1.0;
+  }
+  let clip = directionalShadowData.viewProjection[cascade] * vec4<f32>(worldPosition, 1.0);
+  let projected = clip.xyz / clip.w;
+  let uv = projected.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+  if (projected.z < 0.0 || projected.z > 1.0 || any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) {
+    return 1.0;
+  }
+  let normalDotLight = clamp(dot(normal, lightDirection), 0.0, 1.0);
+  let bias = directionalShadowData.params.y + directionalShadowData.params.z * (1.0 - normalDotLight);
+  let texel = directionalShadowData.params.w;
+  var visibility = 0.0;
+  for (var y = -1; y <= 1; y += 1) {
+    for (var x = -1; x <= 1; x += 1) {
+      visibility += textureSampleCompareLevel(
+        directionalShadowMap,
+        directionalShadowSampler,
+        uv + vec2<f32>(f32(x), f32(y)) * texel,
+        i32(cascade),
+        projected.z - bias
+      );
+    }
+  }
+  return visibility / 9.0;
+}
+
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Image-Based Lighting (IBL)
+// Equirectangular environment map sampling, irradiance, prefiltered radiance,
+// split-sum approximation with energy compensation.
+// ============================================================================
+
+/// Per-scene environment lighting parameters.
+/// - \`diffuseIrradiance\`: Irradiance map intensity scale.
+/// - \`intensity\`: Overall environment light intensity multiplier.
+/// - \`prefilteredRadiance\`: Prefiltered radiance map intensity scale.
+/// - \`maxValidRadianceLod\`: Maximum valid LOD level for the prefiltered radiance map.
+struct EnvironmentData {
+  diffuseIrradiance: vec3<f32>,
+  intensity: f32,
+  prefilteredRadiance: vec3<f32>,
+  maxValidRadianceLod: f32,
+};
+
+@group(3) @binding(5) var<uniform> environmentData: EnvironmentData;
+@group(3) @binding(6) var irradianceMap: texture_2d<f32>;
+@group(3) @binding(7) var prefilteredRadianceMap: texture_2d<f32>;
+@group(3) @binding(8) var environmentBrdfLut: texture_2d<f32>;
+@group(3) @binding(9) var environmentSampler: sampler;
+
+/// Converts a 3D world-space direction to equirectangular UV coordinates [0, 1]^2.
+///
+/// Parameters:
+/// - \`direction\`: Unnormalized world-space direction vector (will be normalized internally).
+///
+/// Returns:
+/// UV coordinates suitable for sampling equirectangular environment maps.
+fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
+  let normalized = normalize(direction);
+  return vec2<f32>(
+    atan2(normalized.z, normalized.x) * 0.15915494309 + 0.5,
+    acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830988618
+  );
+}
+
+/// Evaluates image-based lighting contribution using the split-sum approximation
+/// with multiscatter energy compensation.
+///
+/// Parameters:
+/// - \`normal\`: Normalized surface normal in world space.
+/// - \`viewDirection\`: Normalized view direction from fragment to camera.
+/// - \`baseColor\`: Linear sRGB diffuse albedo.
+/// - \`metallic\`: Surface metallicity in [0.0, 1.0].
+/// - \`roughness\`: Perceptual roughness in [0.045, 1.0].
+/// - \`occlusion\`: Ambient occlusion factor in [0.0 (fully occluded), 1.0 (no occlusion)].
+///
+/// Returns:
+/// Indirect lighting contribution in linear sRGB.
+fn evaluateIbl(
+  normal: vec3<f32>,
+  viewDirection: vec3<f32>,
+  baseColor: vec3<f32>,
+  metallic: f32,
+  roughness: f32,
+  occlusion: f32
+) -> vec3<f32> {
+  let f0 = vec3<f32>(0.04) * (1.0 - metallic) + baseColor * metallic;
+  let fresnel = fresnelSchlick(max(dot(normal, viewDirection), 0.0), f0);
+  let irradianceUv = directionToEquirectangularUv(normal);
+  let reflection = reflect(-viewDirection, normal);
+  let radianceUv = directionToEquirectangularUv(reflection);
+  let irradiance = textureSample(irradianceMap, environmentSampler, irradianceUv).rgb *
+    environmentData.diffuseIrradiance;
+  let lod = clamp(roughness, 0.0, 1.0) * environmentData.maxValidRadianceLod;
+  let prefiltered = textureSampleLevel(
+    prefilteredRadianceMap, environmentSampler, radianceUv, lod
+  ).rgb * environmentData.prefilteredRadiance;
+  let brdf = textureSample(
+    environmentBrdfLut,
+    environmentSampler,
+    vec2<f32>(max(dot(normal, viewDirection), 0.0), roughness)
+  ).rg;
+  let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
+    baseColor * irradiance / 3.14159265359;
+  let singleScattering = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
+  let energyCompensation = vec3<f32>(1.0) + f0 * (1.0 / max(brdf.x, 0.00001) - 1.0);
+  let specular = singleScattering * energyCompensation;
+  return (diffuse * occlusion + specular) * environmentData.intensity;
+}
+
+
+// ============================================================================
 // AetherEngine Standard PBR Shader (Metallic-Roughness Workflow)
 // Cook-Torrance microfacet specular BRDF + Lambertian diffuse direct lighting.
-// Shared shading logic: vertex stage, PBR evaluation, IBL, and light loops.
+// Shared shading logic: vertex stage, PBR evaluation, and light loops.
+// IBL and shadow receiver functions are imported from shared shader modules.
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -1148,21 +1314,6 @@ struct StandardLitSurface {
 
 struct ReceiverLightHeader { offset: u32, count: u32 };
 
-struct EnvironmentData {
-  diffuseIrradiance: vec3<f32>,
-  intensity: f32,
-  prefilteredRadiance: vec3<f32>,
-  maxValidRadianceLod: f32,
-};
-
-struct DirectionalShadowData {
-  viewProjection: array<mat4x4<f32>, 4>,
-  cameraView: mat4x4<f32>,
-  splitDepths: vec4<f32>,
-  params: vec4<f32>, // enabled, constant bias, slope bias, inverse resolution
-  lightIndex: u32,
-};
-
 // ----------------------------------------------------------------------------
 // Stage Input / Output Interfaces
 // ----------------------------------------------------------------------------
@@ -1201,14 +1352,9 @@ struct StandardLitFragmentInput {
 @group(2) @binding(4) var occlusionTexture: texture_2d<f32>;
 @group(2) @binding(5) var emissiveTexture: texture_2d<f32>;
 @group(2) @binding(6) var surfaceSampler: sampler;
-@group(3) @binding(5) var<uniform> environmentData: EnvironmentData;
-@group(3) @binding(6) var irradianceMap: texture_2d<f32>;
-@group(3) @binding(7) var prefilteredRadianceMap: texture_2d<f32>;
-@group(3) @binding(8) var environmentBrdfLut: texture_2d<f32>;
-@group(3) @binding(9) var environmentSampler: sampler;
-@group(3) @binding(10) var<uniform> directionalShadowData: DirectionalShadowData;
-@group(3) @binding(11) var directionalShadowMap: texture_depth_2d_array;
-@group(3) @binding(12) var directionalShadowSampler: sampler_comparison;
+
+// Group 3 bindings 5..9 (environment) and 10..12 (shadow) are declared in
+// imported modules: lighting/ibl.wgsl and lighting/shadow-receiver.wgsl.
 
 // ----------------------------------------------------------------------------
 // Surface Sampling & Shading Implementation
@@ -1318,88 +1464,26 @@ fn evaluatePackedLight(
   );
 }
 
-fn directionalShadowVisibility(
-  lightIndex: u32,
-  worldPosition: vec3<f32>,
+// ----------------------------------------------------------------------------
+// Image-Based Lighting Facade
+// ----------------------------------------------------------------------------
+
+/// Evaluates image-based lighting for a StandardLitSurface by unpacking surface
+/// properties and delegating to the shared evaluateIbl module function.
+fn evaluateSurfaceIbl(
   normal: vec3<f32>,
-  lightDirection: vec3<f32>
-) -> f32 {
-  if (directionalShadowData.params.x < 0.5 || lightIndex != directionalShadowData.lightIndex) {
-    return 1.0;
-  }
-  let viewPosition = directionalShadowData.cameraView * vec4<f32>(worldPosition, 1.0);
-  let viewDepth = -viewPosition.z;
-  var cascade = 4u;
-  for (var index = 0u; index < 4u; index += 1u) {
-    if (cascade == 4u && viewDepth <= directionalShadowData.splitDepths[index]) {
-      cascade = index;
-    }
-  }
-  if (cascade == 4u) { return 1.0; }
-  let clip = directionalShadowData.viewProjection[cascade] * vec4<f32>(worldPosition, 1.0);
-  let projected = clip.xyz / clip.w;
-  let uv = projected.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
-  if (projected.z < 0.0 || projected.z > 1.0 || any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) {
-    return 1.0;
-  }
-  let normalDotLight = clamp(dot(normal, lightDirection), 0.0, 1.0);
-  let bias = directionalShadowData.params.y + directionalShadowData.params.z * (1.0 - normalDotLight);
-  let texel = directionalShadowData.params.w;
-  var visibility = 0.0;
-  for (var y = -1; y <= 1; y += 1) {
-    for (var x = -1; x <= 1; x += 1) {
-      visibility += textureSampleCompareLevel(
-        directionalShadowMap,
-        directionalShadowSampler,
-        uv + vec2<f32>(f32(x), f32(y)) * texel,
-        i32(cascade),
-        projected.z - bias
-      );
-    }
-  }
-  return visibility / 9.0;
-}
-
-// ----------------------------------------------------------------------------
-// Image-Based Lighting (IBL)
-// ----------------------------------------------------------------------------
-
-fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
-  let normalized = normalize(direction);
-  return vec2<f32>(
-    atan2(normalized.z, normalized.x) * 0.15915494309 + 0.5,
-    acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830988618
+  viewDirection: vec3<f32>,
+  surface: StandardLitSurface
+) -> vec3<f32> {
+  return evaluateIbl(
+    normal,
+    viewDirection,
+    surface.baseColor.rgb,
+    surface.metallic,
+    surface.roughness,
+    surface.occlusion
   );
 }
-
-fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>, surface: StandardLitSurface) -> vec3<f32> {
-  let metallic = surface.metallic;
-  let roughness = surface.roughness;
-  let f0 = vec3<f32>(0.04) * (1.0 - metallic) + surface.baseColor.rgb * metallic;
-  let fresnel = fresnelSchlick(max(dot(normal, viewDirection), 0.0), f0);
-  let irradianceUv = directionToEquirectangularUv(normal);
-  let reflection = reflect(-viewDirection, normal);
-  let radianceUv = directionToEquirectangularUv(reflection);
-  let irradiance = textureSample(irradianceMap, environmentSampler, irradianceUv).rgb *
-    environmentData.diffuseIrradiance;
-  let lod = clamp(roughness, 0.0, 1.0) * environmentData.maxValidRadianceLod;
-  let prefiltered = textureSampleLevel(
-    prefilteredRadianceMap, environmentSampler, radianceUv, lod
-  ).rgb * environmentData.prefilteredRadiance;
-  let brdf = textureSample(
-    environmentBrdfLut,
-    environmentSampler,
-    vec2<f32>(max(dot(normal, viewDirection), 0.0), roughness)
-  ).rg;
-  let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
-    surface.baseColor.rgb * irradiance / 3.14159265359;
-  let singleScattering = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
-  let energyCompensation = vec3<f32>(1.0) + f0 * (1.0 / max(brdf.x, 0.00001) - 1.0);
-  let specular = singleScattering * energyCompensation;
-  return (diffuse * surface.occlusion + specular) * environmentData.intensity;
-}
-
-
 
 
 // ============================================================================
@@ -1456,7 +1540,7 @@ fn standardLitFragment(
   }
   let normal = surface.normal;
   let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
-  var lit = evaluateIbl(normal, viewDirection, surface);
+  var lit = evaluateSurfaceIbl(normal, viewDirection, surface);
   let directionalCount = directionalLightCount();
   for (var index = 0u; index < directionalCount; index += 1u) {
     lit += evaluatePackedLight(

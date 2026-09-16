@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl',
-    contentHash: 'bfcd91ce9daac7ca7f24b6515c2cc8aa46e7d3f0d9e01d2576e38dffc5e27e27',
-    byteLength: 23736
+    contentHash: 'cc6f9f13b33aec2fd80d9f283cc075a4ac789ca00cc7ba3ec80f5502016eb060',
+    byteLength: 27157
   },
   entryPoints: [
     {
@@ -810,6 +810,19 @@ struct ObjectData {
     mat4x4 normalWorld;
     uint receiver;
 };
+struct DirectionalShadowData {
+    mat4x4 viewProjection[4];
+    mat4x4 cameraView;
+    vec4 splitDepths;
+    vec4 params;
+    uint lightIndex;
+};
+struct EnvironmentData {
+    vec3 diffuseIrradiance;
+    float intensity;
+    vec3 prefilteredRadiance;
+    float maxValidRadianceLod;
+};
 struct ViewData {
     mat4x4 viewProjection;
     vec3 cameraPosition;
@@ -847,19 +860,6 @@ struct StandardLitSurface {
     float roughness;
     float occlusion;
 };
-struct EnvironmentData {
-    vec3 diffuseIrradiance;
-    float intensity;
-    vec3 prefilteredRadiance;
-    float maxValidRadianceLod;
-};
-struct DirectionalShadowData {
-    mat4x4 viewProjection[4];
-    mat4x4 cameraView;
-    vec4 splitDepths;
-    vec4 params;
-    uint lightIndex;
-};
 struct StandardLitVertexOutput {
     vec4 position;
     vec3 normal;
@@ -889,9 +889,21 @@ uniform highp usampler2D _group_3_binding_4_fs;
 
 layout(std140) uniform ObjectData_block_0Fragment { ObjectData _group_0_binding_0_fs; };
 
-layout(std140) uniform ViewData_block_1Fragment { ViewData _group_1_binding_0_fs; };
+layout(std140) uniform DirectionalShadowData_block_1Fragment { DirectionalShadowData _group_3_binding_10_fs; };
 
-layout(std140) uniform MaterialData_block_2Fragment { MaterialData _group_2_binding_0_fs; };
+uniform highp sampler2DArrayShadow _group_3_binding_11_fs;
+
+layout(std140) uniform EnvironmentData_block_2Fragment { EnvironmentData _group_3_binding_5_fs; };
+
+uniform highp sampler2D _group_3_binding_6_fs;
+
+uniform highp sampler2D _group_3_binding_7_fs;
+
+uniform highp sampler2D _group_3_binding_8_fs;
+
+layout(std140) uniform ViewData_block_3Fragment { ViewData _group_1_binding_0_fs; };
+
+layout(std140) uniform MaterialData_block_4Fragment { MaterialData _group_2_binding_0_fs; };
 
 uniform highp sampler2D _group_2_binding_1_fs;
 
@@ -902,18 +914,6 @@ uniform highp sampler2D _group_2_binding_3_fs;
 uniform highp sampler2D _group_2_binding_4_fs;
 
 uniform highp sampler2D _group_2_binding_5_fs;
-
-layout(std140) uniform EnvironmentData_block_3Fragment { EnvironmentData _group_3_binding_5_fs; };
-
-uniform highp sampler2D _group_3_binding_6_fs;
-
-uniform highp sampler2D _group_3_binding_7_fs;
-
-uniform highp sampler2D _group_3_binding_8_fs;
-
-layout(std140) uniform DirectionalShadowData_block_4Fragment { DirectionalShadowData _group_3_binding_10_fs; };
-
-uniform highp sampler2DArrayShadow _group_3_binding_11_fs;
 
 smooth in vec3 _vs2fs_location0;
 smooth in vec3 _vs2fs_location1;
@@ -1071,63 +1071,10 @@ vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection
     return (((diffuse + specular) * radiance) * normalDotLight_1);
 }
 
-vec2 selectUv(uint index_4, vec2 uv0_1, vec2 uv1_1) {
-    return ((index_4 == 1u) ? uv1_1 : uv0_1);
-}
-
-StandardLitSurface sampleStandardLitSurface(StandardLitFragmentInput input_, bool frontFacing_1) {
-    uint _e4 = _group_2_binding_0_fs.baseColorUvSet;
-    vec2 _e7 = selectUv(_e4, input_.uv0_, input_.uv1_);
-    vec4 _e10 = _group_2_binding_0_fs.baseColorTransform;
-    vec2 _e13 = _group_2_binding_0_fs.baseColorOffset;
-    vec2 _e14 = transformUv(_e7, _e10, _e13);
-    uint _e17 = _group_2_binding_0_fs.metallicRoughnessUvSet;
-    vec2 _e20 = selectUv(_e17, input_.uv0_, input_.uv1_);
-    vec4 _e23 = _group_2_binding_0_fs.metallicRoughnessTransform;
-    vec2 _e26 = _group_2_binding_0_fs.metallicRoughnessOffset;
-    vec2 _e27 = transformUv(_e20, _e23, _e26);
-    uint _e30 = _group_2_binding_0_fs.normalUvSet;
-    vec2 _e33 = selectUv(_e30, input_.uv0_, input_.uv1_);
-    vec4 _e36 = _group_2_binding_0_fs.normalTransform;
-    vec2 _e39 = _group_2_binding_0_fs.normalOffset;
-    vec2 _e40 = transformUv(_e33, _e36, _e39);
-    uint _e43 = _group_2_binding_0_fs.occlusionUvSet;
-    vec2 _e46 = selectUv(_e43, input_.uv0_, input_.uv1_);
-    vec4 _e49 = _group_2_binding_0_fs.occlusionTransform;
-    vec2 _e52 = _group_2_binding_0_fs.occlusionOffset;
-    vec2 _e53 = transformUv(_e46, _e49, _e52);
-    uint _e56 = _group_2_binding_0_fs.emissiveUvSet;
-    vec2 _e59 = selectUv(_e56, input_.uv0_, input_.uv1_);
-    vec4 _e62 = _group_2_binding_0_fs.emissiveTransform;
-    vec2 _e65 = _group_2_binding_0_fs.emissiveOffset;
-    vec2 _e66 = transformUv(_e59, _e62, _e65);
-    vec4 baseSample = texture(_group_2_binding_1_fs, vec2(_e14));
-    vec4 mrSample = texture(_group_2_binding_2_fs, vec2(_e27));
-    vec4 _e75 = texture(_group_2_binding_3_fs, vec2(_e40));
-    vec3 normalSample = ((_e75.xyz * 2.0) - vec3(1.0));
-    vec4 _e84 = texture(_group_2_binding_4_fs, vec2(_e53));
-    float aoSample = _e84.x;
-    vec4 _e88 = texture(_group_2_binding_5_fs, vec2(_e66));
-    vec3 emissiveSample = _e88.xyz;
-    vec3 rawNormal = normalize(input_.normal);
-    vec3 geometricNormal = (frontFacing_1 ? rawNormal : -(rawNormal));
-    vec3 tangent_1 = normalize(input_.tangent.xyz);
-    vec3 bitangent = (cross(geometricNormal, tangent_1) * input_.tangent.w);
-    float _e104 = _group_2_binding_0_fs.normalScale;
-    vec3 mapped = normalize(vec3((normalSample.xy * _e104), normalSample.z));
-    vec3 worldNormal = normalize((((tangent_1 * mapped.x) + (bitangent * mapped.y)) + (geometricNormal * mapped.z)));
-    vec4 _e120 = _group_2_binding_0_fs.baseColor;
-    float _e126 = _group_2_binding_0_fs.metallic;
-    vec3 _e134 = _group_2_binding_0_fs.emissiveFactor;
-    float _e138 = _group_2_binding_0_fs.roughness;
-    float _e146 = _group_2_binding_0_fs.occlusionStrength;
-    return StandardLitSurface(((_e120 * baseSample) * input_.color), worldNormal, clamp((_e126 * mrSample.z), 0.0, 1.0), (_e134 * emissiveSample), clamp((_e138 * mrSample.y), 0.045, 1.0), (1.0 + (_e146 * (aoSample - 1.0))));
-}
-
 float directionalShadowVisibility(uint lightIndex, vec3 worldPosition, vec3 normal_4, vec3 lightDirection_2) {
     bool local_3 = false;
     uint cascade = 4u;
-    uint index_5 = 0u;
+    uint index_4 = 0u;
     bool local_4 = false;
     bool local_5 = false;
     bool local_6 = false;
@@ -1152,11 +1099,11 @@ float directionalShadowVisibility(uint lightIndex, vec3 worldPosition, vec3 norm
     bool loop_init_1 = true;
     while(true) {
         if (!loop_init_1) {
-            uint _e49 = index_5;
-            index_5 = (_e49 + 1u);
+            uint _e49 = index_4;
+            index_4 = (_e49 + 1u);
         }
         loop_init_1 = false;
-        uint _e32 = index_5;
+        uint _e32 = index_4;
         if ((_e32 < 4u)) {
         } else {
             break;
@@ -1164,7 +1111,7 @@ float directionalShadowVisibility(uint lightIndex, vec3 worldPosition, vec3 norm
         {
             uint _e35 = cascade;
             if ((_e35 == 4u)) {
-                uint _e42 = index_5;
+                uint _e42 = index_4;
                 float _e44 = _group_3_binding_10_fs.splitDepths[_e42];
                 local_4 = (viewDepth <= _e44);
             } else {
@@ -1172,7 +1119,7 @@ float directionalShadowVisibility(uint lightIndex, vec3 worldPosition, vec3 norm
             }
             bool _e47 = local_4;
             if (_e47) {
-                uint _e48 = index_5;
+                uint _e48 = index_4;
                 cascade = _e48;
             }
         }
@@ -1253,7 +1200,89 @@ float directionalShadowVisibility(uint lightIndex, vec3 worldPosition, vec3 norm
     return (_e160 / 9.0);
 }
 
-vec3 evaluatePackedLight(uint index_6, vec3 worldPosition_1, vec3 normal_5, vec3 viewDirection_2, StandardLitSurface surface) {
+vec2 directionToEquirectangularUv(vec3 direction) {
+    vec3 normalized = normalize(direction);
+    return vec2(((atan(normalized.z, normalized.x) * 0.15915494) + 0.5), (acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830987));
+}
+
+vec3 evaluateIbl(vec3 normal_5, vec3 viewDirection_2, vec3 baseColor_1, float metallic_1, float roughness_3, float occlusion) {
+    vec3 f0_2 = ((vec3(0.04) * (1.0 - metallic_1)) + (baseColor_1 * metallic_1));
+    vec3 _e16 = fresnelSchlick(max(dot(normal_5, viewDirection_2), 0.0), f0_2);
+    vec2 _e17 = directionToEquirectangularUv(normal_5);
+    vec3 reflection = reflect(-(viewDirection_2), normal_5);
+    vec2 _e20 = directionToEquirectangularUv(reflection);
+    vec4 _e23 = texture(_group_3_binding_6_fs, vec2(_e17));
+    vec3 _e27 = _group_3_binding_5_fs.diffuseIrradiance;
+    vec3 irradiance = (_e23.xyz * _e27);
+    float _e34 = _group_3_binding_5_fs.maxValidRadianceLod;
+    float lod = (clamp(roughness_3, 0.0, 1.0) * _e34);
+    vec4 _e38 = textureLod(_group_3_binding_7_fs, vec2(_e20), lod);
+    vec3 _e42 = _group_3_binding_5_fs.prefilteredRadiance;
+    vec3 prefiltered = (_e38.xyz * _e42);
+    vec4 _e50 = texture(_group_3_binding_8_fs, vec2(vec2(max(dot(normal_5, viewDirection_2), 0.0), roughness_3)));
+    vec2 brdf = _e50.xy;
+    vec3 diffuse_1 = (((((vec3(1.0) - _e16) * (1.0 - metallic_1)) * baseColor_1) * irradiance) / vec3(3.1415927));
+    vec3 singleScattering = (prefiltered * ((f0_2 * brdf.x) + vec3(brdf.y)));
+    vec3 energyCompensation = (vec3(1.0) + (f0_2 * ((1.0 / max(brdf.x, 1e-5)) - 1.0)));
+    vec3 specular_1 = (singleScattering * energyCompensation);
+    float _e85 = _group_3_binding_5_fs.intensity;
+    return (((diffuse_1 * occlusion) + specular_1) * _e85);
+}
+
+vec2 selectUv(uint index_5, vec2 uv0_1, vec2 uv1_1) {
+    return ((index_5 == 1u) ? uv1_1 : uv0_1);
+}
+
+StandardLitSurface sampleStandardLitSurface(StandardLitFragmentInput input_, bool frontFacing_1) {
+    uint _e4 = _group_2_binding_0_fs.baseColorUvSet;
+    vec2 _e7 = selectUv(_e4, input_.uv0_, input_.uv1_);
+    vec4 _e10 = _group_2_binding_0_fs.baseColorTransform;
+    vec2 _e13 = _group_2_binding_0_fs.baseColorOffset;
+    vec2 _e14 = transformUv(_e7, _e10, _e13);
+    uint _e17 = _group_2_binding_0_fs.metallicRoughnessUvSet;
+    vec2 _e20 = selectUv(_e17, input_.uv0_, input_.uv1_);
+    vec4 _e23 = _group_2_binding_0_fs.metallicRoughnessTransform;
+    vec2 _e26 = _group_2_binding_0_fs.metallicRoughnessOffset;
+    vec2 _e27 = transformUv(_e20, _e23, _e26);
+    uint _e30 = _group_2_binding_0_fs.normalUvSet;
+    vec2 _e33 = selectUv(_e30, input_.uv0_, input_.uv1_);
+    vec4 _e36 = _group_2_binding_0_fs.normalTransform;
+    vec2 _e39 = _group_2_binding_0_fs.normalOffset;
+    vec2 _e40 = transformUv(_e33, _e36, _e39);
+    uint _e43 = _group_2_binding_0_fs.occlusionUvSet;
+    vec2 _e46 = selectUv(_e43, input_.uv0_, input_.uv1_);
+    vec4 _e49 = _group_2_binding_0_fs.occlusionTransform;
+    vec2 _e52 = _group_2_binding_0_fs.occlusionOffset;
+    vec2 _e53 = transformUv(_e46, _e49, _e52);
+    uint _e56 = _group_2_binding_0_fs.emissiveUvSet;
+    vec2 _e59 = selectUv(_e56, input_.uv0_, input_.uv1_);
+    vec4 _e62 = _group_2_binding_0_fs.emissiveTransform;
+    vec2 _e65 = _group_2_binding_0_fs.emissiveOffset;
+    vec2 _e66 = transformUv(_e59, _e62, _e65);
+    vec4 baseSample = texture(_group_2_binding_1_fs, vec2(_e14));
+    vec4 mrSample = texture(_group_2_binding_2_fs, vec2(_e27));
+    vec4 _e75 = texture(_group_2_binding_3_fs, vec2(_e40));
+    vec3 normalSample = ((_e75.xyz * 2.0) - vec3(1.0));
+    vec4 _e84 = texture(_group_2_binding_4_fs, vec2(_e53));
+    float aoSample = _e84.x;
+    vec4 _e88 = texture(_group_2_binding_5_fs, vec2(_e66));
+    vec3 emissiveSample = _e88.xyz;
+    vec3 rawNormal = normalize(input_.normal);
+    vec3 geometricNormal = (frontFacing_1 ? rawNormal : -(rawNormal));
+    vec3 tangent_1 = normalize(input_.tangent.xyz);
+    vec3 bitangent = (cross(geometricNormal, tangent_1) * input_.tangent.w);
+    float _e104 = _group_2_binding_0_fs.normalScale;
+    vec3 mapped = normalize(vec3((normalSample.xy * _e104), normalSample.z));
+    vec3 worldNormal = normalize((((tangent_1 * mapped.x) + (bitangent * mapped.y)) + (geometricNormal * mapped.z)));
+    vec4 _e120 = _group_2_binding_0_fs.baseColor;
+    float _e126 = _group_2_binding_0_fs.metallic;
+    vec3 _e134 = _group_2_binding_0_fs.emissiveFactor;
+    float _e138 = _group_2_binding_0_fs.roughness;
+    float _e146 = _group_2_binding_0_fs.occlusionStrength;
+    return StandardLitSurface(((_e120 * baseSample) * input_.color), worldNormal, clamp((_e126 * mrSample.z), 0.0, 1.0), (_e134 * emissiveSample), clamp((_e138 * mrSample.y), 0.045, 1.0), (1.0 + (_e146 * (aoSample - 1.0))));
+}
+
+vec3 evaluatePackedLight(uint index_6, vec3 worldPosition_1, vec3 normal_6, vec3 viewDirection_3, StandardLitSurface surface) {
     uint base_1 = (4u + (index_6 * 12u));
     uint _e11 = lightWord((base_1 + 4u));
     uint _e15 = lightWord((base_1 + 5u));
@@ -1268,45 +1297,19 @@ vec3 evaluatePackedLight(uint index_6, vec3 worldPosition_1, vec3 normal_5, vec3
     uint _e39 = lightWord(base_1);
     if ((_e39 == 0u)) {
         vec3 lightDirection_3 = -(normalize(vector));
-        float _e44 = directionalShadowVisibility(index_6, worldPosition_1, normal_5, lightDirection_3);
-        vec3 _e50 = cookTorranceDirect(normal_5, viewDirection_2, lightDirection_3, surface.baseColor.xyz, surface.metallic, surface.roughness, (color * intensity));
+        float _e44 = directionalShadowVisibility(index_6, worldPosition_1, normal_6, lightDirection_3);
+        vec3 _e50 = cookTorranceDirect(normal_6, viewDirection_3, lightDirection_3, surface.baseColor.xyz, surface.metallic, surface.roughness, (color * intensity));
         return (_e50 * _e44);
     }
     vec3 delta = (vector - worldPosition_1);
     float distanceSquared = max(dot(delta, delta), 1e-6);
-    vec3 _e64 = cookTorranceDirect(normal_5, viewDirection_2, normalize(delta), surface.baseColor.xyz, surface.metallic, surface.roughness, ((color * intensity) / vec3(distanceSquared)));
+    vec3 _e64 = cookTorranceDirect(normal_6, viewDirection_3, normalize(delta), surface.baseColor.xyz, surface.metallic, surface.roughness, ((color * intensity) / vec3(distanceSquared)));
     return _e64;
 }
 
-vec2 directionToEquirectangularUv(vec3 direction) {
-    vec3 normalized = normalize(direction);
-    return vec2(((atan(normalized.z, normalized.x) * 0.15915494) + 0.5), (acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830987));
-}
-
-vec3 evaluateIbl(vec3 normal_6, vec3 viewDirection_3, StandardLitSurface surface_1) {
-    float metallic_1 = surface_1.metallic;
-    float roughness_3 = surface_1.roughness;
-    vec3 f0_2 = ((vec3(0.04) * (1.0 - metallic_1)) + (surface_1.baseColor.xyz * metallic_1));
-    vec3 _e17 = fresnelSchlick(max(dot(normal_6, viewDirection_3), 0.0), f0_2);
-    vec2 _e18 = directionToEquirectangularUv(normal_6);
-    vec3 reflection = reflect(-(viewDirection_3), normal_6);
-    vec2 _e21 = directionToEquirectangularUv(reflection);
-    vec4 _e24 = texture(_group_3_binding_6_fs, vec2(_e18));
-    vec3 _e28 = _group_3_binding_5_fs.diffuseIrradiance;
-    vec3 irradiance = (_e24.xyz * _e28);
-    float _e35 = _group_3_binding_5_fs.maxValidRadianceLod;
-    float lod = (clamp(roughness_3, 0.0, 1.0) * _e35);
-    vec4 _e39 = textureLod(_group_3_binding_7_fs, vec2(_e21), lod);
-    vec3 _e43 = _group_3_binding_5_fs.prefilteredRadiance;
-    vec3 prefiltered = (_e39.xyz * _e43);
-    vec4 _e51 = texture(_group_3_binding_8_fs, vec2(vec2(max(dot(normal_6, viewDirection_3), 0.0), roughness_3)));
-    vec2 brdf = _e51.xy;
-    vec3 diffuse_1 = (((((vec3(1.0) - _e17) * (1.0 - metallic_1)) * surface_1.baseColor.xyz) * irradiance) / vec3(3.1415927));
-    vec3 singleScattering = (prefiltered * ((f0_2 * brdf.x) + vec3(brdf.y)));
-    vec3 energyCompensation = (vec3(1.0) + (f0_2 * ((1.0 / max(brdf.x, 1e-5)) - 1.0)));
-    vec3 specular_1 = (singleScattering * energyCompensation);
-    float _e89 = _group_3_binding_5_fs.intensity;
-    return (((diffuse_1 * surface_1.occlusion) + specular_1) * _e89);
+vec3 evaluateSurfaceIbl(vec3 normal_7, vec3 viewDirection_4, StandardLitSurface surface_1) {
+    vec3 _e8 = evaluateIbl(normal_7, viewDirection_4, surface_1.baseColor.xyz, surface_1.metallic, surface_1.roughness, surface_1.occlusion);
+    return _e8;
 }
 
 void main() {
@@ -1322,10 +1325,10 @@ void main() {
     if (!(_e11)) {
         discard;
     }
-    vec3 normal_7 = _e2.normal;
+    vec3 normal_8 = _e2.normal;
     vec3 _e16 = _group_1_binding_0_fs.cameraPosition;
-    vec3 viewDirection_4 = normalize((_e16 - fragmentInput.worldPosition));
-    vec3 _e20 = evaluateIbl(normal_7, viewDirection_4, _e2);
+    vec3 viewDirection_5 = normalize((_e16 - fragmentInput.worldPosition));
+    vec3 _e20 = evaluateSurfaceIbl(normal_8, viewDirection_5, _e2);
     lit = _e20;
     uint _e22 = directionalLightCount();
     bool loop_init_4 = true;
@@ -1344,7 +1347,7 @@ void main() {
             vec3 _e27 = lit;
             uint _e28 = index;
             uint _e29 = directionalIndex(_e28);
-            vec3 _e31 = evaluatePackedLight(_e29, fragmentInput.worldPosition, normal_7, viewDirection_4, _e2);
+            vec3 _e31 = evaluatePackedLight(_e29, fragmentInput.worldPosition, normal_8, viewDirection_5, _e2);
             lit = (_e27 + _e31);
         }
     }
@@ -1365,7 +1368,7 @@ void main() {
             vec3 _e42 = lit;
             uint _e43 = index_1;
             uint _e44 = receiverLightIndex(_e36, _e43);
-            vec3 _e46 = evaluatePackedLight(_e44, fragmentInput.worldPosition, normal_7, viewDirection_4, _e2);
+            vec3 _e46 = evaluatePackedLight(_e44, fragmentInput.worldPosition, normal_8, viewDirection_5, _e2);
             lit = (_e42 + _e46);
         }
     }
@@ -1378,7 +1381,7 @@ void main() {
         bindings: [
           {
             kind: 'uniform-buffer',
-            name: 'DirectionalShadowData_block_4Fragment',
+            name: 'DirectionalShadowData_block_1Fragment',
             resource: {
               group: 3,
               binding: 10
@@ -1386,7 +1389,7 @@ void main() {
           },
           {
             kind: 'uniform-buffer',
-            name: 'EnvironmentData_block_3Fragment',
+            name: 'EnvironmentData_block_2Fragment',
             resource: {
               group: 3,
               binding: 5
@@ -1394,7 +1397,7 @@ void main() {
           },
           {
             kind: 'uniform-buffer',
-            name: 'MaterialData_block_2Fragment',
+            name: 'MaterialData_block_4Fragment',
             resource: {
               group: 2,
               binding: 0
@@ -1410,7 +1413,7 @@ void main() {
           },
           {
             kind: 'uniform-buffer',
-            name: 'ViewData_block_1Fragment',
+            name: 'ViewData_block_3Fragment',
             resource: {
               group: 1,
               binding: 0
@@ -1581,6 +1584,19 @@ struct ObjectData {
     mat4x4 normalWorld;
     uint receiver;
 };
+struct DirectionalShadowData {
+    mat4x4 viewProjection[4];
+    mat4x4 cameraView;
+    vec4 splitDepths;
+    vec4 params;
+    uint lightIndex;
+};
+struct EnvironmentData {
+    vec3 diffuseIrradiance;
+    float intensity;
+    vec3 prefilteredRadiance;
+    float maxValidRadianceLod;
+};
 struct ViewData {
     mat4x4 viewProjection;
     vec3 cameraPosition;
@@ -1617,19 +1633,6 @@ struct StandardLitSurface {
     vec3 emissive;
     float roughness;
     float occlusion;
-};
-struct EnvironmentData {
-    vec3 diffuseIrradiance;
-    float intensity;
-    vec3 prefilteredRadiance;
-    float maxValidRadianceLod;
-};
-struct DirectionalShadowData {
-    mat4x4 viewProjection[4];
-    mat4x4 cameraView;
-    vec4 splitDepths;
-    vec4 params;
-    uint lightIndex;
 };
 struct StandardLitVertexOutput {
     vec4 position;
@@ -1753,13 +1756,13 @@ vec3 cookTorranceDirect(vec3 normal_3, vec3 viewDirection_1, vec3 lightDirection
     return (((diffuse + specular) * radiance) * normalDotLight_1);
 }
 
-vec2 selectUv(uint index_4, vec2 uv0_1, vec2 uv1_1) {
-    return ((index_4 == 1u) ? uv1_1 : uv0_1);
-}
-
 vec2 directionToEquirectangularUv(vec3 direction) {
     vec3 normalized = normalize(direction);
     return vec2(((atan(normalized.z, normalized.x) * 0.15915494) + 0.5), (acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830987));
+}
+
+vec2 selectUv(uint index_5, vec2 uv0_1, vec2 uv1_1) {
+    return ((index_5 == 1u) ? uv1_1 : uv0_1);
 }
 
 void main() {

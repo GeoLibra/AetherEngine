@@ -62,4 +62,32 @@ describe('Cross-Pass Silhouette & Coverage Conformance', () => {
     expect(litListWgsl).toContain('fn geometrySmith');
     expect(litListWgsl).toContain('fn fresnelSchlick');
   });
+
+  it('lit-list passes contain IBL and shadow receiver functions from shared modules', () => {
+    const litListWgsl = STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT.modules.wgsl;
+    const litListWebGlFragment =
+      STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT.modules.glslEs300['fragment:standardLitFragment']
+        ?.source;
+
+    // IBL module functions linked into lit-list cooked artifacts
+    expect(litListWgsl).toContain('fn evaluateIbl');
+    expect(litListWgsl).toContain('fn directionToEquirectangularUv');
+    expect(litListWgsl).toContain('fn evaluateSurfaceIbl');
+    expect(litListWebGlFragment).toContain('evaluateIbl');
+    expect(litListWebGlFragment).toContain('directionToEquirectangularUv');
+
+    // Shadow receiver module function linked into lit-list cooked artifacts
+    expect(litListWgsl).toContain('fn directionalShadowVisibility');
+    expect(litListWebGlFragment).toContain('directionalShadowVisibility');
+  });
+
+  it('shadow caster pass does not leak shadow receiver or IBL code', () => {
+    const shadowWgsl = STANDARD_SHADOW_SHADER_ARTIFACT.modules.wgsl;
+
+    // Shadow caster must NOT contain receiver visibility or IBL evaluation
+    expect(shadowWgsl).not.toContain('directionalShadowVisibility');
+    expect(shadowWgsl).not.toContain('DirectionalShadowData');
+    expect(shadowWgsl).not.toContain('evaluateIbl');
+    expect(shadowWgsl).not.toContain('EnvironmentData');
+  });
 });
