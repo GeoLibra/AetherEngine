@@ -1,29 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
-  resolveDependencyClosure,
+  FileSystemShaderModuleLoader,
   linkStrictWgsl,
   remapLinkedDiagnostic,
-  type ModuleSourceLoader
+  resolveDependencyClosure,
+  stripComments,
+  type ShaderModuleLoader
 } from '../../../tools/shader-cooker/modules';
 
 const FIXTURES_ROOT = resolve(import.meta.dirname, 'fixtures');
 
-const fileSystemLoader: ModuleSourceLoader = {
-  async loadSource(uri: string): Promise<string | undefined> {
-    try {
-      return await readFile(uri, 'utf-8');
-    } catch {
-      return undefined;
-    }
-  }
-};
-
 describe('Shader Module Linking and Error Provenance', () => {
+  const loader = new FileSystemShaderModuleLoader({
+    roots: { test: FIXTURES_ROOT }
+  });
+
   it('links diamond closure into valid standard WGSL without duplicate declarations', async () => {
-    const rootPath = resolve(FIXTURES_ROOT, 'diamond/root.wgsl');
-    const closure = await resolveDependencyClosure(rootPath, fileSystemLoader);
+    const closure = await resolveDependencyClosure('asset://test/diamond/root.wgsl', loader);
     const linked = linkStrictWgsl(closure);
 
     expect(linked.standardWgsl).toContain('fn getBaseValue()');
@@ -37,8 +31,10 @@ describe('Shader Module Linking and Error Provenance', () => {
   });
 
   it('remaps diagnostic line numbers back to original source file and line', async () => {
-    const rootPath = resolve(FIXTURES_ROOT, 'error-provenance/root.wgsl');
-    const closure = await resolveDependencyClosure(rootPath, fileSystemLoader);
+    const closure = await resolveDependencyClosure(
+      'asset://test/error-provenance/root.wgsl',
+      loader
+    );
     const linked = linkStrictWgsl(closure);
 
     // Find the line where faultyFunction has `let badVal: vec3<f32> = 123.45;`
@@ -57,9 +53,49 @@ describe('Shader Module Linking and Error Provenance', () => {
       linked
     );
 
-    expect(remapped.moduleId).toBe(resolve(FIXTURES_ROOT, 'error-provenance/leaf_with_error.wgsl'));
+    expect(remapped.moduleId).toBe('asset://test/error-provenance/leaf_with_error.wgsl');
     // In leaf_with_error.wgsl, the statement is at line 3
     expect(remapped.span?.line).toBe(3);
     expect(remapped.span?.column).toBe(7);
+  });
+
+  it('correctly ignores directives inside line comments and nested block comments', () => {
+    const sourceWithComments = `
+      // enable f16;
+      /* diagnostic(off, derivative_uniformity); */
+      /* outer /* nested enable f16; */ comment */
+      fn realCode() -> f32 { return 1.0; }
+    `;
+    const stripped = stripComments(sourceWithComments);
+    expect(stripped).not.toContain('enable');
+    expect(stripped).not.toContain('diagnostic');
+    expect(stripped).toContain('fn realCode');
+  });
+
+  it('rejects module-level directives in multi-module closures', async () => {
+    const directiveLoader: ShaderModuleLoader = {
+      async loadModule(id) {
+        if (id === 'asset://test/root.wgsl') {
+          return {
+            id,
+            source: 'fn main() {}',
+            imports: [{ path: './child.wgsl' }]
+          };
+        }
+        if (id === 'asset://test/child.wgsl') {
+          return {
+            id,
+            source: 'enable f16;\nfn helper() {}',
+            imports: []
+          };
+        }
+        return undefined;
+      }
+    };
+
+    const closure = await resolveDependencyClosure('asset://test/root.wgsl', directiveLoader);
+    expect(() => linkStrictWgsl(closure)).toThrow(
+      /Module-level directive 'enable'.*is not supported/i
+    );
   });
 });

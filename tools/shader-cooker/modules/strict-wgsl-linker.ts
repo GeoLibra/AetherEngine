@@ -1,71 +1,110 @@
 /**
- * @file Strict-WGSL linker candidate for combining dependency closures into standard WGSL.
- * Performs deterministic directive hoisting, import removal, segment tracking, and error remapping.
+ * @file Bounded WGSL module linker combining dependency closures into standard WGSL.
+ * Strictly preserves authoring source text without rewriting, rejects module-level directives
+ * in multi-module closures, tracks 1-to-1 line segments, and accurately remaps compiler diagnostics.
+ * Based on engine/design/v2/04-rendering/14-shader-modules.md.
  */
 
 import {
+  ShaderModuleLinkingError,
   type DependencyClosure,
   type LinkedSourceSegment,
   type LinkedWgslResult,
   type ModuleDiagnostic,
-  type ShaderModuleId,
   type SourceSpan
 } from './types';
 
 /**
+ * Strips line comments (`//`) and nested block comments (`/* ... /* ... *\/ ... *\/`) from WGSL source.
+ * Preserves newlines so line numbers remain aligned where needed.
+ *
+ * @param source Authored WGSL source text.
+ * @returns Cleaned code with comments removed.
+ */
+export function stripComments(source: string): string {
+  let result = '';
+  let i = 0;
+  const len = source.length;
+
+  while (i < len) {
+    if (source[i] === '/' && source[i + 1] === '/') {
+      // Line comment: skip until newline
+      i += 2;
+      while (i < len && source[i] !== '\n') {
+        i++;
+      }
+    } else if (source[i] === '/' && source[i + 1] === '*') {
+      // Block comment: supports nesting per WGSL spec
+      i += 2;
+      let depth = 1;
+      while (i < len && depth > 0) {
+        if (source[i] === '/' && source[i + 1] === '*') {
+          depth++;
+          i += 2;
+        } else if (source[i] === '*' && source[i + 1] === '/') {
+          depth--;
+          i += 2;
+        } else {
+          if (source[i] === '\n') {
+            result += '\n';
+          }
+          i++;
+        }
+      }
+    } else {
+      result += source[i];
+      i++;
+    }
+  }
+
+  return result;
+}
+
+const DIRECTIVE_PATTERN = /\b(enable|requires|diagnostic)\b/u;
+
+/**
  * Links a resolved DependencyClosure into a valid, flat WGSL source string.
- * - Hoists unique `enable` and `diagnostic` directives to the top of the file.
- * - Strips import statements while preserving original line structure (replaces with blank lines or comments)
- *   so line numbers within each module stay stable.
- * - Maintains an exact line mapping table for diagnostic remapping.
+ *
+ * Requirements:
+ * - Dependencies are emitted in topological order, with the root module output last.
+ * - Module source bodies are kept verbatim; no arbitrary rewriting or symbol renaming.
+ * - Rejects module-level directives (`enable`, `requires`, `diagnostic`) in multi-module closures.
+ * - Maintains an exact 1-to-1 line segment mapping for downstream diagnostic remapping.
+ *
+ * @param closure Topologically sorted DependencyClosure.
+ * @returns Linked standard WGSL and segment tracking table.
+ * @throws {ShaderModuleLinkingError} When composed modules contain unsupported module-level directives.
  */
 export function linkStrictWgsl(closure: DependencyClosure): LinkedWgslResult {
-  const hoistedDirectives = new Set<string>();
+  // If multiple modules participate, reject module-level directives
+  if (closure.modules.length > 1) {
+    for (const mod of closure.modules) {
+      const stripped = stripComments(mod.content);
+      const match = DIRECTIVE_PATTERN.exec(stripped);
+      if (match) {
+        throw new ShaderModuleLinkingError(
+          `Module-level directive '${match[1]}' in module '${mod.id}' is not supported in composed shader modules under the current composition profile. Shaders requiring module-level directives must use a single-file entry point.`,
+          'ERR_MODULE_DIRECTIVE_UNSUPPORTED',
+          mod.id
+        );
+      }
+    }
+  }
+
   const segments: LinkedSourceSegment[] = [];
   const outputLines: string[] = [];
 
-  // 1. Collect and deduplicate directives from all modules in the closure
-  for (const mod of closure.modules) {
-    for (const dir of mod.directives) {
-      hoistedDirectives.add(dir);
-    }
-  }
-
-  // 2. Emit hoisted directives at the top
-  const sortedDirectives = [...hoistedDirectives].sort();
-  for (const dir of sortedDirectives) {
-    outputLines.push(dir);
-  }
-  if (sortedDirectives.length > 0) {
-    outputLines.push(''); // blank line separator
-  }
-
-  // 3. Process modules in topological order
-  for (const mod of closure.modules) {
-    const rawLines = mod.content.split('\n');
+  for (let modIdx = 0; modIdx < closure.modules.length; modIdx++) {
+    const mod = closure.modules[modIdx]!;
+    const rawLines = mod.content.split(/\r?\n/);
     const startLineInOutput = outputLines.length + 1;
 
-    // Filter module lines: comment out import statements and hoisted directives
-    for (let i = 0; i < rawLines.length; i++) {
-      const line = rawLines[i]!;
-      const trimmed = line.trim();
-
-      const isImport =
-        trimmed.startsWith('#import ') || (trimmed.startsWith('import ') && trimmed.endsWith(';'));
-
-      const isDirective =
-        (trimmed.startsWith('enable ') || trimmed.startsWith('diagnostic(')) &&
-        trimmed.endsWith(';');
-
-      if (isImport || isDirective) {
-        // Replace with empty line to preserve 1-to-1 line correspondence within module segment
-        outputLines.push(`// [linked: ${trimmed}]`);
-      } else {
-        outputLines.push(line);
-      }
+    for (const line of rawLines) {
+      outputLines.push(line);
     }
 
     const endLineInOutput = outputLines.length;
+
     segments.push(
       Object.freeze({
         moduleId: mod.id,
@@ -75,8 +114,10 @@ export function linkStrictWgsl(closure: DependencyClosure): LinkedWgslResult {
       })
     );
 
-    // Module boundary separator
-    outputLines.push('');
+    // Module boundary separator if not the last module
+    if (modIdx < closure.modules.length - 1) {
+      outputLines.push('');
+    }
   }
 
   const standardWgsl = outputLines.join('\n');
@@ -85,7 +126,6 @@ export function linkStrictWgsl(closure: DependencyClosure): LinkedWgslResult {
     standardWgsl,
     rootId: closure.rootId,
     segments: Object.freeze(segments),
-    hoistedDirectives: Object.freeze(sortedDirectives),
     compositeHash: closure.compositeHash
   });
 }
@@ -93,6 +133,10 @@ export function linkStrictWgsl(closure: DependencyClosure): LinkedWgslResult {
 /**
  * Remaps an error or diagnostic line number in the linked standard WGSL
  * back to the original source module and line number.
+ *
+ * @param diagnostic Error coordinate in linked WGSL.
+ * @param linkedResult Linker output containing segment tables.
+ * @returns Remapped ModuleDiagnostic pointing to the authoring module.
  */
 export function remapLinkedDiagnostic(
   diagnostic: {
@@ -123,7 +167,6 @@ export function remapLinkedDiagnostic(
     }
   }
 
-  // If outside recorded segments (e.g. hoisted directives)
   return Object.freeze({
     stage: 'validate',
     code: 'ERR_WGSL_COMPILE',

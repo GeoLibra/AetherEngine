@@ -23,6 +23,7 @@ import {
 import { ShaderCompiler } from '../../src/shader/experimental/flux/compiler';
 import { runBindingLayoutScenario } from './binding-layout-scenario';
 import { runShaderGraphScenario } from './shader-graph-scenario';
+import { runModuleCompositionScenario } from './module-composition-scenario';
 
 const profile = process.argv.at(-1);
 if (profile !== 'smoke' && profile !== 'standard' && profile !== 'nightly') {
@@ -266,6 +267,52 @@ for (let round = 0; round < totalRounds; round++) {
   if (round >= warmups) fluxCacheSamplesMs.push(duration);
 }
 
+// 6. Shader Module Composition & Invalidation Scenarios
+const moduleCompositionConfigs = [
+  { moduleCount: 16, topology: 'diamond' as const },
+  { moduleCount: 64, topology: 'diamond' as const },
+  { moduleCount: 16, topology: 'chain' as const }
+] as const;
+
+const moduleCompositionResults: Array<{
+  moduleCount: number;
+  topology: string;
+  rawSamplesMs: number[];
+  summary: ReturnType<typeof summarize>;
+}> = [];
+
+for (const config of moduleCompositionConfigs) {
+  const rawSamplesMs: number[] = [];
+  for (let round = 0; round < totalRounds; round++) {
+    const start = performance.now();
+    const result = await runModuleCompositionScenario(config);
+    const duration = performance.now() - start;
+    if (
+      result.closureModuleCount < config.moduleCount - 2 ||
+      !result.compositeHash ||
+      !result.warmReused ||
+      result.sharedLeafAffectedRootsCount !== 2 ||
+      result.rootLocalAffectedRootsCount !== 1 ||
+      result.unrelatedAffectedRootsCount !== 0 ||
+      !result.incrementalMatchesFullRebuild ||
+      !result.failedBuildRetainsLastKnownGood
+    ) {
+      throw new Error(
+        `Module composition structural oracle failed for ${config.moduleCount} ${config.topology}.`
+      );
+    }
+    if (round >= warmups) rawSamplesMs.push(duration);
+  }
+  moduleCompositionResults.push(
+    Object.freeze({
+      moduleCount: config.moduleCount,
+      topology: config.topology,
+      rawSamplesMs,
+      summary: summarize(rawSamplesMs)
+    })
+  );
+}
+
 const createdAt = new Date().toISOString();
 const artifactDirectory = resolve('benchmark/artifacts/shader-system');
 mkdirSync(artifactDirectory, { recursive: true });
@@ -291,6 +338,7 @@ const report = {
   shaderGraphResults,
   builtInTranslationResults,
   cookedArtifactResults,
+  moduleCompositionResults,
   fluxFrontendResults: {
     reflection: {
       rawSamplesMs: fluxParseSamplesMs,
@@ -306,5 +354,5 @@ const report = {
 writeFileSync(artifactPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 
 console.log(
-  `Shader-system integrity: profile=${profile} bindingCases=${bindingLayoutResults.length} graphCases=${shaderGraphResults.length} builtInCases=${builtInTranslationResults.length} cookedCases=${cookedArtifactResults.length}\nArtifact: ${artifactPath}`
+  `Shader-system integrity: profile=${profile} bindingCases=${bindingLayoutResults.length} graphCases=${shaderGraphResults.length} builtInCases=${builtInTranslationResults.length} cookedCases=${cookedArtifactResults.length} moduleCases=${moduleCompositionResults.length}\nArtifact: ${artifactPath}`
 );

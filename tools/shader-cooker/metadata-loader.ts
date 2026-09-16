@@ -2,6 +2,7 @@
  * @file Node-only loader and validator for WGSL sidecar metadata.
  */
 
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { validateWgslShaderMetadata } from '../../src/shader/authoring';
 import type { WgslShaderMetadata } from '../../src/shader/types';
@@ -30,6 +31,29 @@ export async function loadWgslMetadata(
   fs: MetadataFileSystemAdapter = defaultFsAdapter
 ): Promise<WgslShaderMetadata> {
   const content = await fs.readFile(metadataPath, 'utf8');
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (err: unknown) {
+    throw new Error(
+      `Failed to parse WGSL metadata JSON at "${metadataPath}": ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  return validateWgslShaderMetadata(parsed);
+}
+
+/**
+ * Synchronously loads and validates a WGSL sidecar JSON metadata file from disk.
+ * Avoids asynchronous dispatch races before compilation in fast paths and test harnesses.
+ *
+ * @param metadataPath Path to the `.wgsl.meta.json` or `.shader.json` file.
+ * @returns Validated, frozen WgslShaderMetadata snapshot.
+ * @throws {Error} On I/O failure, malformed JSON, or schema validation violations.
+ */
+export function loadWgslMetadataSync(metadataPath: string): WgslShaderMetadata {
+  const content = readFileSync(metadataPath, 'utf8');
 
   let parsed: unknown;
   try {

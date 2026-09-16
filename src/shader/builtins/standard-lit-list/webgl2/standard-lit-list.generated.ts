@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl',
-    contentHash: '9c177c828d52a4f0cba22295416b2c3d8b829794e20c7d5981008d93b335a51e',
-    byteLength: 20759
+    contentHash: 'eff46841f73e82fac609f9d76a799bfa94e3c13600e260035d3808fc0c676e5c',
+    byteLength: 20885
   },
   entryPoints: [
     {

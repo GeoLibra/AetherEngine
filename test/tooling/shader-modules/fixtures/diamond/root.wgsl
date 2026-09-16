@@ -1,5 +1,3 @@
-#import "./b.wgsl"
-#import "./c.wgsl"
 @fragment
 fn fs_main() -> @location(0) vec4<f32> {
   let val = getBValue() + getCValue();

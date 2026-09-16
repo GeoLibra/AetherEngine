@@ -144,39 +144,43 @@ export function validateWgslShaderMetadata(value: unknown): WgslShaderMetadata {
     throw new Error(`Unsupported schemaVersion ${String(raw.schemaVersion)}. Expected 1.`);
   }
 
-  if (!Array.isArray(raw.entryPoints) || raw.entryPoints.length === 0) {
-    throw new Error('WGSL shader metadata must specify a non-empty array of entryPoints.');
-  }
-
-  const entryNames = new Set<string>();
-  const frozenEntryPoints: WgslEntryMetadata[] = [];
-
-  for (const entry of raw.entryPoints) {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-      throw new Error('Each entryPoint must be a non-null object.');
+  let frozenEntryPoints: readonly WgslEntryMetadata[] | undefined;
+  if (raw.entryPoints !== undefined) {
+    if (!Array.isArray(raw.entryPoints)) {
+      throw new Error('Metadata entryPoints must be an array when provided.');
     }
-    const { name, stage, label } = entry as Record<string, unknown>;
-    if (typeof name !== 'string' || name.trim().length === 0) {
-      throw new Error('Entry point name must be a non-empty string.');
-    }
-    if (entryNames.has(name)) {
-      throw new Error(`Duplicate entry point name "${name}" in metadata.`);
-    }
-    entryNames.add(name);
 
-    if (typeof stage !== 'string' || !VALID_STAGES.has(stage)) {
-      throw new Error(
-        `Invalid stage "${String(stage)}" for entry point "${name}". Must be vertex, fragment, or compute.`
+    const entryNames = new Set<string>();
+    const entries: WgslEntryMetadata[] = [];
+
+    for (const entry of raw.entryPoints) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error('Each entryPoint must be a non-null object.');
+      }
+      const { name, stage, label } = entry as Record<string, unknown>;
+      if (typeof name !== 'string' || name.trim().length === 0) {
+        throw new Error('Entry point name must be a non-empty string.');
+      }
+      if (entryNames.has(name)) {
+        throw new Error(`Duplicate entry point name "${name}" in metadata.`);
+      }
+      entryNames.add(name);
+
+      if (typeof stage !== 'string' || !VALID_STAGES.has(stage)) {
+        throw new Error(
+          `Invalid stage "${String(stage)}" for entry point "${name}". Must be vertex, fragment, or compute.`
+        );
+      }
+
+      entries.push(
+        Object.freeze({
+          name,
+          stage: stage as 'vertex' | 'fragment' | 'compute',
+          ...(typeof label === 'string' ? { label } : {})
+        })
       );
     }
-
-    frozenEntryPoints.push(
-      Object.freeze({
-        name,
-        stage: stage as 'vertex' | 'fragment' | 'compute',
-        ...(typeof label === 'string' ? { label } : {})
-      })
-    );
+    frozenEntryPoints = Object.freeze(entries);
   }
 
   let frozenImports: readonly WgslImportRef[] | undefined;
@@ -342,7 +346,7 @@ export function validateWgslShaderMetadata(value: unknown): WgslShaderMetadata {
 
   return Object.freeze({
     schemaVersion: 1 as const,
-    entryPoints: Object.freeze(frozenEntryPoints),
+    ...(frozenEntryPoints !== undefined ? { entryPoints: frozenEntryPoints } : {}),
     ...(frozenImports !== undefined ? { imports: frozenImports } : {}),
     ...(frozenVariants !== undefined ? { variants: frozenVariants } : {}),
     ...(frozenCapabilities !== undefined ? { capabilityRequirements: frozenCapabilities } : {}),

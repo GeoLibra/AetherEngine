@@ -59,15 +59,18 @@ bench(
       validators: { wgsl: { validate: async () => [] } },
       versions: { compiler: 1, ir: 1, abi: 1, backend: 1 }
     });
-    const result = await compiler.compile({
+    const request = {
       revision: 1,
       source: { uri: 'asset://bench/main.flux', languageVersion: 1 },
       entries: ['main'],
-      target: 'wgsl',
+      target: 'wgsl' as const,
       variants: {},
       capabilities: []
-    });
-    expect(result.status).toBe('compiled');
+    };
+    const first = await compiler.compile(request);
+    const second = await compiler.compile({ ...request, revision: 2 });
+    expect(first.status).toBe('compiled');
+    expect(second.status).toBe('cached');
   },
   { iterations: 1, warmupIterations: 0 }
 );
@@ -97,6 +100,12 @@ for (const moduleCount of [16, 64] as const) {
       });
       expect(result.closureModuleCount).toBeGreaterThanOrEqual(moduleCount - 2);
       expect(result.compositeHash).toBeTruthy();
+      expect(result.warmReused).toBe(true);
+      expect(result.sharedLeafAffectedRootsCount).toBe(2);
+      expect(result.rootLocalAffectedRootsCount).toBe(1);
+      expect(result.unrelatedAffectedRootsCount).toBe(0);
+      expect(result.incrementalMatchesFullRebuild).toBe(true);
+      expect(result.failedBuildRetainsLastKnownGood).toBe(true);
     },
     { iterations: 1, warmupIterations: 0 }
   );

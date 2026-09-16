@@ -81,7 +81,7 @@ export interface WgslCookPolicy {
  */
 export interface WgslShaderMetadata {
   readonly schemaVersion: 1;
-  readonly entryPoints: readonly WgslEntryMetadata[];
+  readonly entryPoints?: readonly WgslEntryMetadata[];
   readonly imports?: readonly WgslImportRef[];
   readonly variants?: readonly WgslVariantDimension[];
   readonly capabilityRequirements?: readonly WgslCapabilityRequirement[];

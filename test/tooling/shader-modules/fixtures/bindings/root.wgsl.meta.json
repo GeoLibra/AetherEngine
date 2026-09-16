@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "imports": [{ "path": "./params.wgsl" }],
+  "entryPoints": [{ "name": "fs_main", "stage": "fragment" }]
+}

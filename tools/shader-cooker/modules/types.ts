@@ -3,6 +3,8 @@
  * Based on engine/design/v2/04-rendering/14-shader-modules.md.
  */
 
+import type { WgslImportRef } from '../../../src/shader/types';
+
 /**
  * Unique canonical URI identifier of a shader module (e.g. `asset://aether/shared/uv.wgsl`).
  */
@@ -28,15 +30,19 @@ export interface SourceSpan {
 }
 
 /**
- * Declared import reference inside an authored WGSL source.
+ * Declared shader module source accompanied by its explicit metadata imports.
  */
-export interface ModuleImportDeclaration {
-  /** Raw import specifier as authored in source (e.g. `./uv.wgsl` or `asset://aether/shared/uv.wgsl`). */
-  readonly rawSpecifier: string;
-  /** Canonical resolved module ID after path normalization. */
-  readonly resolvedId: ShaderModuleId;
-  /** Source span where the import was declared in the importing module. */
-  readonly span: SourceSpan;
+export interface ShaderModuleSource {
+  readonly id: ShaderModuleId;
+  readonly source: string;
+  readonly imports: readonly WgslImportRef[];
+}
+
+/**
+ * Interface for asynchronously loading a shader module and its metadata imports.
+ */
+export interface ShaderModuleLoader {
+  loadModule(id: ShaderModuleId): Promise<ShaderModuleSource | undefined>;
 }
 
 /**
@@ -46,10 +52,8 @@ export interface ModuleSourceSnapshot {
   readonly id: ShaderModuleId;
   readonly content: string;
   readonly contentHash: string;
-  /** Explicit imported references declared by this module. */
-  readonly imports: readonly ModuleImportDeclaration[];
-  /** Compiler directives parsed at module level (e.g. `enable f16;`, `diagnostic(off, derivative_uniformity);`). */
-  readonly directives: readonly string[];
+  readonly imports: readonly WgslImportRef[];
+  readonly dependencies: readonly ShaderModuleId[];
 }
 
 /**
@@ -57,7 +61,7 @@ export interface ModuleSourceSnapshot {
  */
 export interface DependencyClosure {
   readonly rootId: ShaderModuleId;
-  /** Topologically sorted list of modules (dependencies before dependants). */
+  /** Topologically sorted list of modules (dependencies before dependants, root last). */
   readonly modules: readonly ModuleSourceSnapshot[];
   /** Map from module ID to list of downstream modules that directly depend on it. */
   readonly reverseDependencies: ReadonlyMap<ShaderModuleId, readonly ShaderModuleId[]>;
@@ -85,7 +89,6 @@ export interface LinkedWgslResult {
   readonly standardWgsl: string;
   readonly rootId: ShaderModuleId;
   readonly segments: readonly LinkedSourceSegment[];
-  readonly hoistedDirectives: readonly string[];
   readonly compositeHash: string;
 }
 
@@ -108,8 +111,42 @@ export interface ModuleDiagnostic {
 }
 
 /**
- * Interface for loading shader module contents from an arbitrary storage layer.
+ * Error thrown when resolving shader module identity, metadata, or dependency closure.
  */
-export interface ModuleSourceLoader {
-  loadSource(uri: string): Promise<string | undefined> | string | undefined;
+export class ShaderModuleResolutionError extends Error {
+  readonly code: string;
+  readonly moduleId?: ShaderModuleId | undefined;
+  readonly relatedModuleIds?: readonly ShaderModuleId[] | undefined;
+
+  constructor(
+    message: string,
+    code: string,
+    moduleId?: ShaderModuleId,
+    relatedModuleIds?: readonly ShaderModuleId[]
+  ) {
+    super(message);
+    this.name = 'ShaderModuleResolutionError';
+    this.code = code;
+    this.moduleId = moduleId;
+    this.relatedModuleIds = relatedModuleIds;
+  }
+}
+
+/** Alias for backward compatibility within tooling. */
+export const ModuleResolutionError = ShaderModuleResolutionError;
+export type ModuleResolutionError = ShaderModuleResolutionError;
+
+/**
+ * Error thrown when linking shader modules into a unified standard WGSL text.
+ */
+export class ShaderModuleLinkingError extends Error {
+  readonly code: string;
+  readonly moduleId?: ShaderModuleId | undefined;
+
+  constructor(message: string, code: string, moduleId?: ShaderModuleId) {
+    super(message);
+    this.name = 'ShaderModuleLinkingError';
+    this.code = code;
+    this.moduleId = moduleId;
+  }
 }

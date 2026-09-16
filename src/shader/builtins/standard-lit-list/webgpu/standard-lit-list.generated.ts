@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl',
-    contentHash: 'aa2ed3b25692e263f8f467798d33eafda7ad041669f0e7276c43b070ebada9e3',
-    byteLength: 20609
+    contentHash: '1dbea0303a3992c43f20826e3f1c748d940b54a279da118eb029dccd61c3039d',
+    byteLength: 20735
   },
   entryPoints: [
     {
@@ -873,8 +873,7 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   ],
   targetBackend: 'webgpu',
   modules: {
-    wgsl: `// --- Source Fragment: src/shader/builtins/standard-lit-list/webgpu/light-access.wgsl ---
-// ============================================================================
+    wgsl: `// ============================================================================
 // AetherEngine Standard PBR Shader - WebGPU Light Access
 // Uniform buffer bindings and light list accessors.
 // ============================================================================
@@ -919,7 +918,6 @@ fn receiverLightIndex(header: ReceiverLightHeader, index: u32) -> u32 {
 }
 
 
-// --- Source Fragment: src/shader/builtins/standard-lit-list/shading.wgsl ---
 // ============================================================================
 // AetherEngine Standard PBR Shader (Metallic-Roughness Workflow)
 // Cook-Torrance microfacet specular BRDF + Lambertian diffuse direct lighting.
@@ -1400,6 +1398,11 @@ fn standardLitFragment(
   return vec4<f32>(lit + surface.emissive, surface.baseColor.a);
 }
 
+
+// ============================================================================
+// AetherEngine Standard PBR Shader - WebGPU Clustered Light List Root
+// Composed from light-access module and shared shading module.
+// ============================================================================
 `,
     glslEs300: {}
   }

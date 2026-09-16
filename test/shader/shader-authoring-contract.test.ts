@@ -91,7 +91,7 @@ describe('WgslShaderMetadata validation', () => {
     expect(validated).toEqual(validMetadata);
     expect(Object.isFrozen(validated)).toBe(true);
     expect(Object.isFrozen(validated.entryPoints)).toBe(true);
-    expect(Object.isFrozen(validated.entryPoints[0])).toBe(true);
+    expect(Object.isFrozen(validated.entryPoints?.[0])).toBe(true);
   });
 
   test('rejects unknown metadata keys', () => {

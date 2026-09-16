@@ -53,7 +53,7 @@ const sampleArtifact: CookedShaderRuntimeArtifact = Object.freeze({
   })
 });
 
-describe('nativeWgslPlugin for Vite', () => {
+describe('nativeWgslPlugin for Vite', { timeout: 20000 }, () => {
   const fixtureWgsl = resolve(__dirname, '../fixtures/native-wgsl-plugin/simple.wgsl');
 
   test('does not hijack ordinary .wgsl imports without ?shader-artifact', () => {

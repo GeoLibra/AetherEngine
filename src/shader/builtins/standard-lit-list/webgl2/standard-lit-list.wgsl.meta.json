@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "imports": [
+    { "path": "asset://aether/builtins/standard-lit-list/webgl2/light-access.wgsl" },
+    { "path": "asset://aether/builtins/standard-lit-list/shading.wgsl" }
+  ],
+  "entryPoints": [
+    { "name": "standardLitVertex", "stage": "vertex" },
+    { "name": "standardLitFragment", "stage": "fragment" }
+  ],
+  "materialBindings": [{ "binding": "materialData", "property": "standardLit" }],
+  "cookPolicy": {
+    "optimization": "performance",
+    "preserveNames": true
+  }
+}

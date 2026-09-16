@@ -1,15 +1,28 @@
 /**
  * @file Source-kind authoring dispatch coordinator for shader compilation and cooking.
+ * Integrates module resolution and linking for composed shaders with full diagnostic remapping.
  */
 
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import type {
   CookedShaderRuntimeArtifact,
   ShaderAuthoringSource,
   WgslShaderMetadata
 } from '../../src/shader/types';
-import { NativeWgslCooker } from './native-wgsl-cooker';
-import { loadWgslMetadata } from './metadata-loader';
-
+import { loadWgslMetadata, loadWgslMetadataSync } from './metadata-loader';
+import {
+  createShaderModuleId,
+  FileSystemShaderModuleLoader,
+  linkStrictWgsl,
+  remapLinkedDiagnostic,
+  resolveDependencyClosure,
+  type ShaderModuleLoader,
+  type ShaderModuleSource
+} from './modules';
+import { NativeCookerError, NativeWgslCooker } from './native-wgsl-cooker';
 import {
   diagnoseShaderArtifactLayouts,
   formatStructLayoutDiagnostic,
@@ -51,6 +64,14 @@ export interface CookAuthoredShaderOptions {
    * to this handler instead of being logged to console.info.
    */
   readonly onLayoutDiagnostic?: ((diagnostic: StructLayoutDiagnosis) => void) | undefined;
+  /**
+   * Custom module loader for resolving imported shader modules.
+   */
+  readonly moduleLoader?: ShaderModuleLoader | undefined;
+  /**
+   * Callback invoked for each file path loaded during dependency resolution (used for watch/HMR).
+   */
+  readonly onDependencyResolved?: ((filePath: string) => void) | undefined;
 }
 
 /**
@@ -70,21 +91,126 @@ export async function cookAuthoredShader(
   switch (source.kind) {
     case 'wgsl': {
       const cooker = options.cooker ?? new NativeWgslCooker();
-      const artifact = await cooker.cook(
-        {
-          sourcePath,
-          sourceUri: source.uri,
-          metadataPath
-        },
-        { signal: options.signal }
-      );
 
       let metadata = request.metadata;
-      if (!metadata && metadataPath) {
-        metadata = await loadWgslMetadata(metadataPath);
+      let effectiveMetadataPath = metadataPath;
+      if (!metadata && !effectiveMetadataPath && sourcePath) {
+        const sidecarMeta = `${sourcePath}.meta.json`;
+        const shaderJson = sourcePath.replace(/\.wgsl$/u, '.shader.json');
+        if (existsSync(sidecarMeta)) {
+          effectiveMetadataPath = sidecarMeta;
+        } else if (shaderJson !== sourcePath && existsSync(shaderJson)) {
+          effectiveMetadataPath = shaderJson;
+        }
+      }
+      if (!metadata && effectiveMetadataPath) {
+        metadata = loadWgslMetadataSync(effectiveMetadataPath);
       }
 
-      if (metadata) {
+      let artifact: CookedShaderRuntimeArtifact;
+
+      // Check if this module declares external imports requiring resolution & linking
+      if (metadata?.imports && metadata.imports.length > 0) {
+        const rootSourceText = readFileSync(sourcePath, 'utf8');
+        const rootModuleSource: ShaderModuleSource = Object.freeze({
+          id: createShaderModuleId(source.uri),
+          source: rootSourceText,
+          imports: Object.freeze([...metadata.imports])
+        });
+
+        const loader =
+          options.moduleLoader ??
+          new FileSystemShaderModuleLoader({
+            fileOverrides: {
+              [source.uri]: sourcePath
+            },
+            moduleOverrides: {
+              [source.uri]: rootModuleSource
+            }
+          });
+        const closure = await resolveDependencyClosure(source.uri, loader);
+
+        if (options.onDependencyResolved) {
+          options.onDependencyResolved(sourcePath);
+          if (effectiveMetadataPath) {
+            options.onDependencyResolved(effectiveMetadataPath);
+          }
+          if (loader instanceof FileSystemShaderModuleLoader) {
+            for (const filePath of loader.getLoadedFilePaths()) {
+              options.onDependencyResolved(filePath);
+            }
+          }
+        }
+
+        const linked = linkStrictWgsl(closure);
+
+        // Write linked standard WGSL to temporary file for native cooker invocation
+        const tempDir = await mkdtemp(join(tmpdir(), 'aether-linked-cook-'));
+        const tempSourcePath = join(tempDir, basename(sourcePath));
+        await writeFile(tempSourcePath, linked.standardWgsl, 'utf8');
+
+        try {
+          artifact = await cooker.cook(
+            {
+              sourcePath: tempSourcePath,
+              sourceUri: source.uri,
+              ...(effectiveMetadataPath !== undefined
+                ? { metadataPath: effectiveMetadataPath }
+                : {})
+            },
+            { signal: options.signal }
+          );
+        } catch (cookError: unknown) {
+          if (cookError instanceof NativeCookerError) {
+            let line = cookError.line;
+            let col = cookError.column;
+
+            if (line === undefined) {
+              const lineMatch =
+                /line\s+(\d+)/i.exec(cookError.message) ?? /:(\d+):(\d+)/.exec(cookError.message);
+              if (lineMatch && lineMatch[1]) {
+                line = parseInt(lineMatch[1], 10);
+                if (lineMatch[2]) {
+                  col = parseInt(lineMatch[2], 10);
+                }
+              }
+            }
+
+            if (line !== undefined) {
+              const mapped = remapLinkedDiagnostic(
+                { line, column: col, message: cookError.message },
+                linked
+              );
+              const colSuffix = mapped.span?.column !== undefined ? `:${mapped.span.column}` : '';
+              const mappedLocation = `${mapped.moduleId}:${mapped.span?.line ?? 1}${colSuffix}`;
+              const mappedMessage = `${cookError.code}: [${mappedLocation}] ${cookError.message}`;
+
+              throw new NativeCookerError(mappedMessage, {
+                code: cookError.code,
+                sourceUri: (mapped.moduleId as string) ?? cookError.sourceUri,
+                rawStderr: cookError.rawStderr,
+                line: mapped.span?.line,
+                column: mapped.span?.column,
+                backendStage: cookError.backendStage
+              });
+            }
+          }
+          throw cookError;
+        } finally {
+          await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        }
+      } else {
+        artifact = await cooker.cook(
+          {
+            sourcePath,
+            sourceUri: source.uri,
+            ...(effectiveMetadataPath !== undefined ? { metadataPath: effectiveMetadataPath } : {})
+          },
+          { signal: options.signal }
+        );
+      }
+
+      if (metadata?.entryPoints) {
         // Cross-check metadata declarations with native reflection
         const reflectedEntries = new Map(artifact.entryPoints.map((ep) => [ep.name, ep.stage]));
         for (const metaEp of metadata.entryPoints) {
