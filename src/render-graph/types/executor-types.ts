@@ -7,7 +7,7 @@ import type {
 import type { CompiledRenderGraph, PortableTransition, ResourceAliasPlan } from './compiler-types';
 
 export type TransientResource = RHIBuffer | RHITexture;
-import type { RenderGraphSnapshot } from '../builder/builder';
+import type { RenderGraphSnapshot } from './graph-snapshot-types';
 import type { GroupPartitionResult, RasterGroupPlan } from './fusion-types';
 
 /** Identifies a transient texture derived from one surface configuration. */

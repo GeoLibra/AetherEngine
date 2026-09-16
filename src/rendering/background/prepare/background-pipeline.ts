@@ -14,8 +14,7 @@ import type {
 import type { RHISubmission } from '../../../rhi/contracts';
 import { SubmissionRetainedValue } from '../../world/submission-retained-value';
 import {
-  createPreparedBindGroupLayoutToken,
-  createPreparedRenderPipelineToken,
+  createPreparedToken,
   type PreparedBindGroupLayoutToken,
   type PreparedRenderPipelineToken
 } from '../../../render-graph';
@@ -168,9 +167,9 @@ export function prepareBackgroundPipeline(
       : {})
   });
 
-  const pipelineToken = createPreparedRenderPipelineToken(label);
-  const uniformLayoutToken = createPreparedBindGroupLayoutToken(`${label}-uniform-layout`);
-  const textureLayoutToken = createPreparedBindGroupLayoutToken(`${label}-texture-layout`);
+  const pipelineToken = createPreparedToken('render-pipeline', label);
+  const uniformLayoutToken = createPreparedToken('bind-group-layout', `${label}-uniform-layout`);
+  const textureLayoutToken = createPreparedToken('bind-group-layout', `${label}-texture-layout`);
 
   const prepared = Object.freeze({
     pipelineToken,

@@ -1,5 +1,4 @@
-import type { RenderGraphSnapshot } from '../../builder/builder';
-import type { CompiledRenderGraphEdge } from '../../types';
+import type { CompiledRenderGraphEdge, RenderGraphSnapshot } from '../../types';
 import { RenderGraphCycleError } from './errors';
 import { comparePassIds, requiredPass } from './validation';
 

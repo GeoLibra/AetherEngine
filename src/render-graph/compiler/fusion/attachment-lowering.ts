@@ -1,5 +1,9 @@
-import type { GraphPassDeclaration, RenderGraphSnapshot } from '../../builder/builder';
-import type { CompiledRenderGraph, TextureDescriptor } from '../../types';
+import type {
+  CompiledRenderGraph,
+  GraphPassDeclaration,
+  RenderGraphSnapshot,
+  TextureDescriptor
+} from '../../types';
 import { defaultTextureRange } from './signature';
 import type {
   PhysicalAttachmentPlan,

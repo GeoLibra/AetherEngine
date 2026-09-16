@@ -1,5 +1,9 @@
-import type { GraphPassDeclaration, RenderGraphSnapshot } from '../../builder/builder';
-import type { TextureDescriptor, TextureRange } from '../../types';
+import type {
+  GraphPassDeclaration,
+  RenderGraphSnapshot,
+  TextureDescriptor,
+  TextureRange
+} from '../../types';
 import { SplitReasonCode } from './constants';
 
 export interface ColorAttachmentSignature {

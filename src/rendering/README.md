@@ -25,6 +25,7 @@ The `src/rendering/` subsystem provides design-driven, type-safe rendering abstr
 | [`pipeline/`](./pipeline/)     | Canonical pipeline identities, layout compilation/lowering, layout cache, async pipeline compilation.                                     | `createPipelineKey`, `createBindingKey`, `compileBindingLayoutPlan`, `LayoutCache`, `DeviceLayoutCache`, `PipelineCache`             |
 | [`lighting/`](./lighting/)     | Light extraction, clustered/forward light lists, directional shadows, Cascaded Shadow Maps (CSM), shadow atlas.                           | `PreparedLight`, `buildCpuLightLists`, `buildStableCascade`, `ShadowAtlasAllocator`, `declareShadowDepthPasses`                      |
 | [`phase/`](./phase/)           | Render phase sorting, packet preparation, opaque render systems, overlay reconciler, frame runner.                                        | `buildRenderPhase`, `prepareDrawPacket`, `buildPreparedDrawPhase`, `createOpaqueRenderSystem`, `OverlayReconciler`, `runRenderFrame` |
+| [`systems/`](./systems/)       | High-level RenderSystem authoring registry, query binding, per-view lowering, and pass scheduling facade.                                 | `RenderSystemRegistry`, `compileRenderSystems`, `renderSystemToken`, `RenderSystemDescriptor`                                        |
 
 ---
 

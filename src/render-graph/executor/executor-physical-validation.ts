@@ -2,9 +2,9 @@ import type {
   GraphHandle,
   PortableTransition,
   RasterGroupPlan,
-  RenderGraphExecutionPlan
+  RenderGraphExecutionPlan,
+  RenderGraphSnapshot
 } from '../types';
-import type { RenderGraphSnapshot } from '../builder/builder';
 import type { RHIBuffer, RHITexture } from '../../rhi/contracts';
 
 /**

@@ -1,5 +1,4 @@
-import type { GraphPassDeclaration } from '../../builder/builder';
-import type { BufferUsage, TextureUsage } from '../../types';
+import type { BufferUsage, GraphPassDeclaration, TextureUsage } from '../../types';
 
 export class GroupUsageAccumulator {
   private readonly textureUsages = new Map<number, Set<TextureUsage>>();

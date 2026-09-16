@@ -1,139 +1,30 @@
-import { RenderGraphBuilder } from './builder';
-import { compileRenderGraph } from '../compiler';
-import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../debug';
 import {
-  createRenderGraphExecutionPlan,
-  type ExecutionPlanOptions
-} from '../executor/execution-plan';
-import type {
-  ComputePassBuilder,
-  ComputePassContext,
-  CopyPassBuilder,
-  CopyPassContext,
-  RasterPassBuilder,
-  RasterPassContext,
-  RenderGraphExecutionPlan,
-  RenderGraphExecutionStep
-} from '../types';
-import type { RenderPhaseSnapshot } from '../../rendering/phase';
+  RenderGraphBuilder,
+  compileRenderGraph,
+  createRenderGraphDebugIR,
+  createRenderGraphExecutionPlan
+} from '../../render-graph';
+import type { RenderPhaseSnapshot } from '../phase';
 import type {
   RenderFieldToken,
   RenderEntityView,
   RenderQuerySnapshot,
   RenderQuerySpec
-} from '../../rendering/world';
-import type { RenderView } from '../../rendering/visibility/types';
-
-export type RenderSystemScope = 'global' | 'per-view';
-
-export interface RenderSystemToken {
-  readonly kind: 'render-system';
-  readonly id: string;
-}
-
-export interface RenderSystemConditionContext {
-  readonly systemId: string;
-  readonly scope: RenderSystemScope;
-  readonly instanceId: string;
-  readonly view?: RenderView;
-}
-
-export type RenderSystemCondition = (context: RenderSystemConditionContext) => boolean;
-
-export interface RenderSystemSetupContext<TItem> extends RenderSystemConditionContext {
-  readonly query: RenderQuerySnapshot<TItem>;
-  readonly phases: readonly RenderPhaseSnapshot[];
-}
-
-export interface BaseRenderSystemDescriptor<TItem = never> {
-  readonly id: string;
-  readonly scope: RenderSystemScope;
-  readonly query?: RenderQuerySpec<TItem>;
-  readonly before?: readonly RenderSystemToken[];
-  readonly after?: readonly RenderSystemToken[];
-  readonly runIf?: RenderSystemCondition;
-}
-
-export interface RasterRenderSystemDescriptor<
-  TResources,
-  TItem = never
-> extends BaseRenderSystemDescriptor<TItem> {
-  readonly kind: 'raster';
-  setup(builder: RasterPassBuilder, context: RenderSystemSetupContext<TItem>): TResources;
-  run(context: RasterPassContext, resources: TResources, query: RenderQuerySnapshot<TItem>): void;
-}
-
-export interface ComputeRenderSystemDescriptor<
-  TResources,
-  TItem = never
-> extends BaseRenderSystemDescriptor<TItem> {
-  readonly kind: 'compute';
-  setup(builder: ComputePassBuilder, context: RenderSystemSetupContext<TItem>): TResources;
-  run(context: ComputePassContext, resources: TResources, query: RenderQuerySnapshot<TItem>): void;
-}
-
-export interface CopyRenderSystemDescriptor<
-  TResources,
-  TItem = never
-> extends BaseRenderSystemDescriptor<TItem> {
-  readonly kind: 'copy';
-  setup(builder: CopyPassBuilder, context: RenderSystemSetupContext<TItem>): TResources;
-  run(context: CopyPassContext, resources: TResources, query: RenderQuerySnapshot<TItem>): void;
-}
-
-export type RenderSystemDescriptor<TResources, TItem = never> =
-  | RasterRenderSystemDescriptor<TResources, TItem>
-  | ComputeRenderSystemDescriptor<TResources, TItem>
-  | CopyRenderSystemDescriptor<TResources, TItem>;
-
-export interface RenderSystemSnapshotSource {
-  query(spec: RenderQuerySpec<unknown>): RenderQuerySnapshot<unknown>;
-}
-
-export interface RenderSystemCompileOptions {
-  readonly views: readonly RenderView[];
-  readonly snapshots?: RenderSystemSnapshotSource;
-  readonly phaseSnapshots?: readonly RenderPhaseSnapshot[];
-  /** Existing graph containing feature passes that the systems consume. */
-  readonly graph?: RenderGraphBuilder;
-  /** Optional execution plan options, including fusion configuration. */
-  readonly executionPlanOptions?: ExecutionPlanOptions;
-}
-
-export interface CompiledRenderSystemInstance<TItem = unknown> {
-  readonly id: string;
-  readonly systemId: string;
-  readonly scope: RenderSystemScope;
-  readonly viewId?: string;
-  readonly query: RenderQuerySnapshot<TItem>;
-}
-
-export type RenderSystemInternalNode = Extract<
-  RenderGraphExecutionStep,
-  { readonly kind: 'prelude' | 'submission' }
->;
-
-export interface CompiledRenderSystems {
-  readonly plan: RenderGraphExecutionPlan;
-  readonly debug: RenderGraphDebugIR;
-  readonly instances: readonly CompiledRenderSystemInstance[];
-  /** Meta boundaries are part of this compiled renderer plan, never App schedule nodes. */
-  readonly internalNodes: readonly RenderSystemInternalNode[];
-}
-
-interface RegisteredRenderSystem {
-  readonly descriptor: RenderSystemDescriptor<unknown, unknown>;
-  readonly registrationIndex: number;
-}
-
-interface ActiveRenderSystemInstance {
-  readonly descriptor: RenderSystemDescriptor<unknown, unknown>;
-  readonly registrationIndex: number;
-  readonly instanceId: string;
-  readonly view?: RenderView;
-  readonly query: RenderQuerySnapshot<unknown>;
-  readonly phases: readonly RenderPhaseSnapshot[];
-}
+} from '../world';
+import type { RenderView } from '../visibility/types';
+import type { RenderSystemRegistry } from './registry';
+import type {
+  ActiveRenderSystemInstance,
+  CompiledRenderSystems,
+  RegisteredRenderSystem,
+  RenderSystemCompileOptions,
+  RenderSystemDescriptor,
+  RenderSystemInternalNode,
+  RenderSystemScope,
+  RenderSystemSetupContext,
+  RenderSystemSnapshotSource,
+  RenderSystemToken
+} from './types';
 
 const EMPTY_QUERY_ITEMS: readonly never[] = Object.freeze([]);
 const EMPTY_QUERY: RenderQuerySnapshot<never> = Object.freeze({
@@ -141,35 +32,6 @@ const EMPTY_QUERY: RenderQuerySnapshot<never> = Object.freeze({
   renderRevision: 0,
   items: EMPTY_QUERY_ITEMS
 });
-
-/** Creates a stable semantic token without creating a second scheduling domain. */
-export function renderSystemToken(id: string): RenderSystemToken {
-  assertId(id, 'Render system token');
-  return Object.freeze({ kind: 'render-system', id });
-}
-
-/** Ordered authoring registry; compilation lowers every contribution into one RenderGraph. */
-export class RenderSystemRegistry {
-  private readonly systems: RegisteredRenderSystem[] = [];
-  private readonly ids = new Set<string>();
-
-  add<TResources, TItem>(descriptor: RenderSystemDescriptor<TResources, TItem>): RenderSystemToken {
-    validateDescriptor(descriptor);
-    if (this.ids.has(descriptor.id)) {
-      throw new Error(`Render system id "${descriptor.id}" is already registered.`);
-    }
-    this.ids.add(descriptor.id);
-    this.systems.push({
-      descriptor: descriptor as unknown as RenderSystemDescriptor<unknown, unknown>,
-      registrationIndex: this.systems.length
-    });
-    return renderSystemToken(descriptor.id);
-  }
-
-  entries(): readonly RegisteredRenderSystem[] {
-    return Object.freeze([...this.systems]);
-  }
-}
 
 /**
  * Lowers facade declarations to direct graph passes, then delegates all ordering and culling to
@@ -394,15 +256,6 @@ function instanceIdFor(id: string, scope: RenderSystemScope, view: RenderView | 
   return scope === 'global' ? `${safeId}@global` : `${safeId}@view:${encodeURIComponent(view!.id)}`;
 }
 
-function validateDescriptor<TResources, TItem>(
-  descriptor: RenderSystemDescriptor<TResources, TItem>
-): void {
-  assertId(descriptor.id, 'Render system');
-  if (descriptor.scope !== 'global' && descriptor.scope !== 'per-view') {
-    throw new Error(`Render system "${descriptor.id}" has an invalid scope.`);
-  }
-}
-
 function validateSemanticTokens(
   entries: readonly RegisteredRenderSystem[],
   knownIds: ReadonlySet<string>
@@ -483,10 +336,6 @@ function assertDeepImmutable(value: unknown, systemId: string, visited: WeakSet<
       assertDeepImmutable(property.value, systemId, visited);
     }
   }
-}
-
-function assertId(id: string, name: string): void {
-  if (id.trim().length === 0) throw new Error(`${name} id must not be empty.`);
 }
 
 function unique(values: readonly string[]): string[] {

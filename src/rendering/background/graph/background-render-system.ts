@@ -7,10 +7,9 @@ import type {
   BufferHandle,
   RasterPassBuilder,
   RasterPassContext,
-  RasterRenderSystemDescriptor,
-  RenderSystemConditionContext,
   TextureHandle
 } from '../../../render-graph';
+import type { RasterRenderSystemDescriptor, RenderSystemConditionContext } from '../../systems';
 import type { PreparedBackgroundFrame } from '../prepare/background-preparation';
 
 export interface BackgroundRenderSystemInput {

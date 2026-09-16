@@ -13,13 +13,6 @@ import type {
   TransientResourcePoolCounters
 } from '../types';
 
-export type {
-  SurfaceTransientScope,
-  TransientAllocationDescriptor,
-  TransientResource,
-  TransientResourcePoolCounters
-} from '../types';
-
 interface PoolEntry {
   readonly key: string;
   readonly resource: TransientResource;

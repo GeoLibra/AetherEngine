@@ -4,8 +4,8 @@ import type {
   PreparedComputePipelineToken,
   PreparedDrawResourcesToken,
   PreparedRenderPipelineToken
-} from '../builder/prepared-resources';
-import type { SurfaceFrameToken } from '../builder/pass-builder';
+} from './prepared-resource-types';
+import type { SurfaceFrameToken } from './surface-frame-types';
 import type {
   BufferDescriptor,
   BufferHandle,

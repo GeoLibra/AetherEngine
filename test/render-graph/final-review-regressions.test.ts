@@ -2,8 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import {
   RenderGraphExecutor,
-  createRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan
+  createRenderGraphExecutionPlan
 } from '../../src/render-graph/executor';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import { HistoryRegistry, type HistoryIdentity } from '../../src/render-graph/history';
@@ -12,6 +11,7 @@ import type {
   ComputePassContext,
   CopyPassContext,
   GraphHandle,
+  RenderGraphExecutionPlan,
   TextureDescriptor
 } from '../../src/render-graph/types';
 import type { RHIBuffer, RHITexture } from '../../src/rhi/contracts';

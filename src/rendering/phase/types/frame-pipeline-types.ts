@@ -1,5 +1,5 @@
 import type { RenderView } from '../../visibility/types';
-import type { RenderGraphExecutionPlan } from '../../../render-graph/executor';
+import type { RenderGraphExecutionPlan } from '../../../render-graph';
 
 export type RenderSkipReason =
   'surface-suspended' | 'prepare-pending' | 'incompatible-pipeline' | 'missing-resource';

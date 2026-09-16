@@ -1,176 +1,24 @@
-import { assertGraphHandle } from './handles';
-import type { GraphAccess, GraphTerminal } from './builder';
-import type { RenderGraphPassContextDelegate, SurfaceFrameToken } from './pass-builder';
+import { assertGraphHandle } from '../handles';
+import { BaseGraphResourceBuilder } from './base-pass-builder';
 import type {
-  BufferDescriptor,
-  BufferHandle,
-  BufferRange,
-  BufferReadUsage,
-  BufferWriteUsage,
   ColorAttachmentOptions,
-  ComputeBufferWriteUsage,
-  ComputePassBuilder,
-  ComputeTextureWriteUsage,
-  CopyBufferWriteUsage,
-  CopyPassBuilder,
-  CopyTextureWriteUsage,
   DeclaredColorAttachment,
   DeclaredDepthStencilAttachment,
   DeclaredResolveAttachment,
   DepthStencilAttachmentOptions,
-  ExternalResourceState,
-  GraphHandle,
-  GraphResourceBuilder,
-  GraphResourceCreateOptions,
-  PassToken,
+  PreparedDrawResourcesToken,
+  PreparedRenderPipelineToken,
   RasterPassBuilder,
+  RasterPassDeclarationDetails,
   TextureDescriptor,
   TextureHandle,
-  TextureRange,
-  TextureReadUsage,
-  TextureWriteUsage
-} from '../types';
-import type {
-  PreparedComputePipelineToken,
-  PreparedDrawResourcesToken,
-  PreparedRenderPipelineToken
-} from './prepared-resources';
+  TextureRange
+} from '../../types';
 
-export interface RasterPassDeclarationDetails {
-  readonly colorAttachments: readonly DeclaredColorAttachment[];
-  readonly depthStencilAttachment?: DeclaredDepthStencilAttachment | undefined;
-  readonly resolveAttachments: readonly DeclaredResolveAttachment[];
-  readonly preparedRenderPipelines: readonly PreparedRenderPipelineToken[];
-  readonly preparedDrawResources: readonly PreparedDrawResourcesToken[];
-}
-
-export interface ComputePassDeclarationDetails {
-  readonly preparedComputePipelines: readonly PreparedComputePipelineToken[];
-}
-
-export class BaseGraphResourceBuilder implements GraphResourceBuilder {
-  protected readonly accesses: GraphAccess[] = [];
-  protected readonly terminals: GraphTerminal[] = [];
-  protected readonly sideEffects: string[] = [];
-  protected active = true;
-
-  constructor(
-    protected readonly graph: RenderGraphPassContextDelegate,
-    protected readonly passId: number
-  ) {}
-
-  createTexture(
-    descriptor: TextureDescriptor,
-    options?: GraphResourceCreateOptions
-  ): TextureHandle {
-    this.assertActive();
-    return this.graph.createTexture(descriptor, options);
-  }
-
-  createBuffer(descriptor: BufferDescriptor, options?: GraphResourceCreateOptions): BufferHandle {
-    this.assertActive();
-    return this.graph.createBuffer(descriptor, options);
-  }
-
-  readTexture(handle: TextureHandle, usage: TextureReadUsage, range?: TextureRange): TextureHandle {
-    this.assertActive();
-    this.accesses.push(this.graph.declareRead(this.passId, handle, usage, 'texture', range));
-    return handle;
-  }
-
-  readBuffer(handle: BufferHandle, usage: BufferReadUsage, range?: BufferRange): BufferHandle {
-    this.assertActive();
-    this.accesses.push(this.graph.declareRead(this.passId, handle, usage, 'buffer', range));
-    return handle;
-  }
-
-  protected declareWriteTexture(
-    handle: TextureHandle,
-    usage: TextureWriteUsage,
-    range?: TextureRange
-  ): TextureHandle {
-    this.assertActive();
-    const access = this.graph.declareWrite(this.passId, handle, usage, 'texture', range);
-    this.accesses.push(access);
-    return access.handle as TextureHandle;
-  }
-
-  protected declareWriteBuffer(
-    handle: BufferHandle,
-    usage: BufferWriteUsage,
-    range?: BufferRange
-  ): BufferHandle {
-    this.assertActive();
-    const access = this.graph.declareWrite(this.passId, handle, usage, 'buffer', range);
-    this.accesses.push(access);
-    return access.handle as BufferHandle;
-  }
-
-  sideEffect(reason: string): void {
-    this.assertActive();
-    if (!reason.trim()) throw new Error('Render graph side effects require a non-empty reason.');
-    this.sideEffects.push(reason);
-  }
-
-  after(pass: PassToken): void {
-    this.assertActive();
-    this.graph.declareAfter(pass, this.passId);
-  }
-
-  exportResource(handle: GraphHandle, finalState: ExternalResourceState): void {
-    this.assertActive();
-    assertGraphHandle(handle, this.graph.graphId);
-    this.graph.validateExportState(handle, finalState);
-    const terminal = Object.freeze({
-      kind: 'export' as const,
-      passId: this.passId,
-      handle,
-      finalState
-    });
-    this.graph.declareTerminal(terminal);
-    this.terminals.push(terminal);
-  }
-
-  present(handle: TextureHandle, surfaceFrame: SurfaceFrameToken): void {
-    this.assertActive();
-    assertGraphHandle(handle, this.graph.graphId, 'texture');
-    if (surfaceFrame.kind !== 'surface-frame' || !surfaceFrame.id) {
-      throw new Error('Present terminal requires a valid surface frame token.');
-    }
-    this.graph.validatePresentBinding(handle, surfaceFrame);
-    const terminal = Object.freeze({
-      kind: 'present' as const,
-      passId: this.passId,
-      handle,
-      surfaceFrame: Object.freeze({ ...surfaceFrame })
-    });
-    this.graph.declareTerminal(terminal);
-    this.terminals.push(terminal);
-  }
-
-  complete(): void {
-    this.active = false;
-  }
-
-  frozenAccesses(): readonly GraphAccess[] {
-    return Object.freeze([...this.accesses]);
-  }
-
-  frozenTerminals(): readonly GraphTerminal[] {
-    return Object.freeze([...this.terminals]);
-  }
-
-  frozenSideEffects(): readonly string[] {
-    return Object.freeze([...this.sideEffects]);
-  }
-
-  protected assertActive(): void {
-    if (!this.active) {
-      throw new Error('Render graph pass setup is complete and its declaration is frozen.');
-    }
-  }
-}
-
+/**
+ * Restricted builder implementation for raster passes. Enforces attachment-only writes
+ * and prevents buffer write declarations.
+ */
 export class RasterPassBuilderImpl extends BaseGraphResourceBuilder implements RasterPassBuilder {
   private readonly colorAttachmentsMap = new Map<number, DeclaredColorAttachment>();
   private depthStencilAttachmentDecl: DeclaredDepthStencilAttachment | undefined;
@@ -356,74 +204,5 @@ export class RasterPassBuilderImpl extends BaseGraphResourceBuilder implements R
       preparedRenderPipelines: Object.freeze([...this.renderPipelines]),
       preparedDrawResources: Object.freeze([...this.drawResourcesTokens])
     });
-  }
-}
-
-export class ComputePassBuilderImpl extends BaseGraphResourceBuilder implements ComputePassBuilder {
-  private readonly computePipelines = new Set<PreparedComputePipelineToken>();
-
-  writeTexture(
-    handle: TextureHandle,
-    usage: ComputeTextureWriteUsage,
-    range?: TextureRange
-  ): TextureHandle {
-    if (usage !== 'storage-write') {
-      throw new Error(
-        `Compute pass cannot declare texture write usage "${usage}". Only "storage-write" is allowed.`
-      );
-    }
-    return this.declareWriteTexture(handle, usage, range);
-  }
-
-  writeBuffer(
-    handle: BufferHandle,
-    usage: ComputeBufferWriteUsage,
-    range?: BufferRange
-  ): BufferHandle {
-    if (usage !== 'storage-write') {
-      throw new Error(
-        `Compute pass cannot declare buffer write usage "${usage}". Only "storage-write" is allowed.`
-      );
-    }
-    return this.declareWriteBuffer(handle, usage, range);
-  }
-
-  useComputePipeline(token: PreparedComputePipelineToken): void {
-    this.assertActive();
-    this.computePipelines.add(token);
-  }
-
-  declarationDetails(): ComputePassDeclarationDetails {
-    return Object.freeze({
-      preparedComputePipelines: Object.freeze([...this.computePipelines])
-    });
-  }
-}
-
-export class CopyPassBuilderImpl extends BaseGraphResourceBuilder implements CopyPassBuilder {
-  writeTexture(
-    handle: TextureHandle,
-    usage: CopyTextureWriteUsage,
-    range?: TextureRange
-  ): TextureHandle {
-    if (usage !== 'copy-dst') {
-      throw new Error(
-        `Copy pass cannot declare texture write usage "${usage}". Only "copy-dst" is allowed.`
-      );
-    }
-    return this.declareWriteTexture(handle, usage, range);
-  }
-
-  writeBuffer(
-    handle: BufferHandle,
-    usage: CopyBufferWriteUsage,
-    range?: BufferRange
-  ): BufferHandle {
-    if (usage !== 'copy-dst') {
-      throw new Error(
-        `Copy pass cannot declare buffer write usage "${usage}". Only "copy-dst" is allowed.`
-      );
-    }
-    return this.declareWriteBuffer(handle, usage, range);
   }
 }

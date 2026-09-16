@@ -1,5 +1,4 @@
-import type { GraphPassDeclaration, RenderGraphSnapshot } from '../../builder/builder';
-import type { CompiledRenderGraph } from '../../types';
+import type { CompiledRenderGraph, GraphPassDeclaration, RenderGraphSnapshot } from '../../types';
 import { SplitReasonCode } from './constants';
 import { lowerPhysicalAttachmentOperations } from './attachment-lowering';
 import { extractRasterSignature } from './signature';

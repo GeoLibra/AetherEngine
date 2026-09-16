@@ -1,4 +1,3 @@
-import type { GraphPassDeclaration, RenderGraphSnapshot } from '../builder/builder';
 import {
   isCompiledRenderGraph,
   isCompiledRenderGraphForSnapshot,
@@ -9,15 +8,15 @@ import {
 } from '../compiler';
 import type {
   CompiledRenderGraph,
+  GraphPassDeclaration,
   PassFusionOptions,
   RasterGroupPlan,
   RenderGraphExecutionPlan,
   RenderGraphExecutionStep,
+  RenderGraphSnapshot,
   ResourceAliasPlan
 } from '../types';
 import { validatePhysicalTransitionsAndPassBoundaries } from './executor-physical-validation';
-
-export type { RenderGraphExecutionPlan, RenderGraphExecutionStep } from '../types';
 
 const CANONICAL_EXECUTION_PLANS = new WeakSet<object>();
 

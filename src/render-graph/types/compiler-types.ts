@@ -5,7 +5,7 @@ import type {
   TextureUsage
 } from './render-graph-types';
 import type { GraphRange } from '../ranges';
-import type { GraphPassDeclaration, RenderGraphSnapshot } from '../builder/builder';
+import type { GraphPassDeclaration } from './graph-snapshot-types';
 
 export type RenderGraphHazardKind = 'raw' | 'war' | 'waw';
 

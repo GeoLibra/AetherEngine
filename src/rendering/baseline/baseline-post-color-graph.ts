@@ -3,11 +3,10 @@ import type {
   RasterPassBuilder,
   RasterPassContext,
   RenderGraphBuilder,
-  RenderSystemConditionContext,
-  RenderSystemToken,
   TextureDescriptor,
   TextureHandle
 } from '../../render-graph';
+import type { RenderSystemConditionContext, RenderSystemToken } from '../systems';
 import type { BaselinePreparedFrame, BaselineRenderingOptions } from './types';
 
 export function createPostColorContribution(

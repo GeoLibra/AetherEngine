@@ -4,8 +4,7 @@ import {
   NullSurface,
   RenderGraphBuilder,
   RenderGraphExecutor,
-  createPreparedBindGroupLayoutToken,
-  createPreparedRenderPipelineToken,
+  createPreparedToken,
   RenderSystemRegistry,
   compileRenderSystems,
   createBackgroundRenderSystem,
@@ -143,9 +142,9 @@ describe('createOpaqueRenderSystem', () => {
       primitive: { topology: 'triangle-list' }
     });
 
-    const pipelineToken = createPreparedRenderPipelineToken('bg-pipeline');
-    const uniformToken = createPreparedBindGroupLayoutToken('bg-uniform-bgl');
-    const textureToken = createPreparedBindGroupLayoutToken('bg-texture-bgl');
+    const pipelineToken = createPreparedToken('render-pipeline', 'bg-pipeline');
+    const uniformToken = createPreparedToken('bind-group-layout', 'bg-uniform-bgl');
+    const textureToken = createPreparedToken('bind-group-layout', 'bg-texture-bgl');
 
     const emptyPhase: PreparedDrawPhaseSnapshot = Object.freeze({
       viewId: 'view:main',

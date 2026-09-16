@@ -1,4 +1,4 @@
-import type { RenderGraphExecutionPlan } from '../../../render-graph/executor';
+import type { RenderGraphExecutionPlan } from '../../../render-graph';
 import type { RHISurface } from '../../../rhi/contracts/surface';
 
 /** Immutable surface facts used to build an extent-specific render plan. */

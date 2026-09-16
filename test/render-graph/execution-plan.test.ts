@@ -3,9 +3,9 @@ import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
-  createRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan
+  createRenderGraphExecutionPlan
 } from '../../src/render-graph/executor';
+import type { RenderGraphExecutionPlan } from '../../src/render-graph/types';
 import { NullDevice } from '../../src/rhi/null/device';
 
 function planWithTwoPasses(calls: string[]): RenderGraphExecutionPlan {

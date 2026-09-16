@@ -2,10 +2,10 @@ import type {
   BufferHandle,
   RasterPassBuilder,
   RasterPassContext,
-  RasterRenderSystemDescriptor,
   TextureHandle
 } from '../../render-graph';
-import { createPreparedDrawResourcesToken } from '../../render-graph';
+import type { RasterRenderSystemDescriptor } from '../systems';
+import { createPreparedToken } from '../../render-graph';
 import type { OpaqueRenderSystemInput, OpaqueRenderSystemPreparation } from './types';
 import { ReadonlyMapSnapshot } from '../world/readonly-collection-snapshot';
 
@@ -23,7 +23,7 @@ export function createOpaqueRenderSystem(
   validateInput(input);
   const bindings = new Map(
     input.phase.packets.map((packet, index) => [
-      createPreparedDrawResourcesToken(`${input.phase.viewId}:opaque:${index}`),
+      createPreparedToken('draw-resources', `${input.phase.viewId}:opaque:${index}`),
       packet
     ])
   );

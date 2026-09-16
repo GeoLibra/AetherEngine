@@ -1,11 +1,12 @@
-import { validatePassAccessUsages, type RenderGraphSnapshot } from '../../builder/builder';
+import { validatePassAccessUsages } from '../../builder/utils';
 import { deriveRenderGraphHazards } from '../hazards';
 import type {
   CompiledRenderGraph,
   CompiledRenderGraphCounters,
   CompiledRenderGraphEdge,
   CulledRenderGraphPass,
-  RenderGraphSemanticEdge
+  RenderGraphSemanticEdge,
+  RenderGraphSnapshot
 } from '../../types';
 import {
   rejectHazardReversal,
@@ -16,13 +17,6 @@ import {
 } from './validation';
 import { collectPredecessorClosure, collectRoots, stableTopologicalOrder } from './topology';
 
-export type {
-  CompiledRenderGraph,
-  CompiledRenderGraphCounters,
-  CompiledRenderGraphEdge,
-  CulledRenderGraphPass,
-  RenderGraphSemanticEdge
-} from '../../types';
 export { RenderGraphCycleError, RenderGraphSemanticHazardError } from './errors';
 
 const COMPILED_RENDER_GRAPHS = new WeakMap<object, RenderGraphSnapshot>();

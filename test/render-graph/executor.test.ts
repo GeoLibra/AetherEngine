@@ -1,15 +1,9 @@
-import {
-  RenderGraphBuilder,
-  createPreparedComputePipelineToken,
-  createPreparedRenderPipelineToken
-} from '../../src/render-graph/builder';
+import { RenderGraphBuilder, createPreparedToken } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
   createRenderGraphExecutionPlan,
-  TransientResourcePool,
-  type RenderGraphExecutionPlan,
-  type TransientAllocationDescriptor
+  TransientResourcePool
 } from '../../src/render-graph/executor';
 import { NullDevice } from '../../src/rhi/null/device';
 import type {
@@ -17,7 +11,9 @@ import type {
   ComputePassContext,
   CopyPassContext,
   RasterPassContext,
-  TextureDescriptor
+  RenderGraphExecutionPlan,
+  TextureDescriptor,
+  TransientAllocationDescriptor
 } from '../../src/render-graph/types';
 
 const TEXTURE: TextureDescriptor = {
@@ -108,7 +104,7 @@ describe('RenderGraphExecutor', () => {
   test('exposes externally prepared render pipelines through typed pass capabilities', () => {
     const device = new NullDevice();
     const pipeline = device.createRenderPipeline({ label: 'prepared' });
-    const token = createPreparedRenderPipelineToken('main');
+    const token = createPreparedToken('render-pipeline', 'main');
     const graph = new RenderGraphBuilder();
     let resolved: unknown;
     graph.addRasterPass({
@@ -135,7 +131,7 @@ describe('RenderGraphExecutor', () => {
   test('exposes externally prepared compute pipelines through typed pass capabilities', () => {
     const device = new NullDevice();
     const pipeline = device.createComputePipeline({ label: 'prepared-compute' });
-    const token = createPreparedComputePipelineToken('light-list');
+    const token = createPreparedToken('compute-pipeline', 'light-list');
     const graph = new RenderGraphBuilder();
     let resolved: unknown;
     graph.addComputePass({

@@ -1,6 +1,11 @@
-import type { GraphPassDeclaration, RenderGraphSnapshot } from '../../builder/builder';
-import type { GraphResourceRecord } from '../../builder/resources';
-import type { CompiledRenderGraph, RasterGroupPlan, TextureDescriptor } from '../../types';
+import type {
+  CompiledRenderGraph,
+  GraphPassDeclaration,
+  GraphResourceRecord,
+  RasterGroupPlan,
+  RenderGraphSnapshot,
+  TextureDescriptor
+} from '../../types';
 import { TEXTURE_FORMAT_BYTES } from './constants';
 
 /**

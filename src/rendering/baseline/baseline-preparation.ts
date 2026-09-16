@@ -37,10 +37,7 @@ import {
 } from '../material';
 import { StandardLitMaterialSchema } from '../../material';
 import type { PreparedDrawPacket } from '../phase';
-import {
-  createPreparedBindGroupLayoutToken,
-  createPreparedRenderPipelineToken
-} from '../../render-graph';
+import { createPreparedToken, type PreparedBindGroupLayoutToken } from '../../render-graph';
 import type { ExtractedView } from '../camera';
 import type { RenderEntityId } from '../world';
 import type { RenderTransformFact } from '../mesh';
@@ -140,8 +137,10 @@ export class BaselineStandardLitPreparation {
   private readonly postColorOwnedResources: readonly RHIResource[];
   private readonly lightListRecorder:
     PreparedWebGpuLightListRecorder | PreparedWebGlLightListRecorder;
-  readonly lightListBindGroupLayoutToken =
-    createPreparedBindGroupLayoutToken('standard-lit-light-list');
+  readonly lightListBindGroupLayoutToken = createPreparedToken(
+    'bind-group-layout',
+    'standard-lit-light-list'
+  );
   private frameAllocationGeneration = 0;
   private disposed = false;
 
@@ -785,7 +784,7 @@ export class BaselineStandardLitPreparation {
     receiverCount?: number;
     maxTextureDimension2D?: number;
     recorder: PreparedWebGpuLightListRecorder | PreparedWebGlLightListRecorder;
-    forwardBindGroupLayoutToken: ReturnType<typeof createPreparedBindGroupLayoutToken>;
+    forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
     forwardBindGroupLayout: RHIBindGroupLayout;
   }): BaselineLightListFrame {
     let released = false;

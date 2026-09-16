@@ -1,7 +1,6 @@
 import type { RHIBindGroupLayout, RHIComputePipeline, RHIDevice, RHIResource } from '../../../rhi';
 import {
-  createPreparedBindGroupLayoutToken,
-  createPreparedComputePipelineToken,
+  createPreparedToken,
   type PreparedBindGroupLayoutToken,
   type PreparedComputePipelineToken
 } from '../../../render-graph';
@@ -29,8 +28,8 @@ export interface PreparedWebGpuLightListRecorder {
  * The returned bindings must be supplied to RenderGraphExecutor for every graph using the recorder.
  */
 export function prepareWebGpuLightListRecorder(device: RHIDevice): PreparedWebGpuLightListRecorder {
-  const pipelineToken = createPreparedComputePipelineToken('aether-light-list');
-  const bindGroupLayoutToken = createPreparedBindGroupLayoutToken('aether-light-list');
+  const pipelineToken = createPreparedToken('compute-pipeline', 'aether-light-list');
+  const bindGroupLayoutToken = createPreparedToken('bind-group-layout', 'aether-light-list');
   const shader = device.createShaderModule({
     label: 'aether-light-list',
     code: LIGHT_LIST_SHADER_MODULE

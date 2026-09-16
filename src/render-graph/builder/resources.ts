@@ -13,53 +13,21 @@ import type {
   BufferDescriptor,
   BufferHandle,
   GraphHandle,
+  GraphResourceCreateOptions,
   GraphResourceKind,
   GraphResourceOrigin,
+  GraphResourceRecord,
+  GraphResourceRecordBase,
+  InitializationInterval,
+  ResourceVersionCheckpoint,
+  ResourceVersionRecord,
   TextureDescriptor,
-  TextureHandle
+  TextureHandle,
+  TextureResourceRecord,
+  BufferResourceRecord
 } from '../types';
 
-export interface InitializationInterval {
-  readonly range: GraphRange;
-  readonly sourceVersion: number;
-  readonly producerPassId: number | null;
-}
-
 const NO_INITIALIZATION_INTERVALS: readonly InitializationInterval[] = Object.freeze([]);
-
-export interface ResourceVersionRecord {
-  readonly version: number;
-  readonly handle: GraphHandle;
-  readonly parentVersion: number | null;
-  readonly producerPassId: number | null;
-  readonly writeRange?: GraphRange;
-  readonly initialized: readonly InitializationInterval[];
-}
-
-interface GraphResourceRecordBase {
-  readonly resourceId: number;
-  readonly origin: GraphResourceOrigin;
-  readonly historyValid: boolean;
-  readonly currentVersion: number;
-  readonly versions: readonly ResourceVersionRecord[];
-}
-
-export interface TextureResourceRecord extends GraphResourceRecordBase {
-  readonly kind: 'texture';
-  readonly descriptor: TextureDescriptor;
-}
-
-export interface BufferResourceRecord extends GraphResourceRecordBase {
-  readonly kind: 'buffer';
-  readonly descriptor: BufferDescriptor;
-}
-
-export type GraphResourceRecord = TextureResourceRecord | BufferResourceRecord;
-
-export interface GraphResourceCreateOptions {
-  readonly origin?: GraphResourceOrigin;
-  readonly historyValid?: boolean;
-}
 
 interface MutableResource {
   readonly kind: GraphResourceKind;
@@ -69,11 +37,6 @@ interface MutableResource {
   readonly historyValid: boolean;
   readonly versions: ResourceVersionRecord[];
   currentVersion: number;
-}
-
-export interface ResourceVersionCheckpoint {
-  readonly resourceCount: number;
-  readonly currentVersions: readonly number[];
 }
 
 const TEXTURE_EXTERNAL_STATES = new Set<string>([

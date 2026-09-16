@@ -1,4 +1,4 @@
-import type { GraphPassDeclaration } from '../../../builder/builder';
+import type { GraphPassDeclaration } from '../../../types';
 import type { SplitReasonCode } from '../constants';
 import type { RasterPassSignature } from '../signature';
 import type { GroupUsageAccumulator } from '../usage';

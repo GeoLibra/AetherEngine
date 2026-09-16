@@ -1,14 +1,14 @@
-import type { RenderGraphSnapshot } from '../../builder/builder';
 import type {
   CompiledRenderGraph,
   GraphResourceKind,
+  GraphResourceRecord,
   RasterGroupPlan,
+  RenderGraphSnapshot,
   ResourceLifetime
 } from '../../types';
 import type { GraphRange } from '../../ranges';
 import { fullBufferRange, fullTextureRange } from '../../ranges';
 import { widenLifetimesForRasterGroups } from '../fusion/lifetime-widening';
-import type { GraphResourceRecord } from '../../builder/resources';
 
 interface MutableLifetime {
   readonly resourceId: number;

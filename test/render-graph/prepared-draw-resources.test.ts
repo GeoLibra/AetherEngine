@@ -4,7 +4,7 @@ import {
   RenderGraphBuilder,
   RenderGraphExecutor,
   compileRenderGraph,
-  createPreparedDrawResourcesToken,
+  createPreparedToken,
   createRenderGraphExecutionPlan,
   type PreparedDrawPacket,
   type RasterPassContext,
@@ -14,7 +14,7 @@ import {
 describe('prepared draw resources', () => {
   test('exposes only restricted capabilities and transfers packet ownership after submit', () => {
     const device = new NullDevice();
-    const token = createPreparedDrawResourcesToken('opaque:0');
+    const token = createPreparedToken('draw-resources', 'opaque:0');
     const retain = vi.fn();
     const release = vi.fn();
     const packet = drawPacket(device, retain, release);
@@ -67,7 +67,7 @@ describe('prepared draw resources', () => {
 
   test('does not transfer packet ownership when recording fails before submit', () => {
     const device = new NullDevice();
-    const token = createPreparedDrawResourcesToken('opaque:failure');
+    const token = createPreparedToken('draw-resources', 'opaque:failure');
     const retain = vi.fn();
     const release = vi.fn();
     const graph = new RenderGraphBuilder();
