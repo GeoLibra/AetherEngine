@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { describe, expect, test, vi } from 'vitest';
 import {
   nativeWgslPlugin,
@@ -142,6 +143,45 @@ describe('nativeWgslPlugin for Vite', { timeout: 20000 }, () => {
     const code = await plugin.load.call(mockContext, virtualId);
     expect(capturedUri).toBe('asset://project/simple.wgsl');
     expect(code).toContain('asset://project/simple.wgsl');
+  });
+
+  test('resolves external shader root and relative imports via moduleRoots mapping', async () => {
+    const externalDir = resolve(__dirname, '../fixtures/native-wgsl-plugin/external');
+    const externalRoot = resolve(externalDir, 'root.wgsl');
+    let linkedSource: string | undefined;
+    const mockCooker = {
+      cook: vi.fn().mockImplementation(async (req: { sourcePath: string }) => {
+        linkedSource = readFileSync(req.sourcePath, 'utf8');
+        return {
+          ...sampleArtifact,
+          source: { ...sampleArtifact.source, sourceUri: 'asset://vendor/root.wgsl' }
+        };
+      })
+    } as unknown as NativeWgslCooker;
+
+    const plugin = nativeWgslPlugin({
+      cooker: mockCooker,
+      sourceUriResolver: (filePath) =>
+        filePath.endsWith('root.wgsl')
+          ? 'asset://vendor/root.wgsl'
+          : `asset://vendor/${filePath.split('/').pop()}`,
+      moduleRoots: { vendor: externalDir }
+    });
+    const watchedFiles: string[] = [];
+    const mockContext = { addWatchFile: (file: string) => watchedFiles.push(file) };
+    const virtualId = `\0aether-shader-artifact:${externalRoot}`;
+
+    // @ts-expect-error test hook call
+    const code = await plugin.load.call(mockContext, virtualId);
+
+    expect(code).toContain('asset://vendor/root.wgsl');
+    // Linked standard WGSL contains the root override plus the relative module from moduleRoots
+    expect(linkedSource).toContain('fn addExternalOffset');
+    expect(linkedSource).toContain('fn externalOffset');
+    // External root, its metadata, and the external relative module are all watched
+    expect(watchedFiles).toContain(externalRoot);
+    expect(watchedFiles).toContain(`${externalRoot}.meta.json`);
+    expect(watchedFiles).toContain(resolve(externalDir, 'util.wgsl'));
   });
 
   test('validates sidecar metadata and cross-checks with reflection during load', async () => {

@@ -1,7 +1,13 @@
 /**
- * @file Cross-pass silhouette and coverage conformance tests.
- * Asserts that shadow caster pass, lit pass, skybox, post passes, and light culling kernels
- * share identical utility, surface, BRDF, tone mapping, fullscreen, and geometry modules.
+ * @file Cross-pass structural coverage and shared-module contract tests.
+ * Asserts at the WGSL-structure level that shadow caster, lit, skybox, post and light culling
+ * passes share identical utility, surface, BRDF, tone mapping, fullscreen, and geometry modules.
+ *
+ * NOTE: This suite is a STRUCTURAL coverage contract only. Rendered lit/shadow silhouette
+ * conformance in deterministic GPU scenes is a deferred acceptance gate (see
+ * engine/design/v2/04-rendering/14-shader-modules.md section 7); no offscreen GPU/readback or
+ * visual golden run executes here, so texture binding, UV interpolation, sampler and pass
+ * wiring differences are not yet asserted.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -25,7 +31,7 @@ import {
   STANDARD_SHADOW_MATERIAL_WORD_OFFSETS
 } from '../../src';
 
-describe('Cross-Pass Silhouette & Coverage Conformance', () => {
+describe('Cross-Pass Structural Coverage & Shared Module Contract', () => {
   it('shadow and lit passes include identical evaluateAlphaCoverage logic in cooked artifacts', () => {
     const shadowWgsl = STANDARD_SHADOW_SHADER_ARTIFACT.modules.wgsl;
     const litWgsl = STANDARD_LIT_SHADER_ARTIFACT.modules.wgsl;

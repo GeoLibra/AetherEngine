@@ -19,6 +19,7 @@ import {
   linkStrictWgsl,
   remapLinkedDiagnostic,
   resolveDependencyClosure,
+  type ShaderModuleId,
   type ShaderModuleLoader,
   type ShaderModuleSource
 } from './modules';
@@ -44,6 +45,31 @@ export interface CookAuthoredShaderRequest {
  */
 export interface FluxShaderCookerAdapter {
   readonly cook: (request: CookAuthoredShaderRequest) => Promise<CookedShaderRuntimeArtifact>;
+}
+
+/**
+ * Wraps a custom module loader so the authored root module is always served from its
+ * authoritative source override (root `sourcePath` text plus caller metadata) instead of being
+ * re-resolved through the loader's URI-to-directory mapping. Dependency modules still flow
+ * through the supplied loader, so external authorities keep their configured mapping.
+ *
+ * @param loader Custom loader to delegate dependency resolution to.
+ * @param rootModuleSource Authored root module source snapshot.
+ * @returns Composite loader that serves the root from its override.
+ */
+function createRootSourceOverrideLoader(
+  loader: ShaderModuleLoader,
+  rootModuleSource: ShaderModuleSource
+): ShaderModuleLoader {
+  const rootId = rootModuleSource.id;
+  return {
+    async loadModule(id: ShaderModuleId): Promise<ShaderModuleSource | undefined> {
+      if (id === rootId) {
+        return rootModuleSource;
+      }
+      return loader.loadModule(id);
+    }
+  };
 }
 
 /**
@@ -118,9 +144,12 @@ export async function cookAuthoredShader(
           imports: Object.freeze([...metadata.imports])
         });
 
-        const loader =
-          options.moduleLoader ??
-          new FileSystemShaderModuleLoader({
+        const suppliedLoader = options.moduleLoader;
+        let loader: ShaderModuleLoader;
+        let fileSystemLoader: FileSystemShaderModuleLoader | undefined;
+
+        if (suppliedLoader === undefined) {
+          fileSystemLoader = new FileSystemShaderModuleLoader({
             fileOverrides: {
               [source.uri]: sourcePath
             },
@@ -128,6 +157,14 @@ export async function cookAuthoredShader(
               [source.uri]: rootModuleSource
             }
           });
+          loader = fileSystemLoader;
+        } else {
+          if (suppliedLoader instanceof FileSystemShaderModuleLoader) {
+            fileSystemLoader = suppliedLoader;
+          }
+          loader = createRootSourceOverrideLoader(suppliedLoader, rootModuleSource);
+        }
+
         const closure = await resolveDependencyClosure(source.uri, loader);
 
         if (options.onDependencyResolved) {
@@ -135,8 +172,8 @@ export async function cookAuthoredShader(
           if (effectiveMetadataPath) {
             options.onDependencyResolved(effectiveMetadataPath);
           }
-          if (loader instanceof FileSystemShaderModuleLoader) {
-            for (const filePath of loader.getLoadedFilePaths()) {
+          if (fileSystemLoader) {
+            for (const filePath of fileSystemLoader.getLoadedFilePaths()) {
               options.onDependencyResolved(filePath);
             }
           }

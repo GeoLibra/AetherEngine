@@ -31,7 +31,7 @@ export interface ModuleBenchmarkScenarioResult {
   readonly sharedLeafAffectedRootsCount: number;
   readonly rootLocalAffectedRootsCount: number;
   readonly unrelatedAffectedRootsCount: number;
-  readonly incrementalMatchesFullRebuild: boolean;
+  readonly rebuildIsDeterministic: boolean;
 }
 
 interface SyntheticModuleEntry {
@@ -223,7 +223,9 @@ export async function runModuleCompositionScenario(
   // Edit shared leaf: affects both root A and root B
   const sharedAffected = findAffectedRoots(sharedLeafUri, [closureA, closureB]);
 
-  // 4. Invalidation rebuild: mutate shared leaf, re-resolve and re-link affected root A
+  // 4. Edited rebuild determinism oracle: a full re-resolve/re-link of the edited graph must
+  // produce the identical composite hash as the edited root rebuild. This asserts rebuild
+  // determinism; it is NOT evidence of incremental compilation (no partial rebuild exists).
   editModule(sharedLeafUri, 'fn shared_leaf_func() -> f32 { return 777.0; }\n');
   const freshClosureA = await resolveDependencyClosure(rootAUri, loader);
   const freshLinkedA = linkStrictWgsl(freshClosureA);
@@ -234,8 +236,7 @@ export async function runModuleCompositionScenario(
   // Uncached full rebuild oracle
   const fullRebuildClosureA = await resolveDependencyClosure(rootAUri, loader);
   const fullRebuildLinkedA = linkStrictWgsl(fullRebuildClosureA);
-  const incrementalMatchesFullRebuild =
-    freshLinkedA.compositeHash === fullRebuildLinkedA.compositeHash;
+  const rebuildIsDeterministic = freshLinkedA.compositeHash === fullRebuildLinkedA.compositeHash;
 
   return Object.freeze({
     closureModuleCount: closureA.modules.length,
@@ -245,6 +246,6 @@ export async function runModuleCompositionScenario(
     sharedLeafAffectedRootsCount: sharedAffected.length,
     rootLocalAffectedRootsCount: rootLocalAffected.length,
     unrelatedAffectedRootsCount: unrelatedAffected.length,
-    incrementalMatchesFullRebuild
+    rebuildIsDeterministic
   });
 }

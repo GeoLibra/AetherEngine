@@ -22,6 +22,13 @@ export interface NativeWgslPluginOptions {
   readonly cooker?: NativeWgslCooker | undefined;
   readonly sourceUriResolver?: ((filePath: string) => string) | undefined;
   readonly root?: string | undefined;
+  /**
+   * Optionally maps module URI authorities to filesystem directories for dependency resolution.
+   * Required when `sourceUriResolver` assigns external shaders a non-`project` authority (e.g.
+   * `asset://vendor/root.wgsl`), so relative imports resolve under the external directory instead
+   * of under the project root. Keys must match the authority of the mapped URIs.
+   */
+  readonly moduleRoots?: Readonly<Record<string, string>> | undefined;
 }
 
 const VIRTUAL_PREFIX = '\0aether-shader-artifact:';
@@ -40,6 +47,13 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
   const lastGoodCache = new Map<string, CookedShaderRuntimeArtifact>();
   const revisions = new Map<string, number>();
   const dependencyToRoots = new Map<string, Set<string>>();
+
+  function createModuleLoader(): FileSystemShaderModuleLoader {
+    return new FileSystemShaderModuleLoader({
+      roots: { project: rootDir, ...options.moduleRoots },
+      projectRoot: rootDir
+    });
+  }
 
   function resolveSourceUri(filePath: string): string {
     if (options.sourceUriResolver) {
@@ -146,10 +160,7 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
           },
           {
             cooker,
-            moduleLoader: new FileSystemShaderModuleLoader({
-              roots: { project: rootDir },
-              projectRoot: rootDir
-            }),
+            moduleLoader: createModuleLoader(),
             onDependencyResolved: (depPath) => {
               this.addWatchFile(depPath);
               registerDependency(depPath, filePath);
@@ -258,10 +269,7 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
             },
             {
               cooker,
-              moduleLoader: new FileSystemShaderModuleLoader({
-                roots: { project: rootDir },
-                projectRoot: rootDir
-              }),
+              moduleLoader: createModuleLoader(),
               onDependencyResolved: (depPath) => {
                 registerDependency(depPath, rootPath);
               }

@@ -1,5 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cookAuthoredShader } from '../../tools/shader-cooker/authoring-dispatch';
+import { FileSystemShaderModuleLoader } from '../../tools/shader-cooker/modules';
 import { loadWgslMetadata } from '../../tools/shader-cooker/metadata-loader';
 import { defineShaderAuthoringSource } from '../../src/shader/authoring';
 import type { CookedShaderRuntimeArtifact, WgslShaderMetadata } from '../../src/shader/types';
@@ -278,5 +281,56 @@ describe('cookAuthoredShader dispatch', () => {
     expect(diagnosticCallback).toHaveBeenCalledTimes(1);
     expect(diagnosticCallback.mock.calls[0]?.[0]?.structName).toBe('PaddedData');
     expect(diagnosticCallback.mock.calls[0]?.[0]?.paddingBytes).toBe(12);
+  });
+
+  test('cooks external root with relative imports through a custom loader using root source override', async () => {
+    const externalDir = resolve(__dirname, '../fixtures/native-wgsl-plugin/external');
+    // Root file lives at a canonical URI whose authority maps to a directory containing only
+    // the relative module (util.wgsl). The root must come from the sourcePath override, never
+    // from the loader's authority-to-directory mapping.
+    const externalRootPath = resolve(__dirname, '../fixtures/native-wgsl-plugin/simple.wgsl');
+    let linkedSource: string | undefined;
+    const mockCooker = {
+      cook: vi.fn().mockImplementation(async (req: { sourcePath: string }) => {
+        linkedSource = readFileSync(req.sourcePath, 'utf8');
+        return sampleValidArtifact;
+      })
+    } as unknown as NativeWgslCooker;
+
+    const source = defineShaderAuthoringSource({ uri: 'asset://vendor/root.wgsl' });
+    const metadata: WgslShaderMetadata = {
+      schemaVersion: 1,
+      entryPoints: [
+        { name: 'vertexMain', stage: 'vertex' },
+        { name: 'fragmentMain', stage: 'fragment' }
+      ],
+      imports: [{ path: './util.wgsl' }]
+    };
+
+    const resolvedDeps: string[] = [];
+    const result = await cookAuthoredShader(
+      {
+        source,
+        sourcePath: externalRootPath,
+        metadata
+      },
+      {
+        cooker: mockCooker,
+        moduleLoader: new FileSystemShaderModuleLoader({
+          roots: { vendor: externalDir },
+          projectRoot: externalDir
+        }),
+        onDependencyResolved: (depPath) => resolvedDeps.push(depPath)
+      }
+    );
+
+    expect(result).toEqual(sampleValidArtifact);
+    // Linked output must contain the root override source (a file NOT present under the vendor
+    // authority) plus the relative import resolved from the mapped external directory. A missing
+    // root or module would throw ERR_MODULE_NOT_FOUND.
+    expect(linkedSource).toContain('fn vertexMain');
+    expect(linkedSource).toContain('fn externalOffset');
+    expect(resolvedDeps).toContain(externalRootPath);
+    expect(resolvedDeps).toContain(resolve(externalDir, 'util.wgsl'));
   });
 });

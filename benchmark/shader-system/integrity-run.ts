@@ -294,7 +294,7 @@ for (const config of moduleCompositionConfigs) {
       result.sharedLeafAffectedRootsCount !== 2 ||
       result.rootLocalAffectedRootsCount !== 1 ||
       result.unrelatedAffectedRootsCount !== 0 ||
-      !result.incrementalMatchesFullRebuild
+      !result.rebuildIsDeterministic
     ) {
       throw new Error(
         `Module composition structural oracle failed for ${config.moduleCount} ${config.topology}.`

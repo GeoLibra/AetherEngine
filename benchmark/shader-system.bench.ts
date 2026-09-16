@@ -104,7 +104,7 @@ for (const moduleCount of [16, 64] as const) {
       expect(result.sharedLeafAffectedRootsCount).toBe(2);
       expect(result.rootLocalAffectedRootsCount).toBe(1);
       expect(result.unrelatedAffectedRootsCount).toBe(0);
-      expect(result.incrementalMatchesFullRebuild).toBe(true);
+      expect(result.rebuildIsDeterministic).toBe(true);
     },
     { iterations: 1, warmupIterations: 0 }
   );
