@@ -21,16 +21,6 @@ fn postColorVertex(@builtin(vertex_index) index: u32) -> FullscreenOutput {
   );
 }
 
-fn acesFitted(color: vec3<f32>) -> vec3<f32> {
-  let a = 2.51;
-  let b = 0.03;
-  let c = 2.43;
-  let d = 0.59;
-  let e = 0.14;
-  return clamp((color * (a * color + vec3<f32>(b))) /
-    (color * (c * color + vec3<f32>(d)) + vec3<f32>(e)), vec3<f32>(0.0), vec3<f32>(1.0));
-}
-
 @fragment
 fn postColorFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
   let sceneLinear = textureSample(sceneColor, sceneSampler, input.uv).rgb;

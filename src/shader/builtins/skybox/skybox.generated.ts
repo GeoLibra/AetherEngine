@@ -13,8 +13,8 @@ export const SKYBOX_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/skybox.wgsl',
-    contentHash: '47cd05de04f3fe567a083bae14dee47fc45df1dcaa74cfc0996aa134ee41492f',
-    byteLength: 3359
+    contentHash: 'b0dd976cb02600365bc7a475477c2d0b77e16560922b73d788b721fac86760b4',
+    byteLength: 4150
   },
   entryPoints: [
     {
@@ -178,7 +178,32 @@ export const SKYBOX_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
     }
   ],
   modules: {
-    wgsl: `struct SkyboxUniforms {
+    wgsl: `// ============================================================================
+// AetherEngine Shared Shader Module - Equirectangular Spherical Projection
+// Converts 3D Cartesian direction vectors to 2D equirectangular spherical UVs.
+// ============================================================================
+
+const EQUIR_PI: f32 = 3.141592653589793;
+const EQUIR_TWO_PI: f32 = 6.283185307179586;
+
+/// Converts a 3D unit direction vector to 2D equirectangular spherical coordinates [0.0, 1.0].
+///
+/// Parameters:
+/// - \`direction\`: 3D direction vector (will be normalized internally).
+///
+/// Returns:
+/// 2D UV coordinate pair in [0.0, 1.0] where U corresponds to azimuthal angle (longitude)
+/// and V corresponds to polar angle from +Y (latitude).
+fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
+  let normalized = normalize(direction);
+  var u = atan2(normalized.z, normalized.x) / EQUIR_TWO_PI + 0.5;
+  u = fract(u);
+  let v = acos(clamp(normalized.y, -1.0, 1.0)) / EQUIR_PI;
+  return vec2<f32>(u, v);
+}
+
+
+struct SkyboxUniforms {
   ray0: vec4<f32>,
   ray1: vec4<f32>,
   ray2: vec4<f32>,
@@ -220,16 +245,6 @@ fn skyboxVertex(@builtin(vertex_index) index: u32) -> FullscreenOutput {
   );
 }
 
-const PI: f32 = 3.141592653589793;
-const TWO_PI: f32 = 6.283185307179586;
-
-fn directionToEquirectUv(dir: vec3<f32>) -> vec2<f32> {
-  var u = atan2(dir.z, dir.x) / TWO_PI + 0.5;
-  u = fract(u);
-  let v = acos(clamp(dir.y, -1.0, 1.0)) / PI;
-  return vec2<f32>(u, v);
-}
-
 fn reconstructFragmentRay(ndc: vec2<f32>) -> vec3<f32> {
   if (skyboxUniforms.flags.w > 0.5) {
     let d = (skyboxUniforms.envRot * vec4<f32>(0.0, 0.0, -1.0, 0.0)).xyz;
@@ -256,7 +271,7 @@ fn skyboxFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
     dir = normalize(input.direction);
   }
 
-  let uv = directionToEquirectUv(dir);
+  let uv = directionToEquirectangularUv(dir);
 
   var lod: f32 = 0.0;
   if (skyboxUniforms.flags.y > 0.5) {
@@ -268,8 +283,8 @@ fn skyboxFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
     let dirX = normalize(dir + dDdx);
     let dirY = normalize(dir + dDdy);
 
-    let uvX = directionToEquirectUv(dirX);
-    let uvY = directionToEquirectUv(dirY);
+    let uvX = directionToEquirectangularUv(dirX);
+    let uvY = directionToEquirectangularUv(dirY);
 
     var du_dx = uvX.x - uv.x;
     var du_dy = uvY.x - uv.x;
@@ -330,8 +345,8 @@ struct FullscreenOutput {
     vec3 direction;
     vec2 ndc;
 };
-const float PI = 3.1415927;
-const float TWO_PI = 6.2831855;
+const float EQUIR_PI = 3.1415927;
+const float EQUIR_TWO_PI = 6.2831855;
 
 layout(std140) uniform SkyboxUniforms_block_0Fragment { SkyboxUniforms _group_0_binding_0_fs; };
 
@@ -341,14 +356,15 @@ smooth in vec3 _vs2fs_location0;
 smooth in vec2 _vs2fs_location1;
 layout(location = 0) out vec4 _fs2p_location0;
 
-vec2 directionToEquirectUv(vec3 dir_2) {
+vec2 directionToEquirectangularUv(vec3 direction) {
     float u = 0.0;
-    u = ((atan(dir_2.z, dir_2.x) / TWO_PI) + 0.5);
-    float _e9 = u;
-    u = fract(_e9);
-    float v = (acos(clamp(dir_2.y, -1.0, 1.0)) / PI);
-    float _e18 = u;
-    return vec2(_e18, v);
+    vec3 normalized = normalize(direction);
+    u = ((atan(normalized.z, normalized.x) / EQUIR_TWO_PI) + 0.5);
+    float _e10 = u;
+    u = fract(_e10);
+    float v = (acos(clamp(normalized.y, -1.0, 1.0)) / EQUIR_PI);
+    float _e19 = u;
+    return vec2(_e19, v);
 }
 
 vec3 reconstructFragmentRay(vec2 ndc) {
@@ -388,7 +404,7 @@ void main() {
         dir_1 = normalize(input_.direction);
     }
     vec3 _e24 = dir_1;
-    vec2 _e25 = directionToEquirectUv(_e24);
+    vec2 _e25 = directionToEquirectangularUv(_e24);
     float _e31 = _group_0_binding_0_fs.flags.y;
     if ((_e31 > 0.5)) {
         lod = 0.0;
@@ -401,8 +417,8 @@ void main() {
         vec3 dirX = normalize((_e39 + dDdx));
         vec3 _e42 = dir_1;
         vec3 dirY = normalize((_e42 + dDdy));
-        vec2 _e45 = directionToEquirectUv(dirX);
-        vec2 _e46 = directionToEquirectUv(dirY);
+        vec2 _e45 = directionToEquirectangularUv(dirX);
+        vec2 _e46 = directionToEquirectangularUv(dirY);
         du_dx = (_e45.x - _e25.x);
         du_dy = (_e46.x - _e25.x);
         float _e55 = du_dx;
@@ -500,22 +516,23 @@ struct FullscreenOutput {
     vec3 direction;
     vec2 ndc;
 };
-const float PI = 3.1415927;
-const float TWO_PI = 6.2831855;
+const float EQUIR_PI = 3.1415927;
+const float EQUIR_TWO_PI = 6.2831855;
 
 layout(std140) uniform SkyboxUniforms_block_0Vertex { SkyboxUniforms _group_0_binding_0_vs; };
 
 smooth out vec3 _vs2fs_location0;
 smooth out vec2 _vs2fs_location1;
 
-vec2 directionToEquirectUv(vec3 dir_2) {
+vec2 directionToEquirectangularUv(vec3 direction) {
     float u = 0.0;
-    u = ((atan(dir_2.z, dir_2.x) / TWO_PI) + 0.5);
-    float _e9 = u;
-    u = fract(_e9);
-    float v = (acos(clamp(dir_2.y, -1.0, 1.0)) / PI);
-    float _e18 = u;
-    return vec2(_e18, v);
+    vec3 normalized = normalize(direction);
+    u = ((atan(normalized.z, normalized.x) / EQUIR_TWO_PI) + 0.5);
+    float _e10 = u;
+    u = fract(_e10);
+    float v = (acos(clamp(normalized.y, -1.0, 1.0)) / EQUIR_PI);
+    float _e19 = u;
+    return vec2(_e19, v);
 }
 
 vec3 reconstructFragmentRay(vec2 ndc) {

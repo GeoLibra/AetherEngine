@@ -40,16 +40,6 @@ fn skyboxVertex(@builtin(vertex_index) index: u32) -> FullscreenOutput {
   );
 }
 
-const PI: f32 = 3.141592653589793;
-const TWO_PI: f32 = 6.283185307179586;
-
-fn directionToEquirectUv(dir: vec3<f32>) -> vec2<f32> {
-  var u = atan2(dir.z, dir.x) / TWO_PI + 0.5;
-  u = fract(u);
-  let v = acos(clamp(dir.y, -1.0, 1.0)) / PI;
-  return vec2<f32>(u, v);
-}
-
 fn reconstructFragmentRay(ndc: vec2<f32>) -> vec3<f32> {
   if (skyboxUniforms.flags.w > 0.5) {
     let d = (skyboxUniforms.envRot * vec4<f32>(0.0, 0.0, -1.0, 0.0)).xyz;
@@ -76,7 +66,7 @@ fn skyboxFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
     dir = normalize(input.direction);
   }
 
-  let uv = directionToEquirectUv(dir);
+  let uv = directionToEquirectangularUv(dir);
 
   var lod: f32 = 0.0;
   if (skyboxUniforms.flags.y > 0.5) {
@@ -88,8 +78,8 @@ fn skyboxFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
     let dirX = normalize(dir + dDdx);
     let dirY = normalize(dir + dDdy);
 
-    let uvX = directionToEquirectUv(dirX);
-    let uvY = directionToEquirectUv(dirY);
+    let uvX = directionToEquirectangularUv(dirX);
+    let uvY = directionToEquirectangularUv(dirY);
 
     var du_dx = uvX.x - uv.x;
     var du_dy = uvY.x - uv.x;

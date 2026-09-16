@@ -13,8 +13,8 @@ export const POST_COLOR_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/post-color.wgsl',
-    contentHash: 'f0bd55665706f0beb7bec57e5abf415190567e27f506ca68202c6df52a18adfb',
-    byteLength: 1080
+    contentHash: 'bb06fd9332078fad51314d6fbcac42e85f6966e38de2c4ad25dc2e4d55a7be0e',
+    byteLength: 1686
   },
   entryPoints: [
     {
@@ -112,7 +112,35 @@ export const POST_COLOR_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
     }
   ],
   modules: {
-    wgsl: `struct PostColorData {
+    wgsl: `// ============================================================================
+// AetherEngine Shared Shader Module - Post-Processing Tone Mapping
+// Photographic and display tone curve approximations.
+// ============================================================================
+
+/// ACES Fitted tone mapping curve (Stephen Hill / Narkowicz / ACES fit).
+/// Maps high dynamic range linear RGB values [0.0, +inf) to display-referred [0.0, 1.0].
+///
+/// Parameters:
+/// - \`color\`: Linear HDR RGB color vector.
+///
+/// Returns:
+/// Tone-mapped linear display color clamped to [0.0, 1.0].
+fn acesFitted(color: vec3<f32>) -> vec3<f32> {
+  let a = 2.51;
+  let b = 0.03;
+  let c = 2.43;
+  let d = 0.59;
+  let e = 0.14;
+  return clamp(
+    (color * (a * color + vec3<f32>(b))) /
+    (color * (c * color + vec3<f32>(d)) + vec3<f32>(e)),
+    vec3<f32>(0.0),
+    vec3<f32>(1.0)
+  );
+}
+
+
+struct PostColorData {
   exposure: f32,
 };
 
@@ -133,16 +161,6 @@ fn postColorVertex(@builtin(vertex_index) index: u32) -> FullscreenOutput {
     vec4<f32>(x * 2.0 - 1.0, y * 2.0 - 1.0, 0.0, 1.0),
     vec2<f32>(x, 1.0 - y)
   );
-}
-
-fn acesFitted(color: vec3<f32>) -> vec3<f32> {
-  let a = 2.51;
-  let b = 0.03;
-  let c = 2.43;
-  let d = 0.59;
-  let e = 0.14;
-  return clamp((color * (a * color + vec3<f32>(b))) /
-    (color * (c * color + vec3<f32>(d)) + vec3<f32>(e)), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 @fragment

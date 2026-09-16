@@ -22,21 +22,6 @@ struct EnvironmentData {
 @group(3) @binding(8) var environmentBrdfLut: texture_2d<f32>;
 @group(3) @binding(9) var environmentSampler: sampler;
 
-/// Converts a 3D world-space direction to equirectangular UV coordinates [0, 1]^2.
-///
-/// Parameters:
-/// - `direction`: Unnormalized world-space direction vector (will be normalized internally).
-///
-/// Returns:
-/// UV coordinates suitable for sampling equirectangular environment maps.
-fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
-  let normalized = normalize(direction);
-  return vec2<f32>(
-    atan2(normalized.z, normalized.x) * 0.15915494309 + 0.5,
-    acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830988618
-  );
-}
-
 /// Evaluates image-based lighting contribution using the split-sum approximation
 /// with multiscatter energy compensation.
 ///
