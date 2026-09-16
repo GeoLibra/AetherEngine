@@ -1,4 +1,3 @@
-import { validatePassAccessUsages } from '../../builder/utils';
 import { deriveRenderGraphHazards } from '../hazards';
 import type {
   CompiledRenderGraph,
@@ -23,9 +22,6 @@ const COMPILED_RENDER_GRAPHS = new WeakMap<object, RenderGraphSnapshot>();
 
 /** Compiles one frozen authoring snapshot into the only retained pass schedule. */
 export function compileRenderGraph(snapshot: RenderGraphSnapshot): CompiledRenderGraph {
-  for (const pass of snapshot.passes) {
-    validatePassAccessUsages(pass);
-  }
   const hazardResult = deriveRenderGraphHazards(snapshot);
   const semanticEdges = snapshot.semanticEdges.map(toCompiledSemanticEdge);
   validatePassReferences(snapshot, hazardResult.edges, semanticEdges);

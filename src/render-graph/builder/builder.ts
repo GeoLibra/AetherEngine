@@ -254,9 +254,6 @@ export class RenderGraphBuilder implements RenderGraphPassContextDelegate {
       throw new Error('Every reserved render graph pass must be defined before build().');
     }
     this.phase = 'building';
-    for (const pass of this.passes) {
-      validatePassAccessUsages(pass);
-    }
     for (const terminal of this.terminals) {
       if (terminal.handle.version !== this.resources.currentVersion(terminal.handle)) {
         throw new Error(

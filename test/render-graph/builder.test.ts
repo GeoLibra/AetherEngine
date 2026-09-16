@@ -252,6 +252,54 @@ describe('render graph pass declarations', () => {
     ).toThrow(/read usage/i);
   });
 
+  test('rejects invalid write usages on pass declarations fail-fast during pass definition', () => {
+    const graph = new RenderGraphBuilder();
+    const texture = graph.createTexture(textureDescriptor);
+    const buffer = graph.createBuffer(bufferDescriptor);
+
+    // Copy pass cannot declare write usage other than copy-dst
+    expect(() =>
+      graph.addCopyPass({
+        id: 'invalid-copy-write',
+        setup(pass) {
+          const unsafe = pass as unknown as {
+            writeTexture(handle: typeof texture, usage: string): typeof texture;
+          };
+          return { texture: unsafe.writeTexture(texture, 'color-attachment') };
+        },
+        run() {}
+      })
+    ).toThrow(/Copy pass.*cannot declare.*write usage "color-attachment"/i);
+
+    // Compute pass cannot declare write usage other than storage-write
+    expect(() =>
+      graph.addComputePass({
+        id: 'invalid-compute-write',
+        setup(pass) {
+          const unsafe = pass as unknown as {
+            writeBuffer(handle: typeof buffer, usage: string): typeof buffer;
+          };
+          return { buffer: unsafe.writeBuffer(buffer, 'copy-dst') };
+        },
+        run() {}
+      })
+    ).toThrow(/Compute pass.*cannot declare.*write usage "copy-dst"/i);
+
+    // Raster pass cannot declare buffer write access
+    expect(() =>
+      graph.addRasterPass({
+        id: 'invalid-raster-buffer-write',
+        setup(pass) {
+          const unsafe = pass as unknown as {
+            writeBuffer(handle: typeof buffer, usage: string): typeof buffer;
+          };
+          return { buffer: unsafe.writeBuffer(buffer, 'storage-write') };
+        },
+        run() {}
+      })
+    ).toThrow(/Raster pass.*cannot declare buffer write access/i);
+  });
+
   test('rolls back declarations when setup fails', () => {
     const graph = new RenderGraphBuilder();
     const texture = graph.createTexture(textureDescriptor);
