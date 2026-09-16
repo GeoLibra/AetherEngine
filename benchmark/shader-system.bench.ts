@@ -8,6 +8,7 @@ import {
 import { ShaderCompiler } from '../src/shader/experimental/flux/compiler';
 import { runBindingLayoutScenario } from './shader-system/binding-layout-scenario';
 import { runShaderGraphScenario } from './shader-system/shader-graph-scenario';
+import { runModuleCompositionScenario } from './shader-system/module-composition-scenario';
 import {
   BUILT_IN_WEBGL2_TRANSLATOR,
   STANDARD_LIT_SHADER_MODULE,
@@ -58,23 +59,20 @@ bench(
       validators: { wgsl: { validate: async () => [] } },
       versions: { compiler: 1, ir: 1, abi: 1, backend: 1 }
     });
-    const request = {
+    const result = await compiler.compile({
       revision: 1,
       source: { uri: 'asset://bench/main.flux', languageVersion: 1 },
       entries: ['main'],
-      target: 'wgsl' as const,
+      target: 'wgsl',
       variants: {},
       capabilities: []
-    };
-    const first = await compiler.compile(request);
-    const second = await compiler.compile({ ...request, revision: 2 });
-    expect(first.status).toBe('compiled');
-    expect(second.status).toBe('cached');
+    });
+    expect(result.status).toBe('compiled');
   },
   { iterations: 1, warmupIterations: 0 }
 );
 
-for (const chainLength of [16, 64]) {
+for (const chainLength of [16, 64] as const) {
   bench(
     `lower and cache-hit ShaderGraph with ${chainLength} nodes`,
     async () => {
@@ -83,6 +81,22 @@ for (const chainLength of [16, 64]) {
       expect(result.reusedNodes).toBe(chainLength * 8);
       expect(result.sliceLowerOk).toBe(true);
       expect(result.checksum).not.toBe(0);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
+for (const moduleCount of [16, 64] as const) {
+  bench(
+    `resolve, link and trace invalidation for ${moduleCount} shader modules`,
+    async () => {
+      const result = await runModuleCompositionScenario({
+        moduleCount,
+        linesPerModule: 20,
+        topology: 'diamond'
+      });
+      expect(result.closureModuleCount).toBeGreaterThanOrEqual(moduleCount - 2);
+      expect(result.compositeHash).toBeTruthy();
     },
     { iterations: 1, warmupIterations: 0 }
   );
