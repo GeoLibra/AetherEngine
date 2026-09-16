@@ -23,7 +23,6 @@ import type {
   GraphPassDeclaration,
   GraphReadAccess,
   GraphResourceCreateOptions,
-  GraphResourceRecord,
   GraphTerminal,
   GraphWriteAccess,
   PassKind,

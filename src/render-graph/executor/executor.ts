@@ -48,7 +48,6 @@ import {
   validatePreparedRenderPipelines,
   validateRasterGroupBindings,
   type RenderGraphExecutionInputs,
-  type RenderGraphHistoryBinding,
   type SurfaceBinding
 } from './executor-bindings';
 

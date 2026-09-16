@@ -13,8 +13,7 @@ import type {
   RasterGroupPlan,
   RenderGraphExecutionPlan,
   RenderGraphExecutionStep,
-  RenderGraphSnapshot,
-  ResourceAliasPlan
+  RenderGraphSnapshot
 } from '../types';
 import { validatePhysicalTransitionsAndPassBoundaries } from './executor-physical-validation';
 

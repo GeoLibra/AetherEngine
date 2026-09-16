@@ -1,10 +1,7 @@
 import { deriveRenderGraphHazards } from '../hazards';
 import type {
   CompiledRenderGraph,
-  CompiledRenderGraphCounters,
   CompiledRenderGraphEdge,
-  CulledRenderGraphPass,
-  RenderGraphSemanticEdge,
   RenderGraphSnapshot
 } from '../../types';
 import {
@@ -15,8 +12,6 @@ import {
   comparePassRegistration
 } from './validation';
 import { collectPredecessorClosure, collectRoots, stableTopologicalOrder } from './topology';
-
-export { RenderGraphCycleError, RenderGraphSemanticHazardError } from './errors';
 
 const COMPILED_RENDER_GRAPHS = new WeakMap<object, RenderGraphSnapshot>();
 

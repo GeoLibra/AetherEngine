@@ -1,11 +1,4 @@
-import type {
-  RHIBuffer,
-  RHIDevice,
-  RHIResource,
-  RHISubmission,
-  RHITexture,
-  SubmissionResult
-} from '../../rhi/contracts';
+import type { RHIDevice, RHIResource, RHISubmission, SubmissionResult } from '../../rhi/contracts';
 import type {
   SurfaceTransientScope,
   TransientAllocationDescriptor,

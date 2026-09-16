@@ -17,14 +17,11 @@ import type {
   GraphResourceKind,
   GraphResourceOrigin,
   GraphResourceRecord,
-  GraphResourceRecordBase,
   InitializationInterval,
   ResourceVersionCheckpoint,
   ResourceVersionRecord,
   TextureDescriptor,
-  TextureHandle,
-  TextureResourceRecord,
-  BufferResourceRecord
+  TextureHandle
 } from '../types';
 
 const NO_INITIALIZATION_INTERVALS: readonly InitializationInterval[] = Object.freeze([]);

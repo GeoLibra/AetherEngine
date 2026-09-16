@@ -10,7 +10,6 @@ import {
 } from '../ranges';
 import type {
   BufferRange,
-  GraphAccess,
   GraphReadAccess,
   GraphResourceKind,
   GraphResourceRecord,

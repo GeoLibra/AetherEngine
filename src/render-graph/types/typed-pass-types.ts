@@ -1,4 +1,4 @@
-import type { GPUColor, GPUIndexFormat } from '../../rhi/contracts';
+import type { GPUColor } from '../../rhi/contracts';
 import type {
   PreparedBindGroupLayoutToken,
   PreparedComputePipelineToken,
@@ -12,7 +12,6 @@ import type {
   BufferRange,
   BufferReadUsage,
   BufferUsage,
-  BufferWriteUsage,
   ExternalResourceState,
   GraphHandle,
   GraphResourceCreateOptions,
@@ -21,8 +20,7 @@ import type {
   TextureHandle,
   TextureRange,
   TextureReadUsage,
-  TextureUsage,
-  TextureWriteUsage
+  TextureUsage
 } from './render-graph-types';
 import type {
   RestrictedBindGroup,

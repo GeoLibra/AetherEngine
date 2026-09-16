@@ -1,13 +1,9 @@
 import type {
-  BufferUsage,
   CompiledRenderGraph,
-  ExternalResourceState,
-  GraphResourceKind,
   GraphResourceRecord,
   PortableResourceUsage,
   PortableTransition,
-  RenderGraphSnapshot,
-  TextureUsage
+  RenderGraphSnapshot
 } from '../../types';
 import type { GraphRange } from '../../ranges';
 import {

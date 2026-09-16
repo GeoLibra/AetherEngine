@@ -1,7 +1,6 @@
 import type {
   CompiledRenderGraph,
   GraphHandle,
-  GraphResourceRecord,
   PreparedBindGroupLayoutBindings,
   PreparedComputePipelineBindings,
   PreparedDrawResourcesBindings,
