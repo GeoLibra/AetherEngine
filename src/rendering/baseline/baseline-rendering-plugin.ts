@@ -72,6 +72,10 @@ export interface BaselineRenderingPlugin extends Plugin {
    * Delegates to `backgroundControl.setBackground(bg)`.
    */
   setBackground(bg: ViewBackground): void;
+  /**
+   * Dynamically updates the active environment intensity without rebuilding GPU pipelines.
+   */
+  setEnvironmentIntensity(intensity: number): void;
 }
 
 /** Creates the opt-in owner for the single-view baseline rendering composition. */
@@ -88,6 +92,9 @@ export function createBaselineRenderingPlugin(
     backgroundControl,
     setBackground(bg: ViewBackground): void {
       backgroundControl.setBackground(bg);
+    },
+    setEnvironmentIntensity(intensity: number): void {
+      runtime.setEnvironmentIntensity(intensity);
     },
     build(builder) {
       builder.insertResource(BaselineRenderDiagnosticsResource, runtime.diagnostics);
@@ -415,6 +422,11 @@ class BaselineRenderingRuntime {
   /** Replaces the active background without rebuilding the rendering pipeline. */
   updateBackground(bg: ViewBackground | undefined): void {
     this.backgroundOverride = bg;
+  }
+
+  /** Dynamically updates the active environment intensity without rebuilding the rendering pipeline. */
+  setEnvironmentIntensity(intensity: number): void {
+    this.standardLit?.setEnvironmentIntensity(intensity);
   }
 
   async dispose(): Promise<void> {

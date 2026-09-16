@@ -135,6 +135,7 @@ export class BaselineStandardLitPreparation {
   private readonly disabledShadowTexture: RHITexture;
   private readonly shadowFormat: 'depth32float' | 'depth24plus';
   readonly postColor: BaselinePostColorPreparation;
+  private environmentIntensity: number;
   private readonly defaultColorBuffer: RHIBuffer;
   private readonly hasColor0: boolean;
   private readonly postColorOwnedResources: readonly RHIResource[];
@@ -146,6 +147,7 @@ export class BaselineStandardLitPreparation {
   private disposed = false;
 
   constructor(private readonly options: RegisteredOptions) {
+    this.environmentIntensity = options.environmentLighting.intensity;
     const { device } = options.graphics;
     this.shadowFormat = shadowDepthFormat(options.graphics.backend);
     this.hasColor0 = options.mesh.data.streams.some((s) => s.semantic === 'COLOR_0');
@@ -572,6 +574,18 @@ export class BaselineStandardLitPreparation {
     return Object.freeze({ buffer: this.disabledShadowBuffer, map: this.disabledShadowTexture });
   }
 
+  /** Updates the active environment intensity without rebuilding GPU pipelines or unmounting. */
+  setEnvironmentIntensity(intensity: number): void {
+    this.assertLive();
+    if (!Number.isFinite(intensity) || intensity < 0) {
+      throw new RangeError('Environment intensity must be a non-negative finite number.');
+    }
+    this.environmentIntensity = intensity;
+    const { device } = this.options.graphics;
+    // Word index 3 is float offset 3 = byte offset 12 in EnvironmentData uniform buffer layout
+    device.queue.writeBuffer(this.environmentBuffer, 12, new Float32Array([intensity]));
+  }
+
   /** Prepares background resources for the given view and background configuration. */
   createBackgroundFrame(
     view: ExtractedView,
@@ -580,7 +594,7 @@ export class BaselineStandardLitPreparation {
     const bg = background ?? this.options.background;
     if (bg === undefined || bg.kind === 'none') return undefined;
     const { device } = this.options.graphics;
-    const environmentIntensity = this.options.environmentLighting.intensity;
+    const environmentIntensity = this.environmentIntensity;
     return prepareBackground({
       device,
       view,
