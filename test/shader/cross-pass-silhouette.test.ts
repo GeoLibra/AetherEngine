@@ -1,7 +1,7 @@
 /**
  * @file Cross-pass silhouette and coverage conformance tests.
- * Asserts that shadow caster pass, lit pass, skybox, and post passes share identical
- * utility, surface, BRDF, and tone mapping modules from shared shader libraries.
+ * Asserts that shadow caster pass, lit pass, skybox, post passes, and light culling kernels
+ * share identical utility, surface, BRDF, tone mapping, fullscreen, and geometry modules.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -13,6 +13,10 @@ import {
 } from '../../src/shader/builtins/standard-lit-list';
 import { POST_COLOR_SHADER_ARTIFACT } from '../../src/shader/builtins/post-color';
 import { SKYBOX_SHADER_ARTIFACT } from '../../src/shader/builtins/skybox';
+import {
+  LIGHT_LIST_SHADER_ARTIFACT,
+  LIGHT_LIST_WEBGL2_SHADER_ARTIFACT
+} from '../../src/shader/builtins/light-list';
 
 describe('Cross-Pass Silhouette & Coverage Conformance', () => {
   it('shadow and lit passes include identical evaluateAlphaCoverage logic in cooked artifacts', () => {
@@ -102,6 +106,36 @@ describe('Cross-Pass Silhouette & Coverage Conformance', () => {
 
     expect(postColorWgsl).toContain('fn acesFitted');
     expect(skyboxWgsl).toContain('fn directionToEquirectangularUv');
+  });
+
+  it('fullscreen passes share the fullscreen triangle module', () => {
+    const postColorWgsl = POST_COLOR_SHADER_ARTIFACT.modules.wgsl;
+    const skyboxWgsl = SKYBOX_SHADER_ARTIFACT.modules.wgsl;
+    const lightListWebGlVertex =
+      LIGHT_LIST_WEBGL2_SHADER_ARTIFACT.modules.glslEs300['vertex:lightListVertex']?.source;
+
+    expect(postColorWgsl).toContain('fn generateFullscreenVertex');
+    expect(postColorWgsl).toContain('fn fullscreenClipPosition');
+    expect(skyboxWgsl).toContain('fn fullscreenClipPosition');
+    expect(lightListWebGlVertex).toContain('fullscreenClipPosition');
+  });
+
+  it('light-list kernels share geometric intersection and memory layout constants', () => {
+    const lightListWebGpu = LIGHT_LIST_SHADER_ARTIFACT.modules.wgsl;
+    const lightListWebGlFragment =
+      LIGHT_LIST_WEBGL2_SHADER_ARTIFACT.modules.glslEs300['fragment:lightListFragment']?.source;
+
+    // Geometry intersection testing module
+    expect(lightListWebGpu).toContain('fn distanceSquaredSphereToSphere');
+    expect(lightListWebGpu).toContain('fn distanceSquaredSphereToAabb');
+    expect(lightListWebGlFragment).toContain('distanceSquaredSphereToSphere');
+    expect(lightListWebGlFragment).toContain('distanceSquaredSphereToAabb');
+
+    // Memory layout constants module
+    expect(lightListWebGpu).toContain('const LIGHT_HEADER_WORDS');
+    expect(lightListWebGpu).toContain('const LIGHT_RECORD_WORDS');
+    expect(lightListWebGlFragment).toContain('LIGHT_HEADER_WORDS');
+    expect(lightListWebGlFragment).toContain('LIGHT_RECORD_WORDS');
   });
 
   it('shadow caster pass does not leak shadow receiver or IBL code', () => {

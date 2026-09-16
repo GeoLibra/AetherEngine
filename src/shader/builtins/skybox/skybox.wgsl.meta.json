@@ -1,6 +1,9 @@
 {
   "schemaVersion": 1,
-  "imports": [{ "path": "asset://aether/shader-modules/shared/equirectangular.wgsl" }],
+  "imports": [
+    { "path": "asset://aether/shader-modules/shared/fullscreen.wgsl" },
+    { "path": "asset://aether/shader-modules/shared/equirectangular.wgsl" }
+  ],
   "entryPoints": [
     { "name": "skyboxVertex", "stage": "vertex" },
     { "name": "skyboxFragment", "stage": "fragment" }

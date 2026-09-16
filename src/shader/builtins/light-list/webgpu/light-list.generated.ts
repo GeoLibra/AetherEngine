@@ -13,8 +13,8 @@ export const LIGHT_LIST_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/light-list.wgsl',
-    contentHash: '123d83fbb72b2fc08ccbec16a51772eaa89858ba44ae562d3f04f9429c98c6a6',
-    byteLength: 4971
+    contentHash: 'f40b6bf109618bccb0646edb9214672deb27b71589e6724caf96a90eaa2e9483',
+    byteLength: 7000
   },
   entryPoints: [
     {
@@ -236,7 +236,74 @@ export const LIGHT_LIST_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   fragmentOutputs: [],
   targetBackend: 'webgpu',
   modules: {
-    wgsl: `struct PackedWords {
+    wgsl: `// ============================================================================
+// AetherEngine Shared Shader Module - Light List Memory Layout
+// Defines byte-offset words and flag constants for packed light and receiver buffers.
+// ============================================================================
+
+const LIGHT_HEADER_WORDS: u32 = 4u;
+const LIGHT_RECORD_WORDS: u32 = 12u;
+const RECEIVER_RECORD_WORDS: u32 = 12u;
+
+const LIGHT_KIND_DIRECTIONAL: u32 = 0u;
+
+const BOUNDS_KIND_SPHERE: u32 = 0u;
+const BOUNDS_KIND_AABB: u32 = 1u;
+
+const LIGHT_FLAG_VALID_HEADER: u32 = 0x80000000u;
+const LIGHT_FLAG_DIRECTIONAL_OVERFLOW: u32 = 0x80000000u;
+const LIGHT_FLAG_LOCAL_OVERFLOW: u32 = 0x40000000u;
+
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Geometric Intersection Tests
+// Pure analytical bounding tests for sphere-sphere and sphere-AABB proximity.
+// ============================================================================
+
+/// Tests distance squared between two spheres.
+///
+/// Parameters:
+/// - \`posA\`: Center of sphere A.
+/// - \`radiusA\`: Radius of sphere A.
+/// - \`posB\`: Center of sphere B.
+/// - \`radiusB\`: Radius of sphere B.
+///
+/// Returns:
+/// Distance squared minus combined radius squared. <= 0.0 indicates intersection.
+fn distanceSquaredSphereToSphere(
+  posA: vec3<f32>,
+  radiusA: f32,
+  posB: vec3<f32>,
+  radiusB: f32
+) -> f32 {
+  let delta = posA - posB;
+  let combinedRadius = radiusA + radiusB;
+  return dot(delta, delta) - combinedRadius * combinedRadius;
+}
+
+/// Tests distance squared between a sphere and an axis-aligned bounding box (AABB).
+///
+/// Parameters:
+/// - \`sphereCenter\`: Center of the sphere.
+/// - \`sphereRadius\`: Radius of the sphere.
+/// - \`boxMin\`: Minimum coordinates of the AABB.
+/// - \`boxMax\`: Maximum coordinates of the AABB.
+///
+/// Returns:
+/// Distance squared to closest box point minus radius squared. <= 0.0 indicates intersection.
+fn distanceSquaredSphereToAabb(
+  sphereCenter: vec3<f32>,
+  sphereRadius: f32,
+  boxMin: vec3<f32>,
+  boxMax: vec3<f32>
+) -> f32 {
+  let closest = clamp(sphereCenter, boxMin, boxMax);
+  let delta = sphereCenter - closest;
+  return dot(delta, delta) - sphereRadius * sphereRadius;
+}
+
+
+struct PackedWords {
   values: array<u32>,
 }
 
@@ -247,37 +314,34 @@ export const LIGHT_LIST_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
 @group(0) @binding(4) var<storage, read_write> lightIndices: PackedWords;
 @group(0) @binding(5) var<storage, read_write> overflow: PackedWords;
 
-const HEADER_WORDS: u32 = 4u;
-const LIGHT_WORDS: u32 = 12u;
-const RECEIVER_WORDS: u32 = 12u;
-const DIRECTIONAL_KIND: u32 = 0u;
-const SPHERE_BOUNDS: u32 = 0u;
-const DIRECTIONAL_OVERFLOW: u32 = 0x80000000u;
-const LOCAL_OVERFLOW: u32 = 0x40000000u;
-
 fn squaredDistanceToReceiver(lightBase: u32, receiverBase: u32) -> f32 {
-  let px = bitcast<f32>(lights.values[lightBase + 4u]);
-  let py = bitcast<f32>(lights.values[lightBase + 5u]);
-  let pz = bitcast<f32>(lights.values[lightBase + 6u]);
+  let lightPos = vec3<f32>(
+    bitcast<f32>(lights.values[lightBase + 4u]),
+    bitcast<f32>(lights.values[lightBase + 5u]),
+    bitcast<f32>(lights.values[lightBase + 6u])
+  );
   let range = bitcast<f32>(lights.values[lightBase + 7u]);
   let boundsKind = receivers.values[receiverBase + 3u];
-  if (boundsKind == SPHERE_BOUNDS) {
-    let dx = px - bitcast<f32>(receivers.values[receiverBase + 4u]);
-    let dy = py - bitcast<f32>(receivers.values[receiverBase + 5u]);
-    let dz = pz - bitcast<f32>(receivers.values[receiverBase + 6u]);
-    let combined = range + bitcast<f32>(receivers.values[receiverBase + 7u]);
-    return dx * dx + dy * dy + dz * dz - combined * combined;
+  if (boundsKind == BOUNDS_KIND_SPHERE) {
+    let receiverPos = vec3<f32>(
+      bitcast<f32>(receivers.values[receiverBase + 4u]),
+      bitcast<f32>(receivers.values[receiverBase + 5u]),
+      bitcast<f32>(receivers.values[receiverBase + 6u])
+    );
+    let receiverRadius = bitcast<f32>(receivers.values[receiverBase + 7u]);
+    return distanceSquaredSphereToSphere(lightPos, range, receiverPos, receiverRadius);
   }
-  let minX = bitcast<f32>(receivers.values[receiverBase + 4u]);
-  let minY = bitcast<f32>(receivers.values[receiverBase + 5u]);
-  let minZ = bitcast<f32>(receivers.values[receiverBase + 6u]);
-  let maxX = bitcast<f32>(receivers.values[receiverBase + 8u]);
-  let maxY = bitcast<f32>(receivers.values[receiverBase + 9u]);
-  let maxZ = bitcast<f32>(receivers.values[receiverBase + 10u]);
-  let dx = px - clamp(px, minX, maxX);
-  let dy = py - clamp(py, minY, maxY);
-  let dz = pz - clamp(pz, minZ, maxZ);
-  return dx * dx + dy * dy + dz * dz - range * range;
+  let minBox = vec3<f32>(
+    bitcast<f32>(receivers.values[receiverBase + 4u]),
+    bitcast<f32>(receivers.values[receiverBase + 5u]),
+    bitcast<f32>(receivers.values[receiverBase + 6u])
+  );
+  let maxBox = vec3<f32>(
+    bitcast<f32>(receivers.values[receiverBase + 8u]),
+    bitcast<f32>(receivers.values[receiverBase + 9u]),
+    bitcast<f32>(receivers.values[receiverBase + 10u])
+  );
+  return distanceSquaredSphereToAabb(lightPos, range, minBox, maxBox);
 }
 
 @compute @workgroup_size(1)
@@ -293,15 +357,15 @@ fn buildLightList() {
   var directionalCount = 0u;
   var flags = 0u;
   for (var lightIndex = 0u; lightIndex < lightCount; lightIndex += 1u) {
-    let lightBase = HEADER_WORDS + lightIndex * LIGHT_WORDS;
+    let lightBase = LIGHT_HEADER_WORDS + lightIndex * LIGHT_RECORD_WORDS;
     let lightEnabled = (lights.values[lightBase + 1u] & 1u) != 0u;
     let visible = (lights.values[lightBase + 2u] & viewLayerMask) != 0u;
-    if (lightEnabled && visible && lights.values[lightBase] == DIRECTIONAL_KIND) {
+    if (lightEnabled && visible && lights.values[lightBase] == LIGHT_KIND_DIRECTIONAL) {
       if (directionalCount < maxDirectional) {
         directionalIndices.values[directionalCount] = lightIndex;
         directionalCount += 1u;
       } else {
-        flags |= DIRECTIONAL_OVERFLOW;
+        flags |= LIGHT_FLAG_DIRECTIONAL_OVERFLOW;
       }
     }
   }
@@ -309,7 +373,7 @@ fn buildLightList() {
   var headerCount = 0u;
   var emittedCount = 0u;
   for (var receiverIndex = 0u; receiverIndex < receiverCount; receiverIndex += 1u) {
-    let receiverBase = HEADER_WORDS + receiverIndex * RECEIVER_WORDS;
+    let receiverBase = LIGHT_HEADER_WORDS + receiverIndex * RECEIVER_RECORD_WORDS;
     let receiverEnabled = receivers.values[receiverBase + 1u] != 0u;
     let visible = (receivers.values[receiverBase + 2u] & viewLayerMask) != 0u;
     if (!receiverEnabled || !visible || headerCount >= maxHeaders) {
@@ -319,13 +383,13 @@ fn buildLightList() {
     var receiverLightCount = 0u;
     var receiverOverflow = 0u;
     for (var lightIndex = 0u; lightIndex < lightCount; lightIndex += 1u) {
-      let lightBase = HEADER_WORDS + lightIndex * LIGHT_WORDS;
+      let lightBase = LIGHT_HEADER_WORDS + lightIndex * LIGHT_RECORD_WORDS;
       let lightActive = (lights.values[lightBase + 1u] & 1u) != 0u;
       let lightLayerMask = lights.values[lightBase + 2u];
       let layerMatch =
         (lightLayerMask & viewLayerMask) != 0u &&
         (lightLayerMask & receivers.values[receiverBase + 2u]) != 0u;
-      if (!lightActive || !layerMatch || lights.values[lightBase] == DIRECTIONAL_KIND) {
+      if (!lightActive || !layerMatch || lights.values[lightBase] == LIGHT_KIND_DIRECTIONAL) {
         continue;
       }
       if (squaredDistanceToReceiver(lightBase, receiverBase) <= 0.0) {
@@ -335,7 +399,7 @@ fn buildLightList() {
           receiverLightCount += 1u;
         } else {
           receiverOverflow = 1u;
-          flags |= LOCAL_OVERFLOW;
+          flags |= LIGHT_FLAG_LOCAL_OVERFLOW;
         }
       }
     }

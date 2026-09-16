@@ -13,8 +13,8 @@ export const POST_COLOR_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/post-color.wgsl',
-    contentHash: 'bb06fd9332078fad51314d6fbcac42e85f6966e38de2c4ad25dc2e4d55a7be0e',
-    byteLength: 1686
+    contentHash: '51c69ee529dfe0c3f550ef779413cedf7fc6d919e4f2f6c2f88c8f27b261ae99',
+    byteLength: 3327
   },
   entryPoints: [
     {
@@ -113,6 +113,59 @@ export const POST_COLOR_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   ],
   modules: {
     wgsl: `// ============================================================================
+// AetherEngine Shared Shader Module - Fullscreen Triangle
+// Generates a single clip-space triangle covering the full viewport NDC [-1, 1]
+// using 3 vertex indices (0, 1, 2) without vertex buffer uploads.
+// ============================================================================
+
+/// Output structure for full-screen rasterization passes.
+struct FullscreenVertexOutput {
+  @builtin(position) position: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+
+/// Computes the 4D homogeneous clip-space position for a full-screen triangle vertex.
+///
+/// Parameters:
+/// - \`vertexIndex\`: Built-in vertex index (@builtin(vertex_index) index: u32).
+///
+/// Returns:
+/// Projected clip-space coordinate with Z = 0.0, W = 1.0.
+fn fullscreenClipPosition(vertexIndex: u32) -> vec4<f32> {
+  let x = f32((vertexIndex << 1u) & 2u);
+  let y = f32(vertexIndex & 2u);
+  return vec4<f32>(x * 2.0 - 1.0, y * 2.0 - 1.0, 0.0, 1.0);
+}
+
+/// Computes the 2D texture coordinate in [0.0, 1.0] for a full-screen triangle vertex.
+///
+/// Parameters:
+/// - \`vertexIndex\`: Built-in vertex index (@builtin(vertex_index) index: u32).
+///
+/// Returns:
+/// 2D UV coordinate where (0, 0) is top-left and (1, 1) is bottom-right.
+fn fullscreenUv(vertexIndex: u32) -> vec2<f32> {
+  let x = f32((vertexIndex << 1u) & 2u);
+  let y = f32(vertexIndex & 2u);
+  return vec2<f32>(x, 1.0 - y);
+}
+
+/// Generates complete clip-space position and texture coordinates for a full-screen pass.
+///
+/// Parameters:
+/// - \`vertexIndex\`: Built-in vertex index (@builtin(vertex_index) index: u32).
+///
+/// Returns:
+/// Populated FullscreenVertexOutput.
+fn generateFullscreenVertex(vertexIndex: u32) -> FullscreenVertexOutput {
+  return FullscreenVertexOutput(
+    fullscreenClipPosition(vertexIndex),
+    fullscreenUv(vertexIndex)
+  );
+}
+
+
+// ============================================================================
 // AetherEngine Shared Shader Module - Post-Processing Tone Mapping
 // Photographic and display tone curve approximations.
 // ============================================================================
@@ -148,23 +201,13 @@ struct PostColorData {
 @group(0) @binding(1) var sceneSampler: sampler;
 @group(1) @binding(0) var<uniform> postColor: PostColorData;
 
-struct FullscreenOutput {
-  @builtin(position) position: vec4<f32>,
-  @location(0) uv: vec2<f32>,
-};
-
 @vertex
-fn postColorVertex(@builtin(vertex_index) index: u32) -> FullscreenOutput {
-  let x = f32((index << 1u) & 2u);
-  let y = f32(index & 2u);
-  return FullscreenOutput(
-    vec4<f32>(x * 2.0 - 1.0, y * 2.0 - 1.0, 0.0, 1.0),
-    vec2<f32>(x, 1.0 - y)
-  );
+fn postColorVertex(@builtin(vertex_index) index: u32) -> FullscreenVertexOutput {
+  return generateFullscreenVertex(index);
 }
 
 @fragment
-fn postColorFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
+fn postColorFragment(input: FullscreenVertexOutput) -> @location(0) vec4<f32> {
   let sceneLinear = textureSample(sceneColor, sceneSampler, input.uv).rgb;
   return vec4<f32>(acesFitted(sceneLinear * postColor.exposure), 1.0);
 }
@@ -176,12 +219,12 @@ fn postColorFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
 precision highp float;
 precision highp int;
 
-struct PostColorData {
-    float exposure;
-};
-struct FullscreenOutput {
+struct FullscreenVertexOutput {
     vec4 position;
     vec2 uv;
+};
+struct PostColorData {
+    float exposure;
 };
 uniform highp sampler2D _group_0_binding_0_fs;
 
@@ -190,12 +233,30 @@ layout(std140) uniform PostColorData_block_0Fragment { PostColorData _group_1_bi
 smooth in vec2 _vs2fs_location0;
 layout(location = 0) out vec4 _fs2p_location0;
 
+vec4 fullscreenClipPosition(uint vertexIndex) {
+    float x = float(((vertexIndex << 1u) & 2u));
+    float y = float((vertexIndex & 2u));
+    return vec4(((x * 2.0) - 1.0), ((y * 2.0) - 1.0), 0.0, 1.0);
+}
+
+vec2 fullscreenUv(uint vertexIndex_1) {
+    float x_1 = float(((vertexIndex_1 << 1u) & 2u));
+    float y_1 = float((vertexIndex_1 & 2u));
+    return vec2(x_1, (1.0 - y_1));
+}
+
+FullscreenVertexOutput generateFullscreenVertex(uint vertexIndex_2) {
+    vec4 _e1 = fullscreenClipPosition(vertexIndex_2);
+    vec2 _e2 = fullscreenUv(vertexIndex_2);
+    return FullscreenVertexOutput(_e1, _e2);
+}
+
 vec3 acesFitted(vec3 color) {
     return clamp(((color * ((2.51 * color) + vec3(0.03))) / ((color * ((2.43 * color) + vec3(0.59))) + vec3(0.14))), vec3(0.0), vec3(1.0));
 }
 
 void main() {
-    FullscreenOutput input_ = FullscreenOutput(gl_FragCoord, _vs2fs_location0);
+    FullscreenVertexOutput input_ = FullscreenVertexOutput(gl_FragCoord, _vs2fs_location0);
     vec4 _e4 = texture(_group_0_binding_0_fs, vec2(input_.uv));
     vec3 sceneLinear = _e4.xyz;
     float _e8 = _group_1_binding_0_fs.exposure;
@@ -234,14 +295,32 @@ void main() {
 precision highp float;
 precision highp int;
 
-struct PostColorData {
-    float exposure;
-};
-struct FullscreenOutput {
+struct FullscreenVertexOutput {
     vec4 position;
     vec2 uv;
 };
+struct PostColorData {
+    float exposure;
+};
 smooth out vec2 _vs2fs_location0;
+
+vec4 fullscreenClipPosition(uint vertexIndex) {
+    float x = float(((vertexIndex << 1u) & 2u));
+    float y = float((vertexIndex & 2u));
+    return vec4(((x * 2.0) - 1.0), ((y * 2.0) - 1.0), 0.0, 1.0);
+}
+
+vec2 fullscreenUv(uint vertexIndex_1) {
+    float x_1 = float(((vertexIndex_1 << 1u) & 2u));
+    float y_1 = float((vertexIndex_1 & 2u));
+    return vec2(x_1, (1.0 - y_1));
+}
+
+FullscreenVertexOutput generateFullscreenVertex(uint vertexIndex_2) {
+    vec4 _e1 = fullscreenClipPosition(vertexIndex_2);
+    vec2 _e2 = fullscreenUv(vertexIndex_2);
+    return FullscreenVertexOutput(_e1, _e2);
+}
 
 vec3 acesFitted(vec3 color) {
     return clamp(((color * ((2.51 * color) + vec3(0.03))) / ((color * ((2.43 * color) + vec3(0.59))) + vec3(0.14))), vec3(0.0), vec3(1.0));
@@ -249,11 +328,9 @@ vec3 acesFitted(vec3 color) {
 
 void main() {
     uint index = uint(gl_VertexID);
-    float x = float(((index << 1u) & 2u));
-    float y = float((index & 2u));
-    FullscreenOutput _tmp_return = FullscreenOutput(vec4(((x * 2.0) - 1.0), ((y * 2.0) - 1.0), 0.0, 1.0), vec2(x, (1.0 - y)));
-    gl_Position = _tmp_return.position;
-    _vs2fs_location0 = _tmp_return.uv;
+    FullscreenVertexOutput _e1 = generateFullscreenVertex(index);
+    gl_Position = _e1.position;
+    _vs2fs_location0 = _e1.uv;
     gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
     return;
 }

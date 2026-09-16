@@ -22,9 +22,7 @@ struct FullscreenOutput {
 
 @vertex
 fn skyboxVertex(@builtin(vertex_index) index: u32) -> FullscreenOutput {
-  let x = f32((index << 1u) & 2u);
-  let y = f32(index & 2u);
-  let clipPos = vec4<f32>(x * 2.0 - 1.0, y * 2.0 - 1.0, 0.0, 1.0);
+  let clipPos = fullscreenClipPosition(index);
 
   var dir = skyboxUniforms.ray0.xyz;
   if (index == 1u) {
