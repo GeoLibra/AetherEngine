@@ -13,6 +13,7 @@ import {
 import type { CookedShaderRuntimeArtifact } from '../../src/shader/types';
 import { cookAuthoredShader } from '../shader-cooker/authoring-dispatch';
 import { NativeWgslCooker } from '../shader-cooker/native-wgsl-cooker';
+import { FileSystemShaderModuleLoader } from '../shader-cooker/modules/module-resolver';
 
 /**
  * Options for configuring nativeWgslPlugin.
@@ -35,6 +36,7 @@ const QUERY_SUFFIX = '?shader-artifact';
  */
 export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin {
   const cooker = options.cooker ?? new NativeWgslCooker();
+  const rootDir = resolve(options.root ?? process.cwd());
   const lastGoodCache = new Map<string, CookedShaderRuntimeArtifact>();
   const revisions = new Map<string, number>();
   const dependencyToRoots = new Map<string, Set<string>>();
@@ -46,18 +48,17 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
       return uri;
     }
 
-    const root = resolve(options.root ?? process.cwd());
     const absPath = resolve(filePath);
-    const rel = relative(root, absPath);
+    const rel = relative(rootDir, absPath);
 
     if (rel.startsWith('..') || isAbsolute(rel)) {
       throw new Error(
-        `[native-wgsl-plugin] Shader file "${filePath}" escapes root "${root}". Provide a custom sourceUriResolver to map external files.`
+        `[native-wgsl-plugin] Shader file "${filePath}" escapes root "${rootDir}". Provide a custom sourceUriResolver to map external files.`
       );
     }
 
     const posixRel = rel.split('\\').join('/').replace(/^\/+/u, '');
-    const uri = `asset://${posixRel}`;
+    const uri = posixRel.includes('/') ? `asset://${posixRel}` : `asset://project/${posixRel}`;
     assertValidCanonicalShaderSourceUri(uri);
     return uri;
   }
@@ -145,6 +146,10 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
           },
           {
             cooker,
+            moduleLoader: new FileSystemShaderModuleLoader({
+              roots: { project: rootDir },
+              projectRoot: rootDir
+            }),
             onDependencyResolved: (depPath) => {
               this.addWatchFile(depPath);
               registerDependency(depPath, filePath);
@@ -253,6 +258,10 @@ export function nativeWgslPlugin(options: NativeWgslPluginOptions = {}): Plugin 
             },
             {
               cooker,
+              moduleLoader: new FileSystemShaderModuleLoader({
+                roots: { project: rootDir },
+                projectRoot: rootDir
+              }),
               onDependencyResolved: (depPath) => {
                 registerDependency(depPath, rootPath);
               }

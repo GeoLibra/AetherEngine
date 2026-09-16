@@ -105,6 +105,29 @@ describe('WgslShaderMetadata validation', () => {
     );
   });
 
+  test('rejects root shader metadata missing entryPoints or with empty entryPoints', () => {
+    const withoutEntryPoints = { schemaVersion: 1 };
+    expect(() => validateWgslShaderMetadata(withoutEntryPoints)).toThrow(
+      /Executable WGSL root shader metadata must declare entryPoints/i
+    );
+
+    const emptyEntryPoints = { schemaVersion: 1, entryPoints: [] };
+    expect(() => validateWgslShaderMetadata(emptyEntryPoints)).toThrow(
+      /entryPoints must be a non-empty array/i
+    );
+  });
+
+  test('validates module metadata without requiring entryPoints', () => {
+    const moduleMeta = {
+      schemaVersion: 1,
+      imports: [{ path: 'asset://common/math.wgsl' }]
+    };
+    const validated = validateWgslShaderMetadata(moduleMeta, { kind: 'module' });
+    expect(validated.entryPoints).toBeUndefined();
+    expect(validated.imports).toHaveLength(1);
+    expect(Object.isFrozen(validated)).toBe(true);
+  });
+
   test('rejects duplicate entry point names', () => {
     const duplicate = {
       ...validMetadata,

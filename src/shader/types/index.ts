@@ -17,6 +17,7 @@ export type {
   WgslMaterialBindingMetadata,
   WgslCookPolicy,
   WgslShaderMetadata,
+  WgslModuleMetadata,
   CookedShaderToolchainInfo,
   CookedShaderSourceInfo,
   CookedShaderBinding,

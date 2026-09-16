@@ -11,6 +11,7 @@ import type {
   WgslEntryMetadata,
   WgslImportRef,
   WgslMaterialBindingMetadata,
+  WgslModuleMetadata,
   WgslShaderMetadata,
   WgslVariantDimension
 } from './types';
@@ -121,13 +122,33 @@ const ALLOWED_METADATA_KEYS = new Set([
 const VALID_STAGES = new Set(['vertex', 'fragment', 'compute']);
 
 /**
- * Validates untrusted WGSL sidecar metadata against the schema, returning a defensively copied and frozen snapshot.
+ * Options for validating WGSL shader or module metadata.
+ */
+export interface ValidateWgslMetadataOptions {
+  /**
+   * Validation target kind:
+   * - 'shader-root': Executable shader requiring at least one entry point (default).
+   * - 'module': Reusable library module where entry points may be omitted.
+   */
+  readonly kind?: 'shader-root' | 'module';
+}
+
+/**
+ * Validates and normalizes untrusted parsed JSON metadata against the WGSL shader sidecar contract.
+ *
+ * For executable root shaders (default), entryPoints must be provided and contain at least one valid entry point.
+ * For shared library modules, see `validateWgslModuleMetadata`.
  *
  * @param value Untrusted JSON value.
+ * @param options Optional configuration including target kind ('shader-root' | 'module').
  * @returns Frozen WgslShaderMetadata snapshot.
- * @throws {Error} On schema violations, unknown keys, duplicate entry points, or malformed fields.
+ * @throws {Error} On schema violations, unknown keys, missing entry points (for roots), duplicate entry points, or malformed fields.
  */
-export function validateWgslShaderMetadata(value: unknown): WgslShaderMetadata {
+export function validateWgslShaderMetadata(
+  value: unknown,
+  options: ValidateWgslMetadataOptions = {}
+): WgslShaderMetadata {
+  const targetKind = options.kind ?? 'shader-root';
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('WGSL shader metadata must be a non-null object.');
   }
@@ -142,6 +163,17 @@ export function validateWgslShaderMetadata(value: unknown): WgslShaderMetadata {
 
   if (raw.schemaVersion !== 1) {
     throw new Error(`Unsupported schemaVersion ${String(raw.schemaVersion)}. Expected 1.`);
+  }
+
+  if (targetKind === 'shader-root') {
+    if (raw.entryPoints === undefined) {
+      throw new Error('Executable WGSL root shader metadata must declare entryPoints.');
+    }
+    if (!Array.isArray(raw.entryPoints) || raw.entryPoints.length === 0) {
+      throw new Error(
+        'Executable WGSL root shader metadata entryPoints must be a non-empty array.'
+      );
+    }
   }
 
   let frozenEntryPoints: readonly WgslEntryMetadata[] | undefined;
@@ -352,5 +384,16 @@ export function validateWgslShaderMetadata(value: unknown): WgslShaderMetadata {
     ...(frozenCapabilities !== undefined ? { capabilityRequirements: frozenCapabilities } : {}),
     ...(frozenMaterialBindings !== undefined ? { materialBindings: frozenMaterialBindings } : {}),
     ...(frozenCookPolicy !== undefined ? { cookPolicy: frozenCookPolicy } : {})
-  });
+  }) as WgslShaderMetadata;
+}
+
+/**
+ * Validates untrusted parsed JSON metadata against the WGSL reusable module contract.
+ * Unlike executable root shaders, reusable modules are permitted to omit entryPoints.
+ *
+ * @param value Untrusted JSON value.
+ * @returns Frozen WgslModuleMetadata snapshot.
+ */
+export function validateWgslModuleMetadata(value: unknown): WgslModuleMetadata {
+  return validateWgslShaderMetadata(value, { kind: 'module' });
 }

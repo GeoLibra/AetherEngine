@@ -119,6 +119,31 @@ describe('nativeWgslPlugin for Vite', { timeout: 20000 }, () => {
     await expect(plugin.load.call(mockContext, escapedId)).rejects.toThrow(/escapes root/i);
   });
 
+  test('correctly resolves root-level shader with relative import', async () => {
+    const fixtureDir = resolve(__dirname, '../fixtures/native-wgsl-plugin');
+    const rootLevelShader = resolve(fixtureDir, 'simple.wgsl');
+    let capturedUri: string | undefined;
+    const mockCooker = {
+      cook: vi.fn().mockImplementation(async (req: { sourceUri: string }) => {
+        capturedUri = req.sourceUri;
+        return {
+          ...sampleArtifact,
+          source: { ...sampleArtifact.source, sourceUri: req.sourceUri }
+        };
+      })
+    } as unknown as NativeWgslCooker;
+
+    // Set plugin root to fixtureDir so simple.wgsl is directly at root
+    const plugin = nativeWgslPlugin({ cooker: mockCooker, root: fixtureDir });
+    const mockContext = { addWatchFile: vi.fn() };
+    const virtualId = `\0aether-shader-artifact:${rootLevelShader}`;
+
+    // @ts-expect-error test hook call
+    const code = await plugin.load.call(mockContext, virtualId);
+    expect(capturedUri).toBe('asset://project/simple.wgsl');
+    expect(code).toContain('asset://project/simple.wgsl');
+  });
+
   test('validates sidecar metadata and cross-checks with reflection during load', async () => {
     // Cooker reflecting a different entry point not matching metadata
     const mismatchedArtifact: CookedShaderRuntimeArtifact = {

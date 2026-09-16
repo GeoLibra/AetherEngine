@@ -4,7 +4,10 @@
 
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { validateWgslShaderMetadata } from '../../src/shader/authoring';
+import {
+  validateWgslShaderMetadata,
+  type ValidateWgslMetadataOptions
+} from '../../src/shader/authoring';
 import type { WgslShaderMetadata } from '../../src/shader/types';
 
 /**
@@ -23,12 +26,14 @@ const defaultFsAdapter: MetadataFileSystemAdapter = Object.freeze({
  *
  * @param metadataPath Path to the `.wgsl.meta.json` or `.shader.json` file.
  * @param fs File system adapter (defaults to node:fs/promises).
+ * @param options Validation options (e.g. kind: 'module' | 'shader-root').
  * @returns Validated, frozen WgslShaderMetadata snapshot.
  * @throws {Error} On I/O failure, malformed JSON, or schema validation violations.
  */
 export async function loadWgslMetadata(
   metadataPath: string,
-  fs: MetadataFileSystemAdapter = defaultFsAdapter
+  fs: MetadataFileSystemAdapter = defaultFsAdapter,
+  options: ValidateWgslMetadataOptions = {}
 ): Promise<WgslShaderMetadata> {
   const content = await fs.readFile(metadataPath, 'utf8');
 
@@ -41,7 +46,7 @@ export async function loadWgslMetadata(
     );
   }
 
-  return validateWgslShaderMetadata(parsed);
+  return validateWgslShaderMetadata(parsed, options);
 }
 
 /**
@@ -49,10 +54,14 @@ export async function loadWgslMetadata(
  * Avoids asynchronous dispatch races before compilation in fast paths and test harnesses.
  *
  * @param metadataPath Path to the `.wgsl.meta.json` or `.shader.json` file.
+ * @param options Validation options (e.g. kind: 'module' | 'shader-root').
  * @returns Validated, frozen WgslShaderMetadata snapshot.
  * @throws {Error} On I/O failure, malformed JSON, or schema validation violations.
  */
-export function loadWgslMetadataSync(metadataPath: string): WgslShaderMetadata {
+export function loadWgslMetadataSync(
+  metadataPath: string,
+  options: ValidateWgslMetadataOptions = {}
+): WgslShaderMetadata {
   const content = readFileSync(metadataPath, 'utf8');
 
   let parsed: unknown;
@@ -64,5 +73,5 @@ export function loadWgslMetadataSync(metadataPath: string): WgslShaderMetadata {
     );
   }
 
-  return validateWgslShaderMetadata(parsed);
+  return validateWgslShaderMetadata(parsed, options);
 }

@@ -295,7 +295,10 @@ for (const config of moduleCompositionConfigs) {
       result.rootLocalAffectedRootsCount !== 1 ||
       result.unrelatedAffectedRootsCount !== 0 ||
       !result.incrementalMatchesFullRebuild ||
-      !result.failedBuildRetainsLastKnownGood
+      !result.failedBuildRetainsLastKnownGood ||
+      result.cacheHits !== 2 ||
+      result.cacheMisses !== 4 ||
+      result.invalidatedRootsCount !== 5
     ) {
       throw new Error(
         `Module composition structural oracle failed for ${config.moduleCount} ${config.topology}.`

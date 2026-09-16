@@ -275,7 +275,7 @@ export class FileSystemShaderModuleLoader implements ShaderModuleLoader {
     let imports: ShaderModuleSource['imports'] = Object.freeze([]);
     if (metaPath) {
       this.loadedFiles.add(metaPath);
-      const metadata = await loadWgslMetadata(metaPath);
+      const metadata = await loadWgslMetadata(metaPath, undefined, { kind: 'module' });
       if (metadata.imports && metadata.imports.length > 0) {
         imports = metadata.imports;
       }

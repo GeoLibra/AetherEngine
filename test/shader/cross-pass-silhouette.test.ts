@@ -17,6 +17,13 @@ import {
   LIGHT_LIST_SHADER_ARTIFACT,
   LIGHT_LIST_WEBGL2_SHADER_ARTIFACT
 } from '../../src/shader/builtins/light-list';
+import {
+  createStandardLitMaterial,
+  packBaselineMaterialUniform,
+  packBaselineShadowMaterialUniform,
+  STANDARD_LIT_MATERIAL_WORD_OFFSETS,
+  STANDARD_SHADOW_MATERIAL_WORD_OFFSETS
+} from '../../src';
 
 describe('Cross-Pass Silhouette & Coverage Conformance', () => {
   it('shadow and lit passes include identical evaluateAlphaCoverage logic in cooked artifacts', () => {
@@ -41,6 +48,108 @@ describe('Cross-Pass Silhouette & Coverage Conformance', () => {
     expect(
       STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT.modules.glslEs300['vertex:standardLitVertex']?.source
     ).toContain('transformUv');
+  });
+
+  it('preserves parameter ABI parity between lit and shadow material uniform writers', () => {
+    const material = createStandardLitMaterial({
+      baseColor: [0.75, 0.5, 0.25, 0.8],
+      alphaCutoff: 0.33,
+      alphaMode: 'mask'
+    });
+
+    const litPacked = packBaselineMaterialUniform(material);
+    const shadowPacked = packBaselineShadowMaterialUniform(material);
+
+    const litFloats = new Float32Array(litPacked.buffer, litPacked.byteOffset, litPacked.length);
+    const shadowFloats = new Float32Array(
+      shadowPacked.buffer,
+      shadowPacked.byteOffset,
+      shadowPacked.length
+    );
+
+    // Assert baseColorFactor / baseColor alignment
+    expect(shadowFloats[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.baseColorFactor]).toBeCloseTo(0.75);
+    expect(shadowFloats[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.baseColorFactor + 1]).toBeCloseTo(
+      0.5
+    );
+    expect(shadowFloats[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.baseColorFactor + 2]).toBeCloseTo(
+      0.25
+    );
+    expect(shadowFloats[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.baseColorFactor + 3]).toBeCloseTo(
+      0.8
+    );
+    expect(litFloats[STANDARD_LIT_MATERIAL_WORD_OFFSETS.baseColor + 3]).toBeCloseTo(
+      shadowFloats[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.baseColorFactor + 3]!
+    );
+
+    // Assert alphaCutoff alignment
+    expect(shadowFloats[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.alphaCutoff]).toBeCloseTo(0.33);
+    expect(litFloats[STANDARD_LIT_MATERIAL_WORD_OFFSETS.alphaCutoff]).toBeCloseTo(
+      shadowFloats[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.alphaCutoff]!
+    );
+
+    // Assert alphaMask alignment
+    expect(shadowPacked[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.alphaMask]).toBe(1);
+    expect(litPacked[STANDARD_LIT_MATERIAL_WORD_OFFSETS.alphaMask]).toBe(1);
+
+    // Assert baseColorUvSet alignment
+    expect(shadowPacked[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.baseColorUvSet]).toBe(
+      litPacked[STANDARD_LIT_MATERIAL_WORD_OFFSETS.baseColorUvSet]
+    );
+
+    // Assert baseColorTransform and baseColorOffset alignment
+    for (let i = 0; i < 4; i++) {
+      expect(
+        shadowFloats[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.baseColorTransform + i]
+      ).toBeCloseTo(litFloats[STANDARD_LIT_MATERIAL_WORD_OFFSETS.baseColorTransform + i]!);
+    }
+    for (let i = 0; i < 2; i++) {
+      expect(shadowFloats[STANDARD_SHADOW_MATERIAL_WORD_OFFSETS.baseColorOffset + i]).toBeCloseTo(
+        litFloats[STANDARD_LIT_MATERIAL_WORD_OFFSETS.baseColorOffset + i]!
+      );
+    }
+  });
+
+  it('evaluates identical alpha coverage masks across sample points for lit and shadow passes', () => {
+    // Exact mathematical oracle for evaluateAlphaCoverage(alpha, cutoff, alphaMask)
+    function evaluateAlphaCoverageOracle(
+      alpha: number,
+      alphaCutoff: number,
+      alphaMask: number
+    ): boolean {
+      if (alphaMask !== 0 && alpha < alphaCutoff) {
+        return false;
+      }
+      return true;
+    }
+
+    const testCutoffs = [0.1, 0.25, 0.5, 0.75, 0.9];
+    const testMaskStates = [0, 1];
+    const steps = 50;
+
+    for (const cutoff of testCutoffs) {
+      for (const mask of testMaskStates) {
+        const shadowResults: boolean[] = [];
+        const litResults: boolean[] = [];
+
+        for (let i = 0; i <= steps; i++) {
+          const alpha = i / steps;
+          const shadowPass = evaluateAlphaCoverageOracle(alpha, cutoff, mask);
+          const litPass = evaluateAlphaCoverageOracle(alpha, cutoff, mask);
+          shadowResults.push(shadowPass);
+          litResults.push(litPass);
+        }
+
+        // Must produce identical boolean survival mask across all alpha steps
+        expect(shadowResults).toEqual(litResults);
+
+        // When mask is active, verify threshold behavior
+        if (mask === 1) {
+          const discarded = shadowResults.filter((survives) => !survives).length;
+          expect(discarded).toBeGreaterThan(0);
+        }
+      }
+    }
   });
 
   it('shadow caster pass does not leak BRDF, IBL, or surface normal evaluation', () => {

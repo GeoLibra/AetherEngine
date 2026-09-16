@@ -77,9 +77,24 @@ export interface WgslCookPolicy {
 }
 
 /**
- * Typed WGSL shader sidecar metadata contract.
+ * Typed WGSL shader sidecar metadata contract for executable root shaders.
+ * Executable shaders must declare at least one entry point for reflection verification.
  */
 export interface WgslShaderMetadata {
+  readonly schemaVersion: 1;
+  readonly entryPoints: readonly WgslEntryMetadata[];
+  readonly imports?: readonly WgslImportRef[];
+  readonly variants?: readonly WgslVariantDimension[];
+  readonly capabilityRequirements?: readonly WgslCapabilityRequirement[];
+  readonly materialBindings?: readonly WgslMaterialBindingMetadata[];
+  readonly cookPolicy?: WgslCookPolicy;
+}
+
+/**
+ * Typed WGSL shader sidecar metadata contract for reusable library modules.
+ * Library modules may omit entry points as they export functions/types rather than executable stages.
+ */
+export interface WgslModuleMetadata {
   readonly schemaVersion: 1;
   readonly entryPoints?: readonly WgslEntryMetadata[];
   readonly imports?: readonly WgslImportRef[];

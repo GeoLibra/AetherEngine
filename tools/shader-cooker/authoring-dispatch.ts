@@ -210,7 +210,12 @@ export async function cookAuthoredShader(
         );
       }
 
-      if (metadata?.entryPoints) {
+      if (metadata) {
+        if (!metadata.entryPoints || metadata.entryPoints.length === 0) {
+          throw new Error(
+            'Executable WGSL root shader metadata must declare at least one entry point.'
+          );
+        }
         // Cross-check metadata declarations with native reflection
         const reflectedEntries = new Map(artifact.entryPoints.map((ep) => [ep.name, ep.stage]));
         for (const metaEp of metadata.entryPoints) {

@@ -106,6 +106,9 @@ for (const moduleCount of [16, 64] as const) {
       expect(result.unrelatedAffectedRootsCount).toBe(0);
       expect(result.incrementalMatchesFullRebuild).toBe(true);
       expect(result.failedBuildRetainsLastKnownGood).toBe(true);
+      expect(result.cacheHits).toBe(2);
+      expect(result.cacheMisses).toBe(4);
+      expect(result.invalidatedRootsCount).toBe(5);
     },
     { iterations: 1, warmupIterations: 0 }
   );
