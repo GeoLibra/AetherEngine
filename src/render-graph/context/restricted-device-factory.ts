@@ -13,14 +13,12 @@ import type {
   RestrictedBindGroupDescriptor,
   RestrictedBindGroupEntry,
   RestrictedBindGroupLayout,
-  RestrictedBufferSlice,
   RestrictedComputePipeline,
   RestrictedPipelineLayout,
   RestrictedPortableDevice,
   RestrictedRenderPipeline,
   RestrictedSampler,
-  RestrictedShaderModule,
-  RestrictedTextureView
+  RestrictedShaderModule
 } from '../types';
 import type { RestrictedResourceOwner } from './restricted-resource-owner';
 import {

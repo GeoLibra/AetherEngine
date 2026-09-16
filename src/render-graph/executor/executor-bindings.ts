@@ -1,8 +1,14 @@
-import type { GraphHandle } from '../types';
-import type { GraphResourceRecord } from '../builder/resources';
-import type { RenderGraphSnapshot } from '../builder/builder';
-import type { CompiledRenderGraph } from '../types';
-import type { RenderGraphExecutionPlan } from '../types';
+import type {
+  CompiledRenderGraph,
+  GraphHandle,
+  PreparedBindGroupLayoutBindings,
+  PreparedComputePipelineBindings,
+  PreparedDrawResourcesBindings,
+  PreparedRenderPipelineBindings,
+  RenderGraphExecutionPlan,
+  RenderGraphSnapshot,
+  TransientResource
+} from '../types';
 import type { AcquiredHistorySlot, HistoryIdentity, HistoryRegistry } from '../history';
 import type { RenderGraphHistoryDebugBinding } from '../debug';
 import type {
@@ -14,13 +20,7 @@ import type {
 } from '../../rhi/contracts';
 import type { RHISurface, RHISurfaceFrame } from '../../rhi/contracts/surface';
 import { allocationFor } from './executor-resource-utils';
-import { TransientResourcePool, type TransientResource } from './transient-pool';
-import type {
-  PreparedBindGroupLayoutBindings,
-  PreparedComputePipelineBindings,
-  PreparedDrawResourcesBindings,
-  PreparedRenderPipelineBindings
-} from '../builder/prepared-resources';
+import { TransientResourcePool } from './transient-pool';
 import { validateImportedStorageUniqueness } from './executor-physical-validation';
 
 export interface RenderGraphHistoryBinding extends AcquiredHistorySlot {

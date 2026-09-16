@@ -7,6 +7,7 @@ export * from './material';
 export * from './pipeline';
 export * from './lighting';
 export * from './phase';
+export * from './systems';
 export * from './baseline';
 export * from './background';
 export * from '../render-graph';

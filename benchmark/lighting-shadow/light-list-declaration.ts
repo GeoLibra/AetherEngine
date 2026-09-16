@@ -1,7 +1,7 @@
 import {
   RenderGraphBuilder,
   ZERO_RESOURCE_BUDGET,
-  createPreparedRenderPipelineToken,
+  createPreparedToken,
   createWebGlFragmentLightListImplementation
 } from '../../src';
 import { packWebGpuLightListInput, type RenderEntityId } from '../../src';
@@ -16,7 +16,7 @@ const IMPLEMENTATION = createWebGlFragmentLightListImplementation({
   estimatedBudget: ZERO_RESOURCE_BUDGET,
   maxTextureDimension2D: 8192
 });
-const PIPELINE = createPreparedRenderPipelineToken('benchmark-light-list');
+const PIPELINE = createPreparedToken('render-pipeline', 'benchmark-light-list');
 
 export interface LightListDeclarationObservation {
   readonly receiverCount: number;

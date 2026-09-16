@@ -1,12 +1,10 @@
 import type {
+  CompiledRenderGraphEdge,
   GraphPassDeclaration,
+  RenderGraphHazardEdge,
+  RenderGraphSemanticEdge,
   RenderGraphSnapshot,
   SemanticEdge
-} from '../../builder/builder';
-import type {
-  CompiledRenderGraphEdge,
-  RenderGraphHazardEdge,
-  RenderGraphSemanticEdge
 } from '../../types';
 import { RenderGraphSemanticHazardError } from './errors';
 

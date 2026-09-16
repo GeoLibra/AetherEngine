@@ -1,14 +1,12 @@
 import { describe, expect, test } from 'vitest';
-import {
-  RenderGraphBuilder,
-  type GraphAccess,
-  type RenderGraphSnapshot
-} from '../../src/render-graph/builder';
+import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { deriveRenderGraphHazards } from '../../src/render-graph/compiler';
 import { fullBufferRange, fullTextureRange } from '../../src/render-graph/ranges';
 import type {
   BufferDescriptor,
   BufferRange,
+  GraphAccess,
+  RenderGraphSnapshot,
   TextureDescriptor,
   TextureRange
 } from '../../src/render-graph/types';

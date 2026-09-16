@@ -1,5 +1,10 @@
-import type { GraphPassDeclaration, RenderGraphSnapshot } from '../../builder/builder';
-import type { CompiledRenderGraph, NormalizedFusionOptions, RasterGroupPlan } from '../../types';
+import type {
+  CompiledRenderGraph,
+  GraphPassDeclaration,
+  NormalizedFusionOptions,
+  RasterGroupPlan,
+  RenderGraphSnapshot
+} from '../../types';
 import { SplitReasonCode } from './constants';
 import {
   compareColorSignatures,

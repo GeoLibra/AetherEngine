@@ -1,7 +1,6 @@
 import type { RHIBindGroupLayout, RHIDevice, RHIRenderPipeline, RHIResource } from '../../../rhi';
 import {
-  createPreparedBindGroupLayoutToken,
-  createPreparedRenderPipelineToken,
+  createPreparedToken,
   type PreparedBindGroupLayoutToken,
   type PreparedRenderPipelineToken,
   type RasterPassContext
@@ -26,8 +25,8 @@ export interface PreparedWebGlLightListRecorder {
 
 /** Creates the cooked fullscreen integer-MRT pipeline before graph execution. */
 export function prepareWebGlLightListRecorder(device: RHIDevice): PreparedWebGlLightListRecorder {
-  const pipelineToken = createPreparedRenderPipelineToken('aether-light-list-webgl');
-  const bindGroupLayoutToken = createPreparedBindGroupLayoutToken('aether-light-list-webgl');
+  const pipelineToken = createPreparedToken('render-pipeline', 'aether-light-list-webgl');
+  const bindGroupLayoutToken = createPreparedToken('bind-group-layout', 'aether-light-list-webgl');
   const shader = device.createShaderModule({
     label: 'aether-light-list-webgl',
     code: LIGHT_LIST_WEBGL2_SHADER_MODULE

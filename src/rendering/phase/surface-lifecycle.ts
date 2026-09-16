@@ -1,7 +1,4 @@
-import {
-  assertRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan
-} from '../../render-graph/executor';
+import { assertRenderGraphExecutionPlan, type RenderGraphExecutionPlan } from '../../render-graph';
 import type {
   SurfaceRenderPlanContext,
   SurfaceRenderPlanResult,

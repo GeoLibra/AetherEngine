@@ -3,10 +3,13 @@ import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
-  createRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan
+  createRenderGraphExecutionPlan
 } from '../../src/render-graph/executor';
-import type { ComputePassContext, CopyPassContext } from '../../src/render-graph/types';
+import type {
+  ComputePassContext,
+  CopyPassContext,
+  RenderGraphExecutionPlan
+} from '../../src/render-graph/types';
 import type { RHIBindGroupLayout } from '../../src/rhi/contracts';
 import { NullDevice } from '../../src/rhi/null/device';
 

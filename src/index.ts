@@ -1,16 +1,23 @@
-export { App } from './app/app';
+export { App, type AppOptions } from './app/app';
 export { definePlugin } from './app/utils';
 export { CoreSchedule } from './app/constants';
+export { PluginGroupBuilder } from './app/plugin-group';
+export { AppTelemetry } from './app/telemetry';
 export type {
   AppBuilder,
   AppState,
+  AppTelemetryEvent,
+  AppTelemetryOptions,
   CommandApplyPointDescriptor,
   DestroyResult,
   LifecycleDiagnostic,
   Plugin,
+  PluginFinishContext,
   PluginGroup,
+  PluginPrepareContext,
   ReadonlyAppContext,
-  ShutdownContext
+  ShutdownContext,
+  SystemSetDescriptor
 } from './app/types';
 export type {
   AccessToken,

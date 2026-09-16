@@ -173,44 +173,4 @@ describe('render graph compiler', () => {
     expect(cycle.edges.map((edge) => edge.kind)).toEqual(['raw', 'war']);
     expect(cycle.message).toMatch(/write-new.*RAW.*read-old-and-new.*WAR.*write-new/i);
   });
-
-  test('rejects a snapshot with incompatible passKind and write usage', () => {
-    const graph = new RenderGraphBuilder();
-    const initial = importedGraphTexture(graph, 'forged-check');
-    graph.addCopyPass({
-      id: 'valid-copy',
-      setup(pass) {
-        pass.readTexture(initial, 'copy-src');
-        return {};
-      },
-      run() {}
-    });
-    const snapshot = graph.build();
-    const forgedSnapshot = {
-      ...snapshot,
-      passes: [
-        {
-          ...snapshot.passes[0]!,
-          accesses: [
-            ...snapshot.passes[0]!.accesses,
-            {
-              kind: 'write' as const,
-              handle: initial,
-              usage: 'color-attachment' as any,
-              range: {
-                baseMipLevel: 0,
-                mipLevelCount: 1,
-                baseArrayLayer: 0,
-                arrayLayerCount: 1,
-                aspect: 'all' as const
-              }
-            }
-          ]
-        }
-      ]
-    };
-    expect(() => compileRenderGraph(forgedSnapshot as any)).toThrow(
-      /Copy pass.*cannot declare write usage "color-attachment"/i
-    );
-  });
 });

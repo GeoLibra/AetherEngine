@@ -42,33 +42,42 @@ import type {
 import {
   RenderGraphBuilder,
   RenderGraphExecutor,
-  RenderSystemRegistry,
   compileRenderGraph,
-  compileRenderSystems,
-  createPreparedComputePipelineToken,
-  createPreparedRenderPipelineToken,
-  renderSystemToken
+  createPreparedToken
 } from '../../src';
-import { RenderSystemRegistry as RenderingRenderSystemRegistry } from '../../src/rendering';
+import { RenderSystemRegistry, compileRenderSystems, renderSystemToken } from '../../src/rendering';
 import * as renderGraphApi from '../../src/render-graph';
 
 describe('RenderGraph public API', () => {
-  test('exports direct graph and RenderSystem facade entry points from the package', () => {
+  test('exports direct graph entry points from the package and does not publish RenderSystem in render-graph', () => {
     expect(RenderGraphBuilder).toBeTypeOf('function');
     expect(RenderGraphExecutor).toBeTypeOf('function');
-    expect(RenderSystemRegistry).toBeTypeOf('function');
     expect(compileRenderGraph).toBeTypeOf('function');
+    expect('RenderSystemRegistry' in renderGraphApi).toBe(false);
+    expect('compileRenderSystems' in renderGraphApi).toBe(false);
+    expect('renderSystemToken' in renderGraphApi).toBe(false);
+    expect(RenderSystemRegistry).toBeTypeOf('function');
     expect(compileRenderSystems).toBeTypeOf('function');
-    expect(createPreparedRenderPipelineToken('main')).toMatchObject({
+    expect(createPreparedToken('render-pipeline', 'main')).toMatchObject({
       kind: 'prepared-render-pipeline-token',
       name: 'main'
     });
-    expect(createPreparedComputePipelineToken('light-list')).toMatchObject({
+    expect(createPreparedToken('compute-pipeline', 'light-list')).toMatchObject({
       kind: 'prepared-compute-pipeline-token',
       name: 'light-list'
     });
+    expect(createPreparedToken('bind-group-layout', 'light-layout')).toMatchObject({
+      kind: 'prepared-bind-group-layout-token',
+      name: 'light-layout'
+    });
+    expect(createPreparedToken('draw-resources', 'draw-0')).toMatchObject({
+      kind: 'prepared-draw-resources-token',
+      name: 'draw-0'
+    });
+    expect(() => createPreparedToken('render-pipeline', '')).toThrow(
+      'Prepared render-pipeline token name must not be empty.'
+    );
     expect(renderSystemToken('example').id).toBe('example');
-    expect(RenderingRenderSystemRegistry).toBe(RenderSystemRegistry);
   });
 
   test('does not publish executor and restricted-context implementation helpers', () => {

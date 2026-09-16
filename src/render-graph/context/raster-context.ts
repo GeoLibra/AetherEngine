@@ -12,15 +12,13 @@ import type {
   RestrictedRenderPipeline,
   RestrictedTextureView,
   TextureHandle,
-  TextureRange,
-  TextureUsage
-} from '../types';
-import type {
   PreparedBindGroupLayoutToken,
   PreparedComputePipelineToken,
   PreparedDrawResourcesToken,
-  PreparedRenderPipelineToken
-} from '../builder/prepared-resources';
+  PreparedRenderPipelineToken,
+  TextureRange,
+  TextureUsage
+} from '../types';
 import type { RestrictedContext } from './restricted-context';
 
 export class RasterPassScope {

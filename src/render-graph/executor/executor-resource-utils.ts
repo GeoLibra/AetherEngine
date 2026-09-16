@@ -4,16 +4,16 @@ import {
   type GraphRange,
   type TextureGraphRange
 } from '../ranges';
-import type { GraphResourceRecord } from '../builder/resources';
-import type { TransientAllocationDescriptor } from './transient-pool';
 import type {
   BufferDescriptor,
   BufferRange,
   BufferUsage,
   GraphHandle,
+  GraphResourceRecord,
   TextureDescriptor,
   TextureRange,
-  TextureUsage
+  TextureUsage,
+  TransientAllocationDescriptor
 } from '../types';
 import type { RHICommandStats } from '../../rhi';
 

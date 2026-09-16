@@ -1,19 +1,5 @@
+import type { RHIDevice, RHIResource, RHISubmission, SubmissionResult } from '../../rhi/contracts';
 import type {
-  RHIBuffer,
-  RHIDevice,
-  RHIResource,
-  RHISubmission,
-  RHITexture,
-  SubmissionResult
-} from '../../rhi/contracts';
-import type {
-  SurfaceTransientScope,
-  TransientAllocationDescriptor,
-  TransientResource,
-  TransientResourcePoolCounters
-} from '../types';
-
-export type {
   SurfaceTransientScope,
   TransientAllocationDescriptor,
   TransientResource,

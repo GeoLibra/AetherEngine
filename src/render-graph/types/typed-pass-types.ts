@@ -1,18 +1,17 @@
-import type { GPUColor, GPUIndexFormat } from '../../rhi/contracts';
+import type { GPUColor } from '../../rhi/contracts';
 import type {
   PreparedBindGroupLayoutToken,
   PreparedComputePipelineToken,
   PreparedDrawResourcesToken,
   PreparedRenderPipelineToken
-} from '../builder/prepared-resources';
-import type { SurfaceFrameToken } from '../builder/pass-builder';
+} from './prepared-resource-types';
+import type { SurfaceFrameToken } from './surface-frame-types';
 import type {
   BufferDescriptor,
   BufferHandle,
   BufferRange,
   BufferReadUsage,
   BufferUsage,
-  BufferWriteUsage,
   ExternalResourceState,
   GraphHandle,
   GraphResourceCreateOptions,
@@ -21,8 +20,7 @@ import type {
   TextureHandle,
   TextureRange,
   TextureReadUsage,
-  TextureUsage,
-  TextureWriteUsage
+  TextureUsage
 } from './render-graph-types';
 import type {
   RestrictedBindGroup,

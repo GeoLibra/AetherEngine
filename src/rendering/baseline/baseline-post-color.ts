@@ -8,8 +8,7 @@ import type {
   RHIResource
 } from '../../rhi/contracts';
 import {
-  createPreparedBindGroupLayoutToken,
-  createPreparedRenderPipelineToken,
+  createPreparedToken,
   type PreparedBindGroupLayoutToken,
   type PreparedRenderPipelineToken
 } from '../../render-graph';
@@ -69,9 +68,9 @@ export function prepareBaselinePostColor(
   device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([0.005, 0, 0, 0]));
   return Object.freeze({
     preparation: Object.freeze({
-      pipelineToken: createPreparedRenderPipelineToken('aether-post-color'),
-      textureLayoutToken: createPreparedBindGroupLayoutToken('aether-post-color-texture'),
-      uniformLayoutToken: createPreparedBindGroupLayoutToken('aether-post-color-uniform'),
+      pipelineToken: createPreparedToken('render-pipeline', 'aether-post-color'),
+      textureLayoutToken: createPreparedToken('bind-group-layout', 'aether-post-color-texture'),
+      uniformLayoutToken: createPreparedToken('bind-group-layout', 'aether-post-color-uniform'),
       pipeline,
       textureLayout,
       uniformLayout,

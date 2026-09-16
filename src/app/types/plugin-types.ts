@@ -15,11 +15,13 @@ import type {
 import type {
   CommandApplyPointDescriptor,
   ScheduleLabel,
-  SystemDescriptor
+  SystemDescriptor,
+  SystemSetDescriptor
 } from './schedule-types';
 
 export interface AppBuilder {
   addSystem(stage: ScheduleLabel, descriptor: SystemDescriptor): void;
+  addSystemSet(stage: ScheduleLabel, descriptor: SystemSetDescriptor): void;
   addCommandApplyPoint(stage: ScheduleLabel, descriptor: CommandApplyPointDescriptor): void;
   insertResource<T>(token: ResourceToken<T>, resource: T): void;
   replaceResource<T>(token: ResourceToken<T>, resource: T): void;
@@ -31,6 +33,8 @@ export interface AppBuilder {
   addObserver<TView extends object>(descriptor: ObserverDescriptor<TView>): void;
   addEventChannel<T>(id: string, channel: EventChannel<T>): void;
   addStateStore<S>(id: string, store: StateStore<S>): void;
+  /** Registers a synchronous cleanup callback invoked on rollback or final contribution disposal. */
+  deferCleanup(dispose: () => void): void;
 }
 
 export interface ReadonlyAppContext {
@@ -40,6 +44,15 @@ export interface ReadonlyAppContext {
   listExtensions<T>(point: ExtensionPoint<T>): readonly ExtensionSnapshot<T>[];
 }
 
+export interface PluginPrepareContext extends ReadonlyAppContext {
+  readonly pluginId: string;
+  readonly signal: AbortSignal;
+}
+
+export interface PluginFinishContext extends AppBuilder, ReadonlyAppContext {
+  readonly pluginId: string;
+}
+
 export interface ShutdownContext extends ReadonlyAppContext {
   readonly pluginId: string;
   readonly reason: string;
@@ -47,11 +60,11 @@ export interface ShutdownContext extends ReadonlyAppContext {
 
 export interface Plugin {
   readonly id: string;
-  readonly dependencies?: readonly string[];
-  build(app: AppBuilder): void;
-  ready?(app: ReadonlyAppContext): boolean | Promise<boolean>;
-  finish?(app: AppBuilder): void | Promise<void>;
-  shutdown?(app: ShutdownContext): void | Promise<void>;
+  readonly dependencies?: readonly string[] | undefined;
+  build(context: AppBuilder): void;
+  prepare?: ((context: PluginPrepareContext) => void | Promise<void>) | undefined;
+  finish?: ((context: PluginFinishContext) => void) | undefined;
+  shutdown?: ((context: ShutdownContext) => void | Promise<void>) | undefined;
 }
 
 export interface PluginGroup {

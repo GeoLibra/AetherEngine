@@ -3,11 +3,11 @@ import type {
   PreparedBindGroupLayoutToken,
   PreparedDrawResourcesBindings,
   PreparedRenderPipelineToken,
-  RenderSystemDescriptor,
   SurfaceFrameToken,
   TextureDescriptor,
   TextureHandle
 } from '../../../render-graph';
+import type { RenderSystemDescriptor } from '../../systems';
 import type { WebGlFragmentLightListBuildOutput, WebGpuLightListBuildOutput } from '../../lighting';
 import type { PreparedDrawPhaseSnapshot } from './prepared-draw-phase-types';
 

@@ -9,6 +9,13 @@ import {
   runRuntimeIntegrityReference,
   runRuntimeIntegritySubject
 } from './runtime-jobs/integrity-scenarios';
+import {
+  runScheduleSystemSetReference,
+  runScheduleSystemSetSubject,
+  runScheduleCompilationReference,
+  runScheduleCompilationSubject,
+  runTelemetryOverheadSubject
+} from './runtime-jobs/schedule-scenarios';
 
 const queueFixture = createQueuedJobFixture(2_048);
 const expectedQueueOrder = referenceQueueOrder(queueFixture);
@@ -33,6 +40,43 @@ for (const scale of [32, 256, 1_024]) {
     { iterations: 1, warmupIterations: 0 }
   );
 }
+
+for (const scale of [32, 256, 1_024]) {
+  const reference = runScheduleSystemSetReference(scale);
+  bench(
+    `executes conditioned SystemSet schedule at scale ${scale}`,
+    async () => {
+      const subject = await runScheduleSystemSetSubject(scale);
+      expect(subject).toEqual(reference);
+      expect(subject.conditionEvaluations).toBe(scale);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
+for (const scale of [32, 256, 1_024]) {
+  const reference = runScheduleCompilationReference(scale);
+  bench(
+    `compiles linear schedule DAG at scale ${scale}`,
+    () => {
+      const subject = runScheduleCompilationSubject(scale);
+      expect(subject).toEqual(reference);
+      expect(subject.compiledCount).toBe(scale);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
+bench(
+  'verifies zero clock overhead for disabled telemetry across 100 frames',
+  async () => {
+    const observation = await runTelemetryOverheadSubject(false, 100);
+    expect(observation.clockSamples).toBe(0);
+    expect(observation.emittedEvents).toBe(0);
+    expect(observation.framesExecuted).toBe(100);
+  },
+  { iterations: 1, warmupIterations: 0 }
+);
 
 bench(
   'builds and runs a deterministic 1K-system schedule',

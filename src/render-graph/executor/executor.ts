@@ -1,5 +1,10 @@
-import type { GraphPassDeclaration, GraphTerminal } from '../builder/builder';
-import type { GraphHandle } from '../types';
+import type {
+  GraphHandle,
+  GraphPassDeclaration,
+  GraphTerminal,
+  RenderGraphExecutionPlan,
+  TransientResource
+} from '../types';
 import { createRenderGraphDebugIR, type RenderGraphDebugIR } from '../debug';
 import {
   releaseTransients,
@@ -13,12 +18,11 @@ import {
 import {
   requiredRasterGroup,
   requiredScheduledPass,
-  validateRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan
+  validateRenderGraphExecutionPlan
 } from './execution-plan';
 import { executeRasterGroup } from './executor-raster-group';
 import { freezeCommandStats } from './executor-resource-utils';
-import { TransientResourcePool, type TransientResource } from './transient-pool';
+import { TransientResourcePool } from './transient-pool';
 import { RestrictedContext } from '../context/restricted-context';
 import { ComputePassContextImpl } from '../context/compute-context';
 import { CopyPassContextImpl } from '../context/copy-context';
@@ -44,7 +48,6 @@ import {
   validatePreparedRenderPipelines,
   validateRasterGroupBindings,
   type RenderGraphExecutionInputs,
-  type RenderGraphHistoryBinding,
   type SurfaceBinding
 } from './executor-bindings';
 

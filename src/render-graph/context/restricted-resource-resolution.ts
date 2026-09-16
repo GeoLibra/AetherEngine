@@ -1,9 +1,15 @@
 import type { RHIBuffer, RHITexture } from '../../rhi/contracts';
-import type { GraphAccess } from '../builder/builder';
 import { containsRange, normalizeRequestedRange } from '../executor/executor-resource-utils';
 import type { GraphRange } from '../ranges';
-import type { GraphResourceRecord } from '../builder/resources';
-import type { BufferRange, BufferUsage, GraphHandle, TextureRange, TextureUsage } from '../types';
+import type {
+  BufferRange,
+  BufferUsage,
+  GraphAccess,
+  GraphHandle,
+  GraphResourceRecord,
+  TextureRange,
+  TextureUsage
+} from '../types';
 
 export function resolveDeclaredResource(
   accesses: readonly GraphAccess[],

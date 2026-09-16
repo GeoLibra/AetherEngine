@@ -9,6 +9,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'engine/design/v2/01-foundation/03-time-events-commands.md',
         'engine/design/v2/02-runtime/01-app-plugin.md',
         'engine/design/v2/02-runtime/04-dynamic-plugin-runtime.md',
+        'engine/design/v2/02-runtime/05-plugin-composition-hardening.md',
         'src/app/',
         'src/events/'
       ])
@@ -169,6 +170,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'engine/design/v2/01-foundation/03-time-events-commands.md',
         'engine/design/v2/02-runtime/01-app-plugin.md',
         'engine/design/v2/02-runtime/03-jobs-workers.md',
+        'engine/design/v2/02-runtime/05-plugin-composition-hardening.md',
         'src/app/',
         'src/ecs/command-buffer.ts',
         'src/events/',
@@ -290,6 +292,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'benchmark/shader-system/',
         'benchmark/shader-system-runner.mjs',
         'engine/design/v2/04-rendering/02-shader-system.md',
+        'engine/design/v2/04-rendering/14-shader-modules.md',
         'engine/design/v2/04-rendering/09-pipeline-layout-specialization.md',
         'engine/design/v2/05-assets-scene/06-render-artifact-package.md',
         'engine/design/v2/08-tooling/03-build-release.md',

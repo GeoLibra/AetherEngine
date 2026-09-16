@@ -1,9 +1,9 @@
+import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import {
-  RenderGraphBuilder,
   RenderSystemRegistry,
   compileRenderSystems,
   renderSystemToken
-} from '../../src/render-graph/builder';
+} from '../../src/rendering/systems';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import { HistoryRegistry, type HistoryIdentity } from '../../src/render-graph/history';
 import {

@@ -111,3 +111,45 @@ export type {
   FusionCounters,
   GroupPartitionResult
 } from './fusion-types';
+
+export type { SurfaceFrameToken } from './surface-frame-types';
+
+export type {
+  PreparedResourceKind,
+  PreparedToken,
+  PreparedComputePipelineToken,
+  PreparedComputePipelineBindings,
+  PreparedBindGroupLayoutToken,
+  PreparedBindGroupLayoutBindings,
+  PreparedRenderPipelineToken,
+  PreparedRenderPipelineBindings,
+  PreparedDrawResourcesToken,
+  PreparedDrawResourcesBindings
+} from './prepared-resource-types';
+
+export type {
+  InitializationInterval,
+  ResourceVersionRecord,
+  GraphResourceRecordBase,
+  TextureResourceRecord,
+  BufferResourceRecord,
+  GraphResourceRecord,
+  ResourceVersionCheckpoint
+} from './resource-record-types';
+
+export type {
+  RasterPassDeclarationDetails,
+  ComputePassDeclarationDetails
+} from './pass-declaration-types';
+
+export type {
+  GraphReadAccess,
+  GraphWriteAccess,
+  GraphAccess,
+  GraphTerminal,
+  SemanticEdge,
+  GraphPassDeclaration,
+  RenderGraphSnapshot
+} from './graph-snapshot-types';
+
+export type { RenderGraphPassContextDelegate } from './pass-delegate-types';

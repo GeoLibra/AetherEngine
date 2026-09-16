@@ -1,12 +1,12 @@
-import type { GraphAccess } from '../builder/builder';
 import type { TextureGraphRange } from '../ranges';
-import type { GraphResourceRecord } from '../builder/resources';
 import { toViewDescriptor } from '../executor/executor-resource-utils';
 import type {
   BufferHandle,
   BufferRange,
   BufferUsage,
+  GraphAccess,
   GraphHandle,
+  GraphResourceRecord,
   TextureHandle,
   TextureRange,
   TextureUsage
@@ -36,7 +36,7 @@ import type {
   PreparedDrawResourcesToken,
   PreparedRenderPipelineBindings,
   PreparedRenderPipelineToken
-} from '../builder/prepared-resources';
+} from '../types';
 import { resolveDeclaredResource } from './restricted-resource-resolution';
 import { RestrictedResourceOwner } from './restricted-resource-owner';
 import { createTrackedPassProxy, type BufferCapability } from './restricted-encoder-proxy';

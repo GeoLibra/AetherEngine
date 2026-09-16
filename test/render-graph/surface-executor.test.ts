@@ -1,17 +1,20 @@
 import { describe, expect, test, vi } from 'vitest';
-import { RenderGraphBuilder, type SurfaceFrameToken } from '../../src/render-graph/builder';
+import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
 import {
   RenderGraphExecutor,
-  createRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan
+  createRenderGraphExecutionPlan
 } from '../../src/render-graph/executor';
-import type { RasterPassContext } from '../../src/render-graph/types';
+import type {
+  RasterPassContext,
+  RenderGraphExecutionPlan,
+  SurfaceFrameToken,
+  TextureDescriptor
+} from '../../src/render-graph/types';
 import { NullDevice } from '../../src/rhi/null/device';
 import { NullSurface } from '../../src/rhi/null/surface';
 import type { RHISurface, RHISurfaceFrame } from '../../src/rhi/contracts/surface';
 import type { SurfaceTarget } from '../../src/platform/types';
-import type { TextureDescriptor } from '../../src/render-graph/types';
 
 const TEXTURE: TextureDescriptor = {
   width: 4,

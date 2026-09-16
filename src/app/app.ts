@@ -1,35 +1,20 @@
-import { isPromiseLike } from '../core';
 import type { ResourceToken } from '../ecs/types';
 import { World } from '../ecs/world';
 import { CommandBufferResource } from '../ecs/command-buffer';
-import { EventRegistryResource } from '../events/event-registry';
-import { StateRegistryResource } from '../events/state-registry';
 import { DiagnosticStoreResource } from '../diagnostics/store';
-import {
-  DEFAULT_SCHEDULES,
-  FIXED_SCHEDULES,
-  FRAME_AFTER_FIXED_SCHEDULES,
-  FRAME_BEFORE_FIXED_SCHEDULES,
-  STARTUP_SCHEDULES
-} from './constants';
+import { DEFAULT_SCHEDULES } from './constants';
 import { createLifecycleDiagnostic } from './lifecycle';
-import { sortPlugins } from './plugin-graph';
 import { ExtensionRegistry, ServiceRegistry } from './registry';
 import type { AppExit, FrameOutcome, Runner, RunnerContext } from './runner';
 import { Schedule } from './schedule';
-import { RegistrationTransaction, removeRegistrations } from './transaction';
-import {
-  FixedTimeResource,
-  FrameTimeResource,
-  TimeControlResource,
-  TimeDiagnosticsResource,
-  TimePolicyResource,
-  TimeRuntimeResource,
-  consumeSingleStep
-} from './time';
+import { removeRegistrations } from './transaction';
+import { AppTelemetry } from './telemetry';
+import { runStartupPipeline, type StartupHost } from './startup';
+import { executeEngineFrame, type FrameHost } from './frame';
 import type {
   AppScope,
   AppState,
+  AppTelemetryOptions,
   DestroyResult,
   ExtensionPoint,
   ExtensionSnapshot,
@@ -43,6 +28,10 @@ import type {
   ShutdownContext
 } from './types';
 
+export interface AppOptions {
+  readonly telemetry?: AppTelemetryOptions;
+}
+
 /** V2 composition root. Structural mutation is available only inside plugin transactions. */
 export class App {
   private readonly world = new World();
@@ -53,22 +42,19 @@ export class App {
   private readonly builtPlugins: Plugin[] = [];
   private readonly registrations: RegistrationHandle[] = [];
   private readonly diagnostics: LifecycleDiagnostic[] = [];
-  private readonly transactionHost = {
-    world: this.world,
-    schedules: this.schedules,
-    services: this.services,
-    extensions: this.extensions
-  };
+  private readonly telemetry: AppTelemetry;
+  private readonly abortController = new AbortController();
 
   private currentState: AppState = 'created';
-  private startupPromise?: Promise<void>;
-  private destroyPromise?: Promise<DestroyResult>;
-  private activeRunner: Runner | undefined;
-  private activeRunPromise: Promise<AppExit> | undefined;
+  private startupPromise?: Promise<void> | undefined;
+  private destroyPromise?: Promise<DestroyResult> | undefined;
+  private activeRunner?: Runner | undefined;
+  private activeRunPromise?: Promise<AppExit> | undefined;
   private stopReason = 'requested';
   private frameCount = 0;
 
-  constructor() {
+  constructor(options: AppOptions = {}) {
+    this.telemetry = new AppTelemetry(options.telemetry);
     for (const label of DEFAULT_SCHEDULES) {
       this.schedules.set(label, new Schedule(label));
     }
@@ -78,21 +64,27 @@ export class App {
     return this.currentState;
   }
 
+  get telemetryEvents(): AppTelemetry {
+    return this.telemetry;
+  }
+
   addPlugin(plugin: Plugin): this {
     this.assertCreated('add plugin');
-    this.pendingPlugins.push(plugin);
+    this.pendingPlugins.push(createOwnedPluginRecord(plugin));
     return this;
   }
 
   addPlugins(plugins: readonly Plugin[] | PluginGroup): this {
     this.assertCreated('add plugins');
     const entries = 'plugins' in plugins ? plugins.plugins() : plugins;
-    this.pendingPlugins.push(...entries);
+    for (const entry of entries) {
+      this.addPlugin(entry);
+    }
     return this;
   }
 
   hasPlugin(id: string): boolean {
-    return this.pendingPlugins.some((plugin) => plugin.id === id);
+    return this.pendingPlugins.some((p) => p.id === id);
   }
 
   getResource<T>(token: ResourceToken<T>): T | undefined {
@@ -133,15 +125,19 @@ export class App {
       );
     }
 
-    const startup = this.startupInternal();
+    let resolveStartup!: () => void;
+    let rejectStartup!: (error: unknown) => void;
+    const startup = new Promise<void>((resolve, reject) => {
+      resolveStartup = resolve;
+      rejectStartup = reject;
+    });
     this.startupPromise = startup;
+    this.startupInternal().then(resolveStartup, rejectStartup);
     return startup;
   }
 
   stop(reason = 'requested'): void {
-    if (this.currentState !== 'running') {
-      return;
-    }
+    if (this.currentState !== 'running') return;
     this.stopReason = reason;
     this.currentState = 'stopping';
     if (this.activeRunner) {
@@ -168,68 +164,58 @@ export class App {
 
   destroy(): Promise<DestroyResult> {
     if (!this.destroyPromise) {
-      this.destroyPromise = this.destroyInternal();
+      let resolveDestroy!: (result: DestroyResult) => void;
+      let rejectDestroy!: (error: unknown) => void;
+      this.destroyPromise = new Promise<DestroyResult>((resolve, reject) => {
+        resolveDestroy = resolve;
+        rejectDestroy = reject;
+      });
+      try {
+        this.abortController.abort();
+      } catch (abortError) {
+        this.recordLifecycleDiagnostic('shutdown', abortError);
+      }
+      this.destroyInternal().then(resolveDestroy, rejectDestroy);
     }
     return this.destroyPromise;
   }
 
   private async startupInternal(): Promise<void> {
-    this.currentState = 'building';
+    const startupHost: StartupHost = {
+      transactionHost: {
+        world: this.world,
+        schedules: this.schedules,
+        services: this.services,
+        extensions: this.extensions
+      },
+      schedules: this.schedules,
+      world: this.world,
+      telemetry: this.telemetry,
+      createReadonlyContext: () => this.createReadonlyContext(),
+      applyCommands: (point) => {
+        const commands = this.world.getResource(CommandBufferResource);
+        if (commands && commands.length > 0) {
+          commands.apply(this.world, point);
+        }
+      },
+      recordContributionCleanupError: (err, id) => {
+        this.recordLifecycleDiagnostic('contribution-cleanup', err, id);
+      }
+    };
+
     try {
-      const orderedPlugins = sortPlugins(this.pendingPlugins);
-      for (const plugin of orderedPlugins) {
-        const transaction = new RegistrationTransaction(this.transactionHost, plugin.id);
-        try {
-          const result = plugin.build(transaction) as unknown;
-          if (isPromiseLike(result)) {
-            void Promise.resolve(result).catch(() => undefined);
-            throw new Error(`Plugin "${plugin.id}" build() must be synchronous.`);
-          }
-          this.registrations.push(...transaction.commit());
-          this.builtPlugins.push(plugin);
-        } catch (error) {
-          this.rollbackTransaction(transaction, plugin.id);
-          throw error;
+      await runStartupPipeline(
+        startupHost,
+        this.pendingPlugins,
+        this.builtPlugins,
+        this.registrations,
+        this.abortController.signal,
+        (s) => {
+          this.currentState = s;
         }
-      }
-
-      this.currentState = 'waiting-ready';
-      const readonlyContext = this.createReadonlyContext();
-      for (const plugin of orderedPlugins) {
-        if ((await plugin.ready?.(readonlyContext)) === false) {
-          throw new Error(`Plugin "${plugin.id}" reported that it is not ready.`);
-        }
-      }
-
-      this.currentState = 'starting';
-      for (const plugin of orderedPlugins) {
-        if (!plugin.finish) {
-          continue;
-        }
-        const transaction = new RegistrationTransaction(this.transactionHost, plugin.id);
-        let committed: readonly RegistrationHandle[] | undefined;
-        try {
-          const result = plugin.finish(transaction);
-          // Structural registration ends when finish() returns; only its async work may continue.
-          committed = transaction.commit();
-          await result;
-          this.registrations.push(...committed);
-        } catch (error) {
-          if (committed) {
-            for (const cleanupError of removeRegistrations(committed)) {
-              this.recordLifecycleDiagnostic('contribution-cleanup', cleanupError, plugin.id);
-            }
-          } else {
-            this.rollbackTransaction(transaction, plugin.id);
-          }
-          throw error;
-        }
-      }
-
-      this.world.start();
-      for (const label of STARTUP_SCHEDULES) {
-        await this.schedules.get(label)?.run(this.world);
-        this.applyCommands(`after:${label}`);
+      );
+      if (this.abortController.signal.aborted) {
+        throw new Error('App startup was cancelled.');
       }
       this.currentState = 'running';
     } catch (error) {
@@ -251,7 +237,7 @@ export class App {
       try {
         await this.startupPromise;
       } catch {
-        // Startup already recorded its primary failure and performed cleanup.
+        // Startup cooperative cancellation settled and already cleaned up.
       }
     }
 
@@ -260,11 +246,12 @@ export class App {
       try {
         await this.activeRunPromise;
       } catch {
-        // Runtime failure remains the primary failure and is already diagnosed.
+        // Runtime failure remains primary failure.
       }
     } else if (this.currentState === 'running') {
       this.stop('destroy');
     }
+
     if (this.currentState !== 'failed' && this.currentState !== 'destroyed') {
       this.stopReason =
         this.currentState === 'created' ? 'destroyed-before-startup' : this.stopReason;
@@ -297,9 +284,8 @@ export class App {
   }
 
   private async runInternal(runner: Runner): Promise<AppExit> {
-    if (this.currentState === 'created') {
-      await this.startup();
-    } else if (
+    if (
+      this.currentState === 'created' ||
       this.currentState === 'building' ||
       this.currentState === 'waiting-ready' ||
       this.currentState === 'starting'
@@ -344,126 +330,21 @@ export class App {
   }
 
   private executeFrame(timestampSeconds: number): FrameOutcome {
-    let primaryError: unknown;
-    let failed = false;
-    const cleanupErrors: unknown[] = [];
-    try {
-      const frameTime = this.world.getResource(FrameTimeResource);
-      const fixedTime = this.world.getResource(FixedTimeResource);
-      const timePolicy = this.world.getResource(TimePolicyResource);
-      const timeRuntime = this.world.getResource(TimeRuntimeResource);
-      const timeControl = this.world.getResource(TimeControlResource);
-      const timeDiagnostics = this.world.getResource(TimeDiagnosticsResource);
-      if (frameTime && fixedTime && timePolicy && timeRuntime && timeControl && timeDiagnostics) {
-        timeRuntime.beginFrame(
-          timestampSeconds,
-          frameTime,
-          timePolicy,
-          timeControl,
-          timeDiagnostics
-        );
-      }
-
-      for (const label of FRAME_BEFORE_FIXED_SCHEDULES) {
-        this.schedules.get(label)?.runSync(this.world, 'frame');
-      }
-
-      if (frameTime && fixedTime && timePolicy && timeRuntime && timeControl && timeDiagnostics) {
-        let substep = 0;
-        let accumulatorSubsteps = 0;
-        if (consumeSingleStep(timeControl)) {
-          substep++;
-          timeRuntime.beginFixedStep(fixedTime, substep, false);
-          for (const label of FIXED_SCHEDULES) {
-            this.schedules.get(label)?.runSync(this.world, 'frame');
-            if (label === 'FixedPostUpdate') {
-              this.applyCommands('after:FixedPostUpdate');
-            }
-          }
-          this.advanceFixedEvents();
-        }
-        while (
-          !timeControl.paused &&
-          timeControl.timeScale > 0 &&
-          substep < timePolicy.maxSubsteps &&
-          timeRuntime.canRunFixedStep(timePolicy)
-        ) {
-          substep++;
-          accumulatorSubsteps++;
-          timeRuntime.beginFixedStep(fixedTime, substep);
-          for (const label of FIXED_SCHEDULES) {
-            this.schedules.get(label)?.runSync(this.world, 'frame');
-            if (label === 'FixedPostUpdate') {
-              this.applyCommands('after:FixedPostUpdate');
-            }
-          }
-          this.advanceFixedEvents();
-        }
-        timeRuntime.finishFrame(frameTime, timePolicy, timeDiagnostics, accumulatorSubsteps);
-      }
-
-      for (const label of FRAME_AFTER_FIXED_SCHEDULES) {
-        this.schedules.get(label)?.runSync(this.world, 'frame');
-        if (label === 'PostUpdate') {
-          this.applyStateTransitions();
-          this.applyCommands('after:PostUpdate');
-        }
-      }
-      this.applyCommands('before:FrameCleanup');
-      this.world.getResource(EventRegistryResource)?.advanceFrame();
-    } catch (error) {
-      failed = true;
-      primaryError = error;
-    } finally {
-      try {
-        this.schedules.get('FrameCleanup')?.runSync(this.world, 'frame');
-      } catch (error) {
-        cleanupErrors.push(error);
-      }
-      cleanupErrors.push(...this.services.clearFrameScoped());
-      try {
-        this.world.clearTrackers();
-      } catch (error) {
-        cleanupErrors.push(error);
-      }
-      for (const error of cleanupErrors) {
-        this.recordLifecycleDiagnostic('frame-cleanup', error);
-      }
-    }
-
-    if (failed) {
-      throw primaryError;
-    }
-    if (cleanupErrors.length > 0) {
-      throw new AggregateError(cleanupErrors, 'Frame cleanup failed.');
-    }
-    this.frameCount++;
-    return Object.freeze({ frame: this.frameCount });
-  }
-
-  private applyCommands(applyPoint: string): void {
-    const commands = this.world.getResource(CommandBufferResource);
-    if (commands && commands.length > 0) {
-      commands.apply(this.world, applyPoint);
-    }
-  }
-
-  private applyStateTransitions(): void {
-    const commands = this.world.getResource(CommandBufferResource);
-    if (!commands) {
-      return;
-    }
-    this.world.getResource(StateRegistryResource)?.applyPending(commands);
-  }
-
-  private advanceFixedEvents(): void {
-    this.world.getResource(EventRegistryResource)?.advanceFixedTick();
+    const frameHost: FrameHost = {
+      world: this.world,
+      schedules: this.schedules,
+      services: this.services,
+      telemetry: this.telemetry,
+      recordLifecycleDiagnostic: (phase, err) => this.recordLifecycleDiagnostic(phase, err)
+    };
+    const outcome = executeEngineFrame(frameHost, timestampSeconds, this.frameCount);
+    this.frameCount = outcome.frame;
+    return outcome;
   }
 
   private createShutdownContext(pluginId: string, reason: string): ShutdownContext {
-    const readonly = this.createReadonlyContext();
     return Object.freeze({
-      ...readonly,
+      ...this.createReadonlyContext(),
       pluginId,
       reason
     });
@@ -471,9 +352,13 @@ export class App {
 
   private async shutdownBuiltPlugins(reason: string): Promise<void> {
     for (const plugin of [...this.builtPlugins].reverse()) {
+      const t0 = this.telemetry.now();
+      this.telemetry.recordPluginStart(plugin.id, 'shutdown');
       try {
         await plugin.shutdown?.(this.createShutdownContext(plugin.id, reason));
+        this.telemetry.recordPluginComplete(plugin.id, 'shutdown', this.telemetry.now() - t0);
       } catch (error) {
+        this.telemetry.recordPluginFail(plugin.id, 'shutdown', this.telemetry.now() - t0, error);
         this.recordLifecycleDiagnostic('shutdown', error, plugin.id);
       }
     }
@@ -490,14 +375,6 @@ export class App {
     this.registrations.length = 0;
     this.services.clearRegistrations();
     this.extensions.clear();
-  }
-
-  private rollbackTransaction(transaction: RegistrationTransaction, pluginId: string): void {
-    try {
-      transaction.rollback();
-    } catch (error) {
-      this.recordLifecycleDiagnostic('contribution-cleanup', error, pluginId);
-    }
   }
 
   private assertCreated(operation: string): void {
@@ -529,4 +406,18 @@ export class App {
       cause: error
     });
   }
+}
+
+function createOwnedPluginRecord(plugin: Plugin): Plugin {
+  if (typeof plugin.id !== 'string' || plugin.id.trim() === '') {
+    throw new Error('Plugin id must not be empty.');
+  }
+  return Object.freeze({
+    id: plugin.id,
+    dependencies: plugin.dependencies ? Object.freeze([...plugin.dependencies]) : undefined,
+    build: plugin.build.bind(plugin),
+    prepare: plugin.prepare ? plugin.prepare.bind(plugin) : undefined,
+    finish: plugin.finish ? plugin.finish.bind(plugin) : undefined,
+    shutdown: plugin.shutdown ? plugin.shutdown.bind(plugin) : undefined
+  });
 }

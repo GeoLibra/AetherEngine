@@ -1,11 +1,8 @@
-import { validatePassAccessUsages, type RenderGraphSnapshot } from '../../builder/builder';
 import { deriveRenderGraphHazards } from '../hazards';
 import type {
   CompiledRenderGraph,
-  CompiledRenderGraphCounters,
   CompiledRenderGraphEdge,
-  CulledRenderGraphPass,
-  RenderGraphSemanticEdge
+  RenderGraphSnapshot
 } from '../../types';
 import {
   rejectHazardReversal,
@@ -16,22 +13,10 @@ import {
 } from './validation';
 import { collectPredecessorClosure, collectRoots, stableTopologicalOrder } from './topology';
 
-export type {
-  CompiledRenderGraph,
-  CompiledRenderGraphCounters,
-  CompiledRenderGraphEdge,
-  CulledRenderGraphPass,
-  RenderGraphSemanticEdge
-} from '../../types';
-export { RenderGraphCycleError, RenderGraphSemanticHazardError } from './errors';
-
 const COMPILED_RENDER_GRAPHS = new WeakMap<object, RenderGraphSnapshot>();
 
 /** Compiles one frozen authoring snapshot into the only retained pass schedule. */
 export function compileRenderGraph(snapshot: RenderGraphSnapshot): CompiledRenderGraph {
-  for (const pass of snapshot.passes) {
-    validatePassAccessUsages(pass);
-  }
   const hazardResult = deriveRenderGraphHazards(snapshot);
   const semanticEdges = snapshot.semanticEdges.map(toCompiledSemanticEdge);
   validatePassReferences(snapshot, hazardResult.edges, semanticEdges);

@@ -1,10 +1,10 @@
 import {
   RenderGraphBuilder,
   RenderGraphExecutor,
-  RenderSystemRegistry,
-  createPreparedDrawResourcesToken,
-  compileRenderSystems
+  createPreparedToken,
+  type PreparedDrawResourcesToken
 } from '../../render-graph';
+import { RenderSystemRegistry, compileRenderSystems } from '../systems';
 import { ZERO_RESOURCE_BUDGET } from '../../feature-policy';
 import type { TextureDescriptor } from '../../render-graph';
 import { buildPreparedDrawPhase, createOpaqueRenderSystem } from '../phase';
@@ -79,17 +79,15 @@ export class BaselineRenderer {
     const phase = buildPreparedDrawPhase(prepared.view.id, phaseKind, prepared.packets);
     const graph = new RenderGraphBuilder();
     const shadowDrawResources = new Map();
-    const shadowTokensByRequest = new Map<
-      string,
-      readonly ReturnType<typeof createPreparedDrawResourcesToken>[]
-    >();
+    const shadowTokensByRequest = new Map<string, readonly PreparedDrawResourcesToken[]>();
     let shadowMap: ReturnType<RenderGraphBuilder['createTexture']> | undefined;
     if (prepared.shadow !== undefined) {
       for (const request of prepared.shadow.requests) {
         const key = shadowRequestKey(request);
         const packets = prepared.shadow.packetsByRequestKey.get(key) ?? [];
         const tokens = packets.map((packet, index) => {
-          const token = createPreparedDrawResourcesToken(
+          const token = createPreparedToken(
+            'draw-resources',
             `${prepared.view.id}:shadow:${request.subresourceIndex}:${index}`
           );
           shadowDrawResources.set(token, packet);

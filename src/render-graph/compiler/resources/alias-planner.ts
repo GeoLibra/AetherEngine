@@ -1,17 +1,9 @@
-import type { RenderGraphSnapshot } from '../../builder/builder';
-import type { GraphResourceRecord } from '../../builder/resources';
 import type {
   AliasDecision,
   AliasRejection,
   AliasRejectionReason,
-  ResourceAliasPlan,
-  ResourceLifetime
-} from '../../types';
-
-export type {
-  AliasDecision,
-  AliasRejection,
-  AliasRejectionReason,
+  GraphResourceRecord,
+  RenderGraphSnapshot,
   ResourceAliasPlan,
   ResourceLifetime
 } from '../../types';

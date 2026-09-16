@@ -1,13 +1,9 @@
-import type { RenderGraphSnapshot } from '../../builder/builder';
-import type { GraphResourceRecord } from '../../builder/resources';
 import type {
-  BufferUsage,
   CompiledRenderGraph,
-  ExternalResourceState,
-  GraphResourceKind,
+  GraphResourceRecord,
   PortableResourceUsage,
   PortableTransition,
-  TextureUsage
+  RenderGraphSnapshot
 } from '../../types';
 import type { GraphRange } from '../../ranges';
 import {
@@ -18,8 +14,6 @@ import {
   rangesOverlap,
   subtractGraphRange
 } from '../../ranges';
-
-export type { PortableResourceUsage, PortableTransition };
 
 export interface PortableTransitionOptions {
   readonly submissionIndex?: number;

@@ -1,8 +1,5 @@
 import type { RenderView } from '../visibility/types';
-import {
-  assertRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan
-} from '../../render-graph/executor';
+import { assertRenderGraphExecutionPlan, type RenderGraphExecutionPlan } from '../../render-graph';
 import type {
   RenderFrameMetrics,
   RenderFrameStageContext,

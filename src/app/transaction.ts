@@ -19,7 +19,8 @@ import type {
   ScheduleLabel,
   ServiceRegistration,
   ServiceToken,
-  SystemDescriptor
+  SystemDescriptor,
+  SystemSetDescriptor
 } from './types';
 
 export interface RegistrationTransactionHost {
@@ -45,8 +46,28 @@ export class RegistrationTransaction implements AppBuilder {
     if (!schedule) {
       throw new Error(`Schedule "${stage}" not found.`);
     }
-    const registration = schedule.addSystem(descriptor);
+    const registration = schedule.addSystem(descriptor, this.ownerPlugin);
     this.handles.push(createHandle(() => schedule.removeSystem(registration)));
+  }
+
+  addSystemSet(stage: ScheduleLabel, descriptor: SystemSetDescriptor): void {
+    this.assertOpen();
+    const schedule = this.host.schedules.get(stage);
+    if (!schedule) {
+      throw new Error(`Schedule "${stage}" not found.`);
+    }
+    schedule.addSystemSet(descriptor, this.ownerPlugin);
+    this.handles.push(createHandle(() => schedule.removeSystemSet(descriptor.id)));
+  }
+
+  deferCleanup(dispose: () => void): void {
+    this.assertOpen();
+    this.handles.push(
+      createHandle(() => {
+        dispose();
+        return true;
+      })
+    );
   }
 
   addCommandApplyPoint(stage: ScheduleLabel, descriptor: CommandApplyPointDescriptor): void {

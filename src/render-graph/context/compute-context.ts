@@ -1,10 +1,4 @@
 import type { RHIComputePassEncoder } from '../../rhi/contracts';
-import type {
-  PreparedBindGroupLayoutToken,
-  PreparedComputePipelineToken,
-  PreparedDrawResourcesToken,
-  PreparedRenderPipelineToken
-} from '../builder/prepared-resources';
 import type { RestrictedContext } from './restricted-context';
 import type {
   BufferHandle,
@@ -12,6 +6,10 @@ import type {
   BufferUsage,
   ComputeCommands,
   ComputePassContext,
+  PreparedBindGroupLayoutToken,
+  PreparedComputePipelineToken,
+  PreparedDrawResourcesToken,
+  PreparedRenderPipelineToken,
   RestrictedBindGroup,
   RestrictedBindGroupLayout,
   RestrictedBufferSlice,

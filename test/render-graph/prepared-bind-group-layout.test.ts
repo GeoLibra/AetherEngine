@@ -4,7 +4,7 @@ import {
   RenderGraphBuilder,
   RenderGraphExecutor,
   compileRenderGraph,
-  createPreparedBindGroupLayoutToken,
+  createPreparedToken,
   createRenderGraphExecutionPlan,
   type RestrictedBindGroupLayout,
   type CopyPassContext
@@ -13,7 +13,7 @@ import {
 describe('prepared bind-group layouts', () => {
   test('resolves an externally prepared layout inside the synchronous pass boundary', () => {
     const device = new NullDevice();
-    const token = createPreparedBindGroupLayoutToken('light-list');
+    const token = createPreparedToken('bind-group-layout', 'light-list');
     const layout = device.createBindGroupLayout({ entries: [] });
     const graph = new RenderGraphBuilder();
     let resolved: RestrictedBindGroupLayout | undefined;
@@ -40,7 +40,7 @@ describe('prepared bind-group layouts', () => {
   test('rejects a prepared layout from another device generation before recording', () => {
     const device = new NullDevice();
     const foreign = new NullDevice();
-    const token = createPreparedBindGroupLayoutToken('foreign');
+    const token = createPreparedToken('bind-group-layout', 'foreign');
     const graph = new RenderGraphBuilder();
     graph.addCopyPass({
       id: 'unused',

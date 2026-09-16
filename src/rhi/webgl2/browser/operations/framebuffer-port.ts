@@ -71,6 +71,8 @@ export function createBrowserWebGL2FramebufferPort(
     },
     deleteFramebuffer(framebuffer): void {
       glCall(gl, 'deleteFramebuffer', [framebuffer]);
+      // A deleted framebuffer cannot be restored after a temporary resolve binding.
+      if (state.current === framebuffer) state.current = null;
     },
     createVertexArray(descriptor) {
       const vertexArray = glObject(gl, 'createVertexArray');

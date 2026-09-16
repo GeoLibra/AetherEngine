@@ -1,9 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { NullDevice } from '../../src/rhi';
-import {
-  TransientResourcePool,
-  type TransientAllocationDescriptor
-} from '../../src/render-graph/executor';
+import { TransientResourcePool } from '../../src/render-graph/executor';
+import type { TransientAllocationDescriptor } from '../../src/render-graph/types';
 
 const BUFFER: TransientAllocationDescriptor = Object.freeze({
   kind: 'buffer',

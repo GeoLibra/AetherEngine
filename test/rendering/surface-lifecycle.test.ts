@@ -1,10 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
 import { RenderGraphBuilder } from '../../src/render-graph/builder';
 import { compileRenderGraph } from '../../src/render-graph/compiler';
-import {
-  createRenderGraphExecutionPlan,
-  type RenderGraphExecutionPlan
-} from '../../src/render-graph/executor';
+import { createRenderGraphExecutionPlan } from '../../src/render-graph/executor';
+import type { RenderGraphExecutionPlan } from '../../src/render-graph';
 import { SurfaceRenderPlanCoordinator } from '../../src/rendering/phase/surface-lifecycle';
 import { NullDevice } from '../../src/rhi/null/device';
 import { NullSurface } from '../../src/rhi/null/surface';

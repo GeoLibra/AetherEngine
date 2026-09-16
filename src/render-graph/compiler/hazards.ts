@@ -1,22 +1,24 @@
-import type { GraphReadAccess, GraphWriteAccess, RenderGraphSnapshot } from '../builder/builder';
 import {
   fullBufferRange,
   fullTextureRange,
   normalizeBufferRange,
   normalizeTextureRange,
   rangesOverlap,
+  type BufferGraphRange,
   type GraphRange,
   type TextureGraphRange
 } from '../ranges';
-import type { GraphResourceRecord, InitializationInterval } from '../builder/resources';
-import type { BufferRange, GraphResourceKind, TextureRange } from '../types';
 import type {
-  RenderGraphHazardCounters,
-  RenderGraphHazardEdge,
-  RenderGraphHazardKind
+  BufferRange,
+  GraphReadAccess,
+  GraphResourceKind,
+  GraphResourceRecord,
+  GraphWriteAccess,
+  InitializationInterval,
+  RenderGraphSnapshot,
+  TextureRange
 } from '../types';
-
-export type {
+import type {
   RenderGraphHazardCounters,
   RenderGraphHazardEdge,
   RenderGraphHazardKind
@@ -39,63 +41,99 @@ interface OverlapResult {
   readonly fallback: boolean;
 }
 
+interface ResourceAccessBucket {
+  readonly reads: GraphReadAccess[];
+  readonly writes: GraphWriteAccess[];
+}
+
 /** Derives resource safety edges without mutating the frozen authoring snapshot. */
 export function deriveRenderGraphHazards(snapshot: RenderGraphSnapshot): RenderGraphHazardResult {
+  const resourceCount = snapshot.resources.length;
+  const buckets: ResourceAccessBucket[] = Array.from({ length: resourceCount }, () => ({
+    reads: [],
+    writes: []
+  }));
+
+  let accessesExamined = 0;
+  const edges: RenderGraphHazardEdge[] = [];
   const counters: MutableCounters = {
-    accessesExamined: snapshot.passes.reduce((sum, pass) => sum + pass.accesses.length, 0),
+    accessesExamined: 0,
     overlapComparisons: 0,
     wholeResourceFallbacks: 0
   };
-  const edges: RenderGraphHazardEdge[] = [];
-  const reads = snapshot.passes.flatMap((pass) =>
-    pass.accesses.filter((access): access is GraphReadAccess => access.kind === 'read')
-  );
-  const writes = snapshot.passes.flatMap((pass) =>
-    pass.accesses.filter((access): access is GraphWriteAccess => access.kind === 'write')
-  );
 
-  for (const read of reads) addReadAfterWriteEdges(snapshot, read, edges, counters);
+  // Collect reads and writes per resource, preserving pass-order and RAW derivation
+  for (let passIndex = 0; passIndex < snapshot.passes.length; passIndex += 1) {
+    const pass = snapshot.passes[passIndex]!;
+    accessesExamined += pass.accesses.length;
+    for (let accessIndex = 0; accessIndex < pass.accesses.length; accessIndex += 1) {
+      const access = pass.accesses[accessIndex]!;
+      const bucket = buckets[access.handle.resourceId];
+      if (access.kind === 'read') {
+        if (bucket !== undefined) {
+          bucket.reads.push(access);
+        }
+        addReadAfterWriteEdges(snapshot, access, edges, counters);
+      } else if (bucket !== undefined) {
+        bucket.writes.push(access);
+      }
+    }
+  }
+  counters.accessesExamined = accessesExamined;
+
   addActiveTerminalDependencies(snapshot, edges, counters);
 
-  for (const read of reads) {
-    for (const write of writes) {
-      if (
-        read.handle.resourceId !== write.handle.resourceId ||
-        read.handle.kind !== write.handle.kind ||
-        read.handle.version >= write.handle.version ||
-        read.passId === write.passId
-      ) {
-        continue;
+  // Derive WAR hazards within each resource bucket
+  for (let resourceId = 0; resourceId < resourceCount; resourceId += 1) {
+    const bucket = buckets[resourceId]!;
+    const reads = bucket.reads;
+    const writes = bucket.writes;
+    if (reads.length === 0 || writes.length === 0) continue;
+
+    for (let readIndex = 0; readIndex < reads.length; readIndex += 1) {
+      const read = reads[readIndex]!;
+      for (let writeIndex = 0; writeIndex < writes.length; writeIndex += 1) {
+        const write = writes[writeIndex]!;
+        if (
+          read.handle.kind !== write.handle.kind ||
+          read.handle.version >= write.handle.version ||
+          read.passId === write.passId
+        ) {
+          continue;
+        }
+        const resource = resourceFor(snapshot, read.handle.resourceId, read.handle.kind);
+        const overlap = compareRanges(read.range, write.range, resource, counters);
+        if (!overlap.overlaps) continue;
+        edges.push(
+          hazardEdge('war', read.passId, write.passId, resource, write.handle.version, overlap)
+        );
       }
-      const resource = resourceFor(snapshot, read.handle.resourceId, read.handle.kind);
-      const overlap = compareRanges(read.range, write.range, resource, counters);
-      if (!overlap.overlaps) continue;
-      edges.push(
-        hazardEdge('war', read.passId, write.passId, resource, write.handle.version, overlap)
-      );
     }
   }
 
-  for (let firstIndex = 0; firstIndex < writes.length; firstIndex += 1) {
-    const first = writes[firstIndex] as GraphWriteAccess;
-    for (let secondIndex = firstIndex + 1; secondIndex < writes.length; secondIndex += 1) {
-      const second = writes[secondIndex] as GraphWriteAccess;
-      if (
-        first.handle.resourceId !== second.handle.resourceId ||
-        first.handle.kind !== second.handle.kind ||
-        first.passId === second.passId
-      ) {
-        continue;
+  // Derive WAW hazards within each resource bucket
+  for (let resourceId = 0; resourceId < resourceCount; resourceId += 1) {
+    const writes = buckets[resourceId]!.writes;
+    const writeCount = writes.length;
+    if (writeCount < 2) continue;
+
+    for (let firstIndex = 0; firstIndex < writeCount; firstIndex += 1) {
+      const first = writes[firstIndex]!;
+      for (let secondIndex = firstIndex + 1; secondIndex < writeCount; secondIndex += 1) {
+        const second = writes[secondIndex]!;
+        if (first.handle.kind !== second.handle.kind || first.passId === second.passId) {
+          continue;
+        }
+        const [earlier, later] =
+          first.handle.version < second.handle.version ? [first, second] : [second, first];
+        if (earlier.handle.version === later.handle.version) continue;
+        const resource = resourceFor(snapshot, earlier.handle.resourceId, earlier.handle.kind);
+        const overlap = compareRanges(earlier.range, later.range, resource, counters);
+        if (!overlap.overlaps) continue;
+        edges.push(
+          hazardEdge('waw', earlier.passId, later.passId, resource, later.handle.version, overlap)
+        );
       }
-      const [earlier, later] =
-        first.handle.version < second.handle.version ? [first, second] : [second, first];
-      if (earlier.handle.version === later.handle.version) continue;
-      const resource = resourceFor(snapshot, earlier.handle.resourceId, earlier.handle.kind);
-      const overlap = compareRanges(earlier.range, later.range, resource, counters);
-      if (!overlap.overlaps) continue;
-      edges.push(
-        hazardEdge('waw', earlier.passId, later.passId, resource, later.handle.version, overlap)
-      );
     }
   }
 
@@ -296,16 +334,61 @@ function intersectAspect(
 }
 
 function deduplicateEdges(edges: readonly RenderGraphHazardEdge[]): RenderGraphHazardEdge[] {
-  const seen = new Set<string>();
-  return edges.filter((edge) => {
-    const key = `${edge.kind}:${edge.fromPassId}:${edge.toPassId}:${edge.resourceId}:${edge.version}:${rangeKey(edge.range)}:${edge.fallback}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  if (edges.length <= 1) return edges.slice();
+  const seenByPassPair = new Map<number, RenderGraphHazardEdge[]>();
+  const result: RenderGraphHazardEdge[] = [];
+
+  for (let i = 0; i < edges.length; i += 1) {
+    const edge = edges[i]!;
+    // Safe compound integer key for pass pair (fromPassId * 0x100000000 + toPassId)
+    const pairKey = edge.fromPassId * 0x100000000 + edge.toPassId;
+    const existing = seenByPassPair.get(pairKey);
+    if (existing === undefined) {
+      seenByPassPair.set(pairKey, [edge]);
+      result.push(edge);
+      continue;
+    }
+
+    let isDuplicate = false;
+    for (let j = 0; j < existing.length; j += 1) {
+      const prev = existing[j]!;
+      if (
+        prev.fromPassId === edge.fromPassId &&
+        prev.toPassId === edge.toPassId &&
+        prev.kind === edge.kind &&
+        prev.resourceId === edge.resourceId &&
+        prev.version === edge.version &&
+        prev.fallback === edge.fallback &&
+        sameGraphRange(prev.range, edge.range)
+      ) {
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (!isDuplicate) {
+      existing.push(edge);
+      result.push(edge);
+    }
+  }
+
+  return result;
 }
 
-function rangeKey(range: GraphRange): string {
-  if (range.kind === 'buffer') return `b:${range.offset}:${range.end}`;
-  return `t:${range.baseMipLevel}:${range.mipLevelEnd}:${range.baseArrayLayer}:${range.arrayLayerEnd}:${range.aspect}`;
+function sameGraphRange(first: GraphRange, second: GraphRange): boolean {
+  if (first.kind !== second.kind) return false;
+  if (first.kind === 'buffer') {
+    const b1 = first as BufferGraphRange;
+    const b2 = second as BufferGraphRange;
+    return b1.offset === b2.offset && b1.end === b2.end;
+  }
+  const t1 = first as TextureGraphRange;
+  const t2 = second as TextureGraphRange;
+  return (
+    t1.baseMipLevel === t2.baseMipLevel &&
+    t1.mipLevelEnd === t2.mipLevelEnd &&
+    t1.baseArrayLayer === t2.baseArrayLayer &&
+    t1.arrayLayerEnd === t2.arrayLayerEnd &&
+    t1.aspect === t2.aspect
+  );
 }

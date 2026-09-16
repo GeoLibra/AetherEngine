@@ -1,23 +1,24 @@
 import { fnv1a32Hex } from '../../core';
-import type { RenderGraphSnapshot } from '../builder/builder';
 import type {
+  AliasDecision,
   CompiledRenderGraph,
   CompiledRenderGraphEdge,
   GroupPartitionResult,
-  RasterGroupPlan
+  HistoryInvalidationReason,
+  PortableTransition,
+  RasterGroupPlan,
+  RenderGraphExecutionStep,
+  RenderGraphSnapshot,
+  ResourceLifetime
 } from '../types';
 import { createRenderGraphExecutionSchedule } from '../executor/execution-plan';
-import type { RenderGraphExecutionStep } from '../types';
 import {
   analyzeResourceLifetimes,
   derivePortableTransitions,
   planResourceAliases,
-  type AliasDecision,
-  type AliasPlanningOptions,
-  type PortableTransition,
-  type ResourceLifetime
+  type AliasPlanningOptions
 } from '../compiler/resources';
-import type { HistoryInvalidationReason, HistorySlotDebugState } from '../history';
+import type { HistorySlotDebugState } from '../history';
 
 export const HISTORY_INVALIDATION_REASONS = new Set<HistoryInvalidationReason>([
   'new',

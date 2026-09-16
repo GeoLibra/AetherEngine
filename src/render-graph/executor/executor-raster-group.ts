@@ -1,7 +1,6 @@
 import type {
   RHIBuffer,
   RHICommandEncoder,
-  RHIDevice,
   RHIRenderPassDepthStencilAttachment,
   RHITexture,
   RHITextureView

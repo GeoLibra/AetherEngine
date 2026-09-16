@@ -193,6 +193,38 @@ describe('browser WebGL2 native operations', () => {
     );
   });
 
+  test('does not restore a deleted framebuffer after a resolve pass', () => {
+    const gl = new FakeOperationsGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+    const source = port.createTexture?.({
+      size: { width: 8, height: 8, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10
+    });
+    const target = port.createTexture?.({
+      size: { width: 8, height: 8, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10
+    });
+    if (source === undefined || target === undefined) throw new Error('Missing resolve textures.');
+    const framebuffer = port.createFramebuffer?.({
+      colorAttachments: [{ view: source, loadOp: 'load', storeOp: 'store' }]
+    });
+    if (framebuffer === undefined) throw new Error('Missing source framebuffer.');
+
+    port.bindFramebuffer?.(framebuffer);
+    port.deleteFramebuffer?.(framebuffer);
+    port.resolveRenderPass?.({
+      colorAttachments: [{ view: source, resolveTarget: target, loadOp: 'load', storeOp: 'store' }]
+    });
+
+    expect(gl.calls.filter(([name]) => name === 'bindFramebuffer').at(-1)).toEqual([
+      'bindFramebuffer',
+      gl.DRAW_FRAMEBUFFER,
+      null
+    ]);
+  });
+
   test('routes every MRT color attachment through drawBuffers', () => {
     const gl = new FakeOperationsGL();
     const port = createBrowserWebGL2OperationPort(gl);

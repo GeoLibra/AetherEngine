@@ -65,7 +65,7 @@ describe('Host App integration', () => {
         definePlugin({
           id: 'aether.early-ready-failure',
           build() {},
-          ready: () => {
+          prepare() {
             throw new Error('not ready');
           }
         })

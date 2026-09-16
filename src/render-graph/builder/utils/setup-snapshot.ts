@@ -1,54 +1,8 @@
-import { assertGraphHandle, isGraphHandle } from './handles';
-import type { GraphResourceCreateOptions } from './resources';
-import type { GraphAccess, GraphTerminal } from './builder';
-import type { GraphRange } from '../ranges';
-import type {
-  BufferDescriptor,
-  BufferHandle,
-  BufferRange,
-  BufferReadUsage,
-  BufferWriteUsage,
-  ExternalResourceState,
-  GraphHandle,
-  PassToken,
-  TextureDescriptor,
-  TextureHandle,
-  TextureRange,
-  TextureReadUsage,
-  TextureWriteUsage
-} from '../types';
+import { isGraphHandle } from '../handles';
 
-export interface SurfaceFrameToken {
-  readonly kind: 'surface-frame';
-  readonly id: string;
-}
-
-export interface RenderGraphPassContextDelegate {
-  readonly graphId: number;
-  createTexture(descriptor: TextureDescriptor, options?: GraphResourceCreateOptions): TextureHandle;
-  createBuffer(descriptor: BufferDescriptor, options?: GraphResourceCreateOptions): BufferHandle;
-  descriptorFor(handle: GraphHandle): TextureDescriptor | BufferDescriptor;
-  normalizeRange(handle: GraphHandle, range?: TextureRange | BufferRange): GraphRange;
-  declareRead(
-    passId: number,
-    handle: GraphHandle,
-    usage: TextureReadUsage | BufferReadUsage,
-    expectedKind: GraphHandle['kind'],
-    range?: TextureRange | BufferRange
-  ): GraphAccess;
-  declareWrite(
-    passId: number,
-    handle: GraphHandle,
-    usage: TextureWriteUsage | BufferWriteUsage,
-    expectedKind: GraphHandle['kind'],
-    range?: TextureRange | BufferRange
-  ): GraphAccess;
-  declareTerminal(terminal: GraphTerminal): void;
-  declareAfter(fromPass: PassToken, toPassId: number): void;
-  validatePresentBinding(handle: TextureHandle, surfaceFrame: SurfaceFrameToken): void;
-  validateExportState(handle: GraphHandle, finalState: ExternalResourceState): void;
-}
-
+/**
+ * Validates basic structural contracts of a pass descriptor.
+ */
 export function validatePassDescriptor<TResources, TContext>(descriptor: {
   readonly id: string;
   setup: unknown;
@@ -60,6 +14,10 @@ export function validatePassDescriptor<TResources, TContext>(descriptor: {
   }
 }
 
+/**
+ * Recursively captures and freezes setup resources returned by pass authoring callbacks.
+ * Disallows functions, mutable class instances, accessors, and cyclic structures.
+ */
 export function snapshotSetupValue<T>(
   value: T,
   visiting = new WeakSet<object>(),

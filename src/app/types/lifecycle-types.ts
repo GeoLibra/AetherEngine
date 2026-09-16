@@ -16,14 +16,16 @@ export interface LifecycleDiagnostic {
     | 'PLUGIN_SHUTDOWN_FAILED'
     | 'FRAME_CLEANUP_FAILED'
     | 'SERVICE_DISPOSAL_FAILED'
-    | 'CONTRIBUTION_CLEANUP_FAILED';
+    | 'CONTRIBUTION_CLEANUP_FAILED'
+    | 'SCHEDULE_VALIDATION_FAILED';
   readonly phase:
     | 'startup'
     | 'runtime'
     | 'shutdown'
     | 'frame-cleanup'
     | 'service-disposal'
-    | 'contribution-cleanup';
+    | 'contribution-cleanup'
+    | 'schedule-validation';
   readonly pluginId?: string;
   readonly error: unknown;
 }
