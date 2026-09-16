@@ -125,8 +125,14 @@ export class App {
       );
     }
 
-    const startup = this.startupInternal();
+    let resolveStartup!: () => void;
+    let rejectStartup!: (error: unknown) => void;
+    const startup = new Promise<void>((resolve, reject) => {
+      resolveStartup = resolve;
+      rejectStartup = reject;
+    });
     this.startupPromise = startup;
+    this.startupInternal().then(resolveStartup, rejectStartup);
     return startup;
   }
 
@@ -158,8 +164,18 @@ export class App {
 
   destroy(): Promise<DestroyResult> {
     if (!this.destroyPromise) {
-      this.abortController.abort();
-      this.destroyPromise = this.destroyInternal();
+      let resolveDestroy!: (result: DestroyResult) => void;
+      let rejectDestroy!: (error: unknown) => void;
+      this.destroyPromise = new Promise<DestroyResult>((resolve, reject) => {
+        resolveDestroy = resolve;
+        rejectDestroy = reject;
+      });
+      try {
+        this.abortController.abort();
+      } catch (abortError) {
+        this.recordLifecycleDiagnostic('shutdown', abortError);
+      }
+      this.destroyInternal().then(resolveDestroy, rejectDestroy);
     }
     return this.destroyPromise;
   }
@@ -198,6 +214,9 @@ export class App {
           this.currentState = s;
         }
       );
+      if (this.abortController.signal.aborted) {
+        throw new Error('App startup was cancelled.');
+      }
       this.currentState = 'running';
     } catch (error) {
       this.currentState = 'failed';
