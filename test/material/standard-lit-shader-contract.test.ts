@@ -131,8 +131,8 @@ describe('StandardLit WGSL single-source-of-truth shader contract', () => {
     test('standard-lit WGSL defines glTF channel composition and coverage discard in shader source', () => {
       const wgsl = STANDARD_LIT_SHADER_ARTIFACT.modules.wgsl;
 
-      // Base color composition: factor * textureSample * vertexColor
-      expect(wgsl).toContain('materialData.baseColor * baseSample * fragmentInput.color');
+      // Base color composition: factor * textureSample * vertexColor via shared surface module
+      expect(wgsl).toContain('materialData.baseColor * baseSample * input.color');
 
       // Metallic: sampled from B channel of metallicRoughness texture
       expect(wgsl).toContain('materialData.metallic * mrSample.b');
@@ -150,16 +150,17 @@ describe('StandardLit WGSL single-source-of-truth shader contract', () => {
       expect(wgsl).toContain('1.0 + materialData.occlusionStrength * (aoSample - 1.0)');
 
       // Emissive: factor * textureSample
-      expect(wgsl).toContain('materialData.emissiveFactor * textureSample(emissiveTexture');
+      expect(wgsl).toContain('materialData.emissiveFactor * emissiveSample');
 
       // Clamping: metallic in [0, 1], roughness clamped to minimum 0.045 to avoid singularity
       expect(wgsl).toContain('clamp(metallic, 0.0, 1.0)');
       expect(wgsl).toContain('clamp(roughness, 0.045, 1.0)');
 
-      // Alpha coverage: conditional discard in mask mode based on alphaCutoff
+      // Alpha coverage: conditional discard in mask mode based on alphaCutoff via shared coverage module
       expect(wgsl).toContain(
-        'if (materialData.alphaMask != 0u && baseColor.a < materialData.alphaCutoff) { discard; }'
+        'if (!evaluateAlphaCoverage(surface.baseColor.a, materialData.alphaCutoff, materialData.alphaMask)) {\n    discard;\n  }'
       );
+      expect(wgsl).toContain('fn evaluateAlphaCoverage');
     });
 
     test('standard-lit-list WGSL defines consistent StandardLitSurface sampling struct and clamps', () => {

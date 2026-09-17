@@ -13,8 +13,8 @@ export const LIGHT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifa
   },
   source: {
     sourceUri: 'asset://aether/builtins/light-list-webgl.wgsl',
-    contentHash: '56c2e535249d6a59b064a30a8dcefd36565054dab588ffb002cd6c47b0bd4f54',
-    byteLength: 6836
+    contentHash: '482f52037913e79a6e878888697f140cdb3899df605ad3a8e668f288a9eed527',
+    byteLength: 10734
   },
   entryPoints: [
     {
@@ -101,6 +101,10 @@ export const LIGHT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifa
 precision highp float;
 precision highp int;
 
+struct FullscreenVertexOutput {
+    vec4 position;
+    vec2 uv;
+};
 struct VertexOutput {
     vec4 position;
 };
@@ -110,11 +114,15 @@ struct FragmentOutput {
     uvec4 indices;
     uvec4 overflow;
 };
-const uint HEADER_WORDS = 4u;
-const uint LIGHT_WORDS = 12u;
-const uint RECEIVER_WORDS = 12u;
-const uint VALID_HEADER = 2147483648u;
-const uint DIRECTIONAL_OVERFLOW = 2147483648u;
+const uint LIGHT_HEADER_WORDS = 4u;
+const uint LIGHT_RECORD_WORDS = 12u;
+const uint RECEIVER_RECORD_WORDS = 12u;
+const uint LIGHT_KIND_DIRECTIONAL = 0u;
+const uint BOUNDS_KIND_SPHERE = 0u;
+const uint BOUNDS_KIND_AABB = 1u;
+const uint LIGHT_FLAG_VALID_HEADER = 2147483648u;
+const uint LIGHT_FLAG_DIRECTIONAL_OVERFLOW = 2147483648u;
+const uint LIGHT_FLAG_LOCAL_OVERFLOW = 1073741824u;
 
 uniform highp usampler2D _group_0_binding_0_fs;
 
@@ -124,6 +132,36 @@ layout(location = 0) out uvec4 _fs2p_location0;
 layout(location = 1) out uvec4 _fs2p_location1;
 layout(location = 2) out uvec4 _fs2p_location2;
 layout(location = 3) out uvec4 _fs2p_location3;
+
+vec4 fullscreenClipPosition(uint vertexIndex) {
+    float x = float(((vertexIndex << 1u) & 2u));
+    float y = float((vertexIndex & 2u));
+    return vec4(((x * 2.0) - 1.0), ((y * 2.0) - 1.0), 0.0, 1.0);
+}
+
+vec2 fullscreenUv(uint vertexIndex_1) {
+    float x_1 = float(((vertexIndex_1 << 1u) & 2u));
+    float y_1 = float((vertexIndex_1 & 2u));
+    return vec2(x_1, (1.0 - y_1));
+}
+
+FullscreenVertexOutput generateFullscreenVertex(uint vertexIndex_2) {
+    vec4 _e1 = fullscreenClipPosition(vertexIndex_2);
+    vec2 _e2 = fullscreenUv(vertexIndex_2);
+    return FullscreenVertexOutput(_e1, _e2);
+}
+
+float distanceSquaredSphereToSphere(vec3 posA, float radiusA, vec3 posB, float radiusB) {
+    vec3 delta = (posA - posB);
+    float combinedRadius = (radiusA + radiusB);
+    return (dot(delta, delta) - (combinedRadius * combinedRadius));
+}
+
+float distanceSquaredSphereToAabb(vec3 sphereCenter, float sphereRadius, vec3 boxMin, vec3 boxMax) {
+    vec3 closest = clamp(sphereCenter, boxMin, boxMax);
+    vec3 delta_1 = (sphereCenter - closest);
+    return (dot(delta_1, delta_1) - (sphereRadius * sphereRadius));
+}
 
 uint loadWord(highp usampler2D source, uint word) {
     uvec2 dimensions = uvec2(textureSize(source, 0).xy);
@@ -135,41 +173,32 @@ uint loadWord(highp usampler2D source, uint word) {
 
 float squaredDistanceToReceiver(uint lightBase, uint receiverBase) {
     uint _e5 = loadWord(_group_0_binding_0_fs, (lightBase + 4u));
-    float px = uintBitsToFloat(_e5);
     uint _e10 = loadWord(_group_0_binding_0_fs, (lightBase + 5u));
-    float py = uintBitsToFloat(_e10);
     uint _e15 = loadWord(_group_0_binding_0_fs, (lightBase + 6u));
-    float pz = uintBitsToFloat(_e15);
-    uint _e20 = loadWord(_group_0_binding_0_fs, (lightBase + 7u));
-    float range = uintBitsToFloat(_e20);
-    uint _e25 = loadWord(_group_0_binding_1_fs, (receiverBase + 3u));
-    if ((_e25 == 0u)) {
-        uint _e31 = loadWord(_group_0_binding_1_fs, (receiverBase + 4u));
-        float dx = (px - uintBitsToFloat(_e31));
+    vec3 lightPos = vec3(uintBitsToFloat(_e5), uintBitsToFloat(_e10), uintBitsToFloat(_e15));
+    uint _e21 = loadWord(_group_0_binding_0_fs, (lightBase + 7u));
+    float range = uintBitsToFloat(_e21);
+    uint _e26 = loadWord(_group_0_binding_1_fs, (receiverBase + 3u));
+    if ((_e26 == BOUNDS_KIND_SPHERE)) {
+        uint _e32 = loadWord(_group_0_binding_1_fs, (receiverBase + 4u));
         uint _e37 = loadWord(_group_0_binding_1_fs, (receiverBase + 5u));
-        float dy = (py - uintBitsToFloat(_e37));
-        uint _e43 = loadWord(_group_0_binding_1_fs, (receiverBase + 6u));
-        float dz = (pz - uintBitsToFloat(_e43));
-        uint _e49 = loadWord(_group_0_binding_1_fs, (receiverBase + 7u));
-        float combined = (range + uintBitsToFloat(_e49));
-        return ((((dx * dx) + (dy * dy)) + (dz * dz)) - (combined * combined));
+        uint _e42 = loadWord(_group_0_binding_1_fs, (receiverBase + 6u));
+        vec3 receiverPos = vec3(uintBitsToFloat(_e32), uintBitsToFloat(_e37), uintBitsToFloat(_e42));
+        uint _e48 = loadWord(_group_0_binding_1_fs, (receiverBase + 7u));
+        float receiverRadius = uintBitsToFloat(_e48);
+        float _e50 = distanceSquaredSphereToSphere(lightPos, range, receiverPos, receiverRadius);
+        return _e50;
     }
-    uint _e62 = loadWord(_group_0_binding_1_fs, (receiverBase + 4u));
-    float minX = uintBitsToFloat(_e62);
-    uint _e67 = loadWord(_group_0_binding_1_fs, (receiverBase + 5u));
-    float minY = uintBitsToFloat(_e67);
-    uint _e72 = loadWord(_group_0_binding_1_fs, (receiverBase + 6u));
-    float minZ = uintBitsToFloat(_e72);
-    uint _e77 = loadWord(_group_0_binding_1_fs, (receiverBase + 8u));
-    float maxX = uintBitsToFloat(_e77);
-    uint _e82 = loadWord(_group_0_binding_1_fs, (receiverBase + 9u));
-    float maxY = uintBitsToFloat(_e82);
-    uint _e87 = loadWord(_group_0_binding_1_fs, (receiverBase + 10u));
-    float maxZ = uintBitsToFloat(_e87);
-    float dx_1 = (px - clamp(px, minX, maxX));
-    float dy_1 = (py - clamp(py, minY, maxY));
-    float dz_1 = (pz - clamp(pz, minZ, maxZ));
-    return ((((dx_1 * dx_1) + (dy_1 * dy_1)) + (dz_1 * dz_1)) - (range * range));
+    uint _e54 = loadWord(_group_0_binding_1_fs, (receiverBase + 4u));
+    uint _e59 = loadWord(_group_0_binding_1_fs, (receiverBase + 5u));
+    uint _e64 = loadWord(_group_0_binding_1_fs, (receiverBase + 6u));
+    vec3 minBox = vec3(uintBitsToFloat(_e54), uintBitsToFloat(_e59), uintBitsToFloat(_e64));
+    uint _e70 = loadWord(_group_0_binding_1_fs, (receiverBase + 8u));
+    uint _e75 = loadWord(_group_0_binding_1_fs, (receiverBase + 9u));
+    uint _e80 = loadWord(_group_0_binding_1_fs, (receiverBase + 10u));
+    vec3 maxBox = vec3(uintBitsToFloat(_e70), uintBitsToFloat(_e75), uintBitsToFloat(_e80));
+    float _e83 = distanceSquaredSphereToAabb(lightPos, range, minBox, maxBox);
+    return _e83;
 }
 
 uvec2 localLightAt(uint receiverBase_1, uint requested) {
@@ -197,7 +226,7 @@ uvec2 localLightAt(uint receiverBase_1, uint requested) {
         }
         {
             uint _e19 = lightIndex_1;
-            uint lightBase_1 = (HEADER_WORDS + (_e19 * LIGHT_WORDS));
+            uint lightBase_1 = (LIGHT_HEADER_WORDS + (_e19 * LIGHT_RECORD_WORDS));
             uint _e26 = loadWord(_group_0_binding_0_fs, (lightBase_1 + 2u));
             uint _e28 = loadWord(_group_0_binding_0_fs, lightBase_1);
             if ((_e28 != 0u)) {
@@ -247,7 +276,7 @@ uvec2 localLightAt(uint receiverBase_1, uint requested) {
 
 uint localCandidateCount(uint receiverIndex) {
     bool local_8 = false;
-    uint receiverBase_2 = (HEADER_WORDS + (receiverIndex * RECEIVER_WORDS));
+    uint receiverBase_2 = (LIGHT_HEADER_WORDS + (receiverIndex * RECEIVER_RECORD_WORDS));
     uint _e8 = loadWord(_group_0_binding_1_fs, (receiverBase_2 + 1u));
     bool enabled = (_e8 != 0u);
     uint _e14 = loadWord(_group_0_binding_1_fs, (receiverBase_2 + 2u));
@@ -329,9 +358,9 @@ void main() {
             }
             {
                 uint _e49 = lightIndex;
-                uint lightBase_2 = (HEADER_WORDS + (_e49 * LIGHT_WORDS));
+                uint lightBase_2 = (LIGHT_HEADER_WORDS + (_e49 * LIGHT_RECORD_WORDS));
                 uint _e54 = loadWord(_group_0_binding_0_fs, lightBase_2);
-                if ((_e54 == 0u)) {
+                if ((_e54 == LIGHT_KIND_DIRECTIONAL)) {
                     uint _e62 = loadWord(_group_0_binding_0_fs, (lightBase_2 + 1u));
                     local = ((_e62 & 1u) != 0u);
                 } else {
@@ -371,11 +400,11 @@ void main() {
         if ((coordinate_1.x == 0u)) {
             uint _e111 = directionalCount;
             uint _e115 = directionalCount;
-            output_1.overflow.x = (min(_e111, _e15) | ((_e115 > _e15) ? DIRECTIONAL_OVERFLOW : 0u));
+            output_1.overflow.x = (min(_e111, _e15) | ((_e115 > _e15) ? LIGHT_FLAG_DIRECTIONAL_OVERFLOW : 0u));
         }
     }
     if ((receiverIndex_2 < _e9)) {
-        uint receiverBase_3 = (HEADER_WORDS + (receiverIndex_2 * RECEIVER_WORDS));
+        uint receiverBase_3 = (LIGHT_HEADER_WORDS + (receiverIndex_2 * RECEIVER_RECORD_WORDS));
         uint _e127 = loadWord(_group_0_binding_1_fs, (receiverBase_3 + 1u));
         bool enabled_1 = (_e127 != 0u);
         uint _e133 = loadWord(_group_0_binding_1_fs, (receiverBase_3 + 2u));
@@ -395,7 +424,7 @@ void main() {
             uint emittedCount = min(min(_e152.y, _e12), available);
             if ((rowInBlock == 0u)) {
                 uint _e162 = loadWord(_group_0_binding_1_fs, receiverBase_3);
-                output_1.header = uvec4(_e162, _e153, emittedCount, (VALID_HEADER | ((_e152.y > emittedCount) ? 1u : 0u)));
+                output_1.header = uvec4(_e162, _e153, emittedCount, (LIGHT_FLAG_VALID_HEADER | ((_e152.y > emittedCount) ? 1u : 0u)));
             } else {
                 bool loop_init_3 = true;
                 while(true) {
@@ -456,6 +485,10 @@ void main() {
 precision highp float;
 precision highp int;
 
+struct FullscreenVertexOutput {
+    vec4 position;
+    vec2 uv;
+};
 struct VertexOutput {
     vec4 position;
 };
@@ -465,12 +498,46 @@ struct FragmentOutput {
     uvec4 indices;
     uvec4 overflow;
 };
-const uint HEADER_WORDS = 4u;
-const uint LIGHT_WORDS = 12u;
-const uint RECEIVER_WORDS = 12u;
-const uint VALID_HEADER = 2147483648u;
-const uint DIRECTIONAL_OVERFLOW = 2147483648u;
+const uint LIGHT_HEADER_WORDS = 4u;
+const uint LIGHT_RECORD_WORDS = 12u;
+const uint RECEIVER_RECORD_WORDS = 12u;
+const uint LIGHT_KIND_DIRECTIONAL = 0u;
+const uint BOUNDS_KIND_SPHERE = 0u;
+const uint BOUNDS_KIND_AABB = 1u;
+const uint LIGHT_FLAG_VALID_HEADER = 2147483648u;
+const uint LIGHT_FLAG_DIRECTIONAL_OVERFLOW = 2147483648u;
+const uint LIGHT_FLAG_LOCAL_OVERFLOW = 1073741824u;
 
+
+vec4 fullscreenClipPosition(uint vertexIndex) {
+    float x = float(((vertexIndex << 1u) & 2u));
+    float y = float((vertexIndex & 2u));
+    return vec4(((x * 2.0) - 1.0), ((y * 2.0) - 1.0), 0.0, 1.0);
+}
+
+vec2 fullscreenUv(uint vertexIndex_1) {
+    float x_1 = float(((vertexIndex_1 << 1u) & 2u));
+    float y_1 = float((vertexIndex_1 & 2u));
+    return vec2(x_1, (1.0 - y_1));
+}
+
+FullscreenVertexOutput generateFullscreenVertex(uint vertexIndex_2) {
+    vec4 _e1 = fullscreenClipPosition(vertexIndex_2);
+    vec2 _e2 = fullscreenUv(vertexIndex_2);
+    return FullscreenVertexOutput(_e1, _e2);
+}
+
+float distanceSquaredSphereToSphere(vec3 posA, float radiusA, vec3 posB, float radiusB) {
+    vec3 delta = (posA - posB);
+    float combinedRadius = (radiusA + radiusB);
+    return (dot(delta, delta) - (combinedRadius * combinedRadius));
+}
+
+float distanceSquaredSphereToAabb(vec3 sphereCenter, float sphereRadius, vec3 boxMin, vec3 boxMax) {
+    vec3 closest = clamp(sphereCenter, boxMin, boxMax);
+    vec3 delta_1 = (sphereCenter - closest);
+    return (dot(delta_1, delta_1) - (sphereRadius * sphereRadius));
+}
 
 uint loadWord(highp usampler2D source, uint word) {
     uvec2 dimensions = uvec2(textureSize(source, 0).xy);
@@ -482,12 +549,11 @@ uint loadWord(highp usampler2D source, uint word) {
 
 void main() {
     uint index = uint(gl_VertexID);
-    vec2 positions[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
     VertexOutput output_ = VertexOutput(vec4(0.0));
-    vec2 _e15 = positions[index];
-    output_.position = vec4(_e15, 0.0, 1.0);
-    VertexOutput _e19 = output_;
-    gl_Position = _e19.position;
+    vec4 _e3 = fullscreenClipPosition(index);
+    output_.position = _e3;
+    VertexOutput _e4 = output_;
+    gl_Position = _e4.position;
     gl_Position.yz = vec2(-gl_Position.y, gl_Position.z * 2.0 - gl_Position.w);
     return;
 }

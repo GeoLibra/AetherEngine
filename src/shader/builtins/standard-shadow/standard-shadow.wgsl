@@ -1,3 +1,8 @@
+// ============================================================================
+// AetherEngine Standard Shadow Caster Pass
+// Imports UV transformation and Alpha Coverage modules.
+// ============================================================================
+
 struct ShadowObjectData {
   world: mat4x4<f32>,
 };
@@ -39,13 +44,6 @@ fn standardShadowVertex(
   return ShadowVertexOutput(shadowViewData.viewProjection * worldPosition, uv0, uv1, color0);
 }
 
-fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
-  return vec2<f32>(
-    matrix.x * uv.x + matrix.y * uv.y + offset.x,
-    matrix.z * uv.x + matrix.w * uv.y + offset.y
-  );
-}
-
 @fragment
 fn standardShadowFragment(input: ShadowVertexOutput) {
   let rawUv = select(input.uv0, input.uv1, shadowMaterialData.baseColorUvSet == 1u);
@@ -57,5 +55,7 @@ fn standardShadowFragment(input: ShadowVertexOutput) {
   let alpha = shadowMaterialData.baseColorFactor.a *
     textureSample(baseColorTexture, surfaceSampler, baseColorUv).a *
     input.color.a;
-  if (shadowMaterialData.alphaMask != 0u && alpha < shadowMaterialData.alphaCutoff) { discard; }
+  if (!evaluateAlphaCoverage(alpha, shadowMaterialData.alphaCutoff, shadowMaterialData.alphaMask)) {
+    discard;
+  }
 }

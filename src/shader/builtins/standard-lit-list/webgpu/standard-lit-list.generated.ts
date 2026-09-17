@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl',
-    contentHash: 'aa2ed3b25692e263f8f467798d33eafda7ad041669f0e7276c43b070ebada9e3',
-    byteLength: 20609
+    contentHash: 'df23bbd84e619736c5db3401fbc01c44a1e71f41d66d32c0309fd400dc8f2e33',
+    byteLength: 28598
   },
   entryPoints: [
     {
@@ -873,8 +873,7 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   ],
   targetBackend: 'webgpu',
   modules: {
-    wgsl: `// --- Source Fragment: src/shader/builtins/standard-lit-list/webgpu/light-access.wgsl ---
-// ============================================================================
+    wgsl: `// ============================================================================
 // AetherEngine Standard PBR Shader - WebGPU Light Access
 // Uniform buffer bindings and light list accessors.
 // ============================================================================
@@ -919,29 +918,58 @@ fn receiverLightIndex(header: ReceiverLightHeader, index: u32) -> u32 {
 }
 
 
-// --- Source Fragment: src/shader/builtins/standard-lit-list/shading.wgsl ---
 // ============================================================================
-// AetherEngine Standard PBR Shader (Metallic-Roughness Workflow)
-// Cook-Torrance microfacet specular BRDF + Lambertian diffuse direct lighting.
-// Shared shading logic: vertex stage, PBR evaluation, IBL, and light loops.
+// AetherEngine Shared Shader Module - UV Operations
+// Pure 2D texture coordinate affine transformations and UV set selection.
 // ============================================================================
 
-// ----------------------------------------------------------------------------
-// Uniform Buffer Data Structures (UBO)
-// ----------------------------------------------------------------------------
+/// Transforms a 2D texture coordinate \`(u, v)\` via a 2x2 affine matrix and translation offset:
+///   u' = matrix.x * uv.x + matrix.y * uv.y + offset.x
+///   v' = matrix.z * uv.x + matrix.w * uv.y + offset.y
+///
+/// Coordinate space: Normalized UV space [0.0, 1.0].
+///
+/// Parameters:
+/// - \`uv\`: Raw authored 2D texture coordinate from vertex attribute.
+/// - \`matrix\`: 2x2 affine transform matrix components (scale and rotation) packed as \`(m00, m01, m10, m11)\`.
+/// - \`offset\`: 2D translation offset \`(tx, ty)\`.
+///
+/// Returns:
+/// Transformed 2D texture coordinate vector.
+fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(
+    matrix.x * uv.x + matrix.y * uv.y + offset.x,
+    matrix.z * uv.x + matrix.w * uv.y + offset.y
+  );
+}
 
-/// Per-draw object transform matrices in world space.
-struct ObjectData {
-  world: mat4x4<f32>,
-  normalWorld: mat4x4<f32>,
-  receiver: u32,
-};
 
-/// Per-view camera matrices and world-space position (16-byte aligned).
-struct ViewData {
-  viewProjection: mat4x4<f32>, // 64 bytes
-  cameraPosition: vec3<f32>,   // 12 bytes, alignment 16
-};
+// ============================================================================
+// AetherEngine Shared Shader Module - Surface Coverage
+// Pure alpha testing and silhouette coverage evaluation predicate.
+// ============================================================================
+
+/// Evaluates whether a surface fragment passes the alpha cutoff test.
+///
+/// Parameters:
+/// - \`alpha\`: Sampled and factor-modulated surface alpha in [0.0, 1.0].
+/// - \`alphaCutoff\`: Threshold value below which fragments are discarded.
+/// - \`alphaMask\`: Flag indicating if alpha masking/cutoff is active (non-zero = active).
+///
+/// Returns:
+/// \`true\` if the fragment survives the alpha test (keep), \`false\` if it should be discarded.
+fn evaluateAlphaCoverage(alpha: f32, alphaCutoff: f32, alphaMask: u32) -> bool {
+  if (alphaMask != 0u && alpha < alphaCutoff) {
+    return false;
+  }
+  return true;
+}
+
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Standard PBR Surface Sampling
+// Metallic-Roughness material data, texture sampling, normal mapping, and surface packing.
+// ============================================================================
 
 /// Per-material PBR surface parameters.
 /// - baseColor: Linear sRGB color with alpha.
@@ -973,6 +1001,7 @@ struct MaterialData {
   emissiveOffset: vec2<f32>,
 };
 
+/// Evaluated standard PBR surface data consumed by direct light and IBL passes.
 struct StandardLitSurface {
   baseColor: vec4<f32>,
   normal: vec3<f32>,
@@ -980,38 +1009,6 @@ struct StandardLitSurface {
   emissive: vec3<f32>,
   roughness: f32,
   occlusion: f32,
-};
-
-struct ReceiverLightHeader { offset: u32, count: u32 };
-
-struct EnvironmentData {
-  diffuseIrradiance: vec3<f32>,
-  intensity: f32,
-  prefilteredRadiance: vec3<f32>,
-  maxValidRadianceLod: f32,
-};
-
-struct DirectionalShadowData {
-  viewProjection: array<mat4x4<f32>, 4>,
-  cameraView: mat4x4<f32>,
-  splitDepths: vec4<f32>,
-  params: vec4<f32>, // enabled, constant bias, slope bias, inverse resolution
-  lightIndex: u32,
-};
-
-// ----------------------------------------------------------------------------
-// Stage Input / Output Interfaces
-// ----------------------------------------------------------------------------
-
-/// Output from vertex shader passed to the rasterizer and fragment shader.
-struct StandardLitVertexOutput {
-  @builtin(position) position: vec4<f32>,
-  @location(0) normal: vec3<f32>,
-  @location(1) worldPosition: vec3<f32>,
-  @location(2) uv0: vec2<f32>,
-  @location(3) uv1: vec2<f32>,
-  @location(4) tangent: vec4<f32>,
-  @location(5) color: vec4<f32>,
 };
 
 /// Interpolated fragment input in world coordinate space.
@@ -1025,171 +1022,34 @@ struct StandardLitFragmentInput {
 };
 
 // ----------------------------------------------------------------------------
-// Shared Resource Bindings
+// Group 2 Material Resource Bindings
 // ----------------------------------------------------------------------------
 
-@group(0) @binding(0) var<uniform> objectData: ObjectData;               // Group 0: Per-draw
-@group(1) @binding(0) var<uniform> viewData: ViewData;                   // Group 1: Per-view / Per-frame
-@group(2) @binding(0) var<uniform> materialData: MaterialData;           // Group 2: Per-material
+@group(2) @binding(0) var<uniform> materialData: MaterialData;
 @group(2) @binding(1) var baseColorTexture: texture_2d<f32>;
 @group(2) @binding(2) var metallicRoughnessTexture: texture_2d<f32>;
 @group(2) @binding(3) var normalTexture: texture_2d<f32>;
 @group(2) @binding(4) var occlusionTexture: texture_2d<f32>;
 @group(2) @binding(5) var emissiveTexture: texture_2d<f32>;
 @group(2) @binding(6) var surfaceSampler: sampler;
-@group(3) @binding(5) var<uniform> environmentData: EnvironmentData;
-@group(3) @binding(6) var irradianceMap: texture_2d<f32>;
-@group(3) @binding(7) var prefilteredRadianceMap: texture_2d<f32>;
-@group(3) @binding(8) var environmentBrdfLut: texture_2d<f32>;
-@group(3) @binding(9) var environmentSampler: sampler;
-@group(3) @binding(10) var<uniform> directionalShadowData: DirectionalShadowData;
-@group(3) @binding(11) var directionalShadowMap: texture_depth_2d_array;
-@group(3) @binding(12) var directionalShadowSampler: sampler_comparison;
 
 // ----------------------------------------------------------------------------
-// PBR Mathematical Helpers & Cook-Torrance BRDF Implementation
+// Surface Sampling Helpers
 // ----------------------------------------------------------------------------
-
-/// Computes (value)^5 using multiplication squaring: (x^2)^2 * x.
-/// Used in the Fresnel-Schlick approximation.
-fn fifthPower(value: f32) -> f32 {
-  let squared = value * value;
-  return squared * squared * value;
-}
-
-/// Normal Distribution Function (NDF / D-term): GGX / Trowbridge-Reitz.
-/// Calculates the probability density of microfacets aligning with the half-vector H.
-/// Uses alpha = roughness^2 following Disney's perceptual roughness mapping.
-fn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {
-  let alpha = roughness * roughness;
-  let normalDotHalf = max(dot(normal, halfDirection), 0.0);
-  let normalCrossHalf = cross(normal, halfDirection);
-  let oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
-  let alphaNormalDotHalf = alpha * normalDotHalf;
-  let denominator = oneMinusNormalDotHalfSquared + alphaNormalDotHalf * alphaNormalDotHalf;
-  let alphaOverDenominator = alpha / denominator;
-  return alphaOverDenominator * alphaOverDenominator / 3.14159265359;
-}
-
-/// Exact separable Smith-GGX masking term for one direction.
-fn geometrySmithGgx(normalDotDirection: f32, alpha: f32) -> f32 {
-  let alphaSquared = alpha * alpha;
-  let root = sqrt(
-    alphaSquared + (1.0 - alphaSquared) * normalDotDirection * normalDotDirection
-  );
-  return 2.0 * normalDotDirection / (normalDotDirection + root);
-}
-
-/// Geometric Shadowing Function (G-term): Smith's method.
-/// Accounts for microfacets shadowing light incoming rays and masking outgoing view rays:
-/// G(N, V, L) = G1(N . V) * G1(N . L)
-fn geometrySmith(
-  normal: vec3<f32>,
-  viewDirection: vec3<f32>,
-  lightDirection: vec3<f32>,
-  roughness: f32
-) -> f32 {
-  let normalDotView = max(dot(normal, viewDirection), 0.0);
-  let normalDotLight = max(dot(normal, lightDirection), 0.0);
-  let alpha = roughness * roughness;
-  return geometrySmithGgx(normalDotView, alpha) * geometrySmithGgx(normalDotLight, alpha);
-}
-
-/// Fresnel Equation (F-term): Fresnel-Schlick approximation.
-/// Computes the ratio of reflected vs refracted light at normal incidence F0:
-/// F(cosTheta) = F0 + (1 - F0) * (1 - cosTheta)^5
-fn fresnelSchlick(cosine: f32, f0: vec3<f32>) -> vec3<f32> {
-  let cosTheta = clamp(cosine, 0.0, 1.0);
-  return f0 + (vec3<f32>(1.0) - f0) * fifthPower(1.0 - cosTheta);
-}
-
-/// Evaluates direct Cook-Torrance microfacet BRDF + Lambertian diffuse:
-/// Out = (k_d * f_diffuse + f_specular) * Radiance * (N . L)
-fn cookTorranceDirect(
-  normal: vec3<f32>,
-  viewDirection: vec3<f32>,
-  lightDirection: vec3<f32>,
-  baseColor: vec3<f32>,
-  metallic: f32,
-  roughness: f32,
-  radiance: vec3<f32>
-) -> vec3<f32> {
-  let normalDotLight = max(dot(normal, lightDirection), 0.0);
-  let normalDotView = max(dot(normal, viewDirection), 0.0);
-  if (normalDotLight <= 0.0 || normalDotView <= 0.0) {
-    return vec3<f32>(0.0);
-  }
-
-  let halfDirection = normalize(viewDirection + lightDirection);
-
-  // Clamp metallic and roughness to prevent non-physical energy amplification and numerical instability
-  let clampedMetallic = clamp(metallic, 0.0, 1.0);
-  let clampedRoughness = clamp(roughness, 0.045, 1.0);
-
-  // Evaluate D (distribution), G (geometry shadowing), and F (Fresnel) terms
-  let distribution = distributionGgx(normal, halfDirection, clampedRoughness);
-  let geometry = geometrySmith(normal, viewDirection, lightDirection, clampedRoughness);
-
-  // Dielectric surfaces have ~0.04 base specular reflectance; conductors use baseColor
-  let f0 = vec3<f32>(0.04) * (1.0 - clampedMetallic) + baseColor * clampedMetallic;
-  let fresnel = fresnelSchlick(max(dot(viewDirection, halfDirection), 0.0), f0);
-
-  // Energy conservation: diffuse fraction kd = (1 - ks) * (1 - metallic)
-  let diffuseWeight = (vec3<f32>(1.0) - fresnel) * (1.0 - clampedMetallic);
-  let diffuse = diffuseWeight * baseColor / 3.14159265359;
-
-  // Cook-Torrance specular term: (D * G * F) / (4 * (N.V) * (N.L))
-  let specular = distribution * geometry * fresnel /
-    (4.0 * normalDotView * normalDotLight);
-
-  return (diffuse + specular) * radiance * normalDotLight;
-}
-
-// ----------------------------------------------------------------------------
-// Vertex Shader Stage
-// ----------------------------------------------------------------------------
-
-@vertex
-fn standardLitVertex(
-  @location(0) position: vec3<f32>,
-  @location(1) normal: vec3<f32>,
-  @location(2) uv0: vec2<f32>,
-  @location(3) uv1: vec2<f32>,
-  @location(4) tangent: vec4<f32>,
-  @location(5) color0: vec4<f32>
-) -> StandardLitVertexOutput {
-  // Transform vertex position to world space
-  let worldPosition = objectData.world * vec4<f32>(position, 1.0);
-
-  // Transform normal vector to world space via normal matrix
-  let worldNormal = normalize((objectData.normalWorld * vec4<f32>(normal, 0.0)).xyz);
-  let rawWorldTangent = (objectData.world * vec4<f32>(tangent.xyz, 0.0)).xyz;
-  let worldTangent = normalize(rawWorldTangent - worldNormal * dot(worldNormal, rawWorldTangent));
-  let world3 = mat3x3<f32>(objectData.world[0].xyz, objectData.world[1].xyz, objectData.world[2].xyz);
-  let transformSign = select(-1.0, 1.0, determinant(world3) >= 0.0);
-
-  return StandardLitVertexOutput(
-    viewData.viewProjection * worldPosition, // Projected clip position
-    worldNormal,                             // World normal for fragment shading
-    worldPosition.xyz,
-    uv0,
-    uv1,
-    vec4<f32>(worldTangent, tangent.w * transformSign),
-    color0
-  );
-}
 
 fn selectUv(index: u32, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
   return select(uv0, uv1, index == 1u);
 }
 
-fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
-  return vec2<f32>(
-    matrix.x * uv.x + matrix.y * uv.y + offset.x,
-    matrix.z * uv.x + matrix.w * uv.y + offset.y
-  );
-}
-
+/// Evaluates and unpacks full metallic-roughness PBR surface properties from textures
+/// and uniform factors, including TBN normal mapping and roughness clamping.
+///
+/// Parameters:
+/// - \`input\`: Interpolated vertex attributes in world space.
+/// - \`frontFacing\`: Built-in rasterizer front facing boolean for two-sided lighting.
+///
+/// Returns:
+/// Populated StandardLitSurface structure.
 fn sampleStandardLitSurface(input: StandardLitFragmentInput, frontFacing: bool) -> StandardLitSurface {
   let bcUv = transformUv(
     selectUv(materialData.baseColorUvSet, input.uv0, input.uv1),
@@ -1240,6 +1100,354 @@ fn sampleStandardLitSurface(input: StandardLitFragmentInput, frontFacing: bool) 
   );
 }
 
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Cook-Torrance Microfacet BRDF
+// Pure microfacet specular (GGX + Smith + Fresnel-Schlick) and Lambertian diffuse direct lighting.
+// ============================================================================
+
+/// Computes (value)^5 using multiplication squaring: (x^2)^2 * x.
+/// Used in the Fresnel-Schlick approximation.
+fn fifthPower(value: f32) -> f32 {
+  let squared = value * value;
+  return squared * squared * value;
+}
+
+/// Normal Distribution Function (NDF / D-term): GGX / Trowbridge-Reitz.
+/// Calculates the probability density of microfacets aligning with the half-vector H.
+/// Uses alpha = roughness^2 following Disney's perceptual roughness mapping.
+///
+/// Parameters:
+/// - \`normal\`: Normalized surface normal vector in world space.
+/// - \`halfDirection\`: Normalized half-vector between view and light directions \`normalize(V + L)\`.
+/// - \`roughness\`: Perceptual roughness in [0.045, 1.0].
+fn distributionGgx(normal: vec3<f32>, halfDirection: vec3<f32>, roughness: f32) -> f32 {
+  let alpha = roughness * roughness;
+  let normalDotHalf = max(dot(normal, halfDirection), 0.0);
+  let normalCrossHalf = cross(normal, halfDirection);
+  let oneMinusNormalDotHalfSquared = dot(normalCrossHalf, normalCrossHalf);
+  let alphaNormalDotHalf = alpha * normalDotHalf;
+  let denominator = oneMinusNormalDotHalfSquared + alphaNormalDotHalf * alphaNormalDotHalf;
+  let alphaOverDenominator = alpha / denominator;
+  return alphaOverDenominator * alphaOverDenominator / 3.14159265359;
+}
+
+/// Exact separable Smith-GGX masking term for one direction.
+fn geometrySmithGgx(normalDotDirection: f32, alpha: f32) -> f32 {
+  let alphaSquared = alpha * alpha;
+  let root = sqrt(
+    alphaSquared + (1.0 - alphaSquared) * normalDotDirection * normalDotDirection
+  );
+  return 2.0 * normalDotDirection / (normalDotDirection + root);
+}
+
+/// Geometric Shadowing Function (G-term): Smith's method.
+/// Accounts for microfacets shadowing light incoming rays and masking outgoing view rays:
+/// G(N, V, L) = G1(N . V) * G1(N . L)
+fn geometrySmith(
+  normal: vec3<f32>,
+  viewDirection: vec3<f32>,
+  lightDirection: vec3<f32>,
+  roughness: f32
+) -> f32 {
+  let normalDotView = max(dot(normal, viewDirection), 0.0);
+  let normalDotLight = max(dot(normal, lightDirection), 0.0);
+  let alpha = roughness * roughness;
+  return geometrySmithGgx(normalDotView, alpha) * geometrySmithGgx(normalDotLight, alpha);
+}
+
+/// Fresnel Equation (F-term): Fresnel-Schlick approximation.
+/// Computes the ratio of reflected vs refracted light at normal incidence F0:
+/// F(cosTheta) = F0 + (1 - F0) * (1 - cosTheta)^5
+fn fresnelSchlick(cosine: f32, f0: vec3<f32>) -> vec3<f32> {
+  let cosTheta = clamp(cosine, 0.0, 1.0);
+  return f0 + (vec3<f32>(1.0) - f0) * fifthPower(1.0 - cosTheta);
+}
+
+/// Evaluates direct Cook-Torrance microfacet BRDF + Lambertian diffuse:
+/// Out = (k_d * f_diffuse + f_specular) * Radiance * (N . L)
+///
+/// Parameters:
+/// - \`normal\`: Normalized surface normal in world space.
+/// - \`viewDirection\`: Normalized unit vector from fragment to camera position.
+/// - \`lightDirection\`: Normalized unit vector from fragment toward light source.
+/// - \`baseColor\`: Linear sRGB diffuse albedo color \`vec3<f32>\`.
+/// - \`metallic\`: Surface metallicity in [0.0, 1.0].
+/// - \`roughness\`: Perceptual roughness in [0.0, 1.0] (clamped to 0.045 floor internally).
+/// - \`radiance\`: Incoming light radiance spectrum \`vec3<f32>\`.
+///
+/// Returns:
+/// Reflected radiance towards view direction in linear sRGB.
+fn cookTorranceDirect(
+  normal: vec3<f32>,
+  viewDirection: vec3<f32>,
+  lightDirection: vec3<f32>,
+  baseColor: vec3<f32>,
+  metallic: f32,
+  roughness: f32,
+  radiance: vec3<f32>
+) -> vec3<f32> {
+  let normalDotLight = max(dot(normal, lightDirection), 0.0);
+  let normalDotView = max(dot(normal, viewDirection), 0.0);
+  if (normalDotLight <= 0.0 || normalDotView <= 0.0) {
+    return vec3<f32>(0.0);
+  }
+
+  let halfDirection = normalize(viewDirection + lightDirection);
+
+  // Clamp metallic and roughness to prevent non-physical energy amplification and numerical instability
+  let clampedMetallic = clamp(metallic, 0.0, 1.0);
+  let clampedRoughness = clamp(roughness, 0.045, 1.0);
+
+  // Evaluate D (distribution), G (geometry shadowing), and F (Fresnel) terms
+  let distribution = distributionGgx(normal, halfDirection, clampedRoughness);
+  let geometry = geometrySmith(normal, viewDirection, lightDirection, clampedRoughness);
+
+  // Dielectric surfaces have ~0.04 base specular reflectance; conductors use baseColor
+  let f0 = vec3<f32>(0.04) * (1.0 - clampedMetallic) + baseColor * clampedMetallic;
+  let fresnel = fresnelSchlick(max(dot(viewDirection, halfDirection), 0.0), f0);
+
+  // Energy conservation: diffuse fraction kd = (1 - ks) * (1 - metallic)
+  let diffuseWeight = (vec3<f32>(1.0) - fresnel) * (1.0 - clampedMetallic);
+  let diffuse = diffuseWeight * baseColor / 3.14159265359;
+
+  // Cook-Torrance specular term: (D * G * F) / (4 * (N.V) * (N.L))
+  let specular = distribution * geometry * fresnel /
+    (4.0 * normalDotView * normalDotLight);
+
+  return (diffuse + specular) * radiance * normalDotLight;
+}
+
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Cascaded Directional Shadow Receiver
+// Cascaded shadow map sampling with 3x3 PCF filter.
+// ============================================================================
+
+/// Cascaded directional shadow uniform buffer data structure.
+/// - \`viewProjection\`: Light view-projection matrices for each cascade slice.
+/// - \`cameraView\`: View matrix of the active rendering camera.
+/// - \`splitDepths\`: Far split depths in view space for cascade selection.
+/// - \`params\`: vec4(enabled, constantBias, slopeBias, inverseResolution).
+/// - \`lightIndex\`: Index of the active shadow-casting directional light.
+struct DirectionalShadowData {
+  viewProjection: array<mat4x4<f32>, 4>,
+  cameraView: mat4x4<f32>,
+  splitDepths: vec4<f32>,
+  params: vec4<f32>,
+  lightIndex: u32,
+};
+
+@group(3) @binding(10) var<uniform> directionalShadowData: DirectionalShadowData;
+@group(3) @binding(11) var directionalShadowMap: texture_depth_2d_array;
+@group(3) @binding(12) var directionalShadowSampler: sampler_comparison;
+
+/// Evaluates directional cascaded shadow visibility factor in [0.0, 1.0].
+/// Performs cascade selection by view depth, clip projection, boundary rejection,
+/// slope-scaled depth biasing, and 3x3 PCF percentage-closer filtering.
+///
+/// Parameters:
+/// - \`lightIndex\`: Index of the light being evaluated.
+/// - \`worldPosition\`: World space fragment position.
+/// - \`normal\`: Surface normal in world space.
+/// - \`lightDirection\`: Normalized direction towards the light source.
+///
+/// Returns:
+/// Shadow visibility factor in [0.0 (fully shadowed), 1.0 (fully lit)].
+fn directionalShadowVisibility(
+  lightIndex: u32,
+  worldPosition: vec3<f32>,
+  normal: vec3<f32>,
+  lightDirection: vec3<f32>
+) -> f32 {
+  if (directionalShadowData.params.x < 0.5 || lightIndex != directionalShadowData.lightIndex) {
+    return 1.0;
+  }
+  let viewPosition = directionalShadowData.cameraView * vec4<f32>(worldPosition, 1.0);
+  let viewDepth = -viewPosition.z;
+  var cascade = 4u;
+  for (var index = 0u; index < 4u; index += 1u) {
+    if (cascade == 4u && viewDepth <= directionalShadowData.splitDepths[index]) {
+      cascade = index;
+    }
+  }
+  if (cascade == 4u) {
+    return 1.0;
+  }
+  let clip = directionalShadowData.viewProjection[cascade] * vec4<f32>(worldPosition, 1.0);
+  let projected = clip.xyz / clip.w;
+  let uv = projected.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+  if (projected.z < 0.0 || projected.z > 1.0 || any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) {
+    return 1.0;
+  }
+  let normalDotLight = clamp(dot(normal, lightDirection), 0.0, 1.0);
+  let bias = directionalShadowData.params.y + directionalShadowData.params.z * (1.0 - normalDotLight);
+  let texel = directionalShadowData.params.w;
+  var visibility = 0.0;
+  for (var y = -1; y <= 1; y += 1) {
+    for (var x = -1; x <= 1; x += 1) {
+      visibility += textureSampleCompareLevel(
+        directionalShadowMap,
+        directionalShadowSampler,
+        uv + vec2<f32>(f32(x), f32(y)) * texel,
+        i32(cascade),
+        projected.z - bias
+      );
+    }
+  }
+  return visibility / 9.0;
+}
+
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Equirectangular Spherical Projection
+// Converts 3D Cartesian direction vectors to 2D equirectangular spherical UVs.
+// ============================================================================
+
+const EQUIR_PI: f32 = 3.141592653589793;
+const EQUIR_TWO_PI: f32 = 6.283185307179586;
+
+/// Converts a 3D unit direction vector to 2D equirectangular spherical coordinates [0.0, 1.0].
+///
+/// Parameters:
+/// - \`direction\`: 3D direction vector (will be normalized internally).
+///
+/// Returns:
+/// 2D UV coordinate pair in [0.0, 1.0] where U corresponds to azimuthal angle (longitude)
+/// and V corresponds to polar angle from +Y (latitude).
+fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
+  let normalized = normalize(direction);
+  var u = atan2(normalized.z, normalized.x) / EQUIR_TWO_PI + 0.5;
+  u = fract(u);
+  let v = acos(clamp(normalized.y, -1.0, 1.0)) / EQUIR_PI;
+  return vec2<f32>(u, v);
+}
+
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Image-Based Lighting (IBL)
+// Equirectangular environment map sampling, irradiance, prefiltered radiance,
+// split-sum approximation with energy compensation.
+// ============================================================================
+
+/// Per-scene environment lighting parameters.
+/// - \`diffuseIrradiance\`: Irradiance map intensity scale.
+/// - \`intensity\`: Overall environment light intensity multiplier.
+/// - \`prefilteredRadiance\`: Prefiltered radiance map intensity scale.
+/// - \`maxValidRadianceLod\`: Maximum valid LOD level for the prefiltered radiance map.
+struct EnvironmentData {
+  diffuseIrradiance: vec3<f32>,
+  intensity: f32,
+  prefilteredRadiance: vec3<f32>,
+  maxValidRadianceLod: f32,
+};
+
+@group(3) @binding(5) var<uniform> environmentData: EnvironmentData;
+@group(3) @binding(6) var irradianceMap: texture_2d<f32>;
+@group(3) @binding(7) var prefilteredRadianceMap: texture_2d<f32>;
+@group(3) @binding(8) var environmentBrdfLut: texture_2d<f32>;
+@group(3) @binding(9) var environmentSampler: sampler;
+
+/// Evaluates image-based lighting contribution using the split-sum approximation
+/// with multiscatter energy compensation.
+///
+/// Parameters:
+/// - \`normal\`: Normalized surface normal in world space.
+/// - \`viewDirection\`: Normalized view direction from fragment to camera.
+/// - \`baseColor\`: Linear sRGB diffuse albedo.
+/// - \`metallic\`: Surface metallicity in [0.0, 1.0].
+/// - \`roughness\`: Perceptual roughness in [0.045, 1.0].
+/// - \`occlusion\`: Ambient occlusion factor in [0.0 (fully occluded), 1.0 (no occlusion)].
+///
+/// Returns:
+/// Indirect lighting contribution in linear sRGB.
+fn evaluateIbl(
+  normal: vec3<f32>,
+  viewDirection: vec3<f32>,
+  baseColor: vec3<f32>,
+  metallic: f32,
+  roughness: f32,
+  occlusion: f32
+) -> vec3<f32> {
+  let f0 = vec3<f32>(0.04) * (1.0 - metallic) + baseColor * metallic;
+  let fresnel = fresnelSchlick(max(dot(normal, viewDirection), 0.0), f0);
+  let irradianceUv = directionToEquirectangularUv(normal);
+  let reflection = reflect(-viewDirection, normal);
+  let radianceUv = directionToEquirectangularUv(reflection);
+  let irradiance = textureSample(irradianceMap, environmentSampler, irradianceUv).rgb *
+    environmentData.diffuseIrradiance;
+  let lod = clamp(roughness, 0.0, 1.0) * environmentData.maxValidRadianceLod;
+  let prefiltered = textureSampleLevel(
+    prefilteredRadianceMap, environmentSampler, radianceUv, lod
+  ).rgb * environmentData.prefilteredRadiance;
+  let brdf = textureSample(
+    environmentBrdfLut,
+    environmentSampler,
+    vec2<f32>(max(dot(normal, viewDirection), 0.0), roughness)
+  ).rg;
+  let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
+    baseColor * irradiance / 3.14159265359;
+  let singleScattering = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
+  let energyCompensation = vec3<f32>(1.0) + f0 * (1.0 / max(brdf.x, 0.00001) - 1.0);
+  let specular = singleScattering * energyCompensation;
+  return (diffuse * occlusion + specular) * environmentData.intensity;
+}
+
+
+// ============================================================================
+// AetherEngine Standard PBR Shader (Metallic-Roughness Workflow)
+// Cook-Torrance microfacet specular BRDF + Lambertian diffuse direct lighting.
+// Shared shading logic: per-draw, per-view, and light loop evaluation.
+// Surface sampling, IBL, and shadow receiver functions are imported from modules.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Uniform Buffer Data Structures (UBO)
+// ----------------------------------------------------------------------------
+
+/// Per-draw object transform matrices in world space.
+struct ObjectData {
+  world: mat4x4<f32>,
+  normalWorld: mat4x4<f32>,
+  receiver: u32,
+};
+
+/// Per-view camera matrices and world-space position (16-byte aligned).
+struct ViewData {
+  viewProjection: mat4x4<f32>, // 64 bytes
+  cameraPosition: vec3<f32>,   // 12 bytes, alignment 16
+};
+
+struct ReceiverLightHeader { offset: u32, count: u32 };
+
+// ----------------------------------------------------------------------------
+// Stage Input / Output Interfaces
+// ----------------------------------------------------------------------------
+
+/// Output from vertex shader passed to the rasterizer and fragment shader.
+struct StandardLitVertexOutput {
+  @builtin(position) position: vec4<f32>,
+  @location(0) normal: vec3<f32>,
+  @location(1) worldPosition: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>,
+  @location(5) color: vec4<f32>,
+};
+
+// ----------------------------------------------------------------------------
+// Shared Resource Bindings
+// ----------------------------------------------------------------------------
+
+@group(0) @binding(0) var<uniform> objectData: ObjectData;               // Group 0: Per-draw
+@group(1) @binding(0) var<uniform> viewData: ViewData;                   // Group 1: Per-view / Per-frame
+
+// Group 2 bindings 0..6 (materialData, textures, surfaceSampler) and StandardLitSurface
+// are declared in imported module: surface/standard.wgsl.
+
+// Group 3 bindings 5..9 (environment) and 10..12 (shadow) are declared in
+// imported modules: lighting/ibl.wgsl and lighting/shadow-receiver.wgsl.
+
 // ----------------------------------------------------------------------------
 // Direct Light Evaluation
 // ----------------------------------------------------------------------------
@@ -1289,85 +1497,65 @@ fn evaluatePackedLight(
   );
 }
 
-fn directionalShadowVisibility(
-  lightIndex: u32,
-  worldPosition: vec3<f32>,
+// ----------------------------------------------------------------------------
+// Image-Based Lighting Facade
+// ----------------------------------------------------------------------------
+
+/// Evaluates image-based lighting for a StandardLitSurface by unpacking surface
+/// properties and delegating to the shared evaluateIbl module function.
+fn evaluateSurfaceIbl(
   normal: vec3<f32>,
-  lightDirection: vec3<f32>
-) -> f32 {
-  if (directionalShadowData.params.x < 0.5 || lightIndex != directionalShadowData.lightIndex) {
-    return 1.0;
-  }
-  let viewPosition = directionalShadowData.cameraView * vec4<f32>(worldPosition, 1.0);
-  let viewDepth = -viewPosition.z;
-  var cascade = 4u;
-  for (var index = 0u; index < 4u; index += 1u) {
-    if (cascade == 4u && viewDepth <= directionalShadowData.splitDepths[index]) {
-      cascade = index;
-    }
-  }
-  if (cascade == 4u) { return 1.0; }
-  let clip = directionalShadowData.viewProjection[cascade] * vec4<f32>(worldPosition, 1.0);
-  let projected = clip.xyz / clip.w;
-  let uv = projected.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
-  if (projected.z < 0.0 || projected.z > 1.0 || any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) {
-    return 1.0;
-  }
-  let normalDotLight = clamp(dot(normal, lightDirection), 0.0, 1.0);
-  let bias = directionalShadowData.params.y + directionalShadowData.params.z * (1.0 - normalDotLight);
-  let texel = directionalShadowData.params.w;
-  var visibility = 0.0;
-  for (var y = -1; y <= 1; y += 1) {
-    for (var x = -1; x <= 1; x += 1) {
-      visibility += textureSampleCompareLevel(
-        directionalShadowMap,
-        directionalShadowSampler,
-        uv + vec2<f32>(f32(x), f32(y)) * texel,
-        i32(cascade),
-        projected.z - bias
-      );
-    }
-  }
-  return visibility / 9.0;
-}
-
-// ----------------------------------------------------------------------------
-// Image-Based Lighting (IBL)
-// ----------------------------------------------------------------------------
-
-fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
-  let normalized = normalize(direction);
-  return vec2<f32>(
-    atan2(normalized.z, normalized.x) * 0.15915494309 + 0.5,
-    acos(clamp(normalized.y, -1.0, 1.0)) * 0.31830988618
+  viewDirection: vec3<f32>,
+  surface: StandardLitSurface
+) -> vec3<f32> {
+  return evaluateIbl(
+    normal,
+    viewDirection,
+    surface.baseColor.rgb,
+    surface.metallic,
+    surface.roughness,
+    surface.occlusion
   );
 }
 
-fn evaluateIbl(normal: vec3<f32>, viewDirection: vec3<f32>, surface: StandardLitSurface) -> vec3<f32> {
-  let metallic = surface.metallic;
-  let roughness = surface.roughness;
-  let f0 = vec3<f32>(0.04) * (1.0 - metallic) + surface.baseColor.rgb * metallic;
-  let fresnel = fresnelSchlick(max(dot(normal, viewDirection), 0.0), f0);
-  let irradianceUv = directionToEquirectangularUv(normal);
-  let reflection = reflect(-viewDirection, normal);
-  let radianceUv = directionToEquirectangularUv(reflection);
-  let irradiance = textureSample(irradianceMap, environmentSampler, irradianceUv).rgb *
-    environmentData.diffuseIrradiance;
-  let lod = clamp(roughness, 0.0, 1.0) * environmentData.maxValidRadianceLod;
-  let prefiltered = textureSampleLevel(
-    prefilteredRadianceMap, environmentSampler, radianceUv, lod
-  ).rgb * environmentData.prefilteredRadiance;
-  let brdf = textureSample(
-    environmentBrdfLut,
-    environmentSampler,
-    vec2<f32>(max(dot(normal, viewDirection), 0.0), roughness)
-  ).rg;
-  let diffuse = (vec3<f32>(1.0) - fresnel) * (1.0 - metallic) *
-    surface.baseColor.rgb * irradiance / 3.14159265359;
-  let singleScattering = prefiltered * (f0 * brdf.x + vec3<f32>(brdf.y));
-  let energyCompensation = vec3<f32>(1.0) + f0 * (1.0 / max(brdf.x, 0.00001) - 1.0);
-  let specular = singleScattering * energyCompensation;
-  return (diffuse * surface.occlusion + specular) * environmentData.intensity;
+
+// ============================================================================
+// AetherEngine Standard PBR Shader - WebGPU Clustered Light List Pass Entry
+// Consumes light-access, surface data, and shared shading modules.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Vertex Shader Stage
+// ----------------------------------------------------------------------------
+
+@vertex
+fn standardLitVertex(
+  @location(0) position: vec3<f32>,
+  @location(1) normal: vec3<f32>,
+  @location(2) uv0: vec2<f32>,
+  @location(3) uv1: vec2<f32>,
+  @location(4) tangent: vec4<f32>,
+  @location(5) color0: vec4<f32>
+) -> StandardLitVertexOutput {
+  // Transform vertex position to world space
+  let worldPosition = objectData.world * vec4<f32>(position, 1.0);
+
+  // Transform normal vector to world space via normal matrix
+  let worldNormal = normalize((objectData.normalWorld * vec4<f32>(normal, 0.0)).xyz);
+  let rawWorldTangent = (objectData.world * vec4<f32>(tangent.xyz, 0.0)).xyz;
+  let worldTangent = normalize(rawWorldTangent - worldNormal * dot(worldNormal, rawWorldTangent));
+  let world3 = mat3x3<f32>(objectData.world[0].xyz, objectData.world[1].xyz, objectData.world[2].xyz);
+  let transformSign = select(-1.0, 1.0, determinant(world3) >= 0.0);
+
+  return StandardLitVertexOutput(
+    viewData.viewProjection * worldPosition,
+    worldNormal,
+    worldPosition.xyz,
+    uv0,
+    uv1,
+    vec4<f32>(worldTangent, tangent.w * transformSign),
+    color0
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -1380,10 +1568,12 @@ fn standardLitFragment(
   @builtin(front_facing) frontFacing: bool
 ) -> @location(0) vec4<f32> {
   let surface = sampleStandardLitSurface(fragmentInput, frontFacing);
-  if (materialData.alphaMask != 0u && surface.baseColor.a < materialData.alphaCutoff) { discard; }
+  if (!evaluateAlphaCoverage(surface.baseColor.a, materialData.alphaCutoff, materialData.alphaMask)) {
+    discard;
+  }
   let normal = surface.normal;
   let viewDirection = normalize(viewData.cameraPosition - fragmentInput.worldPosition);
-  var lit = evaluateIbl(normal, viewDirection, surface);
+  var lit = evaluateSurfaceIbl(normal, viewDirection, surface);
   let directionalCount = directionalLightCount();
   for (var index = 0u; index < directionalCount; index += 1u) {
     lit += evaluatePackedLight(
@@ -1399,7 +1589,6 @@ fn standardLitFragment(
 
   return vec4<f32>(lit + surface.emissive, surface.baseColor.a);
 }
-
 `,
     glslEs300: {}
   }

@@ -108,12 +108,21 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
     sceneRef.current.setCastsShadow(castsShadow);
     sceneRef.current.setSunlight(sunlight);
     sceneRef.current.setBackgroundMultiplier(backgroundMultiplier);
+    sceneRef.current.setEnvironmentIntensity(environmentIntensity);
     const rad = (lightAngle * Math.PI) / 180;
     sceneRef.current.setLightDirection([Math.cos(rad) * -0.7, -1, Math.sin(rad) * -0.7]);
     if (!animate) {
       sceneRef.current.setRotation((manualRotation * Math.PI) / 180);
     }
-  }, [castsShadow, sunlight, lightAngle, backgroundMultiplier, animate, manualRotation]);
+  }, [
+    castsShadow,
+    sunlight,
+    lightAngle,
+    backgroundMultiplier,
+    environmentIntensity,
+    animate,
+    manualRotation
+  ]);
 
   // Mount DamagedHelmet scene via serialized lifecycle host
   useEffect(() => {
@@ -166,7 +175,7 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
       sceneRef.current = null;
       void host.unmount();
     };
-  }, [mountScene, environmentMode, environmentIntensity, backgroundMode]);
+  }, [mountScene, environmentMode, backgroundMode]);
 
   return (
     <div className="demo-content">

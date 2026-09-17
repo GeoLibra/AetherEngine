@@ -1,5 +1,9 @@
 {
   "schemaVersion": 1,
+  "imports": [
+    { "path": "asset://aether/shader-modules/shared/fullscreen.wgsl" },
+    { "path": "asset://aether/shader-modules/post/tonemap.wgsl" }
+  ],
   "entryPoints": [
     { "name": "postColorVertex", "stage": "vertex" },
     { "name": "postColorFragment", "stage": "fragment" }

@@ -57,6 +57,7 @@ export interface MountedDamagedHelmetScene {
   setSunlight(enabled: boolean): void;
   setLightDirection(direction: readonly [number, number, number]): void;
   setBackgroundMultiplier(value: number): void;
+  setEnvironmentIntensity(value: number): void;
   resize(width: number, height: number): Promise<void> | void;
   destroy(): Promise<void>;
 }
@@ -418,6 +419,10 @@ export async function mountDamagedHelmetScene(
           multiplier: value
         });
       }
+      demandRunner?.frame();
+    },
+    setEnvironmentIntensity(value: number) {
+      renderingPlugin.setEnvironmentIntensity(value);
       demandRunner?.frame();
     },
     async resize(width: number, height: number) {

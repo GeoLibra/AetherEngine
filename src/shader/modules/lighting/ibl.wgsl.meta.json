@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "imports": [
+    { "path": "asset://aether/shader-modules/lighting/brdf.wgsl" },
+    { "path": "asset://aether/shader-modules/shared/equirectangular.wgsl" }
+  ]
+}

@@ -1,5 +1,10 @@
 {
   "schemaVersion": 1,
+  "imports": [
+    { "path": "asset://aether/shader-modules/shared/fullscreen.wgsl" },
+    { "path": "asset://aether/shader-modules/lighting/light-layout.wgsl" },
+    { "path": "asset://aether/shader-modules/geometry/intersection.wgsl" }
+  ],
   "entryPoints": [
     { "name": "lightListVertex", "stage": "vertex" },
     { "name": "lightListFragment", "stage": "fragment" }

@@ -1,15 +1,29 @@
 /**
  * @file Source-kind authoring dispatch coordinator for shader compilation and cooking.
+ * Integrates module resolution and linking for composed shaders with full diagnostic remapping.
  */
 
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import type {
   CookedShaderRuntimeArtifact,
   ShaderAuthoringSource,
   WgslShaderMetadata
 } from '../../src/shader/types';
-import { NativeWgslCooker } from './native-wgsl-cooker';
-import { loadWgslMetadata } from './metadata-loader';
-
+import { loadWgslMetadata, loadWgslMetadataSync } from './metadata-loader';
+import {
+  createShaderModuleId,
+  FileSystemShaderModuleLoader,
+  linkStrictWgsl,
+  remapLinkedDiagnostic,
+  resolveDependencyClosure,
+  type ShaderModuleId,
+  type ShaderModuleLoader,
+  type ShaderModuleSource
+} from './modules';
+import { NativeCookerError, NativeWgslCooker } from './native-wgsl-cooker';
 import {
   diagnoseShaderArtifactLayouts,
   formatStructLayoutDiagnostic,
@@ -34,6 +48,31 @@ export interface FluxShaderCookerAdapter {
 }
 
 /**
+ * Wraps a custom module loader so the authored root module is always served from its
+ * authoritative source override (root `sourcePath` text plus caller metadata) instead of being
+ * re-resolved through the loader's URI-to-directory mapping. Dependency modules still flow
+ * through the supplied loader, so external authorities keep their configured mapping.
+ *
+ * @param loader Custom loader to delegate dependency resolution to.
+ * @param rootModuleSource Authored root module source snapshot.
+ * @returns Composite loader that serves the root from its override.
+ */
+function createRootSourceOverrideLoader(
+  loader: ShaderModuleLoader,
+  rootModuleSource: ShaderModuleSource
+): ShaderModuleLoader {
+  const rootId = rootModuleSource.id;
+  return {
+    async loadModule(id: ShaderModuleId): Promise<ShaderModuleSource | undefined> {
+      if (id === rootId) {
+        return rootModuleSource;
+      }
+      return loader.loadModule(id);
+    }
+  };
+}
+
+/**
  * Options for cookAuthoredShader dispatch.
  */
 export interface CookAuthoredShaderOptions {
@@ -51,6 +90,14 @@ export interface CookAuthoredShaderOptions {
    * to this handler instead of being logged to console.info.
    */
   readonly onLayoutDiagnostic?: ((diagnostic: StructLayoutDiagnosis) => void) | undefined;
+  /**
+   * Custom module loader for resolving imported shader modules.
+   */
+  readonly moduleLoader?: ShaderModuleLoader | undefined;
+  /**
+   * Callback invoked for each file path loaded during dependency resolution (used for watch/HMR).
+   */
+  readonly onDependencyResolved?: ((filePath: string) => void) | undefined;
 }
 
 /**
@@ -70,21 +117,142 @@ export async function cookAuthoredShader(
   switch (source.kind) {
     case 'wgsl': {
       const cooker = options.cooker ?? new NativeWgslCooker();
-      const artifact = await cooker.cook(
-        {
-          sourcePath,
-          sourceUri: source.uri,
-          metadataPath
-        },
-        { signal: options.signal }
-      );
 
       let metadata = request.metadata;
-      if (!metadata && metadataPath) {
-        metadata = await loadWgslMetadata(metadataPath);
+      let effectiveMetadataPath = metadataPath;
+      if (!metadata && !effectiveMetadataPath && sourcePath) {
+        const sidecarMeta = `${sourcePath}.meta.json`;
+        const shaderJson = sourcePath.replace(/\.wgsl$/u, '.shader.json');
+        if (existsSync(sidecarMeta)) {
+          effectiveMetadataPath = sidecarMeta;
+        } else if (shaderJson !== sourcePath && existsSync(shaderJson)) {
+          effectiveMetadataPath = shaderJson;
+        }
+      }
+      if (!metadata && effectiveMetadataPath) {
+        metadata = loadWgslMetadataSync(effectiveMetadataPath);
+      }
+
+      let artifact: CookedShaderRuntimeArtifact;
+
+      // Check if this module declares external imports requiring resolution & linking
+      if (metadata?.imports && metadata.imports.length > 0) {
+        const rootSourceText = readFileSync(sourcePath, 'utf8');
+        const rootModuleSource: ShaderModuleSource = Object.freeze({
+          id: createShaderModuleId(source.uri),
+          source: rootSourceText,
+          imports: Object.freeze([...metadata.imports])
+        });
+
+        const suppliedLoader = options.moduleLoader;
+        let loader: ShaderModuleLoader;
+        let fileSystemLoader: FileSystemShaderModuleLoader | undefined;
+
+        if (suppliedLoader === undefined) {
+          fileSystemLoader = new FileSystemShaderModuleLoader({
+            fileOverrides: {
+              [source.uri]: sourcePath
+            },
+            moduleOverrides: {
+              [source.uri]: rootModuleSource
+            }
+          });
+          loader = fileSystemLoader;
+        } else {
+          if (suppliedLoader instanceof FileSystemShaderModuleLoader) {
+            fileSystemLoader = suppliedLoader;
+          }
+          loader = createRootSourceOverrideLoader(suppliedLoader, rootModuleSource);
+        }
+
+        const closure = await resolveDependencyClosure(source.uri, loader);
+
+        if (options.onDependencyResolved) {
+          options.onDependencyResolved(sourcePath);
+          if (effectiveMetadataPath) {
+            options.onDependencyResolved(effectiveMetadataPath);
+          }
+          if (fileSystemLoader) {
+            for (const filePath of fileSystemLoader.getLoadedFilePaths()) {
+              options.onDependencyResolved(filePath);
+            }
+          }
+        }
+
+        const linked = linkStrictWgsl(closure);
+
+        // Write linked standard WGSL to temporary file for native cooker invocation
+        const tempDir = await mkdtemp(join(tmpdir(), 'aether-linked-cook-'));
+        const tempSourcePath = join(tempDir, basename(sourcePath));
+        await writeFile(tempSourcePath, linked.standardWgsl, 'utf8');
+
+        try {
+          artifact = await cooker.cook(
+            {
+              sourcePath: tempSourcePath,
+              sourceUri: source.uri,
+              ...(effectiveMetadataPath !== undefined
+                ? { metadataPath: effectiveMetadataPath }
+                : {})
+            },
+            { signal: options.signal }
+          );
+        } catch (cookError: unknown) {
+          if (cookError instanceof NativeCookerError) {
+            let line = cookError.line;
+            let col = cookError.column;
+
+            if (line === undefined) {
+              const lineMatch =
+                /line\s+(\d+)/i.exec(cookError.message) ?? /:(\d+):(\d+)/.exec(cookError.message);
+              if (lineMatch && lineMatch[1]) {
+                line = parseInt(lineMatch[1], 10);
+                if (lineMatch[2]) {
+                  col = parseInt(lineMatch[2], 10);
+                }
+              }
+            }
+
+            if (line !== undefined) {
+              const mapped = remapLinkedDiagnostic(
+                { line, column: col, message: cookError.message },
+                linked
+              );
+              const colSuffix = mapped.span?.column !== undefined ? `:${mapped.span.column}` : '';
+              const mappedLocation = `${mapped.moduleId}:${mapped.span?.line ?? 1}${colSuffix}`;
+              const mappedMessage = `${cookError.code}: [${mappedLocation}] ${cookError.message}`;
+
+              throw new NativeCookerError(mappedMessage, {
+                code: cookError.code,
+                sourceUri: (mapped.moduleId as string) ?? cookError.sourceUri,
+                rawStderr: cookError.rawStderr,
+                line: mapped.span?.line,
+                column: mapped.span?.column,
+                backendStage: cookError.backendStage
+              });
+            }
+          }
+          throw cookError;
+        } finally {
+          await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        }
+      } else {
+        artifact = await cooker.cook(
+          {
+            sourcePath,
+            sourceUri: source.uri,
+            ...(effectiveMetadataPath !== undefined ? { metadataPath: effectiveMetadataPath } : {})
+          },
+          { signal: options.signal }
+        );
       }
 
       if (metadata) {
+        if (!metadata.entryPoints || metadata.entryPoints.length === 0) {
+          throw new Error(
+            'Executable WGSL root shader metadata must declare at least one entry point.'
+          );
+        }
         // Cross-check metadata declarations with native reflection
         const reflectedEntries = new Map(artifact.entryPoints.map((ep) => [ep.name, ep.stage]));
         for (const metaEp of metadata.entryPoints) {

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "entryPoints": [
+    { "name": "vertexMain", "stage": "vertex" },
+    { "name": "fragmentMain", "stage": "fragment" }
+  ],
+  "imports": [{ "path": "./util.wgsl" }]
+}

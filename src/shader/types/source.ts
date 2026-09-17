@@ -38,7 +38,8 @@ export type {
   WgslCapabilityRequirement,
   WgslMaterialBindingMetadata,
   WgslCookPolicy,
-  WgslShaderMetadata
+  WgslShaderMetadata,
+  WgslModuleMetadata
 } from './authoring';
 
 export type {

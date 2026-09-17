@@ -1,5 +1,9 @@
 {
   "schemaVersion": 1,
+  "imports": [
+    { "path": "asset://aether/shader-modules/lighting/light-layout.wgsl" },
+    { "path": "asset://aether/shader-modules/geometry/intersection.wgsl" }
+  ],
   "entryPoints": [{ "name": "buildLightList", "stage": "compute" }],
   "materialBindings": [],
   "cookPolicy": {

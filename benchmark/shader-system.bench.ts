@@ -8,6 +8,7 @@ import {
 import { ShaderCompiler } from '../src/shader/experimental/flux/compiler';
 import { runBindingLayoutScenario } from './shader-system/binding-layout-scenario';
 import { runShaderGraphScenario } from './shader-system/shader-graph-scenario';
+import { runModuleCompositionScenario } from './shader-system/module-composition-scenario';
 import {
   BUILT_IN_WEBGL2_TRANSLATOR,
   STANDARD_LIT_SHADER_MODULE,
@@ -74,7 +75,7 @@ bench(
   { iterations: 1, warmupIterations: 0 }
 );
 
-for (const chainLength of [16, 64]) {
+for (const chainLength of [16, 64] as const) {
   bench(
     `lower and cache-hit ShaderGraph with ${chainLength} nodes`,
     async () => {
@@ -83,6 +84,27 @@ for (const chainLength of [16, 64]) {
       expect(result.reusedNodes).toBe(chainLength * 8);
       expect(result.sliceLowerOk).toBe(true);
       expect(result.checksum).not.toBe(0);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
+for (const moduleCount of [16, 64] as const) {
+  bench(
+    `resolve, link and trace invalidation for ${moduleCount} shader modules`,
+    async () => {
+      const result = await runModuleCompositionScenario({
+        moduleCount,
+        linesPerModule: 20,
+        topology: 'diamond'
+      });
+      expect(result.closureModuleCount).toBeGreaterThanOrEqual(moduleCount - 2);
+      expect(result.compositeHash).toBeTruthy();
+      expect(result.compositeHashMatchesOracle).toBe(true);
+      expect(result.sharedLeafAffectedRootsCount).toBe(2);
+      expect(result.rootLocalAffectedRootsCount).toBe(1);
+      expect(result.unrelatedAffectedRootsCount).toBe(0);
+      expect(result.rebuildIsDeterministic).toBe(true);
     },
     { iterations: 1, warmupIterations: 0 }
   );

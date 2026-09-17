@@ -13,8 +13,8 @@ export const SKYBOX_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
   },
   source: {
     sourceUri: 'asset://aether/builtins/skybox.wgsl',
-    contentHash: '47cd05de04f3fe567a083bae14dee47fc45df1dcaa74cfc0996aa134ee41492f',
-    byteLength: 3359
+    contentHash: '75590c81754ad95f44f3ef8497e4b144f79dbd4dcf503958864b9c55eca8f90d',
+    byteLength: 5932
   },
   entryPoints: [
     {
@@ -178,7 +178,85 @@ export const SKYBOX_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact({
     }
   ],
   modules: {
-    wgsl: `struct SkyboxUniforms {
+    wgsl: `// ============================================================================
+// AetherEngine Shared Shader Module - Fullscreen Triangle
+// Generates a single clip-space triangle covering the full viewport NDC [-1, 1]
+// using 3 vertex indices (0, 1, 2) without vertex buffer uploads.
+// ============================================================================
+
+/// Output structure for full-screen rasterization passes.
+struct FullscreenVertexOutput {
+  @builtin(position) position: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+
+/// Computes the 4D homogeneous clip-space position for a full-screen triangle vertex.
+///
+/// Parameters:
+/// - \`vertexIndex\`: Built-in vertex index (@builtin(vertex_index) index: u32).
+///
+/// Returns:
+/// Projected clip-space coordinate with Z = 0.0, W = 1.0.
+fn fullscreenClipPosition(vertexIndex: u32) -> vec4<f32> {
+  let x = f32((vertexIndex << 1u) & 2u);
+  let y = f32(vertexIndex & 2u);
+  return vec4<f32>(x * 2.0 - 1.0, y * 2.0 - 1.0, 0.0, 1.0);
+}
+
+/// Computes the 2D texture coordinate in [0.0, 1.0] for a full-screen triangle vertex.
+///
+/// Parameters:
+/// - \`vertexIndex\`: Built-in vertex index (@builtin(vertex_index) index: u32).
+///
+/// Returns:
+/// 2D UV coordinate where (0, 0) is top-left and (1, 1) is bottom-right.
+fn fullscreenUv(vertexIndex: u32) -> vec2<f32> {
+  let x = f32((vertexIndex << 1u) & 2u);
+  let y = f32(vertexIndex & 2u);
+  return vec2<f32>(x, 1.0 - y);
+}
+
+/// Generates complete clip-space position and texture coordinates for a full-screen pass.
+///
+/// Parameters:
+/// - \`vertexIndex\`: Built-in vertex index (@builtin(vertex_index) index: u32).
+///
+/// Returns:
+/// Populated FullscreenVertexOutput.
+fn generateFullscreenVertex(vertexIndex: u32) -> FullscreenVertexOutput {
+  return FullscreenVertexOutput(
+    fullscreenClipPosition(vertexIndex),
+    fullscreenUv(vertexIndex)
+  );
+}
+
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Equirectangular Spherical Projection
+// Converts 3D Cartesian direction vectors to 2D equirectangular spherical UVs.
+// ============================================================================
+
+const EQUIR_PI: f32 = 3.141592653589793;
+const EQUIR_TWO_PI: f32 = 6.283185307179586;
+
+/// Converts a 3D unit direction vector to 2D equirectangular spherical coordinates [0.0, 1.0].
+///
+/// Parameters:
+/// - \`direction\`: 3D direction vector (will be normalized internally).
+///
+/// Returns:
+/// 2D UV coordinate pair in [0.0, 1.0] where U corresponds to azimuthal angle (longitude)
+/// and V corresponds to polar angle from +Y (latitude).
+fn directionToEquirectangularUv(direction: vec3<f32>) -> vec2<f32> {
+  let normalized = normalize(direction);
+  var u = atan2(normalized.z, normalized.x) / EQUIR_TWO_PI + 0.5;
+  u = fract(u);
+  let v = acos(clamp(normalized.y, -1.0, 1.0)) / EQUIR_PI;
+  return vec2<f32>(u, v);
+}
+
+
+struct SkyboxUniforms {
   ray0: vec4<f32>,
   ray1: vec4<f32>,
   ray2: vec4<f32>,
@@ -202,9 +280,7 @@ struct FullscreenOutput {
 
 @vertex
 fn skyboxVertex(@builtin(vertex_index) index: u32) -> FullscreenOutput {
-  let x = f32((index << 1u) & 2u);
-  let y = f32(index & 2u);
-  let clipPos = vec4<f32>(x * 2.0 - 1.0, y * 2.0 - 1.0, 0.0, 1.0);
+  let clipPos = fullscreenClipPosition(index);
 
   var dir = skyboxUniforms.ray0.xyz;
   if (index == 1u) {
@@ -218,16 +294,6 @@ fn skyboxVertex(@builtin(vertex_index) index: u32) -> FullscreenOutput {
     dir,
     clipPos.xy
   );
-}
-
-const PI: f32 = 3.141592653589793;
-const TWO_PI: f32 = 6.283185307179586;
-
-fn directionToEquirectUv(dir: vec3<f32>) -> vec2<f32> {
-  var u = atan2(dir.z, dir.x) / TWO_PI + 0.5;
-  u = fract(u);
-  let v = acos(clamp(dir.y, -1.0, 1.0)) / PI;
-  return vec2<f32>(u, v);
 }
 
 fn reconstructFragmentRay(ndc: vec2<f32>) -> vec3<f32> {
@@ -256,7 +322,7 @@ fn skyboxFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
     dir = normalize(input.direction);
   }
 
-  let uv = directionToEquirectUv(dir);
+  let uv = directionToEquirectangularUv(dir);
 
   var lod: f32 = 0.0;
   if (skyboxUniforms.flags.y > 0.5) {
@@ -268,8 +334,8 @@ fn skyboxFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
     let dirX = normalize(dir + dDdx);
     let dirY = normalize(dir + dDdy);
 
-    let uvX = directionToEquirectUv(dirX);
-    let uvY = directionToEquirectUv(dirY);
+    let uvX = directionToEquirectangularUv(dirX);
+    let uvY = directionToEquirectangularUv(dirY);
 
     var du_dx = uvX.x - uv.x;
     var du_dy = uvY.x - uv.x;
@@ -314,6 +380,10 @@ fn skyboxFragment(input: FullscreenOutput) -> @location(0) vec4<f32> {
 precision highp float;
 precision highp int;
 
+struct FullscreenVertexOutput {
+    vec4 position;
+    vec2 uv;
+};
 struct SkyboxUniforms {
     vec4 ray0_;
     vec4 ray1_;
@@ -330,8 +400,8 @@ struct FullscreenOutput {
     vec3 direction;
     vec2 ndc;
 };
-const float PI = 3.1415927;
-const float TWO_PI = 6.2831855;
+const float EQUIR_PI = 3.1415927;
+const float EQUIR_TWO_PI = 6.2831855;
 
 layout(std140) uniform SkyboxUniforms_block_0Fragment { SkyboxUniforms _group_0_binding_0_fs; };
 
@@ -341,14 +411,33 @@ smooth in vec3 _vs2fs_location0;
 smooth in vec2 _vs2fs_location1;
 layout(location = 0) out vec4 _fs2p_location0;
 
-vec2 directionToEquirectUv(vec3 dir_2) {
+vec4 fullscreenClipPosition(uint vertexIndex) {
+    float x = float(((vertexIndex << 1u) & 2u));
+    float y = float((vertexIndex & 2u));
+    return vec4(((x * 2.0) - 1.0), ((y * 2.0) - 1.0), 0.0, 1.0);
+}
+
+vec2 fullscreenUv(uint vertexIndex_1) {
+    float x_1 = float(((vertexIndex_1 << 1u) & 2u));
+    float y_1 = float((vertexIndex_1 & 2u));
+    return vec2(x_1, (1.0 - y_1));
+}
+
+FullscreenVertexOutput generateFullscreenVertex(uint vertexIndex_2) {
+    vec4 _e1 = fullscreenClipPosition(vertexIndex_2);
+    vec2 _e2 = fullscreenUv(vertexIndex_2);
+    return FullscreenVertexOutput(_e1, _e2);
+}
+
+vec2 directionToEquirectangularUv(vec3 direction) {
     float u = 0.0;
-    u = ((atan(dir_2.z, dir_2.x) / TWO_PI) + 0.5);
-    float _e9 = u;
-    u = fract(_e9);
-    float v = (acos(clamp(dir_2.y, -1.0, 1.0)) / PI);
-    float _e18 = u;
-    return vec2(_e18, v);
+    vec3 normalized = normalize(direction);
+    u = ((atan(normalized.z, normalized.x) / EQUIR_TWO_PI) + 0.5);
+    float _e10 = u;
+    u = fract(_e10);
+    float v = (acos(clamp(normalized.y, -1.0, 1.0)) / EQUIR_PI);
+    float _e19 = u;
+    return vec2(_e19, v);
 }
 
 vec3 reconstructFragmentRay(vec2 ndc) {
@@ -388,7 +477,7 @@ void main() {
         dir_1 = normalize(input_.direction);
     }
     vec3 _e24 = dir_1;
-    vec2 _e25 = directionToEquirectUv(_e24);
+    vec2 _e25 = directionToEquirectangularUv(_e24);
     float _e31 = _group_0_binding_0_fs.flags.y;
     if ((_e31 > 0.5)) {
         lod = 0.0;
@@ -401,8 +490,8 @@ void main() {
         vec3 dirX = normalize((_e39 + dDdx));
         vec3 _e42 = dir_1;
         vec3 dirY = normalize((_e42 + dDdy));
-        vec2 _e45 = directionToEquirectUv(dirX);
-        vec2 _e46 = directionToEquirectUv(dirY);
+        vec2 _e45 = directionToEquirectangularUv(dirX);
+        vec2 _e46 = directionToEquirectangularUv(dirY);
         du_dx = (_e45.x - _e25.x);
         du_dy = (_e46.x - _e25.x);
         float _e55 = du_dx;
@@ -484,6 +573,10 @@ void main() {
 precision highp float;
 precision highp int;
 
+struct FullscreenVertexOutput {
+    vec4 position;
+    vec2 uv;
+};
 struct SkyboxUniforms {
     vec4 ray0_;
     vec4 ray1_;
@@ -500,22 +593,41 @@ struct FullscreenOutput {
     vec3 direction;
     vec2 ndc;
 };
-const float PI = 3.1415927;
-const float TWO_PI = 6.2831855;
+const float EQUIR_PI = 3.1415927;
+const float EQUIR_TWO_PI = 6.2831855;
 
 layout(std140) uniform SkyboxUniforms_block_0Vertex { SkyboxUniforms _group_0_binding_0_vs; };
 
 smooth out vec3 _vs2fs_location0;
 smooth out vec2 _vs2fs_location1;
 
-vec2 directionToEquirectUv(vec3 dir_2) {
+vec4 fullscreenClipPosition(uint vertexIndex) {
+    float x = float(((vertexIndex << 1u) & 2u));
+    float y = float((vertexIndex & 2u));
+    return vec4(((x * 2.0) - 1.0), ((y * 2.0) - 1.0), 0.0, 1.0);
+}
+
+vec2 fullscreenUv(uint vertexIndex_1) {
+    float x_1 = float(((vertexIndex_1 << 1u) & 2u));
+    float y_1 = float((vertexIndex_1 & 2u));
+    return vec2(x_1, (1.0 - y_1));
+}
+
+FullscreenVertexOutput generateFullscreenVertex(uint vertexIndex_2) {
+    vec4 _e1 = fullscreenClipPosition(vertexIndex_2);
+    vec2 _e2 = fullscreenUv(vertexIndex_2);
+    return FullscreenVertexOutput(_e1, _e2);
+}
+
+vec2 directionToEquirectangularUv(vec3 direction) {
     float u = 0.0;
-    u = ((atan(dir_2.z, dir_2.x) / TWO_PI) + 0.5);
-    float _e9 = u;
-    u = fract(_e9);
-    float v = (acos(clamp(dir_2.y, -1.0, 1.0)) / PI);
-    float _e18 = u;
-    return vec2(_e18, v);
+    vec3 normalized = normalize(direction);
+    u = ((atan(normalized.z, normalized.x) / EQUIR_TWO_PI) + 0.5);
+    float _e10 = u;
+    u = fract(_e10);
+    float v = (acos(clamp(normalized.y, -1.0, 1.0)) / EQUIR_PI);
+    float _e19 = u;
+    return vec2(_e19, v);
 }
 
 vec3 reconstructFragmentRay(vec2 ndc) {
@@ -538,22 +650,20 @@ vec3 reconstructFragmentRay(vec2 ndc) {
 void main() {
     uint index = uint(gl_VertexID);
     vec3 dir = vec3(0.0);
-    float x = float(((index << 1u) & 2u));
-    float y = float((index & 2u));
-    vec4 clipPos = vec4(((x * 2.0) - 1.0), ((y * 2.0) - 1.0), 0.0, 1.0);
-    vec4 _e22 = _group_0_binding_0_vs.ray0_;
-    dir = _e22.xyz;
+    vec4 _e1 = fullscreenClipPosition(index);
+    vec4 _e4 = _group_0_binding_0_vs.ray0_;
+    dir = _e4.xyz;
     if ((index == 1u)) {
-        vec4 _e29 = _group_0_binding_0_vs.ray1_;
-        dir = _e29.xyz;
+        vec4 _e11 = _group_0_binding_0_vs.ray1_;
+        dir = _e11.xyz;
     } else {
         if ((index == 2u)) {
-            vec4 _e35 = _group_0_binding_0_vs.ray2_;
-            dir = _e35.xyz;
+            vec4 _e17 = _group_0_binding_0_vs.ray2_;
+            dir = _e17.xyz;
         }
     }
-    vec3 _e37 = dir;
-    FullscreenOutput _tmp_return = FullscreenOutput(clipPos, _e37, clipPos.xy);
+    vec3 _e19 = dir;
+    FullscreenOutput _tmp_return = FullscreenOutput(_e1, _e19, _e1.xy);
     gl_Position = _tmp_return.position;
     _vs2fs_location0 = _tmp_return.direction;
     _vs2fs_location1 = _tmp_return.ndc;

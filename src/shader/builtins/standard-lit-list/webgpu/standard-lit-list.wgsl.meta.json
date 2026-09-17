@@ -1,5 +1,9 @@
 {
   "schemaVersion": 1,
+  "imports": [
+    { "path": "asset://aether/builtins/standard-lit-list/webgpu/light-access.wgsl" },
+    { "path": "asset://aether/builtins/standard-lit-list/shading.wgsl" }
+  ],
   "entryPoints": [
     { "name": "standardLitVertex", "stage": "vertex" },
     { "name": "standardLitFragment", "stage": "fragment" }

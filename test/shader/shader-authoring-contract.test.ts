@@ -91,7 +91,7 @@ describe('WgslShaderMetadata validation', () => {
     expect(validated).toEqual(validMetadata);
     expect(Object.isFrozen(validated)).toBe(true);
     expect(Object.isFrozen(validated.entryPoints)).toBe(true);
-    expect(Object.isFrozen(validated.entryPoints[0])).toBe(true);
+    expect(Object.isFrozen(validated.entryPoints?.[0])).toBe(true);
   });
 
   test('rejects unknown metadata keys', () => {
@@ -103,6 +103,29 @@ describe('WgslShaderMetadata validation', () => {
     expect(() => validateWgslShaderMetadata({ ...validMetadata, schemaVersion: 2 as 1 })).toThrow(
       /unsupported schemaVersion/i
     );
+  });
+
+  test('rejects root shader metadata missing entryPoints or with empty entryPoints', () => {
+    const withoutEntryPoints = { schemaVersion: 1 };
+    expect(() => validateWgslShaderMetadata(withoutEntryPoints)).toThrow(
+      /Executable WGSL root shader metadata must declare entryPoints/i
+    );
+
+    const emptyEntryPoints = { schemaVersion: 1, entryPoints: [] };
+    expect(() => validateWgslShaderMetadata(emptyEntryPoints)).toThrow(
+      /entryPoints must be a non-empty array/i
+    );
+  });
+
+  test('validates module metadata without requiring entryPoints', () => {
+    const moduleMeta = {
+      schemaVersion: 1,
+      imports: [{ path: 'asset://common/math.wgsl' }]
+    };
+    const validated = validateWgslShaderMetadata(moduleMeta, { kind: 'module' });
+    expect(validated.entryPoints).toBeUndefined();
+    expect(validated.imports).toHaveLength(1);
+    expect(Object.isFrozen(validated)).toBe(true);
   });
 
   test('rejects duplicate entry point names', () => {

@@ -13,8 +13,8 @@ export const STANDARD_SHADOW_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-shadow.wgsl',
-    contentHash: 'a1e04cae985a84aee564ca0df77f01f590424d679b397d6028b67e67e2c89817',
-    byteLength: 1871
+    contentHash: '7e7935feabf013c3687a5310726d497bb99bbedfbd582f29bb60caf0f1da2494',
+    byteLength: 3917
   },
   entryPoints: [
     {
@@ -231,7 +231,60 @@ export const STANDARD_SHADOW_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifact
   ],
   fragmentOutputs: [],
   modules: {
-    wgsl: `struct ShadowObjectData {
+    wgsl: `// ============================================================================
+// AetherEngine Shared Shader Module - UV Operations
+// Pure 2D texture coordinate affine transformations and UV set selection.
+// ============================================================================
+
+/// Transforms a 2D texture coordinate \`(u, v)\` via a 2x2 affine matrix and translation offset:
+///   u' = matrix.x * uv.x + matrix.y * uv.y + offset.x
+///   v' = matrix.z * uv.x + matrix.w * uv.y + offset.y
+///
+/// Coordinate space: Normalized UV space [0.0, 1.0].
+///
+/// Parameters:
+/// - \`uv\`: Raw authored 2D texture coordinate from vertex attribute.
+/// - \`matrix\`: 2x2 affine transform matrix components (scale and rotation) packed as \`(m00, m01, m10, m11)\`.
+/// - \`offset\`: 2D translation offset \`(tx, ty)\`.
+///
+/// Returns:
+/// Transformed 2D texture coordinate vector.
+fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(
+    matrix.x * uv.x + matrix.y * uv.y + offset.x,
+    matrix.z * uv.x + matrix.w * uv.y + offset.y
+  );
+}
+
+
+// ============================================================================
+// AetherEngine Shared Shader Module - Surface Coverage
+// Pure alpha testing and silhouette coverage evaluation predicate.
+// ============================================================================
+
+/// Evaluates whether a surface fragment passes the alpha cutoff test.
+///
+/// Parameters:
+/// - \`alpha\`: Sampled and factor-modulated surface alpha in [0.0, 1.0].
+/// - \`alphaCutoff\`: Threshold value below which fragments are discarded.
+/// - \`alphaMask\`: Flag indicating if alpha masking/cutoff is active (non-zero = active).
+///
+/// Returns:
+/// \`true\` if the fragment survives the alpha test (keep), \`false\` if it should be discarded.
+fn evaluateAlphaCoverage(alpha: f32, alphaCutoff: f32, alphaMask: u32) -> bool {
+  if (alphaMask != 0u && alpha < alphaCutoff) {
+    return false;
+  }
+  return true;
+}
+
+
+// ============================================================================
+// AetherEngine Standard Shadow Caster Pass
+// Imports UV transformation and Alpha Coverage modules.
+// ============================================================================
+
+struct ShadowObjectData {
   world: mat4x4<f32>,
 };
 
@@ -272,13 +325,6 @@ fn standardShadowVertex(
   return ShadowVertexOutput(shadowViewData.viewProjection * worldPosition, uv0, uv1, color0);
 }
 
-fn transformUv(uv: vec2<f32>, matrix: vec4<f32>, offset: vec2<f32>) -> vec2<f32> {
-  return vec2<f32>(
-    matrix.x * uv.x + matrix.y * uv.y + offset.x,
-    matrix.z * uv.x + matrix.w * uv.y + offset.y
-  );
-}
-
 @fragment
 fn standardShadowFragment(input: ShadowVertexOutput) {
   let rawUv = select(input.uv0, input.uv1, shadowMaterialData.baseColorUvSet == 1u);
@@ -290,7 +336,9 @@ fn standardShadowFragment(input: ShadowVertexOutput) {
   let alpha = shadowMaterialData.baseColorFactor.a *
     textureSample(baseColorTexture, surfaceSampler, baseColorUv).a *
     input.color.a;
-  if (shadowMaterialData.alphaMask != 0u && alpha < shadowMaterialData.alphaCutoff) { discard; }
+  if (!evaluateAlphaCoverage(alpha, shadowMaterialData.alphaCutoff, shadowMaterialData.alphaMask)) {
+    discard;
+  }
 }
 `,
     glslEs300: {
@@ -332,9 +380,22 @@ vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
     return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
 }
 
+bool evaluateAlphaCoverage(float alpha, float alphaCutoff, uint alphaMask) {
+    bool local = false;
+    if ((alphaMask != 0u)) {
+        local = (alpha < alphaCutoff);
+    } else {
+        local = false;
+    }
+    bool _e9 = local;
+    if (_e9) {
+        return false;
+    }
+    return true;
+}
+
 void main() {
     ShadowVertexOutput input_ = ShadowVertexOutput(gl_FragCoord, _vs2fs_location0, _vs2fs_location1, _vs2fs_location2);
-    bool local = false;
     uint _e5 = _group_2_binding_0_fs.baseColorUvSet;
     vec2 rawUv = ((_e5 == 1u) ? input_.uv1_ : input_.uv0_);
     vec4 _e11 = _group_2_binding_0_fs.baseColorTransform;
@@ -342,16 +403,11 @@ void main() {
     vec2 _e15 = transformUv(rawUv, _e11, _e14);
     float _e19 = _group_2_binding_0_fs.baseColorFactor.w;
     vec4 _e22 = texture(_group_2_binding_1_fs, vec2(_e15));
-    float alpha = ((_e19 * _e22.w) * input_.color.w);
-    uint _e30 = _group_2_binding_0_fs.alphaMask;
-    if ((_e30 != 0u)) {
-        float _e37 = _group_2_binding_0_fs.alphaCutoff;
-        local = (alpha < _e37);
-    } else {
-        local = false;
-    }
-    bool _e40 = local;
-    if (_e40) {
+    float alpha_1 = ((_e19 * _e22.w) * input_.color.w);
+    float _e30 = _group_2_binding_0_fs.alphaCutoff;
+    uint _e33 = _group_2_binding_0_fs.alphaMask;
+    bool _e34 = evaluateAlphaCoverage(alpha_1, _e30, _e33);
+    if (!(_e34)) {
         discard;
     } else {
         return;
@@ -422,6 +478,20 @@ smooth out vec4 _vs2fs_location2;
 
 vec2 transformUv(vec2 uv, vec4 matrix, vec2 offset) {
     return vec2((((matrix.x * uv.x) + (matrix.y * uv.y)) + offset.x), (((matrix.z * uv.x) + (matrix.w * uv.y)) + offset.y));
+}
+
+bool evaluateAlphaCoverage(float alpha, float alphaCutoff, uint alphaMask) {
+    bool local = false;
+    if ((alphaMask != 0u)) {
+        local = (alpha < alphaCutoff);
+    } else {
+        local = false;
+    }
+    bool _e9 = local;
+    if (_e9) {
+        return false;
+    }
+    return true;
 }
 
 void main() {
