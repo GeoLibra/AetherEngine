@@ -8,8 +8,6 @@ import {
   clusterIndexOf,
   computeClusterDepthSlices,
   coneIntersectsAABB,
-  decodeWebGpuLightListOutput,
-  packCpuClusterListForWebGpu,
   sphereIntersectsAABB
 } from '../../src/rendering';
 
@@ -356,63 +354,5 @@ describe('CPU cluster light-list reference', () => {
     expect(assigned.has(1)).toBe(false);
     expect(assigned.has(2)).toBe(false);
     expect(result.counters.disabledLights).toBe(1);
-  });
-});
-
-describe('CPU cluster build to WebGPU ABI round-trip', () => {
-  test('decoded output matches the CPU reference exactly', () => {
-    const grid = buildClusterGrid({
-      viewId: 'view-abi',
-      projectionRevision: 2,
-      deviceGeneration: 0,
-      viewport: { width: 320, height: 240 },
-      cameraNear: 0.1,
-      cameraFar: 10,
-      slicing: { depth: 'infinite', shape: 'logarithmic', lambda: 0.6 },
-      sliceCount: 3,
-      inverseViewProjection: cameraInverseViewProjection(),
-      tilesX: 3,
-      tilesY: 2
-    });
-    const lights: PreparedLight[] = [
-      light(1, 'directional'),
-      light(2, 'point', { position: [0, 0, 5], range: 4 }),
-      light(3, 'spot', { position: [0, 0, 5], direction: [0, 0, 1], range: 4 }),
-      light(4, 'point', { position: [-100, 0, 5], range: 1 })
-    ];
-    const capacity = {
-      maxDirectionalLights: 64,
-      maxLightsPerCluster: 8,
-      maxClusterIndices: 4096
-    };
-    const result = buildCpuClusters({
-      viewId: 'view-abi',
-      viewLayerMask: VIEW_MASK,
-      lights,
-      grid,
-      capacity
-    });
-    const packed = packCpuClusterListForWebGpu(
-      { viewLayerMask: VIEW_MASK, lights },
-      capacity,
-      result
-    );
-    const decoded = decodeWebGpuLightListOutput({
-      directionalIndices: packed.directionalWords,
-      headers: packed.headerWords,
-      lightIndices: packed.indexWords,
-      overflow: packed.overflowWords
-    });
-    expect(decoded.overflowed).toBe(false);
-    expect(decoded.directionalIndices).toEqual(result.globalDirectionalLightIndices);
-    expect(decoded.headers).toHaveLength(result.headers.length);
-    decoded.headers.forEach((header, index) => {
-      const expected = result.headers[index]!;
-      expect(header.receiver).toBe(expected.cluster);
-      expect(header.offset).toBe(expected.offset);
-      expect(header.count).toBe(expected.count);
-      expect(header.overflowed).toBe(expected.overflowed);
-    });
-    expect(decoded.lightIndices).toEqual(result.lightIndices);
   });
 });

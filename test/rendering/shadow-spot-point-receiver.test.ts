@@ -1,67 +1,15 @@
 import { describe, expect, test } from 'vitest';
-import type { PreparedLight } from '../../src/rendering';
 import {
   buildPointShadowFaceViewProjection,
   buildSpotShadowViewProjection,
+  mapShadowToAtlasTile,
   pointShadowFaceIndexAndUv,
   projectPointToShadowSpace,
-  sampleShadowDepthMapPcf
+  sampleShadowDepthMapPcf,
+  sampleSpotShadowAtlas,
+  type ShadowAtlasTileHandle
 } from '../../src/rendering';
-import { buildCpuClusters, buildClusterGrid, coneIntersectsAABB } from '../../src/rendering';
 import { Mat4 } from '../../src/math';
-import { STANDARD_DEPTH } from '../../src/math/depth';
-
-const VIEW_MASK = 0x1;
-
-function cameraInverseViewProjection(): Float32Array {
-  // Camera at the origin looking down +Z, so world-space clusters sit at positive Z.
-  const view = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1]);
-  const projection = Mat4.perspective(Math.PI / 4, 1, 0.1, 100, STANDARD_DEPTH);
-  return Mat4.invert(Mat4.multiply(projection, view));
-}
-
-function light(
-  entity: number,
-  kind: PreparedLight['kind'],
-  overrides: Record<string, unknown> = {}
-): PreparedLight {
-  const common = {
-    entity,
-    payloadVersion: 1,
-    colorLinear: [1, 1, 1] as const,
-    enabled: true,
-    layerMask: VIEW_MASK,
-    castsShadow: false,
-    ...overrides
-  };
-  if (kind === 'directional') {
-    return {
-      ...common,
-      kind,
-      direction: [0, 0, 1],
-      illuminanceLux: 1000
-    } as unknown as PreparedLight;
-  }
-  if (kind === 'point') {
-    return {
-      ...common,
-      kind,
-      position: overrides.position ?? [0, 0, 5],
-      luminousIntensityCandela: 100,
-      range: overrides.range ?? 2
-    } as unknown as PreparedLight;
-  }
-  return {
-    ...common,
-    kind,
-    position: overrides.position ?? [0, 0, 5],
-    direction: overrides.direction ?? [0, 0, 1],
-    luminousIntensityCandela: 100,
-    range: overrides.range ?? 2,
-    innerRadians: 0.1,
-    outerRadians: 0.5
-  } as unknown as PreparedLight;
-}
 
 describe('spot shadow view-projection oracle', () => {
   test('projects the cone axis center to the shadow-map center', () => {
@@ -238,66 +186,110 @@ describe('point shadow face selection oracle', () => {
   });
 });
 
-describe('spot lights reuse the CPU cone test in cluster builds', () => {
-  test('a spot light whose cone covers a cluster is assigned to it', () => {
-    const grid = buildClusterGrid({
-      viewId: 'view-spot-assign',
-      projectionRevision: 1,
-      deviceGeneration: 0,
-      viewport: { width: 320, height: 240 },
-      cameraNear: 0.1,
-      cameraFar: 10,
-      slicing: { depth: 'finite', shape: 'uniform', lambda: 0 },
-      sliceCount: 2,
-      inverseViewProjection: cameraInverseViewProjection(),
-      tilesX: 2,
-      tilesY: 2
-    });
-    const centerCluster = grid.clusters.find((cluster) => {
-      return pointInside(cluster, [0, 0, 5]);
-    });
-    expect(centerCluster).toBeDefined();
-    expect(
-      coneIntersectsAABB({
-        apex: [0, 0, 0],
-        axis: [0, 0, 1],
-        outerRadians: Math.PI / 6,
-        range: 10,
-        bounds: centerCluster!
-      })
-    ).toBe(true);
+describe('Shadow atlas tile mapping and sampling', () => {
+  const tile: ShadowAtlasTileHandle = {
+    key: 'spot:tile:1',
+    generation: 1,
+    x: 256,
+    y: 512,
+    width: 256,
+    height: 256
+  };
 
-    const result = buildCpuClusters({
-      viewId: 'view-spot-assign',
-      viewLayerMask: VIEW_MASK,
-      lights: [light(7, 'spot', { position: [0, 0, 0], direction: [0, 0, 1], range: 10 })],
-      grid,
-      capacity: {
-        maxDirectionalLights: 64,
-        maxLightsPerCluster: 8,
-        maxClusterIndices: 4096
-      }
+  test('mapShadowToAtlasTile maps normalized shadow space UV to atlas coordinates within tile', () => {
+    const sample = { uv: [0.5, 0.5] as const, depth: 0.7 };
+    const mapped = mapShadowToAtlasTile(sample, tile, 1024, 1024);
+    expect(mapped).toBeDefined();
+    expect(mapped!.atlasUv[0]).toBeCloseTo(384 / 1024);
+    expect(mapped!.atlasUv[1]).toBeCloseTo(640 / 1024);
+    expect(mapped!.depth).toBe(0.7);
+
+    // Border inset clamps properly
+    const mappedBorder = mapShadowToAtlasTile(sample, tile, 1024, 1024, 4);
+    expect(mappedBorder).toBeDefined();
+    expect(mappedBorder!.atlasUv[0]).toBeCloseTo((260 + 0.5 * 248) / 1024);
+    expect(mappedBorder!.atlasUv[1]).toBeCloseTo((516 + 0.5 * 248) / 1024);
+
+    // Out of bounds samples return undefined
+    expect(
+      mapShadowToAtlasTile({ uv: [-0.1, 0.5] as const, depth: 0.5 }, tile, 1024, 1024)
+    ).toBeUndefined();
+    expect(
+      mapShadowToAtlasTile({ uv: [0.5, 1.1] as const, depth: 0.5 }, tile, 1024, 1024)
+    ).toBeUndefined();
+
+    // Invalid dimensions fail fast
+    expect(() => mapShadowToAtlasTile(sample, tile, 0, 1024)).toThrow(/positive safe integer/);
+    expect(() => mapShadowToAtlasTile(sample, { ...tile, width: 2000 }, 1024, 1024)).toThrow(
+      /outside the atlas boundary/
+    );
+  });
+
+  test('sampleSpotShadowAtlas evaluates spot light receiver visibility through atlas depth map', () => {
+    const viewProjection = buildSpotShadowViewProjection({
+      position: [0, 5, 0],
+      direction: [0, -1, 0],
+      range: 10,
+      outerRadians: Math.PI / 6,
+      near: 0.1,
+      far: 10
     });
-    const assignedClusters = result.headers
-      .filter((header) => header.count > 0)
-      .map((header) => header.cluster);
-    expect(assignedClusters).toContain(centerCluster!.index);
+
+    const atlasTile: ShadowAtlasTileHandle = {
+      key: 'spot:tile:main',
+      generation: 1,
+      x: 0,
+      y: 0,
+      width: 16,
+      height: 16
+    };
+
+    // Depth map with caster plane at normalized depth 0.985 (between dist 3: 0.976 and dist 7: 0.996)
+    const depthMap = new Float32Array(16 * 16).fill(0.985);
+
+    // Point in front of caster (closer to light, smaller depth) -> fully lit (1.0)
+    const litVisibility = sampleSpotShadowAtlas({
+      worldPosition: [0, 2, 0],
+      viewProjection,
+      tile: atlasTile,
+      atlasWidth: 16,
+      atlasHeight: 16,
+      depthMap,
+      constantBias: 0.001,
+      slopeBias: 0.001,
+      normalDotLight: 1.0,
+      tapCount: 1
+    });
+    expect(litVisibility).toBe(1.0);
+
+    // Point behind caster (further from light, larger depth) -> shadowed (0.0)
+    const shadowedVisibility = sampleSpotShadowAtlas({
+      worldPosition: [0, -2, 0],
+      viewProjection,
+      tile: atlasTile,
+      atlasWidth: 16,
+      atlasHeight: 16,
+      depthMap,
+      constantBias: 0.001,
+      slopeBias: 0.001,
+      normalDotLight: 1.0,
+      tapCount: 1
+    });
+    expect(shadowedVisibility).toBe(0.0);
+
+    // Point outside the spot cone -> unshadowed (1.0)
+    const outsideVisibility = sampleSpotShadowAtlas({
+      worldPosition: [50, 2, 0],
+      viewProjection,
+      tile: atlasTile,
+      atlasWidth: 16,
+      atlasHeight: 16,
+      depthMap,
+      constantBias: 0.001,
+      slopeBias: 0.001,
+      normalDotLight: 1.0,
+      tapCount: 1
+    });
+    expect(outsideVisibility).toBe(1.0);
   });
 });
-
-function pointInside(
-  cluster: {
-    readonly min: readonly [number, number, number];
-    readonly max: readonly [number, number, number];
-  },
-  point: readonly [number, number, number]
-): boolean {
-  return (
-    point[0] >= cluster.min[0] &&
-    point[0] <= cluster.max[0] &&
-    point[1] >= cluster.min[1] &&
-    point[1] <= cluster.max[1] &&
-    point[2] >= cluster.min[2] &&
-    point[2] <= cluster.max[2]
-  );
-}

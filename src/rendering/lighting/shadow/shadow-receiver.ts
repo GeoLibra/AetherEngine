@@ -2,6 +2,7 @@ import { Mat4, Vec3Math } from '../../../math';
 import { STANDARD_DEPTH } from '../../../math/depth';
 import type { Vec3 } from '../../../math/types';
 import { stableLightBasis } from './csm';
+import type { ShadowAtlasTileHandle } from '../types';
 
 /** Returns the first cascade containing `viewDepth`, or undefined outside shadow distance. */
 export function selectShadowCascade(
@@ -170,6 +171,113 @@ export function sampleShadowDepthMapPcf(input: DepthMapPcfInput): number {
     }
   }
   return visibilityFromDepthSamples(receiverDepth, samples);
+}
+
+export interface ShadowAtlasSampleCoordinates {
+  readonly atlasUv: Readonly<[number, number]>;
+  readonly depth: number;
+}
+
+/**
+ * Transforms normalized shadow space UV [0, 1] into atlas-relative UV coordinates
+ * using an allocated ShadowAtlasTileHandle and total atlas dimensions.
+ * Optionally applies a border inset (in texels) to prevent bilinear/PCF filtering from
+ * bleeding into neighboring tiles.
+ *
+ * @throws When atlas dimensions or tile bounds are invalid.
+ */
+export function mapShadowToAtlasTile(
+  sample: ShadowSpaceSample,
+  tile: ShadowAtlasTileHandle,
+  atlasWidth: number,
+  atlasHeight: number,
+  borderTexels = 0
+): ShadowAtlasSampleCoordinates | undefined {
+  if (
+    !Number.isSafeInteger(atlasWidth) ||
+    atlasWidth <= 0 ||
+    !Number.isSafeInteger(atlasHeight) ||
+    atlasHeight <= 0
+  ) {
+    throw new Error('Atlas dimensions must be positive safe integers.');
+  }
+  if (tile.width <= 0 || tile.height <= 0 || tile.x < 0 || tile.y < 0) {
+    throw new Error('Shadow atlas tile has invalid geometry.');
+  }
+  if (tile.x + tile.width > atlasWidth || tile.y + tile.height > atlasHeight) {
+    throw new Error('Shadow atlas tile extends outside the atlas boundary.');
+  }
+  if (borderTexels < 0 || borderTexels * 2 >= tile.width || borderTexels * 2 >= tile.height) {
+    throw new Error('Border inset must be non-negative and smaller than half the tile size.');
+  }
+
+  const uNorm = sample.uv[0];
+  const vNorm = sample.uv[1];
+  if (uNorm < 0 || uNorm > 1 || vNorm < 0 || vNorm > 1) {
+    return undefined;
+  }
+
+  const innerX = tile.x + borderTexels;
+  const innerY = tile.y + borderTexels;
+  const innerWidth = tile.width - borderTexels * 2;
+  const innerHeight = tile.height - borderTexels * 2;
+
+  const atlasU = (innerX + uNorm * innerWidth) / atlasWidth;
+  const atlasV = (innerY + vNorm * innerHeight) / atlasHeight;
+
+  return Object.freeze({
+    atlasUv: Object.freeze([atlasU, atlasV] as [number, number]),
+    depth: sample.depth
+  });
+}
+
+export interface SpotShadowAtlasSampleInput {
+  readonly worldPosition: Vec3;
+  readonly viewProjection: ArrayLike<number>;
+  readonly tile: ShadowAtlasTileHandle;
+  readonly atlasWidth: number;
+  readonly atlasHeight: number;
+  readonly depthMap: ArrayLike<number>;
+  readonly constantBias: number;
+  readonly slopeBias: number;
+  readonly normalDotLight: number;
+  readonly tapCount?: 1 | 9;
+  readonly borderTexels?: number;
+}
+
+/**
+ * Samples an allocated shadow atlas tile with PCF filtering for a given world-space position.
+ * Returns visibility factor in [0.0 (fully shadowed), 1.0 (fully lit)].
+ * If the world position projects outside the shadow volume or tile bounds, returns 1.0.
+ */
+export function sampleSpotShadowAtlas(input: SpotShadowAtlasSampleInput): number {
+  const sample = projectPointToShadowSpace(input.viewProjection, input.worldPosition);
+  if (sample === undefined) {
+    return 1.0;
+  }
+
+  const mapped = mapShadowToAtlasTile(
+    sample,
+    input.tile,
+    input.atlasWidth,
+    input.atlasHeight,
+    input.borderTexels ?? 0
+  );
+  if (mapped === undefined) {
+    return 1.0;
+  }
+
+  return sampleShadowDepthMapPcf({
+    uv: mapped.atlasUv,
+    depth: mapped.depth,
+    depthMap: input.depthMap,
+    width: input.atlasWidth,
+    height: input.atlasHeight,
+    constantBias: input.constantBias,
+    slopeBias: input.slopeBias,
+    normalDotLight: input.normalDotLight,
+    ...(input.tapCount !== undefined ? { tapCount: input.tapCount } : {})
+  });
 }
 
 /**

@@ -23,35 +23,35 @@ const NESTED_MUTABLE_ALLOWLIST: readonly ReviewedNestedMutableExposure[] = Objec
       'The public full-read contract transfers a detached byte copy to the caller; only metadata is immutable.'
   },
   {
-    location: 'rendering/lighting/culling/cluster-light-list.ts:257:10',
+    location: 'rendering/lighting/culling/cluster-light-list.ts:270:10',
     propertyPath: 'lightWords',
     kind: 'Uint32Array',
     rationale:
       'PackedCpuClusterWords is a published immutable snapshot of typed word buffers crossing the CPU-to-GPU submission boundary; upload consumers read the frozen arrays.'
   },
   {
-    location: 'rendering/lighting/culling/cluster-light-list.ts:257:10',
+    location: 'rendering/lighting/culling/cluster-light-list.ts:270:10',
     propertyPath: 'directionalWords',
     kind: 'Uint32Array',
     rationale:
       'PackedCpuClusterWords is a published immutable snapshot of typed word buffers crossing the CPU-to-GPU submission boundary; upload consumers read the frozen arrays.'
   },
   {
-    location: 'rendering/lighting/culling/cluster-light-list.ts:257:10',
+    location: 'rendering/lighting/culling/cluster-light-list.ts:270:10',
     propertyPath: 'headerWords',
     kind: 'Uint32Array',
     rationale:
       'PackedCpuClusterWords is a published immutable snapshot of typed word buffers crossing the CPU-to-GPU submission boundary; upload consumers read the frozen arrays.'
   },
   {
-    location: 'rendering/lighting/culling/cluster-light-list.ts:257:10',
+    location: 'rendering/lighting/culling/cluster-light-list.ts:270:10',
     propertyPath: 'indexWords',
     kind: 'Uint32Array',
     rationale:
       'PackedCpuClusterWords is a published immutable snapshot of typed word buffers crossing the CPU-to-GPU submission boundary; upload consumers read the frozen arrays.'
   },
   {
-    location: 'rendering/lighting/culling/cluster-light-list.ts:257:10',
+    location: 'rendering/lighting/culling/cluster-light-list.ts:270:10',
     propertyPath: 'overflowWords',
     kind: 'Uint32Array',
     rationale:

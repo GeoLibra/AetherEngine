@@ -10,6 +10,8 @@ import {
   LIGHT_LIST_SHADER_MAX_RECEIVERS,
   packWebGpuLightListInput
 } from './light-list-abi';
+import { packWebGlLightListInput, type PackedWebGlLightListInput } from './light-list-webgl-abi';
+import { calculateWebGlLightListPacking } from './light-list-packing';
 import type {
   ClusterAABB,
   ClusterBuildCounters,
@@ -26,6 +28,17 @@ export interface PackedCpuClusterWords {
   readonly headerWords: Uint32Array;
   readonly indexWords: Uint32Array;
   readonly overflowWords: Uint32Array;
+}
+
+export interface PackedCpuClusterWebGlTexels {
+  readonly width: number;
+  readonly height: number;
+  readonly lightsHeight: number;
+  readonly lightsTexels: Uint32Array;
+  readonly directionalTexels: Uint32Array;
+  readonly headerTexels: Uint32Array;
+  readonly indexTexels: Uint32Array;
+  readonly overflowTexels: Uint32Array;
 }
 
 const TERNARY_ITERATIONS = 64;
@@ -261,6 +274,76 @@ export function packCpuClusterListForWebGpu(
     indexWords,
     overflowWords
   });
+}
+
+/**
+ * Pure packing of the CPU cluster build result into WebGL2 RGBA32Uint texel layouts so the
+ * existing `decodeWebGlLightListOutput` contract decodes it identically.
+ */
+export function packCpuClusterListForWebGl(
+  input: {
+    readonly viewLayerMask: number;
+    readonly lights: readonly PreparedLight[];
+  },
+  capacity: ClusterCapacity,
+  maxTextureDimension2D: number,
+  result: ClusterBuildResult
+): PackedCpuClusterWebGlTexels {
+  const cpuCapacity = {
+    maxDirectionalLights: capacity.maxDirectionalLights,
+    maxLightsPerReceiver: capacity.maxLightsPerCluster,
+    maxLightIndices: capacity.maxClusterIndices
+  };
+  const packed = packWebGlLightListInput({
+    viewLayerMask: input.viewLayerMask,
+    lights: input.lights,
+    receivers: [],
+    capacity: cpuCapacity,
+    maxTextureDimension2D
+  });
+  const packing = calculateWebGlLightListPacking(
+    result.headers.length,
+    cpuCapacity,
+    maxTextureDimension2D
+  );
+  const directionalTexels = new Uint32Array(packing.width * packing.height * 4);
+  directionalTexels.set(result.globalDirectionalLightIndices);
+
+  const headerTexels = new Uint32Array(packing.width * packing.height * 4);
+  const indexTexels = new Uint32Array(packing.width * packing.height * 4);
+  const blockHeight = 1 + packing.indexRows;
+
+  result.headers.forEach((h: ClusterLightListHeader, receiverIndex: number) => {
+    const x = receiverIndex % packing.width;
+    const blockY = Math.floor(receiverIndex / packing.width) * blockHeight;
+    const headerBase = (blockY * packing.width + x) * 4;
+    headerTexels[headerBase] = h.cluster;
+    headerTexels[headerBase + 1] = h.offset;
+    headerTexels[headerBase + 2] = h.count;
+    headerTexels[headerBase + 3] = 0x8000_0000 | (h.overflowed ? 1 : 0);
+
+    const clusterIndices = result.lightIndices.slice(h.offset, h.offset + h.count);
+    clusterIndices.forEach((lightIdx: number, idx: number) => {
+      const row = blockY + 1 + Math.floor(idx / 4);
+      const word = (row * packing.width + x) * 4 + (idx % 4);
+      indexTexels[word] = lightIdx;
+    });
+  });
+
+  const overflowTexels = new Uint32Array(packing.width * packing.height * 4);
+  const dirCount = result.globalDirectionalLightIndices.length;
+  overflowTexels[0] = (result.overflowed ? 0xc000_0000 : 0) | (dirCount & 0x3fff_ffff);
+
+  return {
+    width: packing.width,
+    height: packing.height,
+    lightsHeight: packed.lightsHeight,
+    lightsTexels: packed.lights,
+    directionalTexels,
+    headerTexels,
+    indexTexels,
+    overflowTexels
+  };
 }
 
 function indexSliceCount(result: ClusterBuildResult, capacity: ClusterCapacity): number {
