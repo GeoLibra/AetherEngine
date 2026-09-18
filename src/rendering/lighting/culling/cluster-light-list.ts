@@ -247,8 +247,19 @@ export function packCpuClusterListForWebGpu(
   );
   directionalWords.set(directionalSlice);
 
+  if (result.headers.length > LIGHT_LIST_SHADER_MAX_RECEIVERS) {
+    throw new Error(
+      `CPU cluster count ${result.headers.length} exceeds WebGPU light list shader maximum receivers ${LIGHT_LIST_SHADER_MAX_RECEIVERS}.`
+    );
+  }
+  if (result.lightIndices.length > LIGHT_LIST_SHADER_MAX_INDICES) {
+    throw new Error(
+      `CPU cluster light indices ${result.lightIndices.length} exceeds WebGPU light list shader maximum indices ${LIGHT_LIST_SHADER_MAX_INDICES}.`
+    );
+  }
+
   const headerWords = new Uint32Array(LIGHT_LIST_SHADER_MAX_RECEIVERS * 4);
-  const headerCount = Math.min(result.headers.length, LIGHT_LIST_SHADER_MAX_RECEIVERS);
+  const headerCount = result.headers.length;
   for (let index = 0; index < headerCount; index++) {
     const header = result.headers[index]!;
     const base = index * 4;
@@ -259,7 +270,7 @@ export function packCpuClusterListForWebGpu(
   }
 
   const indexWords = new Uint32Array(LIGHT_LIST_SHADER_MAX_INDICES);
-  indexWords.set(result.lightIndices.slice(0, LIGHT_LIST_SHADER_MAX_INDICES));
+  indexWords.set(result.lightIndices);
 
   const overflowWords = new Uint32Array(4);
   const flags = (result.overflowed ? 0xc000_0000 : 0) | (directionalSlice.length & 0x3fff_ffff);

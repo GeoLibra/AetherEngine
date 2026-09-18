@@ -660,6 +660,7 @@ export function runClusterSubject(workload: ClusterWorkload): CanonicalClusterLi
   const grid = buildClusterGrid({
     viewId: workload.view.id,
     projectionRevision: 0,
+    viewTransformRevision: 0,
     deviceGeneration: 0,
     viewport: { width: workload.view.width, height: workload.view.height },
     cameraNear: workload.view.near,
@@ -682,19 +683,65 @@ export function runClusterSubject(workload: ClusterWorkload): CanonicalClusterLi
 
 /** Independent scalar oracle; re-sorts stable order and re-tests overlaps from scratch. */
 export function runClusterReference(workload: ClusterWorkload): CanonicalClusterLists {
-  const grid = buildClusterGrid({
-    viewId: workload.view.id,
-    projectionRevision: 0,
-    deviceGeneration: 0,
-    viewport: { width: workload.view.width, height: workload.view.height },
-    cameraNear: workload.view.near,
-    cameraFar: workload.view.far,
-    slicing: workload.view.slicing,
-    sliceCount: workload.view.sliceCount,
-    inverseViewProjection: workload.view.inverseViewProjection,
-    tilesX: workload.view.tilesX,
-    tilesY: workload.view.tilesY
-  });
+  const { tilesX, tilesY, sliceCount, near: cameraNear, far: cameraFar } = workload.view;
+  const { width, height } = workload.view;
+  const inverse = workload.view.inverseViewProjection;
+
+  // Independent analytical computation of cluster depth slices and frustum AABBs
+  const slices: { near: number; far: number }[] = [];
+  let previous = cameraNear;
+  for (let index = 0; index < sliceCount; index++) {
+    const portion = (index + 1) / sliceCount;
+    const remapped = index === sliceCount - 1 ? cameraFar : cameraNear / (1 - portion);
+    const far = Math.min(remapped, cameraFar);
+    slices.push({ near: previous, far });
+    previous = far;
+  }
+
+  const tileWidth = width / tilesX;
+  const tileHeight = height / tilesY;
+  const clusterBoxes: {
+    index: number;
+    min: readonly [number, number, number];
+    max: readonly [number, number, number];
+  }[] = [];
+  let clusterIdx = 0;
+
+  for (let sliceIndex = 0; sliceIndex < slices.length; sliceIndex++) {
+    const slice = slices[sliceIndex]!;
+    const nearT = (slice.near - cameraNear) / (cameraFar - cameraNear);
+    const farT = (slice.far - cameraNear) / (cameraFar - cameraNear);
+
+    for (let tileY = 0; tileY < tilesY; tileY++) {
+      for (let tileX = 0; tileX < tilesX; tileX++) {
+        const ndcX0 = ((tileX * tileWidth) / width) * 2 - 1;
+        const ndcX1 = (((tileX + 1) * tileWidth) / width) * 2 - 1;
+        const ndcY0 = ((tileY * tileHeight) / height) * 2 - 1;
+        const ndcY1 = (((tileY + 1) * tileHeight) / height) * 2 - 1;
+
+        const box = computeIndependentClusterAABB(inverse, ndcX0, ndcX1, ndcY0, ndcY1, nearT, farT);
+        clusterBoxes.push({ index: clusterIdx++, min: box.min, max: box.max });
+      }
+    }
+  }
+
+  const cacheId = [
+    workload.view.id,
+    0, // projectionRevision
+    0, // viewTransformRevision
+    0, // deviceGeneration
+    width,
+    height,
+    tilesX,
+    tilesY,
+    cameraNear,
+    cameraFar,
+    workload.view.slicing.depth,
+    workload.view.slicing.shape,
+    workload.view.slicing.lambda,
+    sliceCount
+  ].join('|');
+
   const ordered = [...workload.lights].sort((left, right) => left.entity - right.entity);
   const eligible = ordered.filter(
     (light) => light.enabled && (light.layerMask & workload.view.layerMask) !== 0
@@ -720,7 +767,7 @@ export function runClusterReference(workload: ClusterWorkload): CanonicalCluster
   let intersectionTests = 0;
   let overflowedClusters = 0;
   let truncatedIndices = 0;
-  for (const cluster of grid.clusters) {
+  for (const cluster of clusterBoxes) {
     const offset = indices.length;
     let count = 0;
     let overflowed = false;
@@ -748,8 +795,8 @@ export function runClusterReference(workload: ClusterWorkload): CanonicalCluster
     });
   }
   return Object.freeze({
-    cacheIdentity: grid.cacheIdentity,
-    clusterCount: grid.clusterCount,
+    cacheIdentity: cacheId,
+    clusterCount: clusterBoxes.length,
     lightIndexCount: indices.length,
     overflowed: overflowedClusters > 0,
     directionalEntities: Object.freeze(directionalEntities),
@@ -922,4 +969,62 @@ function randomClusterPosition(random: () => number): readonly [number, number, 
   const lateral = (random() - 0.5) * 4;
   const depth = 3 + random() * 40;
   return [lateral, lateral, -depth];
+}
+
+function computeIndependentClusterAABB(
+  inverse: ArrayLike<number>,
+  ndcX0: number,
+  ndcX1: number,
+  ndcY0: number,
+  ndcY1: number,
+  nearT: number,
+  farT: number
+): {
+  readonly min: readonly [number, number, number];
+  readonly max: readonly [number, number, number];
+} {
+  const nearCorners = [
+    unprojectFrustumCorner(inverse, ndcX0, ndcY0, 0),
+    unprojectFrustumCorner(inverse, ndcX1, ndcY0, 0),
+    unprojectFrustumCorner(inverse, ndcX1, ndcY1, 0),
+    unprojectFrustumCorner(inverse, ndcX0, ndcY1, 0)
+  ];
+  const farCorners = [
+    unprojectFrustumCorner(inverse, ndcX0, ndcY0, 1),
+    unprojectFrustumCorner(inverse, ndcX1, ndcY0, 1),
+    unprojectFrustumCorner(inverse, ndcX1, ndcY1, 1),
+    unprojectFrustumCorner(inverse, ndcX0, ndcY1, 1)
+  ];
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (let index = 0; index < 4; index++) {
+    const near = [
+      nearCorners[index]![0] + (farCorners[index]![0] - nearCorners[index]![0]) * nearT,
+      nearCorners[index]![1] + (farCorners[index]![1] - nearCorners[index]![1]) * nearT,
+      nearCorners[index]![2] + (farCorners[index]![2] - nearCorners[index]![2]) * nearT
+    ];
+    const far = [
+      nearCorners[index]![0] + (farCorners[index]![0] - nearCorners[index]![0]) * farT,
+      nearCorners[index]![1] + (farCorners[index]![1] - nearCorners[index]![1]) * farT,
+      nearCorners[index]![2] + (farCorners[index]![2] - nearCorners[index]![2]) * farT
+    ];
+    for (let axis = 0; axis < 3; axis++) {
+      min[axis] = Math.min(min[axis]!, near[axis]!, far[axis]!);
+      max[axis] = Math.max(max[axis]!, near[axis]!, far[axis]!);
+    }
+  }
+  return { min, max };
+}
+
+function unprojectFrustumCorner(
+  inverse: ArrayLike<number>,
+  x: number,
+  y: number,
+  depth: number
+): readonly [number, number, number] {
+  const px = inverse[0]! * x + inverse[4]! * y + inverse[8]! * depth + inverse[12]!;
+  const py = inverse[1]! * x + inverse[5]! * y + inverse[9]! * depth + inverse[13]!;
+  const pz = inverse[2]! * x + inverse[6]! * y + inverse[10]! * depth + inverse[14]!;
+  const pw = inverse[3]! * x + inverse[7]! * y + inverse[11]! * depth + inverse[15]!;
+  return [px / pw, py / pw, pz / pw];
 }

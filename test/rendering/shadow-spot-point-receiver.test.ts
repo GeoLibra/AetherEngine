@@ -200,15 +200,42 @@ describe('Shadow atlas tile mapping and sampling', () => {
     const sample = { uv: [0.5, 0.5] as const, depth: 0.7 };
     const mapped = mapShadowToAtlasTile(sample, tile, 1024, 1024);
     expect(mapped).toBeDefined();
-    expect(mapped!.atlasUv[0]).toBeCloseTo(384 / 1024);
-    expect(mapped!.atlasUv[1]).toBeCloseTo(640 / 1024);
+    // Centered at inner texel center
+    expect(mapped!.atlasUv[0]).toBeCloseTo((256 + 0.5 + 0.5 * 255) / 1024);
+    expect(mapped!.atlasUv[1]).toBeCloseTo((512 + 0.5 + 0.5 * 255) / 1024);
     expect(mapped!.depth).toBe(0.7);
 
-    // Border inset clamps properly
+    // Border inset texel centers
     const mappedBorder = mapShadowToAtlasTile(sample, tile, 1024, 1024, 4);
     expect(mappedBorder).toBeDefined();
-    expect(mappedBorder!.atlasUv[0]).toBeCloseTo((260 + 0.5 * 248) / 1024);
-    expect(mappedBorder!.atlasUv[1]).toBeCloseTo((516 + 0.5 * 248) / 1024);
+    expect(mappedBorder!.atlasUv[0]).toBeCloseTo((260 + 0.5 + 0.5 * 247) / 1024);
+    expect(mappedBorder!.atlasUv[1]).toBeCloseTo((516 + 0.5 + 0.5 * 247) / 1024);
+
+    // Four corners map strictly to inner texels and never sample border or adjacent tiles
+    const border = 4;
+    const corners: [number, number][] = [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1]
+    ];
+    for (const [u, v] of corners) {
+      const cornerMapped = mapShadowToAtlasTile(
+        { uv: [u, v], depth: 0.5 },
+        tile,
+        1024,
+        1024,
+        border
+      );
+      expect(cornerMapped).toBeDefined();
+      const texelX = Math.floor(cornerMapped!.atlasUv[0] * 1024);
+      const texelY = Math.floor(cornerMapped!.atlasUv[1] * 1024);
+      // Must be inside the inner region [tile.x + border, tile.x + tile.width - border - 1]
+      expect(texelX).toBeGreaterThanOrEqual(tile.x + border);
+      expect(texelX).toBeLessThanOrEqual(tile.x + tile.width - border - 1);
+      expect(texelY).toBeGreaterThanOrEqual(tile.y + border);
+      expect(texelY).toBeLessThanOrEqual(tile.y + tile.height - border - 1);
+    }
 
     // Out of bounds samples return undefined
     expect(

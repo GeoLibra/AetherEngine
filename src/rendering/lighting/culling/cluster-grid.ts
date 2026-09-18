@@ -11,6 +11,7 @@ import type {
 export interface ClusterGridInput {
   readonly viewId: string;
   readonly projectionRevision: number;
+  readonly viewTransformRevision: number;
   readonly deviceGeneration: number;
   readonly viewport: Readonly<{ width: number; height: number }>;
   readonly cameraNear: number;
@@ -123,6 +124,7 @@ export function buildClusterGrid(input: ClusterGridInput): ClusterGrid {
   return Object.freeze({
     viewId: input.viewId,
     projectionRevision: input.projectionRevision,
+    viewTransformRevision: input.viewTransformRevision,
     deviceGeneration: input.deviceGeneration,
     width,
     height,
@@ -168,6 +170,9 @@ function validateGridInput(input: ClusterGridInput): void {
   }
   if (!Number.isSafeInteger(input.projectionRevision) || input.projectionRevision < 0) {
     throw new Error('Cluster grid projection revision must be a non-negative integer.');
+  }
+  if (!Number.isSafeInteger(input.viewTransformRevision) || input.viewTransformRevision < 0) {
+    throw new Error('Cluster grid view transform revision must be a non-negative integer.');
   }
   if (!Number.isSafeInteger(input.deviceGeneration) || input.deviceGeneration < 0) {
     throw new Error('Cluster grid device generation must be a non-negative integer.');
@@ -249,6 +254,7 @@ function cacheIdentity(input: ClusterGridInput): string {
   return [
     input.viewId,
     input.projectionRevision,
+    input.viewTransformRevision,
     input.deviceGeneration,
     input.viewport.width,
     input.viewport.height,

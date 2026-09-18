@@ -222,8 +222,11 @@ export function mapShadowToAtlasTile(
   const innerWidth = tile.width - borderTexels * 2;
   const innerHeight = tile.height - borderTexels * 2;
 
-  const atlasU = (innerX + uNorm * innerWidth) / atlasWidth;
-  const atlasV = (innerY + vNorm * innerHeight) / atlasHeight;
+  const texelX = innerWidth === 1 ? innerX + 0.5 : innerX + 0.5 + uNorm * (innerWidth - 1);
+  const texelY = innerHeight === 1 ? innerY + 0.5 : innerY + 0.5 + vNorm * (innerHeight - 1);
+
+  const atlasU = texelX / atlasWidth;
+  const atlasV = texelY / atlasHeight;
 
   return Object.freeze({
     atlasUv: Object.freeze([atlasU, atlasV] as [number, number]),

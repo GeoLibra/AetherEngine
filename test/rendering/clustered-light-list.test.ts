@@ -39,6 +39,7 @@ function sampleGrid(overrides: Partial<Parameters<typeof buildClusterGrid>[0]> =
   return buildClusterGrid({
     viewId: 'view-main',
     projectionRevision: 3,
+    viewTransformRevision: 0,
     deviceGeneration: 1,
     viewport: { width: 800, height: 600 },
     cameraNear: 0.1,
@@ -194,13 +195,16 @@ describe('cluster grid', () => {
     expect(farClosest).toBeGreaterThanOrEqual(nearFarthest - 1e-6);
   });
 
-  test('cache identity changes with projection revision, tiles, or device generation', () => {
+  test('cache identity changes with projection revision, view transform revision, tiles, or device generation', () => {
     const base = sampleGrid();
     const same = sampleGrid();
     expect(same.cacheIdentity).toBe(base.cacheIdentity);
 
     const revision = sampleGrid({ projectionRevision: 9 });
     expect(revision.cacheIdentity).not.toBe(base.cacheIdentity);
+
+    const viewTransform = sampleGrid({ viewTransformRevision: 4 });
+    expect(viewTransform.cacheIdentity).not.toBe(base.cacheIdentity);
 
     const tiles = sampleGrid({ tilesX: 8 });
     expect(tiles.cacheIdentity).not.toBe(base.cacheIdentity);
@@ -240,6 +244,7 @@ describe('CPU cluster light-list reference', () => {
     return buildClusterGrid({
       viewId: 'view-cluster',
       projectionRevision: 1,
+      viewTransformRevision: 0,
       deviceGeneration: 0,
       viewport: { width: 320, height: 240 },
       cameraNear: 0.1,

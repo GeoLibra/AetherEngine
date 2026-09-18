@@ -44,6 +44,7 @@ export interface ClusterAABB {
 export interface ClusterGrid {
   readonly viewId: string;
   readonly projectionRevision: number;
+  readonly viewTransformRevision: number;
   readonly deviceGeneration: number;
   readonly width: number;
   readonly height: number;

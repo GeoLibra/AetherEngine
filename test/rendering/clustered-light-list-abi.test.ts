@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { Mat4 } from '../../src/math';
 import { STANDARD_DEPTH } from '../../src/math/depth';
 import type {
+  ClusterBuildResult,
   ClusterGrid,
   LightReceiver,
   PreparedLight,
@@ -74,6 +75,7 @@ function sampleGrid(): ClusterGrid {
   return buildClusterGrid({
     viewId: 'view-abi',
     projectionRevision: 2,
+    viewTransformRevision: 0,
     deviceGeneration: 0,
     viewport: { width: 320, height: 240 },
     cameraNear: 0.1,
@@ -247,5 +249,82 @@ describe('CPU cluster build ABI round-trip and equivalence', () => {
       maxTextureDimension2D: 4096
     });
     expect(glPacked.receivers.length).toBeGreaterThan(0);
+  });
+
+  test('packCpuClusterListForWebGpu throws fail-fast when cluster count exceeds maximum receivers', () => {
+    const fakeHeaders = Array.from({ length: 257 }, (_, i) => ({
+      cluster: i,
+      offset: 0,
+      count: 0,
+      overflowed: false
+    }));
+    const fakeResult = {
+      viewId: 'fake-view',
+      source: 'cpu-upload' as const,
+      clusterCount: 257,
+      capacity: { maxDirectionalLights: 16, maxLightsPerCluster: 4, maxClusterIndices: 256 },
+      fallback: 'none' as const,
+      orderedLights: [],
+      globalDirectionalLightIndices: [],
+      headers: fakeHeaders,
+      lightIndices: [],
+      lightIndexCount: 0,
+      overflowed: false,
+      counters: {
+        inputLights: 0,
+        disabledLights: 0,
+        layerRejectedLights: 0,
+        clusterCandidates: 0,
+        intersectionTests: 0,
+        directionalCount: 0,
+        directionalTruncated: 0,
+        emittedIndices: 0,
+        overflowedClusters: 0,
+        truncatedIndices: 0
+      }
+    } satisfies ClusterBuildResult;
+    expect(() =>
+      packCpuClusterListForWebGpu(
+        { viewLayerMask: VIEW_MASK, lights: [] },
+        { maxDirectionalLights: 16, maxLightsPerCluster: 4, maxClusterIndices: 256 },
+        fakeResult
+      )
+    ).toThrow(/exceeds WebGPU light list shader maximum receivers/);
+  });
+
+  test('packCpuClusterListForWebGpu throws fail-fast when index count exceeds maximum indices', () => {
+    const fakeIndices = new Array(4097).fill(0);
+    const fakeResult = {
+      viewId: 'fake-view',
+      source: 'cpu-upload' as const,
+      clusterCount: 1,
+      capacity: { maxDirectionalLights: 16, maxLightsPerCluster: 4097, maxClusterIndices: 4096 },
+      fallback: 'deterministic-truncate' as const,
+      orderedLights: [],
+      globalDirectionalLightIndices: [],
+      headers: [{ cluster: 0, offset: 0, count: 4097, overflowed: true }],
+      lightIndices: fakeIndices,
+      lightIndexCount: 4097,
+      overflowed: true,
+      counters: {
+        inputLights: 0,
+        disabledLights: 0,
+        layerRejectedLights: 0,
+        clusterCandidates: 0,
+        intersectionTests: 0,
+        directionalCount: 0,
+        directionalTruncated: 0,
+        emittedIndices: 4097,
+        overflowedClusters: 1,
+        truncatedIndices: 0
+      }
+    } satisfies ClusterBuildResult;
+    expect(() =>
+      packCpuClusterListForWebGpu(
+        { viewLayerMask: VIEW_MASK, lights: [] },
+        { maxDirectionalLights: 16, maxLightsPerCluster: 4097, maxClusterIndices: 4096 },
+        fakeResult
+      )
+    ).toThrow(/exceeds WebGPU light list shader maximum indices/);
   });
 });
