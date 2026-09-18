@@ -239,11 +239,32 @@ export type FeaturePolicyPrepareResult =
     };
 
 /**
- * Defers disposal of a replaced policy until its submitted GPU work is no
- * longer in flight.
+ * An independent lease on a retired policy.
+ * Defers disposal of underlying resources until released.
  */
-export interface FeaturePolicyRetirement {
+export interface FeaturePolicyRetirementLease {
   readonly policy: PreparedFeaturePolicy;
+  /** Acquires an independent child lease. */
+  acquireLease(): FeaturePolicyRetirementLease;
+  /** Releases this lease handle. Idempotent. */
+  release(): void;
+}
+
+/**
+ * Defers disposal of a replaced policy until all consumers' submitted GPU work
+ * is no longer in flight.
+ */
+export interface FeaturePolicyRetirement extends FeaturePolicyRetirementLease {
+  readonly policy: PreparedFeaturePolicy;
+  /**
+   * Acquires an independent lease for a consumer (e.g. baseline renderer,
+   * additional views, or submission callbacks).
+   *
+   * Underlying policy resources are only disposed when the root retirement
+   * and all acquired leases have been released.
+   */
+  acquireLease(): FeaturePolicyRetirementLease;
+  /** Releases this retirement handle. Idempotent. */
   release(): void;
 }
 

@@ -85,12 +85,33 @@ export function createFeaturePolicyPlugin(options: FeaturePolicyPluginOptions) {
           }
           const publication = owned.publishFrameBoundary();
           if (publication !== undefined) {
-            options.onPublication?.(publication);
+            if (options.onPublication !== undefined) {
+              const lease = publication.retirement?.acquireLease();
+              const callbackPub =
+                lease !== undefined
+                  ? Object.freeze({ ...publication, retirement: lease })
+                  : publication;
+              try {
+                options.onPublication(callbackPub);
+              } catch (error) {
+                lease?.release();
+                owned.releaseActivePublication();
+                throw error;
+              }
+            }
             if (restageRequested) {
               restageRequested = false;
               requestStage();
             }
           }
+        }
+      });
+      builder.addSystem('PostRender', {
+        id: 'aether.feature-policy.post-publish',
+        writes: [FeaturePolicyRuntimeResource],
+        run(world) {
+          const owned = world.getResource(FeaturePolicyRuntimeResource);
+          owned?.releaseActivePublication();
         }
       });
     },

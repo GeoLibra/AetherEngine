@@ -97,6 +97,53 @@ describe('FeaturePolicyPlugin', () => {
     await app.destroy();
     expect(unsubscribed).toBe(true);
   });
+
+  test('releases lease and root retirement when onPublication throws', async () => {
+    const disposed: string[] = [];
+    let shouldThrow = false;
+    let prepared = 'initial';
+
+    const app = new App().addPlugin(
+      createFeaturePolicyPlugin({
+        input: () => input(candidate(prepared, disposed)),
+        onPublication: () => {
+          if (shouldThrow) {
+            throw new Error('onPublication handler failed');
+          }
+        }
+      })
+    );
+
+    await app.startup();
+
+    const runner = {
+      async run(context: { readonly stopRequested: boolean; frame(time: number): unknown }) {
+        // Frame 1: initial publish
+        context.frame(0);
+        expect(disposed).toEqual([]);
+
+        // Stage revision 2
+        prepared = 'updated';
+        const runtime = app.getResource(FeaturePolicyRuntimeResource)!;
+        runtime.sources.profileChanged();
+        await runtime.stage(input(candidate(prepared, disposed)));
+
+        // Frame 2: onPublication throws
+        shouldThrow = true;
+        expect(() => context.frame(1 / 60)).toThrow('onPublication handler failed');
+
+        // Initial policy retired during frame 2 was released and disposed despite callback failure
+        expect(disposed).toEqual(['initial']);
+
+        return { reason: 'completed', frames: 2 };
+      },
+      requestStop: () => undefined
+    };
+
+    await app.run(runner);
+    await app.destroy();
+    expect(disposed).toEqual(['initial', 'updated']);
+  });
 });
 
 function candidate(

@@ -47,18 +47,43 @@ import type {
   BaselineLightListFrame,
   BaselineRenderingOptions
 } from './types';
+import type { EnvironmentAsset } from '../../assets';
 import {
+  BuiltInFeature,
+  BuiltInFeatureImplementation,
   LIGHT_LIST_SHADER_MAX_LIGHTS,
   packWebGlLightListInput,
   packWebGpuLightListInput,
   prepareWebGlLightListRecorder,
   prepareWebGpuLightListRecorder,
+  calculateWebGlLightListPacking,
+  type CpuBoundedLightListFrameInput,
   type CpuLightListCapacity,
+  type CpuLightListResult,
   type LightReceiver,
   type PreparedLight,
   type PreparedWebGlLightListRecorder,
-  type PreparedWebGpuLightListRecorder
+  type PreparedWebGpuLightListRecorder,
+  type WebGlFragmentLightListBuildContext,
+  type WebGpuLightListBuildContext
 } from '../lighting';
+import {
+  packCpuLightListForWebGpu,
+  packCpuLightListForWebGl,
+  uploadCpuLightListWebGpu,
+  uploadCpuLightListWebGl
+} from './light-list';
+import type { RuntimeFeatureImplementation } from '../../feature-policy';
+import type { NormalizedBaselineRenderingOptions } from './baseline-options';
+import type { PreparedFeaturePolicy, RenderFeatureImplementation } from '../../feature-policy';
+import {
+  BASELINE_LIGHT_LIST_CAPACITY,
+  createBaselineLightListImplementation,
+  isPreparedFeaturePolicy,
+  resolveBaselineFeaturePolicy,
+  validateBaselineLightListCapacity,
+  type BaselineLightListImplementation
+} from './baseline-feature-policy';
 import { shadowDepthFormat } from '../lighting/shadow';
 import {
   createDefaultEnvironmentTextures,
@@ -79,22 +104,22 @@ import type { ViewBackground } from '../background/types';
 
 export type { BaselinePostColorPreparation } from './baseline-post-color';
 export type { BaselineEnvironmentFrame, BaselineLightListFrame } from './types';
+export { BASELINE_LIGHT_LIST_CAPACITY };
 
 const STORAGE_UNIFORM_UPLOAD_BUFFER_USAGE = (1 << 3) | (1 << 6) | (1 << 7);
 const STORAGE_UPLOAD_BUFFER_USAGE = (1 << 3) | (1 << 7);
 const SAMPLED_UPLOAD_TEXTURE_USAGE = (1 << 2) | (1 << 4);
 const EMPTY_DYNAMIC_OFFSETS: readonly number[] = Object.freeze([]);
 
-export const BASELINE_LIGHT_LIST_CAPACITY: CpuLightListCapacity = Object.freeze({
-  maxDirectionalLights: 64,
-  maxLightsPerReceiver: 16,
-  maxLightIndices: 4096
-});
-
-import type { NormalizedBaselineRenderingOptions } from './baseline-options';
-
-type RegisteredOptions = NormalizedBaselineRenderingOptions &
-  Required<Pick<NormalizedBaselineRenderingOptions, 'mesh' | 'material' | 'featurePolicyKey'>>;
+type RegisteredOptions = Omit<
+  NormalizedBaselineRenderingOptions,
+  'featurePolicy' | 'featurePolicyKey' | 'environment'
+> &
+  Required<Pick<NormalizedBaselineRenderingOptions, 'mesh' | 'material'>> & {
+    readonly environment?: EnvironmentAsset | undefined;
+    readonly featurePolicy?: PreparedFeaturePolicy | undefined;
+    readonly featurePolicyKey?: string | undefined;
+  };
 
 /** Preparation-owned standard-lit GPU resources shared across immutable frame packets. */
 export class BaselineStandardLitPreparation {
@@ -136,8 +161,12 @@ export class BaselineStandardLitPreparation {
   private readonly defaultColorBuffer: RHIBuffer;
   private readonly hasColor0: boolean;
   private readonly postColorOwnedResources: readonly RHIResource[];
+  private readonly featurePolicy: PreparedFeaturePolicy;
+  private readonly featurePolicyKey: string;
+  private readonly lightListImplementation: BaselineLightListImplementation;
+  private readonly lightListCapacity: CpuLightListCapacity;
   private readonly lightListRecorder:
-    PreparedWebGpuLightListRecorder | PreparedWebGlLightListRecorder;
+    PreparedWebGpuLightListRecorder | PreparedWebGlLightListRecorder | undefined;
   readonly lightListBindGroupLayoutToken = createPreparedToken(
     'bind-group-layout',
     'standard-lit-light-list'
@@ -155,6 +184,27 @@ export class BaselineStandardLitPreparation {
       usage: (1 << 3) | (1 << 5)
     });
     device.queue.writeBuffer(this.defaultColorBuffer, 0, new Float32Array([1, 1, 1, 1]));
+
+    const featurePolicy = isPreparedFeaturePolicy(options.featurePolicy)
+      ? options.featurePolicy
+      : resolveBaselineFeaturePolicy({
+          device,
+          viewId: options.viewId
+        });
+    if (featurePolicy.snapshot.deviceGeneration !== device.generation) {
+      throw new Error(
+        `FeaturePolicy deviceGeneration (${featurePolicy.snapshot.deviceGeneration}) does not match current device generation (${device.generation}).`
+      );
+    }
+    this.featurePolicy = featurePolicy;
+    const featurePolicyKey =
+      options.featurePolicyKey ??
+      featurePolicy.snapshot.cacheDomainHashes.get('shader-pipeline') ??
+      featurePolicy.snapshot.hash;
+    if (!featurePolicyKey || !featurePolicyKey.trim()) {
+      throw new Error('Baseline preparation featurePolicyKey must be non-empty.');
+    }
+    this.featurePolicyKey = featurePolicyKey;
 
     const shaderArtifact =
       options.graphics.backend === 'webgpu'
@@ -176,7 +226,7 @@ export class BaselineStandardLitPreparation {
     const entry = new LayoutCache().resolve({
       plan: compiled.plan,
       layoutRevision: STANDARD_LIT_LIST_SHADER_ABI_VERSION,
-      featurePolicyHash: options.featurePolicyKey,
+      featurePolicyHash: this.featurePolicyKey,
       target,
       deviceGeneration: device.generation
     }).entry;
@@ -206,7 +256,7 @@ export class BaselineStandardLitPreparation {
     const shadowEntry = new LayoutCache().resolve({
       plan: shadowCompiled.plan,
       layoutRevision: STANDARD_SHADOW_SHADER_ABI_VERSION,
-      featurePolicyHash: options.featurePolicyKey,
+      featurePolicyHash: this.featurePolicyKey,
       target,
       deviceGeneration: device.generation
     }).entry;
@@ -268,10 +318,37 @@ export class BaselineStandardLitPreparation {
     );
     this.postColor = postColor.preparation;
     this.postColorOwnedResources = postColor.ownedResources;
-    this.lightListRecorder =
-      options.graphics.backend === 'webgpu'
-        ? prepareWebGpuLightListRecorder(device)
-        : prepareWebGlLightListRecorder(device);
+    const lightListDecision = this.featurePolicy.snapshot.decisions.get(
+      BuiltInFeature.LightListBuild
+    );
+    if (lightListDecision === undefined || lightListDecision.implementation === null) {
+      throw new Error('Baseline standard-lit requires a resolved LightListBuild feature policy.');
+    }
+    this.lightListCapacity =
+      (this.featurePolicy.prepared.get(BuiltInFeature.LightListBuild) as CpuLightListCapacity) ??
+      BASELINE_LIGHT_LIST_CAPACITY;
+    validateBaselineLightListCapacity(this.lightListCapacity);
+    this.lightListImplementation = createBaselineLightListImplementation(
+      lightListDecision.implementation,
+      this.lightListCapacity,
+      device.capabilities.limits.maxTextureDimension2D ?? 2048
+    );
+
+    if (lightListDecision.implementation === BuiltInFeatureImplementation.WebGpuComputeLightList) {
+      this.lightListRecorder = prepareWebGpuLightListRecorder(device);
+    } else if (
+      lightListDecision.implementation === BuiltInFeatureImplementation.WebGlFragmentLightList
+    ) {
+      this.lightListRecorder = prepareWebGlLightListRecorder(device);
+    } else if (
+      lightListDecision.implementation === BuiltInFeatureImplementation.CpuBoundedLightList
+    ) {
+      this.lightListRecorder = undefined;
+    } else {
+      throw new Error(
+        `Unsupported baseline LightListBuild implementation: ${lightListDecision.implementation}`
+      );
+    }
 
     const cullMode = options.material.material.asset.renderState.cullMode ?? 'back';
     const vertexBuffersLayout: GPUVertexBufferLayout[] = options.mesh.data.streams.map(
@@ -369,7 +446,7 @@ export class BaselineStandardLitPreparation {
     this.mesh = prepareMesh(device, options.mesh.data, {
       assetId: options.mesh.handle.assetId,
       payloadVersion: options.mesh.payloadVersion,
-      featurePolicyKey: options.featurePolicyKey,
+      featurePolicyKey: this.featurePolicyKey,
       abiVersion: 'baseline-mesh-v1'
     }).value;
     this.bindingLayoutHash = compiled.plan.hash;
@@ -402,7 +479,7 @@ export class BaselineStandardLitPreparation {
       attachmentFormats: ['rgba16float'],
       depthStencilFormat: 'depth24plus',
       sampleCount: 1,
-      featurePolicyHash: options.featurePolicyKey,
+      featurePolicyHash: this.featurePolicyKey,
       deviceGeneration: device.generation
     }).hash;
   }
@@ -542,7 +619,12 @@ export class BaselineStandardLitPreparation {
       release: () => {
         if (released) return;
         released = true;
-        if (!retained) shadowUniformBuffer.dispose();
+        if (!retained) {
+          shadowUniformBuffer.dispose();
+          for (const packets of input.packetsByRequestKey.values()) {
+            for (const packet of packets) packet.release();
+          }
+        }
       },
       retain: (submission: RHISubmission) => {
         if (released || retained) throw new Error('Baseline shadow frame cannot be retained.');
@@ -617,8 +699,11 @@ export class BaselineStandardLitPreparation {
   }): BaselineLightListFrame {
     this.assertLive();
     const { device } = this.options.graphics;
-    if (this.options.graphics.backend === 'webgpu') {
-      const packed = packWebGpuLightListInput({ ...input, capacity: BASELINE_LIGHT_LIST_CAPACITY });
+    const lightListDecision = this.featurePolicy.snapshot.decisions.get(
+      BuiltInFeature.LightListBuild
+    );
+    if (lightListDecision?.implementation === BuiltInFeatureImplementation.WebGpuComputeLightList) {
+      const packed = packWebGpuLightListInput({ ...input, capacity: this.lightListCapacity });
       const lightWords = new Uint32Array(4 + LIGHT_LIST_SHADER_MAX_LIGHTS * 12);
       lightWords.set(packed.lights);
       const lights = device.createBuffer({
@@ -636,40 +721,105 @@ export class BaselineStandardLitPreparation {
         lights,
         receivers,
         receiverCount: input.receivers.length,
+        implementation: this.lightListImplementation as RenderFeatureImplementation<
+          CpuLightListCapacity,
+          WebGpuLightListBuildContext
+        >,
+        capacity: this.lightListCapacity,
         recorder: this.lightListRecorder as PreparedWebGpuLightListRecorder,
         forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
         forwardBindGroupLayout: this.lightListBindGroupLayout
       });
     }
-    const maxTextureDimension2D = device.capabilities.limits.maxTextureDimension2D;
-    if (maxTextureDimension2D === undefined)
-      throw new Error('WebGL2 LightList requires maxTextureDimension2D.');
-    const packed = packWebGlLightListInput({
-      ...input,
-      capacity: BASELINE_LIGHT_LIST_CAPACITY,
-      maxTextureDimension2D
-    });
-    const texture = (height: number, words: Uint32Array) => {
-      const result = device.createTexture({
-        size: [packed.width, height],
-        format: 'rgba32uint',
-        usage: SAMPLED_UPLOAD_TEXTURE_USAGE
+    if (lightListDecision?.implementation === BuiltInFeatureImplementation.WebGlFragmentLightList) {
+      const maxTextureDimension2D = device.capabilities.limits.maxTextureDimension2D;
+      if (maxTextureDimension2D === undefined)
+        throw new Error('WebGL2 LightList requires maxTextureDimension2D.');
+      const packed = packWebGlLightListInput({
+        ...input,
+        capacity: this.lightListCapacity,
+        maxTextureDimension2D
       });
-      device.queue.writeTexture(
-        { texture: result },
-        words,
-        { bytesPerRow: packed.width * 16, rowsPerImage: height },
-        { width: packed.width, height }
-      );
-      return result;
-    };
-    return this.ownedLightListFrame({
-      source: 'webgl-fragment',
-      lights: texture(packed.lightsHeight, packed.lights),
-      receivers: texture(packed.receiversHeight, packed.receivers),
-      receiverCount: input.receivers.length,
+      const texture = (height: number, words: Uint32Array) => {
+        const result = device.createTexture({
+          size: [packed.width, height],
+          format: 'rgba32uint',
+          usage: SAMPLED_UPLOAD_TEXTURE_USAGE
+        });
+        device.queue.writeTexture(
+          { texture: result },
+          words,
+          { bytesPerRow: packed.width * 16, rowsPerImage: height },
+          { width: packed.width, height }
+        );
+        return result;
+      };
+      return this.ownedLightListFrame({
+        source: 'webgl-fragment',
+        lights: texture(packed.lightsHeight, packed.lights),
+        receivers: texture(packed.receiversHeight, packed.receivers),
+        receiverCount: input.receivers.length,
+        maxTextureDimension2D,
+        implementation: this.lightListImplementation as RenderFeatureImplementation<
+            CpuLightListCapacity,
+            WebGlFragmentLightListBuildContext
+          >,
+        capacity: this.lightListCapacity,
+        recorder: this.lightListRecorder as PreparedWebGlLightListRecorder,
+        forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
+        forwardBindGroupLayout: this.lightListBindGroupLayout
+      });
+    }
+
+    // CPU bounded fallback: execute CPU culling and directly upload forward resources
+    const cpuImpl = this.lightListImplementation as RuntimeFeatureImplementation<
+      CpuLightListCapacity,
+      CpuBoundedLightListFrameInput,
+      CpuLightListResult
+    >;
+    const cpuResult = cpuImpl.execute(this.lightListCapacity, {
+      viewLayerMask: input.viewLayerMask,
+      lights: input.lights,
+      receivers: input.receivers
+    });
+
+    if (this.options.graphics.backend === 'webgpu') {
+      const packedWords = packCpuLightListForWebGpu(input, this.lightListCapacity, cpuResult);
+      const buffers = uploadCpuLightListWebGpu(device, packedWords);
+
+      return this.ownedCpuLightListFrame({
+        source: 'cpu-list',
+        backendTarget: 'webgpu',
+        lights: buffers.lights,
+        directional: buffers.directional,
+        headers: buffers.headers,
+        indices: buffers.indices,
+        overflow: buffers.overflow,
+        capacity: this.lightListCapacity,
+        forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
+        forwardBindGroupLayout: this.lightListBindGroupLayout
+      });
+    }
+
+    // WebGL2 CPU bounded fallback: pack texels directly into RGBA32Uint textures
+    const maxTextureDimension2D = device.capabilities.limits.maxTextureDimension2D ?? 2048;
+    const packedTexels = packCpuLightListForWebGl(
+      input,
+      this.lightListCapacity,
       maxTextureDimension2D,
-      recorder: this.lightListRecorder as PreparedWebGlLightListRecorder,
+      cpuResult
+    );
+    const textures = uploadCpuLightListWebGl(device, packedTexels);
+
+    return this.ownedCpuLightListFrame({
+      source: 'cpu-list',
+      backendTarget: 'webgl2',
+      lights: textures.lights,
+      directional: textures.directional,
+      headers: textures.headers,
+      indices: textures.indices,
+      overflow: textures.overflow,
+      capacity: this.lightListCapacity,
       forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
       forwardBindGroupLayout: this.lightListBindGroupLayout
     });
@@ -682,7 +832,7 @@ export class BaselineStandardLitPreparation {
     disposePreparedMesh(this.mesh);
     this.pipeline.dispose();
     this.shadowPipeline.dispose();
-    this.lightListRecorder.dispose();
+    this.lightListRecorder?.dispose();
     this.environmentBuffer.dispose();
     this.materialTextures.dispose();
     this.disabledShadowBuffer.dispose();
@@ -797,6 +947,8 @@ export class BaselineStandardLitPreparation {
     receivers: RHIBuffer | RHITexture;
     receiverCount?: number;
     maxTextureDimension2D?: number;
+    implementation: BaselineLightListImplementation;
+    capacity: CpuLightListCapacity;
     recorder: PreparedWebGpuLightListRecorder | PreparedWebGlLightListRecorder;
     forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
     forwardBindGroupLayout: RHIBindGroupLayout;
@@ -815,6 +967,46 @@ export class BaselineStandardLitPreparation {
         retained = true;
         const pending = submission.done.finally(() => {
           disposeResources([frame.lights, frame.receivers]);
+          this.pendingSubmissions.delete(pending);
+        });
+        this.pendingSubmissions.add(pending);
+      }
+    }) as BaselineLightListFrame;
+  }
+
+  private ownedCpuLightListFrame(frame: {
+    source: 'cpu-list';
+    backendTarget: 'webgpu' | 'webgl2';
+    lights: RHIBuffer | RHITexture;
+    directional: RHIBuffer | RHITexture;
+    headers: RHIBuffer | RHITexture;
+    indices: RHIBuffer | RHITexture;
+    overflow: RHIBuffer | RHITexture;
+    capacity: CpuLightListCapacity;
+    forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
+    forwardBindGroupLayout: RHIBindGroupLayout;
+  }): BaselineLightListFrame {
+    let released = false;
+    let retained = false;
+    const resources = [
+      frame.lights,
+      frame.directional,
+      frame.headers,
+      frame.indices,
+      frame.overflow
+    ];
+    return Object.freeze({
+      ...frame,
+      release: () => {
+        if (released) return;
+        released = true;
+        if (!retained) disposeResources(resources);
+      },
+      retain: (submission: RHISubmission) => {
+        if (released || retained) throw new Error('Baseline LightList frame cannot be retained.');
+        retained = true;
+        const pending = submission.done.finally(() => {
+          disposeResources(resources);
           this.pendingSubmissions.delete(pending);
         });
         this.pendingSubmissions.add(pending);

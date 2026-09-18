@@ -93,6 +93,41 @@ describe('FeaturePolicyCoordinator', () => {
     expect(coordinator.current).toBeUndefined();
   });
 
+  test('ref-counts retirement across multiple independent leases before disposal', async () => {
+    const disposed: string[] = [];
+    const coordinator = new FeaturePolicyCoordinator();
+    await coordinator.prepare(
+      input(candidate({ label: 'first' }, { dispose: () => disposed.push('first') }))
+    );
+    coordinator.publish();
+    await coordinator.prepare(
+      input(candidate({ label: 'second' }, { dispose: () => disposed.push('second') }), {
+        revision: 2
+      })
+    );
+
+    const pub = coordinator.publish();
+    const retirement = pub?.retirement;
+    expect(retirement).toBeDefined();
+
+    const leaseA = retirement!.acquireLease();
+    const leaseB = retirement!.acquireLease();
+
+    // Releasing root retirement does not dispose while leases are active
+    retirement!.release();
+    expect(disposed).toEqual([]);
+
+    // Releasing leaseA does not dispose while leaseB is active
+    leaseA.release();
+    expect(disposed).toEqual([]);
+
+    // Releasing leaseB drops ref-count to 0 and triggers disposal
+    leaseB.release();
+    expect(disposed).toEqual(['first']);
+
+    coordinator.destroy();
+  });
+
   test('rejects concurrent preparation before either revision can allocate twice', async () => {
     let resume!: () => void;
     const gate = new Promise<void>((resolve) => {

@@ -85,7 +85,7 @@ export function createNullConformanceCapabilities(): DeviceCapabilities {
   const features = Object.fromEntries(
     RHI_FEATURES.map((feature) => [feature, { status: 'native' as const }])
   ) as Partial<Record<RHIFeature, FeatureSupport>>;
-  return createNullCapabilities({ features });
+  return createNullCapabilities({ features, queues: FULL_FEATURE_QUEUES });
 }
 
 class ReadonlyMapSnapshot<K, V> implements ReadonlyMap<K, V> {

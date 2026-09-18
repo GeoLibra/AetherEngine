@@ -127,15 +127,49 @@ describe('glTF multi-backend static PBR rendering', () => {
     const backends = ['webgpu', 'webgl2'] as const;
     for (const backend of backends) {
       const baseDevice = new NullDevice();
-      const device = new NullDevice({
-        capabilities: {
-          ...baseDevice.capabilities,
-          limits: {
-            ...baseDevice.capabilities.limits,
-            maxTextureDimension2D: 8192
-          }
-        }
-      });
+      const device =
+        backend === 'webgpu'
+          ? new NullDevice({
+              capabilities: {
+                ...baseDevice.capabilities,
+                limits: {
+                  ...baseDevice.capabilities.limits,
+                  maxTextureDimension2D: 8192
+                }
+              }
+            })
+          : new NullDevice({
+              capabilities: {
+                ...baseDevice.capabilities,
+                features: new Map([
+                  ...baseDevice.capabilities.features,
+                  ['compute', { status: 'unsupported' as const }],
+                  ['storage-buffer', { status: 'unsupported' as const }]
+                ]),
+                queues: [{ role: 'graphics' as const, status: 'native' as const }],
+                limits: {
+                  ...baseDevice.capabilities.limits,
+                  maxColorAttachments: 4,
+                  maxTextureDimension2D: 8192
+                },
+                formats: new Map([
+                  ...baseDevice.capabilities.formats,
+                  [
+                    'rgba32uint',
+                    {
+                      sample: true,
+                      filter: false,
+                      render: true,
+                      blend: false,
+                      storage: false,
+                      copySrc: true,
+                      copyDst: true,
+                      sampleCounts: [1]
+                    }
+                  ]
+                ])
+              }
+            });
       const surface = new NullSurface({ id: Symbol(backend), kind: 'offscreen' });
       surface.configure(
         device,
