@@ -121,6 +121,53 @@ describe('FeaturePolicyRuntimeController', () => {
     (published.policy as { revision: number }).revision = 99;
     expect(runtime.inspection?.policy.revision).toBe(2);
   });
+
+  test('releases active publication root retirement when destroyed directly after publish', async () => {
+    const disposed: string[] = [];
+    const runtime = new FeaturePolicyRuntimeController();
+    await runtime.stage(
+      input(candidate('first', { dispose: () => disposed.push('first') }))
+    );
+    runtime.publishFrameBoundary();
+
+    runtime.sources.profileChanged();
+    await runtime.stage(
+      input(candidate('second', { dispose: () => disposed.push('second') }))
+    );
+    const pub = runtime.publishFrameBoundary();
+    expect(pub?.retirement).toBeDefined();
+
+    // Destroying runtime directly without calling releaseActivePublication explicitly
+    runtime.destroy();
+
+    // Both first (which was retired) and second (which was active) are disposed
+    expect(disposed).toEqual(['first', 'second']);
+  });
+
+  test('releases previous publication root retirement on subsequent publishFrameBoundary even without PostRender', async () => {
+    const disposed: string[] = [];
+    const runtime = new FeaturePolicyRuntimeController();
+    await runtime.stage(
+      input(candidate('first', { dispose: () => disposed.push('first') }))
+    );
+    runtime.publishFrameBoundary();
+
+    runtime.sources.profileChanged();
+    await runtime.stage(
+      input(candidate('second', { dispose: () => disposed.push('second') }))
+    );
+    const pub = runtime.publishFrameBoundary();
+    expect(pub?.retirement).toBeDefined();
+
+    // Simulate skipped PostRender: releaseActivePublication is NOT called
+    expect(disposed).toEqual([]);
+
+    // Next frame boundary with no pending publish: cleans up active publication root
+    runtime.publishFrameBoundary();
+    expect(disposed).toEqual(['first']);
+
+    runtime.destroy();
+  });
 });
 
 function candidate(

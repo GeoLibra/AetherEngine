@@ -17,6 +17,7 @@ export type {
   FeaturePolicyPublication,
   FeaturePolicyResolution,
   FeaturePolicyRetirement,
+  FeaturePolicyRetirementLease,
   FeaturePolicySnapshot,
   FeaturePrepareInput,
   FeatureRequest,

@@ -17,8 +17,15 @@ import type { PreparedBindGroupLayoutToken } from '../../../render-graph';
 import type {
   PreparedWebGlLightListRecorder,
   PreparedWebGpuLightListRecorder,
-  ShadowRequest
+  ShadowRequest,
+  CpuLightListCapacity,
+  WebGlFragmentLightListBuildContext,
+  WebGpuLightListBuildContext
 } from '../../lighting';
+import type {
+  PreparedFeaturePolicy,
+  RenderFeatureImplementation
+} from '../../../feature-policy';
 import type { PreparedDrawPacket } from '../../phase';
 import type { RenderView } from '../../visibility';
 import type { StandardLitResourceResolver } from '../../material';
@@ -50,6 +57,8 @@ export type BaselineLightListFrame =
       lights: RHIBuffer;
       receivers: RHIBuffer;
       receiverCount: number;
+      implementation: RenderFeatureImplementation<CpuLightListCapacity, WebGpuLightListBuildContext>;
+      capacity: CpuLightListCapacity;
       recorder: PreparedWebGpuLightListRecorder;
       forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
       forwardBindGroupLayout: RHIBindGroupLayout;
@@ -62,7 +71,23 @@ export type BaselineLightListFrame =
       receivers: RHITexture;
       receiverCount: number;
       maxTextureDimension2D: number;
+      implementation: RenderFeatureImplementation<CpuLightListCapacity, WebGlFragmentLightListBuildContext>;
+      capacity: CpuLightListCapacity;
       recorder: PreparedWebGlLightListRecorder;
+      forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
+      forwardBindGroupLayout: RHIBindGroupLayout;
+      release(): void;
+      retain(submission: RHISubmission): void;
+    }>
+  | Readonly<{
+      source: 'cpu-list';
+      backendTarget: 'webgpu' | 'webgl2';
+      lights: RHIBuffer | RHITexture;
+      directional: RHIBuffer | RHITexture;
+      headers: RHIBuffer | RHITexture;
+      indices: RHIBuffer | RHITexture;
+      overflow: RHIBuffer | RHITexture;
+      capacity: CpuLightListCapacity;
       forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
       forwardBindGroupLayout: RHIBindGroupLayout;
       release(): void;
@@ -162,6 +187,8 @@ export interface BaselineRenderingOptions {
   readonly viewId?: string;
   /** FeaturePolicy snapshot identity consumed by preparation and Queue. */
   readonly featurePolicyKey?: string;
+  /** Optional pre-resolved FeaturePolicy providing the LightListBuild implementation. */
+  readonly featurePolicy?: PreparedFeaturePolicy | undefined;
   /** Optional canonical box-compatible mesh registration prepared outside Queue. */
   readonly mesh?: Readonly<{
     handle: AssetHandle<GeometryMeshAsset>;

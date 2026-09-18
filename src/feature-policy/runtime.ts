@@ -38,6 +38,7 @@ export class FeaturePolicyRuntimeController {
   private currentState: FeaturePolicyRuntimeState = 'idle';
   private destroyed = false;
   private latestInspection: FeaturePolicyInspection | undefined;
+  private activePublication: FeaturePolicyPublication | undefined;
 
   get state(): FeaturePolicyRuntimeState {
     return this.currentState;
@@ -45,6 +46,11 @@ export class FeaturePolicyRuntimeController {
 
   get current(): PreparedFeaturePolicy | undefined {
     return this.coordinator.current;
+  }
+
+  /** The publication produced at the most recent frame boundary, if any was published. */
+  get publication(): FeaturePolicyPublication | undefined {
+    return this.activePublication;
   }
 
   /** Latest successful or failed resolution evidence available to read-only tools. */
@@ -83,13 +89,30 @@ export class FeaturePolicyRuntimeController {
   /** Publishes a prepared revision at the caller's frame boundary. */
   publishFrameBoundary(): FeaturePolicyPublication | undefined {
     this.assertActive();
-    if (this.currentState !== 'awaiting-publish') return undefined;
+    if (this.currentState !== 'awaiting-publish') {
+      this.releaseActivePublication();
+      this.activePublication = undefined;
+      return undefined;
+    }
+    this.releaseActivePublication();
     const publication = this.coordinator.publish();
     if (publication === undefined) {
       throw new Error('FeaturePolicy runtime lost its prepared publication.');
     }
     this.currentState = 'idle';
+    this.activePublication = publication;
     return publication;
+  }
+
+  /**
+   * Releases the root retirement of the active publication, if one exists.
+   * This operation is idempotent and called at PostRender, upon publication
+   * replacement/clearing, and during runtime destruction.
+   */
+  releaseActivePublication(): void {
+    if (this.activePublication?.retirement !== undefined) {
+      this.activePublication.retirement.release();
+    }
   }
 
   /** Releases all policies still owned by this runtime. This operation is idempotent. */
@@ -97,6 +120,8 @@ export class FeaturePolicyRuntimeController {
     if (this.destroyed) return;
     this.destroyed = true;
     this.currentState = 'destroyed';
+    this.releaseActivePublication();
+    this.activePublication = undefined;
     this.coordinator.destroy();
   }
 

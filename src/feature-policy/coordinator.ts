@@ -8,6 +8,7 @@ import type {
   FeaturePolicyPrepareResult,
   FeaturePolicyPublication,
   FeaturePolicyRetirement,
+  FeaturePolicyRetirementLease,
   PreparedFeaturePolicy
 } from './types';
 
@@ -120,7 +121,9 @@ export class FeaturePolicyCoordinator {
               previous.publicPolicy.snapshot,
               this.active.publicPolicy.snapshot
             ),
-      ...(previous === undefined ? {} : { retirement: new Retirement(previous) })
+      ...(previous === undefined
+        ? {}
+        : { retirement: new RetirementCoordinator(previous).createRoot() })
     };
   }
 
@@ -159,6 +162,10 @@ class OwnedPreparedPolicy {
     };
   }
 
+  get isDisposed(): boolean {
+    return this.disposed;
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -166,15 +173,48 @@ class OwnedPreparedPolicy {
   }
 }
 
-class Retirement implements FeaturePolicyRetirement {
+class RetirementCoordinator {
+  private refCount = 1;
+  private rootReleased = false;
+
   constructor(private readonly owned: OwnedPreparedPolicy) {}
 
-  get policy(): PreparedFeaturePolicy {
-    return this.owned.publicPolicy;
+  createRoot(): FeaturePolicyRetirement {
+    return Object.freeze({
+      policy: this.owned.publicPolicy,
+      acquireLease: () => this.acquireLease(),
+      release: () => this.releaseRoot()
+    });
   }
 
-  release(): void {
-    this.owned.dispose();
+  acquireLease(): FeaturePolicyRetirementLease {
+    if (this.owned.isDisposed) {
+      throw new Error('Cannot acquire a retirement lease on an already disposed policy.');
+    }
+    this.refCount++;
+    let released = false;
+    return Object.freeze({
+      policy: this.owned.publicPolicy,
+      acquireLease: () => this.acquireLease(),
+      release: () => {
+        if (released) return;
+        released = true;
+        this.decrement();
+      }
+    });
+  }
+
+  private releaseRoot(): void {
+    if (this.rootReleased) return;
+    this.rootReleased = true;
+    this.decrement();
+  }
+
+  private decrement(): void {
+    this.refCount--;
+    if (this.refCount <= 0) {
+      this.owned.dispose();
+    }
   }
 }
 

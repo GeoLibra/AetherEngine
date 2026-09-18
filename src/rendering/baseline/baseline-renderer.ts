@@ -5,12 +5,9 @@ import {
   type PreparedDrawResourcesToken
 } from '../../render-graph';
 import { RenderSystemRegistry, compileRenderSystems } from '../systems';
-import { ZERO_RESOURCE_BUDGET } from '../../feature-policy';
 import type { TextureDescriptor } from '../../render-graph';
 import { buildPreparedDrawPhase, createOpaqueRenderSystem } from '../phase';
 import {
-  createWebGlFragmentLightListImplementation,
-  createWebGpuComputeLightListImplementation,
   declareShadowDepthPasses,
   recordPreparedShadowDraws,
   shadowDepthFormat,
@@ -18,14 +15,13 @@ import {
   type WebGlFragmentLightListBuildOutput,
   type WebGpuLightListBuildOutput
 } from '../lighting';
-import { BASELINE_LIGHT_LIST_CAPACITY } from './baseline-preparation';
 import type {
   BaselinePreparedFrame,
   BaselineRenderDiagnostics,
   BaselineRenderSkipReason,
   BaselineRenderingOptions
 } from './types';
-import type { RHITexture } from '../../rhi/contracts';
+import type { RHIBuffer, RHITexture } from '../../rhi/contracts';
 import { contributeBackground, createBackgroundRenderSystem } from '../background/graph';
 import { createPostColorContribution } from './baseline-post-color-graph';
 
@@ -234,8 +230,18 @@ export class BaselineRenderer {
         resources.set(environment.environmentBrdfLut, environmentFrame.environmentBrdfLut);
       }
       if (lightList !== undefined && lightFrame !== undefined) {
-        resources.set(lightList.lights, lightFrame.lights);
-        resources.set(lightList.receivers, lightFrame.receivers);
+        if (lightList.receivers !== undefined) {
+          resources.set(lightList.lights, lightFrame.lights);
+          resources.set(lightList.receivers, (lightFrame as any).receivers);
+        } else if ('cpuBuffers' in lightList && lightList.cpuBuffers) {
+          for (const item of lightList.cpuBuffers) {
+            resources.set(item.handle, item.raw);
+          }
+        } else if ('cpuTextures' in lightList && lightList.cpuTextures) {
+          for (const item of lightList.cpuTextures) {
+            resources.set(item.handle, item.raw);
+          }
+        }
       }
       if (shadowReceiver !== undefined && prepared.shadowReceiver !== undefined) {
         resources.set(
@@ -264,10 +270,12 @@ export class BaselineRenderer {
         renderPipelines.set(bgFrame.pipelineToken, bgFrame.pipeline!);
       const bindGroupLayouts = new Map();
       if (lightFrame !== undefined) {
-        bindGroupLayouts.set(
-          lightFrame.recorder.bindGroupLayoutToken,
-          lightFrame.recorder.bindGroupLayout
-        );
+        if ('recorder' in lightFrame && lightFrame.recorder !== undefined) {
+          bindGroupLayouts.set(
+            lightFrame.recorder.bindGroupLayoutToken,
+            lightFrame.recorder.bindGroupLayout
+          );
+        }
         bindGroupLayouts.set(
           lightFrame.forwardBindGroupLayoutToken,
           lightFrame.forwardBindGroupLayout
@@ -422,13 +430,16 @@ function contributeLightList(
   prepared: Extract<BaselinePreparedFrame, { status: 'ready' }>
 ) {
   if (prepared.lightList === undefined) throw new Error('Baseline LightList input is missing.');
+  const baseId = `${prepared.view.id}:light-list-input`;
   const origin = {
     kind: 'imported' as const,
     initialState:
       prepared.lightList.source === 'gpu-compute'
         ? ('storage-read' as const)
-        : ('sampled' as const),
-    acquire: { kind: 'external-acquire' as const, id: `${prepared.view.id}:light-list-input` }
+        : prepared.lightList.source === 'cpu-list' && prepared.lightList.backendTarget === 'webgpu'
+          ? ('uniform' as const)
+          : ('sampled' as const),
+    acquire: { kind: 'external-acquire' as const, id: baseId }
   };
   if (prepared.lightList.source === 'gpu-compute') {
     const lights = graph.createBuffer(
@@ -438,14 +449,11 @@ function contributeLightList(
     const receivers = graph.createBuffer(
       { size: prepared.lightList.receivers.size, usage: ['storage-read'] },
       {
-        origin: { ...origin, acquire: { ...origin.acquire, id: `${origin.acquire.id}:receivers` } }
+        origin: { ...origin, acquire: { ...origin.acquire, id: `${baseId}:receivers` } }
       }
     );
     let output: WebGpuLightListBuildOutput | undefined;
-    createWebGpuComputeLightListImplementation({
-      capacity: BASELINE_LIGHT_LIST_CAPACITY,
-      estimatedBudget: ZERO_RESOURCE_BUDGET
-    }).contribute(BASELINE_LIGHT_LIST_CAPACITY, {
+    prepared.lightList.implementation.contribute(prepared.lightList.capacity, {
       graph,
       viewId: prepared.view.id,
       input: { lights, receivers, receiverCount: prepared.lightList.receiverCount },
@@ -455,9 +463,87 @@ function contributeLightList(
       }
     });
     if (output === undefined) throw new Error('WebGPU LightList did not publish output.');
-    return { lights, receivers, output };
+    return { lights, receivers, output, source: 'gpu-compute' as const };
   }
-  const textureHandle = (raw: RHITexture, id: string) =>
+  if (prepared.lightList.source === 'webgl-fragment') {
+    const textureHandle = (raw: RHITexture, id: string) =>
+      graph.createTexture(
+        {
+          width: raw.width,
+          height: raw.height,
+          depthOrArrayLayers: raw.depthOrArrayLayers,
+          mipLevelCount: raw.descriptor.mipLevelCount ?? 1,
+          sampleCount: raw.descriptor.sampleCount ?? 1,
+          format: raw.format,
+          usage: ['sampled']
+        },
+        { origin: { ...origin, acquire: { ...origin.acquire, id } } }
+      );
+    const lights = textureHandle(prepared.lightList.lights, `${baseId}:lights`);
+    const receivers = textureHandle(prepared.lightList.receivers, `${baseId}:receivers`);
+    let output: WebGlFragmentLightListBuildOutput | undefined;
+    prepared.lightList.implementation.contribute(prepared.lightList.capacity, {
+      graph,
+      viewId: prepared.view.id,
+      input: { lights, receivers, receiverCount: prepared.lightList.receiverCount },
+      recorder: prepared.lightList.recorder.recorder,
+      publish(value) {
+        output = value;
+      }
+    });
+    if (output === undefined) throw new Error('WebGL2 LightList did not publish output.');
+    return { lights, receivers, output, source: 'webgl-fragment' as const };
+  }
+
+  // CPU bounded fallback
+  if (prepared.lightList.backendTarget === 'webgpu') {
+    const rawLights = prepared.lightList.lights as RHIBuffer;
+    const rawDir = prepared.lightList.directional as RHIBuffer;
+    const rawHeaders = prepared.lightList.headers as RHIBuffer;
+    const rawIndices = prepared.lightList.indices as RHIBuffer;
+    const rawOverflow = prepared.lightList.overflow as RHIBuffer;
+
+    const importBuf = (raw: RHIBuffer, id: string) =>
+      graph.createBuffer(
+        { size: raw.size, usage: ['uniform'] },
+        { origin: { ...origin, initialState: 'uniform', acquire: { ...origin.acquire, id } } }
+      );
+
+    const lights = importBuf(rawLights, `${baseId}:cpu:lights`);
+    const directional = importBuf(rawDir, `${baseId}:cpu:directional`);
+    const headers = importBuf(rawHeaders, `${baseId}:cpu:headers`);
+    const indices = importBuf(rawIndices, `${baseId}:cpu:indices`);
+    const overflow = importBuf(rawOverflow, `${baseId}:cpu:overflow`);
+
+    return {
+      lights,
+      receivers: undefined,
+      cpuBuffers: [
+        { handle: lights, raw: rawLights },
+        { handle: directional, raw: rawDir },
+        { handle: headers, raw: rawHeaders },
+        { handle: indices, raw: rawIndices },
+        { handle: overflow, raw: rawOverflow }
+      ],
+      output: {
+        source: 'gpu-compute' as const,
+        directionalIndices: directional,
+        headers,
+        lightIndices: indices,
+        overflow,
+        capacity: prepared.lightList.capacity
+      },
+      source: 'cpu-list-webgpu' as const
+    };
+  }
+
+  const rawLights = prepared.lightList.lights as RHITexture;
+  const rawDir = prepared.lightList.directional as RHITexture;
+  const rawHeaders = prepared.lightList.headers as RHITexture;
+  const rawIndices = prepared.lightList.indices as RHITexture;
+  const rawOverflow = prepared.lightList.overflow as RHITexture;
+
+  const importTex = (raw: RHITexture, id: string) =>
     graph.createTexture(
       {
         width: raw.width,
@@ -468,28 +554,42 @@ function contributeLightList(
         format: raw.format,
         usage: ['sampled']
       },
-      { origin: { ...origin, acquire: { ...origin.acquire, id } } }
+      { origin: { ...origin, initialState: 'sampled', acquire: { ...origin.acquire, id } } }
     );
-  const lights = textureHandle(prepared.lightList.lights, `${origin.acquire.id}:lights`);
-  const receivers = textureHandle(prepared.lightList.receivers, `${origin.acquire.id}:receivers`);
-  let output: WebGlFragmentLightListBuildOutput | undefined;
-  createWebGlFragmentLightListImplementation({
-    capacity: BASELINE_LIGHT_LIST_CAPACITY,
-    estimatedBudget: ZERO_RESOURCE_BUDGET,
-    maxTextureDimension2D: prepared.lightList.maxTextureDimension2D
-  }).contribute(BASELINE_LIGHT_LIST_CAPACITY, {
-    graph,
-    viewId: prepared.view.id,
-    input: { lights, receivers, receiverCount: prepared.lightList.receiverCount },
-    recorder: prepared.lightList.recorder.recorder,
-    publish(value) {
-      output = value;
-    }
-  });
-  if (output === undefined) throw new Error('WebGL2 LightList did not publish output.');
-  return { lights, receivers, output };
-}
 
+  const lights = importTex(rawLights, `${baseId}:cpu:lights`);
+  const directional = importTex(rawDir, `${baseId}:cpu:directional`);
+  const headers = importTex(rawHeaders, `${baseId}:cpu:headers`);
+  const indices = importTex(rawIndices, `${baseId}:cpu:indices`);
+  const overflow = importTex(rawOverflow, `${baseId}:cpu:overflow`);
+
+  return {
+    lights,
+    receivers: undefined,
+    cpuTextures: [
+      { handle: lights, raw: rawLights },
+      { handle: directional, raw: rawDir },
+      { handle: headers, raw: rawHeaders },
+      { handle: indices, raw: rawIndices },
+      { handle: overflow, raw: rawOverflow }
+    ],
+    output: {
+      source: 'webgl-fragment' as const,
+      directionalIndices: directional,
+      headers,
+      lightIndices: indices,
+      overflow,
+      capacity: prepared.lightList.capacity,
+      packing: {
+        width: rawHeaders.width,
+        height: rawHeaders.height,
+        indexRows: Math.ceil(prepared.lightList.capacity.maxLightsPerReceiver / 4),
+        receiverRows: Math.ceil(rawHeaders.height / (1 + Math.ceil(prepared.lightList.capacity.maxLightsPerReceiver / 4)))
+      }
+    },
+    source: 'cpu-list-webgl' as const
+  };
+}
 function skipped(
   frame: number,
   prepared: BaselinePreparedFrame,

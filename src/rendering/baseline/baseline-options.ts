@@ -5,6 +5,9 @@ import { sharedEnvironmentTextureCache } from '../lighting';
 import { prepareBackground, type PreparedBackgroundFrame } from '../background';
 import type { ViewBackground } from '../background/types';
 import type { RHIDevice } from '../../rhi/contracts';
+import { NullDevice } from '../../rhi/null/device';
+import type { PreparedFeaturePolicy } from '../../feature-policy';
+import { isPreparedFeaturePolicy, resolveBaselineFeaturePolicy } from './baseline-feature-policy';
 import type {
   BaselineEnvironmentLighting,
   BaselineRenderingOptions,
@@ -27,6 +30,7 @@ export type NormalizedBaselineRenderingOptions = Omit<BaselineRenderingOptions, 
   Readonly<{
     viewId: string;
     featurePolicyKey: string;
+    featurePolicy: PreparedFeaturePolicy;
     environment: EnvironmentAsset | undefined;
     environmentLighting: NormalizedBaselineEnvironmentLighting;
   }>;
@@ -35,11 +39,32 @@ export function validateOptions(
   options: BaselineRenderingOptions
 ): NormalizedBaselineRenderingOptions {
   const viewId = options.viewId ?? 'main';
-  const featurePolicyKey = options.featurePolicyKey ?? 'baseline';
   if (!viewId.trim()) throw new Error('Baseline rendering viewId must be non-empty.');
-  if (!featurePolicyKey.trim()) {
+
+  const featurePolicy = isPreparedFeaturePolicy(options.featurePolicy)
+    ? options.featurePolicy
+    : options.graphics?.device
+      ? resolveBaselineFeaturePolicy({
+          device: options.graphics.device,
+          viewId
+        })
+      : resolveBaselineFeaturePolicy({
+          device: new NullDevice(),
+          viewId
+        });
+
+  if (options.featurePolicyKey !== undefined && !options.featurePolicyKey.trim()) {
     throw new Error('Baseline rendering featurePolicyKey must be non-empty.');
   }
+
+  const canonicalPolicyKey =
+    featurePolicy.snapshot.cacheDomainHashes.get('shader-pipeline') ?? featurePolicy.snapshot.hash;
+  if (options.featurePolicyKey !== undefined && options.featurePolicyKey !== canonicalPolicyKey) {
+    throw new Error(
+      'Baseline rendering featurePolicyKey "' + options.featurePolicyKey + '" diverges from policy snapshot key "' + canonicalPolicyKey + '".'
+    );
+  }
+  const featurePolicyKey = canonicalPolicyKey;
   if ((options.mesh === undefined) !== (options.material === undefined)) {
     throw new Error(
       'Baseline rendering mesh and material registrations must be provided together.'
@@ -74,6 +99,7 @@ export function validateOptions(
     graphics: options.graphics,
     viewId,
     featurePolicyKey,
+    featurePolicy,
     ...(mesh === undefined ? {} : { mesh }),
     ...(material === undefined ? {} : { material }),
     ...(options.materialResources === undefined
