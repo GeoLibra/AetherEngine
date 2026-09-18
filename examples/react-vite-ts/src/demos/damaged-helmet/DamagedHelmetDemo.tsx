@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Leva, useControls, folder, useCreateStore } from 'leva';
+import { LevaPanel, useControls, folder, useCreateStore } from 'leva';
 import {
   mountDamagedHelmetScene,
   type MountedDamagedHelmetScene,
@@ -23,6 +23,11 @@ const STATIC_BACKEND_PREFERENCE = (() => {
   const hasPreference = VALID_BACKENDS.has(requested as any);
   return hasPreference ? ([requested as 'webgpu' | 'webgl2'] as const) : undefined;
 })();
+
+const IS_E2E =
+  typeof window !== 'undefined' &&
+  (new URLSearchParams(window.location.search).has('e2e') ||
+    new URLSearchParams(window.location.search).has('backend'));
 
 export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
   const store = useCreateStore();
@@ -94,7 +99,7 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
         lightAngle: { value: 65, min: 0, max: 360, step: 1, label: 'Light Azimuth (°)' }
       }),
       'Model & Display': folder({
-        animate: { value: true, label: 'Auto-Rotate' },
+        animate: { value: !IS_E2E, label: 'Auto-Rotate' },
         manualRotation: { value: 0, min: -180, max: 180, step: 1, label: 'Manual Rotation (°)' }
       })
     }),
@@ -150,7 +155,22 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
       .then((scene) => {
         if (cancelled) return;
         sceneRef.current = scene;
-        (window as unknown as Record<string, unknown>).__damagedHelmetScene = scene;
+        (window as unknown as Record<string, unknown>).__damagedHelmetScene = Object.freeze({
+          state: () => ({
+            backend: scene.backend,
+            environmentMode: scene.environmentMode,
+            backgroundMode: scene.backgroundMode,
+            diagnostics: scene.diagnostics(),
+            modelDiagnostics: scene.modelDiagnostics(),
+            nativeMetrics: scene.nativeMetrics(),
+            nativeError: scene.nativeError(),
+            validationErrors: scene.validationErrors(),
+            runtimeErrors: scene.runtimeErrors()
+          }),
+          resize: (width: number, height: number) => scene.resize(width, height),
+          setRotation: (angleRadians: number) => scene.setRotation(angleRadians),
+          destroy: () => scene.destroy()
+        });
         const diag = scene.modelDiagnostics();
         setModelDiag(diag);
         setStatus({
@@ -173,13 +193,14 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
     return () => {
       cancelled = true;
       sceneRef.current = null;
+      (window as unknown as Record<string, unknown>).__damagedHelmetScene = undefined;
       void host.unmount();
     };
   }, [mountScene, environmentMode, backgroundMode]);
 
   return (
     <div className="demo-content">
-      <Leva
+      <LevaPanel
         store={store}
         hidden={
           typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('e2e')

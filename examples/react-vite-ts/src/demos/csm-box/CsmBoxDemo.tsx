@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Leva, useControls, folder, useCreateStore } from 'leva';
+import { LevaPanel, useControls, folder, useCreateStore } from 'leva';
 import type { MountedAetherScene } from '../../aether-scene';
 import { AetherSceneHost } from '../../scene-host';
 import type { DemoProps } from '../types';
@@ -167,7 +167,7 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
 
   return (
     <div className="demo-content">
-      <Leva
+      <LevaPanel
         store={store}
         hidden={
           typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('e2e')

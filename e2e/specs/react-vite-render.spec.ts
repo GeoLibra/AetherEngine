@@ -7,6 +7,11 @@ declare global {
       resize(width: number, height: number): void;
       setRotation(angleRadians: number): void;
     };
+    __damagedHelmetScene?: {
+      state(): Record<string, unknown>;
+      resize(width: number, height: number): Promise<void> | void;
+      setRotation(angleRadians: number): Promise<void> | void;
+    };
   }
 }
 
@@ -88,6 +93,50 @@ test('navigates to DamagedHelmet demo and renders glTF PBR model', async ({ page
   await expect(page.locator('.model-badges')).toContainText('14,556');
   await expect(page.locator('.model-badges')).toContainText('MikkTSpace');
   await expect(page.locator('.model-badges')).toContainText('5 Slots');
+
+  // Verify backend clean state (0 validation errors, 0 runtime errors, successful draws)
+  await expect
+    .poll(() => page.evaluate(() => window.__damagedHelmetScene?.state()), { timeout: 20_000 })
+    .toMatchObject({
+      backend,
+      diagnostics: { status: 'rendered', indexedDrawCalls: 5, indexCount: 231780 }
+    });
+
+  const initialHelmet = await page.evaluate(() => window.__damagedHelmetScene!.state());
+  expectBackendClean(initialHelmet, backend);
+
+  // Rotation verification: verify pose changes deterministically
+  await page.evaluate(() => window.__damagedHelmetScene!.setRotation(Math.PI / 6));
+  const firstPose = await page.locator('canvas').screenshot();
+  expect(firstPose.length).toBeGreaterThan(0);
+
+  await page.evaluate(() => window.__damagedHelmetScene!.setRotation(-Math.PI / 6));
+  const secondPose = await page.locator('canvas').screenshot();
+  expect(secondPose).not.toEqual(firstPose);
+
+  // Resize to (640, 360) and verify surfaceGeneration: 2
+  await page.evaluate(() => window.__damagedHelmetScene!.resize(640, 360));
+  await expect
+    .poll(() => page.evaluate(() => window.__damagedHelmetScene!.state()))
+    .toMatchObject({ diagnostics: { status: 'rendered', surfaceGeneration: 2 } });
+  expectBackendClean(await page.evaluate(() => window.__damagedHelmetScene!.state()), backend);
+
+  // Zero-extent suspension (0, 0) and verify status: 'skipped', reason: 'surface-suspended', surfaceGeneration: 3
+  await page.evaluate(() => window.__damagedHelmetScene!.resize(0, 0));
+  await expect
+    .poll(() => page.evaluate(() => window.__damagedHelmetScene!.state()))
+    .toMatchObject({
+      diagnostics: { status: 'skipped', reason: 'surface-suspended', surfaceGeneration: 3 }
+    });
+  expectBackendClean(await page.evaluate(() => window.__damagedHelmetScene!.state()), backend);
+
+  // Surface recovery to (800, 450) and verify status: 'rendered', surfaceGeneration: 4
+  await page.evaluate(() => window.__damagedHelmetScene!.resize(800, 450));
+  await expect
+    .poll(() => page.evaluate(() => window.__damagedHelmetScene!.state()))
+    .toMatchObject({ diagnostics: { status: 'rendered', surfaceGeneration: 4 } });
+  const recoveredHelmet = await page.evaluate(() => window.__damagedHelmetScene!.state());
+  expectBackendClean(recoveredHelmet, backend);
 
   const boxTab = page.getByRole('button', { name: /CSM Box PBR/i });
   await boxTab.click({ force: true });

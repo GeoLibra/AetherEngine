@@ -52,6 +52,10 @@ export interface MountedDamagedHelmetScene {
   readonly backgroundMode?: 'hdr' | 'solid' | 'none';
   diagnostics(): BaselineRenderDiagnostics | undefined;
   modelDiagnostics(): DamagedHelmetDiagnostics;
+  nativeMetrics(): unknown;
+  validationErrors(): readonly string[];
+  runtimeErrors(): readonly string[];
+  nativeError(): number | undefined;
   setRotation(angleRadians: number): Promise<void> | void;
   setCastsShadow(enabled: boolean): void;
   setSunlight(enabled: boolean): void;
@@ -133,6 +137,17 @@ export async function mountDamagedHelmetScene(
     surface: { ...size, alphaMode: 'opaque' },
     webgl2ClipControl: false
   });
+
+  const gl = canvas.getContext('webgl2');
+  const runtimeErrors: string[] = [];
+  const handleWindowError = (event: ErrorEvent) => {
+    runtimeErrors.push(event.error instanceof Error ? event.error.message : String(event.error));
+  };
+  const handleWindowRejection = (event: PromiseRejectionEvent) => {
+    runtimeErrors.push(event.reason instanceof Error ? event.reason.message : String(event.reason));
+  };
+  window.addEventListener('error', handleWindowError);
+  window.addEventListener('unhandledrejection', handleWindowRejection);
 
   // 1. Fetch and parse DamagedHelmet.glb
   const modelUrl = options.modelUrl ?? '/assets/models/DamagedHelmet.glb';
@@ -370,6 +385,17 @@ export async function mountDamagedHelmetScene(
       })
     );
 
+  try {
+    await app.startup();
+  } catch (error) {
+    window.removeEventListener('error', handleWindowError);
+    window.removeEventListener('unhandledrejection', handleWindowRejection);
+    await app.destroy();
+    registry.dispose();
+    await graphics.destroy();
+    throw error;
+  }
+
   const demandRunner = !isAnimate ? new DemandDrivenRunner() : undefined;
   const runner =
     demandRunner ??
@@ -378,10 +404,14 @@ export async function mountDamagedHelmetScene(
       cancel: (id) => cancelAnimationFrame(id)
     });
 
-  void app.run(runner);
+  void app.run(runner).catch((error: unknown) => {
+    runtimeErrors.push(error instanceof Error ? error.message : String(error));
+  });
 
-  if (demandRunner) {
-    demandRunner.frame();
+  if (demandRunner !== undefined) {
+    await advanceUntilRendered(demandRunner, () =>
+      app.getResource(BaselineRenderDiagnosticsResource)
+    );
   }
 
   return Object.freeze({
@@ -394,9 +424,27 @@ export async function mountDamagedHelmetScene(
         : 'none') as 'hdr' | 'solid' | 'none',
     diagnostics: () => app.getResource(BaselineRenderDiagnosticsResource),
     modelDiagnostics: () => app.getResource(HelmetModelDiagnosticsResource) ?? modelDiag,
-    setRotation(angleRadians: number) {
+    nativeMetrics: () => {
+      const metrics = Reflect.get(graphics.device.queue, 'metrics');
+      return typeof metrics === 'function'
+        ? (Reflect.apply(metrics, graphics.device.queue, []) as unknown)
+        : undefined;
+    },
+    validationErrors: () => browserValidationErrors(graphics),
+    runtimeErrors: () => Object.freeze([...runtimeErrors]),
+    nativeError: () => gl?.getError(),
+    async setRotation(angleRadians: number) {
+      if (!Number.isFinite(angleRadians)) throw new Error('Scene rotation angle must be finite.');
+      const previousFrame = app.getResource(BaselineRenderDiagnosticsResource)?.frame ?? 0;
       forcedRotation = angleRadians;
-      demandRunner?.frame();
+      if (demandRunner !== undefined) {
+        await advanceUntilRendered(
+          demandRunner,
+          () => app.getResource(BaselineRenderDiagnosticsResource),
+          'rendered',
+          previousFrame
+        );
+      }
     },
     setCastsShadow(enabled: boolean) {
       castsShadow = enabled;
@@ -426,10 +474,20 @@ export async function mountDamagedHelmetScene(
       demandRunner?.frame();
     },
     async resize(width: number, height: number) {
+      const previousFrame = app.getResource(BaselineRenderDiagnosticsResource)?.frame ?? 0;
       graphics.resize({ width, height });
-      demandRunner?.frame();
+      if (demandRunner !== undefined) {
+        await advanceUntilRendered(
+          demandRunner,
+          () => app.getResource(BaselineRenderDiagnosticsResource),
+          width === 0 || height === 0 ? 'skipped' : 'rendered',
+          previousFrame
+        );
+      }
     },
     async destroy() {
+      window.removeEventListener('error', handleWindowError);
+      window.removeEventListener('unhandledrejection', handleWindowRejection);
       app.stop('helmet-demo-unmounted');
       await app.destroy();
       registry.dispose();
@@ -464,9 +522,9 @@ function createModelTransform(translation: Vec3, baseMatrix?: ArrayLike<number>)
     ? new Float32Array(baseMatrix)
     : new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
   if (baseMatrix) {
-    initial[12] += x;
-    initial[13] += y;
-    initial[14] += z;
+    initial[12] = (initial[12] ?? 0) + x;
+    initial[13] = (initial[13] ?? 0) + y;
+    initial[14] = (initial[14] ?? 0) + z;
   }
   return {
     matrix: new Float32Array(initial),
@@ -512,4 +570,35 @@ function updateModelRotation(
     matrix[10]!
   ]);
   worldTransform.worldVersion += 1;
+}
+
+function browserValidationErrors(graphics: BrowserGraphicsSession): readonly string[] {
+  const diagnostics = Reflect.get(graphics.adapter, 'diagnostics');
+  if (typeof diagnostics !== 'object' || diagnostics === null) return Object.freeze([]);
+  const list = Reflect.get(diagnostics, 'list');
+  if (typeof list !== 'function') return Object.freeze([]);
+  return Object.freeze(
+    (Reflect.apply(list, diagnostics, []) as readonly unknown[]).map((entry) => {
+      if (typeof entry !== 'object' || entry === null) return String(entry);
+      const message = Reflect.get(entry, 'message');
+      return typeof message === 'string' ? message : String(entry);
+    })
+  );
+}
+
+async function advanceUntilRendered(
+  demandRunner: DemandDrivenRunner,
+  diagnostics: () => BaselineRenderDiagnostics | undefined,
+  expected: 'rendered' | 'skipped' = 'rendered',
+  sinceFrame = -1
+): Promise<void> {
+  for (let frame = 0; frame < 30; frame++) {
+    demandRunner.frame();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const diag = diagnostics();
+    if (diag?.status === expected && diag.frame > sinceFrame) return;
+  }
+  throw new Error(
+    `DamagedHelmet renderer did not reach ${expected} within 30 deterministic frames.`
+  );
 }
