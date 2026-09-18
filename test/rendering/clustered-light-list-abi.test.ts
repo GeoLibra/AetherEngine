@@ -327,4 +327,40 @@ describe('CPU cluster build ABI round-trip and equivalence', () => {
       )
     ).toThrow(/exceeds WebGPU light list shader maximum indices/);
   });
+
+  test('packCpuClusterListForWebGpu throws fail-fast when directional lights exceed 64 (e.g. 65 directionals)', () => {
+    const sixtyFiveDirectionals = Array.from({ length: 65 }, (_, i) => i);
+    const fakeResult = {
+      viewId: 'fake-view',
+      source: 'cpu-upload' as const,
+      clusterCount: 1,
+      capacity: { maxDirectionalLights: 128, maxLightsPerCluster: 8, maxClusterIndices: 256 },
+      fallback: 'none' as const,
+      orderedLights: [],
+      globalDirectionalLightIndices: sixtyFiveDirectionals,
+      headers: [{ cluster: 0, offset: 0, count: 0, overflowed: false }],
+      lightIndices: [],
+      lightIndexCount: 0,
+      overflowed: false,
+      counters: {
+        inputLights: 65,
+        disabledLights: 0,
+        layerRejectedLights: 0,
+        clusterCandidates: 0,
+        intersectionTests: 0,
+        directionalCount: 65,
+        directionalTruncated: 0,
+        emittedIndices: 0,
+        overflowedClusters: 0,
+        truncatedIndices: 0
+      }
+    } satisfies ClusterBuildResult;
+    expect(() =>
+      packCpuClusterListForWebGpu(
+        { viewLayerMask: VIEW_MASK, lights: [] },
+        { maxDirectionalLights: 128, maxLightsPerCluster: 8, maxClusterIndices: 256 },
+        fakeResult
+      )
+    ).toThrow(/exceeds WebGPU light list shader maximum directional lights 64/);
+  });
 });

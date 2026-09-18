@@ -25,9 +25,7 @@ const STATIC_BACKEND_PREFERENCE = (() => {
 })();
 
 const IS_E2E =
-  typeof window !== 'undefined' &&
-  (new URLSearchParams(window.location.search).has('e2e') ||
-    new URLSearchParams(window.location.search).has('backend'));
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('e2e');
 
 export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
   const store = useCreateStore();
@@ -116,6 +114,7 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
     sceneRef.current.setEnvironmentIntensity(environmentIntensity);
     const rad = (lightAngle * Math.PI) / 180;
     sceneRef.current.setLightDirection([Math.cos(rad) * -0.7, -1, Math.sin(rad) * -0.7]);
+    sceneRef.current.setAnimate(animate);
     if (!animate) {
       sceneRef.current.setRotation((manualRotation * Math.PI) / 180);
     }
@@ -168,7 +167,8 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
             runtimeErrors: scene.runtimeErrors()
           }),
           resize: (width: number, height: number) => scene.resize(width, height),
-          setRotation: (angleRadians: number) => scene.setRotation(angleRadians),
+          setRotation: (angleRadians: number | null) => scene.setRotation(angleRadians),
+          setAnimate: (enabled: boolean) => scene.setAnimate(enabled),
           destroy: () => scene.destroy()
         });
         const diag = scene.modelDiagnostics();

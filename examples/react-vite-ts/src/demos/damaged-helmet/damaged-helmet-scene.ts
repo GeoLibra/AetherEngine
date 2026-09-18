@@ -56,7 +56,8 @@ export interface MountedDamagedHelmetScene {
   validationErrors(): readonly string[];
   runtimeErrors(): readonly string[];
   nativeError(): number | undefined;
-  setRotation(angleRadians: number): Promise<void> | void;
+  setRotation(angleRadians: number | null): Promise<void> | void;
+  setAnimate(enabled: boolean): void;
   setCastsShadow(enabled: boolean): void;
   setSunlight(enabled: boolean): void;
   setLightDirection(direction: readonly [number, number, number]): void;
@@ -276,7 +277,7 @@ export async function mountDamagedHelmetScene(
   let sunlight = options.sunlight !== false;
   let castsShadow = true;
   let forcedRotation: number | null = null;
-  const isAnimate = options.animate !== false;
+  let isAnimate = options.animate !== false;
   let lightDirection: Vec3 = [...INITIAL_LIGHT_DIRECTION];
 
   const app = new App()
@@ -433,8 +434,10 @@ export async function mountDamagedHelmetScene(
     validationErrors: () => browserValidationErrors(graphics),
     runtimeErrors: () => Object.freeze([...runtimeErrors]),
     nativeError: () => gl?.getError(),
-    async setRotation(angleRadians: number) {
-      if (!Number.isFinite(angleRadians)) throw new Error('Scene rotation angle must be finite.');
+    async setRotation(angleRadians: number | null) {
+      if (angleRadians !== null && !Number.isFinite(angleRadians)) {
+        throw new Error('Scene rotation angle must be finite.');
+      }
       const previousFrame = app.getResource(BaselineRenderDiagnosticsResource)?.frame ?? 0;
       forcedRotation = angleRadians;
       if (demandRunner !== undefined) {
@@ -445,6 +448,13 @@ export async function mountDamagedHelmetScene(
           previousFrame
         );
       }
+    },
+    setAnimate(enabled: boolean) {
+      isAnimate = enabled;
+      if (enabled) {
+        forcedRotation = null;
+      }
+      demandRunner?.frame();
     },
     setCastsShadow(enabled: boolean) {
       castsShadow = enabled;

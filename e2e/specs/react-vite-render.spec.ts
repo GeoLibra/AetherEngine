@@ -10,7 +10,8 @@ declare global {
     __damagedHelmetScene?: {
       state(): Record<string, unknown>;
       resize(width: number, height: number): Promise<void> | void;
-      setRotation(angleRadians: number): Promise<void> | void;
+      setRotation(angleRadians: number | null): Promise<void> | void;
+      setAnimate?(enabled: boolean): void;
     };
   }
 }
@@ -84,7 +85,7 @@ test('navigates to DamagedHelmet demo and renders glTF PBR model', async ({ page
     console.log(`[FAILED REQUEST] ${req.url()}: ${req.failure()?.errorText}`);
   });
   const backend = info.project.name.endsWith('webgl2') ? 'webgl2' : 'webgpu';
-  await page.goto(`/damaged-helmet?backend=${backend}`);
+  await page.goto(`/damaged-helmet?e2e&backend=${backend}`);
 
   const statusLocator = page.locator('.status-ready');
   await expect(statusLocator).toBeVisible({ timeout: 25_000 });
@@ -140,11 +141,11 @@ test('navigates to DamagedHelmet demo and renders glTF PBR model', async ({ page
 
   const boxTab = page.getByRole('button', { name: /CSM Box PBR/i });
   await boxTab.click({ force: true });
-  await expect(page).toHaveURL(`/?backend=${backend}`);
+  await expect(page).toHaveURL(`/?e2e&backend=${backend}`);
 
   const helmetTab = page.getByRole('button', { name: /Damaged Helmet/i });
   await helmetTab.click({ force: true });
-  await expect(page).toHaveURL(`/damaged-helmet?backend=${backend}`);
+  await expect(page).toHaveURL(`/damaged-helmet?e2e&backend=${backend}`);
 });
 
 function expectBackendClean(state: Record<string, unknown>, backend: string): void {
