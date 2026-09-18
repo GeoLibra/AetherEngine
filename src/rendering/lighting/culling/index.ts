@@ -5,3 +5,5 @@ export * from './light-list-abi';
 export * from './light-list-webgl-abi';
 export * from './webgpu-light-list-recorder';
 export * from './webgl-light-list-recorder';
+export * from './cluster-grid';
+export * from './cluster-light-list';

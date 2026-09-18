@@ -1,7 +1,10 @@
 import { bench, expect } from 'vitest';
 import {
+  createClusterWorkload,
   createLightingWorkload,
   createShadowSelectionWorkload,
+  runClusterReference,
+  runClusterSubject,
   runLightingReference,
   runLightingSubject,
   runShadowAtlasCompactionReference,
@@ -82,6 +85,36 @@ bench(
   () => {
     const subject = runLightingSubject(constrained);
     expect(subject).toEqual(constrainedReference);
+    expect(subject.counters.truncatedIndices).toBeGreaterThan(0);
+  },
+  { iterations: 1, warmupIterations: 0 }
+);
+
+for (const [tilesX, tilesY, slices, count] of [
+  [8, 8, 8, 8_192],
+  [16, 16, 8, 1_024],
+  [32, 32, 16, 256]
+] as const) {
+  const workload = createClusterWorkload(tilesX, tilesY, slices, count);
+  const reference = runClusterReference(workload);
+  bench(
+    `CPU cluster grid ${tilesX}x${tilesY}x${slices} x ${count} lights`,
+    () => {
+      const subject = runClusterSubject(workload);
+      expect(subject).toEqual(reference);
+      expect(subject.counters.clusterCandidates).toBeGreaterThan(0);
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
+}
+
+const constrainedClusters = createClusterWorkload(16, 16, 8, 1_024, 201, true);
+const constrainedClusterReference = runClusterReference(constrainedClusters);
+bench(
+  'CPU cluster grid constrained truncation 2048 clusters x 1024 lights',
+  () => {
+    const subject = runClusterSubject(constrainedClusters);
+    expect(subject).toEqual(constrainedClusterReference);
     expect(subject.counters.truncatedIndices).toBeGreaterThan(0);
   },
   { iterations: 1, warmupIterations: 0 }

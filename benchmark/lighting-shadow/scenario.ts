@@ -1,7 +1,14 @@
 import {
   ShadowAtlasAllocator,
+  buildCpuClusters,
   buildCpuLightLists,
+  buildClusterGrid,
   selectShadowRequests,
+  type ClusterBuildResult,
+  type ClusterCapacity,
+  type ClusterDepthPolicy,
+  type ClusterGrid,
+  type ClusterSliceShape,
   type CpuLightListCapacity,
   type LightReceiver,
   type PreparedLight,
@@ -10,6 +17,8 @@ import {
   type ShadowRequest,
   type WorldBounds
 } from '../../src/rendering';
+import { Mat4 } from '../../src/math';
+import { STANDARD_DEPTH } from '../../src/math/depth';
 
 export interface ShadowSelectionWorkload {
   readonly requests: readonly ShadowRequest[];
@@ -519,4 +528,398 @@ function referenceSphereIntersects(
 
 function randomPosition(random: () => number): readonly [number, number, number] {
   return [(random() - 0.5) * 60, (random() - 0.5) * 30, (random() - 0.5) * 60];
+}
+
+export interface ClusterWorkload {
+  readonly view: Readonly<{
+    readonly id: string;
+    readonly layerMask: number;
+    readonly inverseViewProjection: readonly number[];
+    readonly near: number;
+    readonly far: number;
+    readonly width: number;
+    readonly height: number;
+    readonly tilesX: number;
+    readonly tilesY: number;
+    readonly sliceCount: number;
+    readonly slicing: Readonly<{
+      readonly depth: ClusterDepthPolicy;
+      readonly shape: ClusterSliceShape;
+      readonly lambda: number;
+    }>;
+  }>;
+  readonly lights: readonly PreparedLight[];
+  readonly capacity: ClusterCapacity;
+}
+
+export interface CanonicalClusterLists {
+  readonly cacheIdentity: string;
+  readonly clusterCount: number;
+  readonly lightIndexCount: number;
+  readonly overflowed: boolean;
+  readonly directionalEntities: readonly RenderEntityId[];
+  readonly clusters: readonly Readonly<{
+    readonly cluster: number;
+    readonly count: number;
+    readonly overflowed: boolean;
+    readonly lightEntities: readonly RenderEntityId[];
+  }>[];
+  readonly counters: Readonly<{
+    readonly clusterCandidates: number;
+    readonly intersectionTests: number;
+    readonly emittedIndices: number;
+    readonly overflowedClusters: number;
+    readonly truncatedIndices: number;
+  }>;
+}
+
+export function createClusterWorkload(
+  tilesX: number,
+  tilesY: number,
+  sliceCount: number,
+  lightCount: number,
+  seed = 211,
+  constrained = false
+): ClusterWorkload {
+  let state = seed >>> 0;
+  const random = () => (state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 0x1_0000_0000;
+  const aspect = tilesX / tilesY;
+  const projection = Mat4.perspective(Math.PI / 4, aspect, 0.1, 100, STANDARD_DEPTH);
+  const lights: PreparedLight[] = [];
+  for (let index = 0; index < lightCount; index++) {
+    const common = {
+      entity: (lightCount - index) as RenderEntityId,
+      payloadVersion: 1,
+      colorLinear: [0.25 + random(), 0.25 + random(), 0.25 + random()] as const,
+      enabled: index % 19 !== 0,
+      layerMask: index % 17 === 0 ? 2 : 1,
+      castsShadow: index % 3 === 0
+    };
+    if (index % 19 === 0) {
+      lights.push({
+        ...common,
+        kind: 'directional',
+        direction: [0.2, -1, -0.3],
+        illuminanceLux: 50_000 + index
+      });
+    } else if (index % 3 === 0) {
+      const position = randomClusterPosition(random);
+      lights.push({
+        ...common,
+        kind: 'spot',
+        position,
+        direction: [0, 0, -1],
+        luminousIntensityCandela: 500 + index,
+        range: 3 + random() * 10,
+        innerRadians: 0.14,
+        outerRadians: 0.28
+      });
+    } else {
+      const position = randomClusterPosition(random);
+      lights.push({
+        ...common,
+        kind: 'point',
+        position,
+        luminousIntensityCandela: 500 + index,
+        range: 2 + random() * 6
+      });
+    }
+  }
+  return Object.freeze({
+    view: Object.freeze({
+      id: `cluster-view-${tilesX}x${tilesY}-${sliceCount}`,
+      layerMask: 1,
+      inverseViewProjection: Object.freeze([...Mat4.invert(projection)]),
+      near: 0.1,
+      far: 100,
+      width: 1920,
+      height: Math.round(1920 / aspect),
+      tilesX,
+      tilesY,
+      sliceCount,
+      slicing: Object.freeze({ depth: 'infinite', shape: 'logarithmic', lambda: 0.5 })
+    }),
+    lights: Object.freeze(lights),
+    capacity: Object.freeze(
+      constrained
+        ? {
+            maxDirectionalLights: 1,
+            maxLightsPerCluster: 4,
+            maxClusterIndices: tilesX * tilesY * sliceCount * 2
+          }
+        : {
+            maxDirectionalLights: lightCount,
+            maxLightsPerCluster: lightCount,
+            maxClusterIndices: tilesX * tilesY * sliceCount * lightCount
+          }
+    )
+  });
+}
+
+export function runClusterSubject(workload: ClusterWorkload): CanonicalClusterLists {
+  const grid = buildClusterGrid({
+    viewId: workload.view.id,
+    projectionRevision: 0,
+    deviceGeneration: 0,
+    viewport: { width: workload.view.width, height: workload.view.height },
+    cameraNear: workload.view.near,
+    cameraFar: workload.view.far,
+    slicing: workload.view.slicing,
+    sliceCount: workload.view.sliceCount,
+    inverseViewProjection: workload.view.inverseViewProjection,
+    tilesX: workload.view.tilesX,
+    tilesY: workload.view.tilesY
+  });
+  const result = buildCpuClusters({
+    viewId: workload.view.id,
+    viewLayerMask: workload.view.layerMask,
+    lights: workload.lights,
+    grid,
+    capacity: workload.capacity
+  });
+  return clusterObservation(result, grid, workload.view.layerMask, workload.lights);
+}
+
+/** Independent scalar oracle; re-sorts stable order and re-tests overlaps from scratch. */
+export function runClusterReference(workload: ClusterWorkload): CanonicalClusterLists {
+  const grid = buildClusterGrid({
+    viewId: workload.view.id,
+    projectionRevision: 0,
+    deviceGeneration: 0,
+    viewport: { width: workload.view.width, height: workload.view.height },
+    cameraNear: workload.view.near,
+    cameraFar: workload.view.far,
+    slicing: workload.view.slicing,
+    sliceCount: workload.view.sliceCount,
+    inverseViewProjection: workload.view.inverseViewProjection,
+    tilesX: workload.view.tilesX,
+    tilesY: workload.view.tilesY
+  });
+  const ordered = [...workload.lights].sort((left, right) => left.entity - right.entity);
+  const eligible = ordered.filter(
+    (light) => light.enabled && (light.layerMask & workload.view.layerMask) !== 0
+  );
+  const directionalEntities: RenderEntityId[] = [];
+  const local: Exclude<PreparedLight, { readonly kind: 'directional' }>[] = [];
+  for (const light of eligible) {
+    if (light.kind === 'directional') {
+      if (directionalEntities.length < workload.capacity.maxDirectionalLights)
+        directionalEntities.push(light.entity);
+    } else {
+      local.push(light);
+    }
+  }
+  const clusters: {
+    cluster: number;
+    count: number;
+    overflowed: boolean;
+    lightEntities: RenderEntityId[];
+  }[] = [];
+  const indices: RenderEntityId[] = [];
+  let clusterCandidates = 0;
+  let intersectionTests = 0;
+  let overflowedClusters = 0;
+  let truncatedIndices = 0;
+  for (const cluster of grid.clusters) {
+    const offset = indices.length;
+    let count = 0;
+    let overflowed = false;
+    for (const light of local) {
+      clusterCandidates++;
+      intersectionTests++;
+      if (!referenceInfluencesCluster(light, cluster.min, cluster.max)) continue;
+      if (
+        count >= workload.capacity.maxLightsPerCluster ||
+        indices.length >= workload.capacity.maxClusterIndices
+      ) {
+        overflowed = true;
+        truncatedIndices++;
+        continue;
+      }
+      indices.push(light.entity);
+      count++;
+    }
+    if (overflowed) overflowedClusters++;
+    clusters.push({
+      cluster: cluster.index,
+      count,
+      overflowed,
+      lightEntities: indices.slice(offset, offset + count)
+    });
+  }
+  return Object.freeze({
+    cacheIdentity: grid.cacheIdentity,
+    clusterCount: grid.clusterCount,
+    lightIndexCount: indices.length,
+    overflowed: overflowedClusters > 0,
+    directionalEntities: Object.freeze(directionalEntities),
+    clusters: Object.freeze(
+      clusters.map((cluster) =>
+        Object.freeze({ ...cluster, lightEntities: Object.freeze(cluster.lightEntities) })
+      )
+    ),
+    counters: Object.freeze({
+      clusterCandidates,
+      intersectionTests,
+      emittedIndices: indices.length,
+      overflowedClusters,
+      truncatedIndices
+    })
+  });
+}
+
+function clusterObservation(
+  result: ClusterBuildResult,
+  grid: ClusterGrid,
+  layerMask: number,
+  lights: readonly PreparedLight[]
+): CanonicalClusterLists {
+  const maskFiltered = result.orderedLights.filter(
+    (light) => light.enabled && (light.layerMask & layerMask) !== 0
+  );
+  const directionalEntities = Object.freeze(
+    result.globalDirectionalLightIndices.map((index) => maskFiltered[index]!.entity)
+  );
+  const clusters = result.headers.map((header) =>
+    Object.freeze({
+      cluster: header.cluster,
+      count: header.count,
+      overflowed: header.overflowed,
+      lightEntities: Object.freeze(
+        result.lightIndices
+          .slice(header.offset, header.offset + header.count)
+          .map((index) => result.orderedLights[index]!.entity)
+      )
+    })
+  );
+  return Object.freeze({
+    cacheIdentity: grid.cacheIdentity,
+    clusterCount: grid.clusterCount,
+    lightIndexCount: result.lightIndexCount,
+    overflowed: result.overflowed,
+    directionalEntities,
+    clusters: Object.freeze(clusters),
+    counters: Object.freeze({
+      clusterCandidates: result.counters.clusterCandidates,
+      intersectionTests: result.counters.intersectionTests,
+      emittedIndices: result.counters.emittedIndices,
+      overflowedClusters: result.counters.overflowedClusters,
+      truncatedIndices: result.counters.truncatedIndices
+    })
+  });
+}
+
+function referenceInfluencesCluster(
+  light: Exclude<PreparedLight, { readonly kind: 'directional' }>,
+  min: readonly [number, number, number],
+  max: readonly [number, number, number]
+): boolean {
+  if (light.kind === 'point') return referenceClusterSphere(light.position, light.range, min, max);
+  return referenceClusterCone(
+    light.position,
+    light.direction,
+    light.outerRadians,
+    light.range,
+    min,
+    max
+  );
+}
+
+function referenceClusterSphere(
+  center: readonly [number, number, number],
+  radius: number,
+  min: readonly [number, number, number],
+  max: readonly [number, number, number]
+): boolean {
+  let distanceSquared = 0;
+  for (let axis = 0; axis < 3; axis++) {
+    const value = center[axis]!;
+    const delta =
+      value < min[axis]! ? min[axis]! - value : value > max[axis]! ? value - max[axis]! : 0;
+    distanceSquared += delta * delta;
+  }
+  return distanceSquared <= radius * radius;
+}
+
+function referenceClusterCone(
+  apex: readonly [number, number, number],
+  axis: readonly [number, number, number],
+  outerRadians: number,
+  range: number,
+  min: readonly [number, number, number],
+  max: readonly [number, number, number]
+): boolean {
+  const length = Math.hypot(axis[0], axis[1], axis[2]);
+  const nx = axis[0] / length;
+  const ny = axis[1] / length;
+  const nz = axis[2] / length;
+  const planarityPoints = [
+    min[0] * nx + min[1] * ny + min[2] * nz,
+    min[0] * nx + min[1] * ny + max[2] * nz,
+    min[0] * nx + max[1] * ny + min[2] * nz,
+    min[0] * nx + max[1] * ny + max[2] * nz,
+    max[0] * nx + min[1] * ny + min[2] * nz,
+    max[0] * nx + min[1] * ny + max[2] * nz,
+    max[0] * nx + max[1] * ny + min[2] * nz,
+    max[0] * nx + max[1] * ny + max[2] * nz
+  ];
+  const apexProjection = apex[0] * nx + apex[1] * ny + apex[2] * nz;
+  let minProjection = Infinity;
+  let maxProjection = -Infinity;
+  for (const value of planarityPoints) {
+    if (value < minProjection) minProjection = value;
+    if (value > maxProjection) maxProjection = value;
+  }
+  if (minProjection > apexProjection + range) return false;
+  if (maxProjection < apexProjection) return false;
+
+  let low = 0;
+  let high = range;
+  for (let iteration = 0; iteration < 64; iteration++) {
+    const step = (high - low) / 3;
+    const first = low + step;
+    const second = high - step;
+    const firstPoint = [apex[0] + nx * first, apex[1] + ny * first, apex[2] + nz * first] as const;
+    const secondPoint = [
+      apex[0] + nx * second,
+      apex[1] + ny * second,
+      apex[2] + nz * second
+    ] as const;
+    if (
+      referenceClusterDistanceSquared(firstPoint, min, max) <=
+      referenceClusterDistanceSquared(secondPoint, min, max)
+    ) {
+      high = second;
+    } else {
+      low = first;
+    }
+  }
+  const t = (low + high) * 0.5;
+  const axisPoint = [apex[0] + nx * t, apex[1] + ny * t, apex[2] + nz * t] as const;
+  const distance = Math.sqrt(referenceClusterDistanceSquared(axisPoint, min, max));
+  return distance <= t * Math.tan(outerRadians);
+}
+
+function referenceClusterDistanceSquared(
+  point: readonly [number, number, number],
+  min: readonly [number, number, number],
+  max: readonly [number, number, number]
+): number {
+  let distanceSquared = 0;
+  for (let axis = 0; axis < 3; axis++) {
+    const delta =
+      point[axis]! < min[axis]!
+        ? min[axis]! - point[axis]!
+        : point[axis]! > max[axis]!
+          ? point[axis]! - max[axis]!
+          : 0;
+    distanceSquared += delta * delta;
+  }
+  return distanceSquared;
+}
+
+function randomClusterPosition(random: () => number): readonly [number, number, number] {
+  const lateral = (random() - 0.5) * 4;
+  const depth = 3 + random() * 40;
+  return [lateral, lateral, -depth];
 }

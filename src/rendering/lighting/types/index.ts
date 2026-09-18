@@ -7,6 +7,19 @@ export type {
 } from './light';
 
 export type {
+  ClusterAABB,
+  ClusterBuildCounters,
+  ClusterBuildResult,
+  ClusterCapacity,
+  ClusterDepthPolicy,
+  ClusterGrid,
+  ClusterLightListHeader,
+  ClusterSlice,
+  ClusterSliceShape,
+  ClusterSlicingPolicy
+} from './cluster';
+
+export type {
   CpuLightListCapacity,
   CpuLightListCounters,
   CpuLightListHeader,
