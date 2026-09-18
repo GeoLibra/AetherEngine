@@ -454,7 +454,12 @@ export async function mountDamagedHelmetScene(
       if (enabled) {
         forcedRotation = null;
       }
-      demandRunner?.frame();
+      if (demandRunner !== undefined) {
+        demandRunner.setContinuous(enabled);
+        if (!enabled) {
+          demandRunner.frame();
+        }
+      }
     },
     setCastsShadow(enabled: boolean) {
       castsShadow = enabled;

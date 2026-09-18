@@ -1,4 +1,19 @@
-import type { AppExit, FrameOutcome, Runner, RunnerContext } from '@aether/engine';
+import type {
+  AnimationFrameHost,
+  AppExit,
+  FrameOutcome,
+  Runner,
+  RunnerContext
+} from '@aether/engine';
+
+const DEFAULT_HOST: AnimationFrameHost = {
+  request: (cb) =>
+    typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame(cb)
+      : (setTimeout(() => cb(Date.now()), 16) as unknown as number),
+  cancel: (id) =>
+    typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame(id) : clearTimeout(id)
+};
 
 /** Persistent runner advanced explicitly by deterministic browser acceptance controls. */
 export class DemandDrivenRunner implements Runner {
@@ -7,6 +22,14 @@ export class DemandDrivenRunner implements Runner {
   private rejectRun: ((error: unknown) => void) | undefined;
   private stopReason: string | undefined;
   private frames = 0;
+  private continuous = false;
+  private rafId: number | undefined;
+  private baseTimestamp: number | undefined;
+  private readonly host: AnimationFrameHost;
+
+  constructor(host: AnimationFrameHost = DEFAULT_HOST) {
+    this.host = host;
+  }
 
   run(context: RunnerContext): Promise<AppExit> {
     if (this.context !== undefined)
@@ -35,12 +58,53 @@ export class DemandDrivenRunner implements Runner {
     }
   }
 
+  setContinuous(enabled: boolean): void {
+    if (this.continuous === enabled) return;
+    this.continuous = enabled;
+    if (enabled) {
+      this.baseTimestamp = undefined;
+      this.scheduleNextContinuousFrame();
+    } else if (this.rafId !== undefined) {
+      this.host.cancel(this.rafId);
+      this.rafId = undefined;
+    }
+  }
+
+  private scheduleNextContinuousFrame(): void {
+    if (!this.continuous || this.context === undefined || this.stopReason !== undefined) return;
+    this.rafId = this.host.request((nowMs) => {
+      this.rafId = undefined;
+      if (!this.continuous || this.context === undefined || this.stopReason !== undefined) return;
+      if (this.baseTimestamp === undefined) {
+        this.baseTimestamp = nowMs / 1000 - this.frames / 60;
+      }
+      const timestampSeconds = nowMs / 1000 - this.baseTimestamp;
+      try {
+        this.context.frame(timestampSeconds);
+        this.frames += 1;
+      } catch (error) {
+        this.rejectRun?.(error);
+        this.clear();
+        return;
+      }
+      this.scheduleNextContinuousFrame();
+    });
+  }
+
   requestStop(reason: string): void {
     this.stopReason ??= reason;
+    if (this.rafId !== undefined) {
+      this.host.cancel(this.rafId);
+      this.rafId = undefined;
+    }
     if (this.context !== undefined) this.finish();
   }
 
   private finish(): void {
+    if (this.rafId !== undefined) {
+      this.host.cancel(this.rafId);
+      this.rafId = undefined;
+    }
     this.resolveRun?.(
       Object.freeze({ reason: this.stopReason ?? 'requested', frames: this.frames })
     );
@@ -48,6 +112,11 @@ export class DemandDrivenRunner implements Runner {
   }
 
   private clear(): void {
+    if (this.rafId !== undefined) {
+      this.host.cancel(this.rafId);
+      this.rafId = undefined;
+    }
+    this.continuous = false;
     this.context = undefined;
     this.resolveRun = undefined;
     this.rejectRun = undefined;
