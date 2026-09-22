@@ -13,7 +13,6 @@ export interface WebGL2MetricsSnapshot extends RHIQueueMetrics {
   readonly framebufferCacheMisses: number;
   readonly vertexArrayCacheHits: number;
   readonly vertexArrayCacheMisses: number;
-  readonly uploadBytes: number;
   readonly syncLag: number;
   readonly contextLosses: number;
   readonly lastFailure?: string;
@@ -25,6 +24,7 @@ export class WebGL2Metrics {
   glCalls = 0;
   stateSkips = 0;
   uploadBytes = 0;
+  uploadCalls = 0;
   programCacheHits = 0;
   programCacheMisses = 0;
   contextLosses = 0;
@@ -46,6 +46,7 @@ export class WebGL2Metrics {
     this.stateSkips += 1;
   }
   recordUpload(byteLength: number): void {
+    this.uploadCalls += 1;
     this.uploadBytes += byteLength;
   }
   recordProgramCacheHit(): void {
