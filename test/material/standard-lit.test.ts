@@ -36,7 +36,7 @@ describe('standard-lit built-in material', () => {
             requiredMeshCapabilities: ['normal', 'uv0', 'uv1', 'tangent'],
             attachmentFormats: ['bgra8unorm', 'rgba8unorm'],
             depthStencilFormats: ['depth24plus'],
-            sampleCounts: [1]
+            sampleCounts: [1, 4]
           }
         }
       ]
