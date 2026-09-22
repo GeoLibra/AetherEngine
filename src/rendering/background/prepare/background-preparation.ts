@@ -61,6 +61,8 @@ export interface PrepareBackgroundOptions {
   readonly background: ViewBackground;
   readonly colorFormat: GPUTextureFormat;
   readonly depthFormat?: GPUTextureFormat | undefined;
+  /** Rasterization sample count shared by the background pass attachments and pipeline. */
+  readonly sampleCount?: number | undefined;
   readonly environmentAsset?: EnvironmentAsset | undefined;
   readonly environmentCache: EnvironmentTextureCache;
   readonly environmentRotation?: Quaternion | undefined;
@@ -98,6 +100,7 @@ export function prepareBackground(options: PrepareBackgroundOptions): PreparedBa
     background,
     colorFormat,
     depthFormat,
+    sampleCount,
     environmentAsset,
     environmentCache,
     environmentRotation,
@@ -181,6 +184,7 @@ export function prepareBackground(options: PrepareBackgroundOptions): PreparedBa
     const pipelineLease = prepareBackgroundPipeline(device, {
       colorFormat,
       depthFormat,
+      ...(sampleCount === undefined ? {} : { sampleCount }),
       label: `skybox-${view.viewId}`
     });
     const pipelinePrep = pipelineLease.prepared;

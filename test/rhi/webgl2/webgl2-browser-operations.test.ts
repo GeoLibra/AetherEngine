@@ -77,6 +77,74 @@ describe('browser WebGL2 native operations', () => {
     ).toThrow(/unsupported WebGL2 texture format/i);
   });
 
+  test('allocates 4x attachments as renderbuffers and resolves them into a texture', () => {
+    const gl = new FakeOperationsGL();
+    const port = createBrowserWebGL2OperationPort(gl);
+    const multisample = port.createTexture?.({
+      size: { width: 64, height: 32, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10,
+      sampleCount: 4
+    });
+    const resolved = port.createTexture?.({
+      size: { width: 64, height: 32, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10
+    });
+    if (multisample === undefined || resolved === undefined) {
+      throw new Error('Expected MSAA attachments.');
+    }
+    const framebuffer = port.createFramebuffer?.({
+      colorAttachments: [
+        { view: multisample, resolveTarget: resolved, loadOp: 'clear', storeOp: 'store' }
+      ]
+    });
+    if (framebuffer === undefined) throw new Error('Expected MSAA framebuffer.');
+    port.bindFramebuffer?.(framebuffer);
+    port.resolveRenderPass?.({
+      colorAttachments: [
+        { view: multisample, resolveTarget: resolved, loadOp: 'clear', storeOp: 'store' }
+      ]
+    });
+    expect(gl.calls).toEqual(
+      expect.arrayContaining([
+        ['bindRenderbuffer', gl.RENDERBUFFER, multisample],
+        ['renderbufferStorageMultisample', gl.RENDERBUFFER, 4, gl.RGBA8, 64, 32],
+        [
+          'framebufferRenderbuffer',
+          gl.FRAMEBUFFER,
+          gl.COLOR_ATTACHMENT0,
+          gl.RENDERBUFFER,
+          multisample
+        ],
+        ['blitFramebuffer', 0, 0, 64, 32, 0, 0, 64, 32, gl.COLOR_BUFFER_BIT, gl.NEAREST]
+      ])
+    );
+    expect(() => port.bindTexture?.(0, multisample)).toThrow(/renderbuffers cannot be bound/i);
+    port.deleteTexture?.(multisample);
+    expect(gl.calls).toContainEqual(['deleteRenderbuffer', multisample]);
+  });
+
+  test('requires multisample renderbuffers to resolve before texture copies', () => {
+    const port = createBrowserWebGL2OperationPort(new FakeOperationsGL());
+    const multisample = port.createTexture?.({
+      size: { width: 1, height: 1, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm',
+      usage: 0x10,
+      sampleCount: 4
+    });
+    if (multisample === undefined) throw new Error('Missing multisample attachment.');
+
+    expect(() =>
+      port.writeTexture?.(
+        { texture: multisample },
+        new Uint8Array(4),
+        { bytesPerRow: 4 },
+        { width: 1, height: 1, depthOrArrayLayers: 1 }
+      )
+    ).toThrow(/resolve multisample renderbuffers first/i);
+  });
+
   test('allocates, binds, and attaches a selected 2D-array depth layer', () => {
     const gl = new FakeOperationsGL();
     const port = createBrowserWebGL2OperationPort(gl);
@@ -422,6 +490,25 @@ describe('browser WebGL2 native operations', () => {
     ]);
   });
 
+  test('rejects sRGB texture copies rather than applying WebGL color conversion', () => {
+    const port = createBrowserWebGL2OperationPort(new FakeOperationsGL());
+    const texture = port.createTexture?.({
+      size: { width: 1, height: 1, depthOrArrayLayers: 1 },
+      format: 'rgba8unorm-srgb',
+      usage: 0x13
+    });
+    const buffer = port.createBuffer?.({ size: 256, usage: 0x0c });
+    if (texture === undefined || buffer === undefined)
+      throw new Error('Missing sRGB copy resources.');
+    expect(() =>
+      port.copyBufferToTexture?.(
+        { buffer, bytesPerRow: 256, rowsPerImage: 1 },
+        { texture },
+        { width: 1, height: 1, depthOrArrayLayers: 1 }
+      )
+    ).toThrow(/sRGB copy would apply color conversion/i);
+  });
+
   test('applies load/store operations and resolves without a pass-boundary flush', () => {
     const gl = new FakeOperationsGL();
     const port = createBrowserWebGL2OperationPort(gl);
@@ -562,7 +649,9 @@ class FakeOperationsGL {
   readonly TEXTURE_2D_ARRAY = 0x8c1a;
   readonly TEXTURE0 = 0x84c0;
   readonly RGBA8 = 0x8058;
+  readonly SRGB8_ALPHA8 = 0x8c43;
   readonly DEPTH_COMPONENT24 = 0x81a6;
+  readonly RENDERBUFFER = 0x8d41;
   readonly TEXTURE_MIN_FILTER = 0x2801;
   readonly TEXTURE_MAG_FILTER = 0x2800;
   readonly TEXTURE_WRAP_S = 0x2802;
@@ -632,6 +721,18 @@ class FakeOperationsGL {
   createTexture(): object {
     return { kind: 'texture', id: this.nextId++ };
   }
+  createRenderbuffer(): object {
+    return { kind: 'renderbuffer', id: this.nextId++ };
+  }
+  bindRenderbuffer(...args: unknown[]): void {
+    this.calls.push(['bindRenderbuffer', ...args]);
+  }
+  renderbufferStorageMultisample(...args: unknown[]): void {
+    this.calls.push(['renderbufferStorageMultisample', ...args]);
+  }
+  deleteRenderbuffer(...args: unknown[]): void {
+    this.calls.push(['deleteRenderbuffer', ...args]);
+  }
   bindTexture(...args: unknown[]): void {
     this.calls.push(['bindTexture', ...args]);
   }
@@ -670,6 +771,9 @@ class FakeOperationsGL {
   }
   framebufferTexture2D(...args: unknown[]): void {
     this.calls.push(['framebufferTexture2D', ...args]);
+  }
+  framebufferRenderbuffer(...args: unknown[]): void {
+    this.calls.push(['framebufferRenderbuffer', ...args]);
   }
   framebufferTextureLayer(...args: unknown[]): void {
     this.calls.push(['framebufferTextureLayer', ...args]);

@@ -33,7 +33,27 @@ export type NormalizedBaselineRenderingOptions = Omit<BaselineRenderingOptions, 
     featurePolicy: PreparedFeaturePolicy;
     environment: EnvironmentAsset | undefined;
     environmentLighting: NormalizedBaselineEnvironmentLighting;
+    sampleCount: 1 | 4;
+    msaaFallbackReason?: string | undefined;
   }>;
+
+/** Resolves the baseline's requested sample count against every render attachment it owns. */
+export function resolveBaselineSampleCount(
+  device: RHIDevice,
+  requested: 1 | 4 | undefined
+): Readonly<{ sampleCount: 1 | 4; fallbackReason?: string }> {
+  const sampleCount = requested ?? 1;
+  if (sampleCount === 1) return Object.freeze({ sampleCount });
+  for (const format of ['rgba16float', 'depth24plus'] as const) {
+    if (!device.capabilities.formats.get(format)?.sampleCounts.includes(sampleCount)) {
+      return Object.freeze({
+        sampleCount: 1,
+        fallbackReason: `${format} does not support sampleCount ${sampleCount}`
+      });
+    }
+  }
+  return Object.freeze({ sampleCount });
+}
 
 export function validateOptions(
   options: BaselineRenderingOptions
@@ -61,10 +81,15 @@ export function validateOptions(
     featurePolicy.snapshot.cacheDomainHashes.get('shader-pipeline') ?? featurePolicy.snapshot.hash;
   if (options.featurePolicyKey !== undefined && options.featurePolicyKey !== canonicalPolicyKey) {
     throw new Error(
-      'Baseline rendering featurePolicyKey "' + options.featurePolicyKey + '" diverges from policy snapshot key "' + canonicalPolicyKey + '".'
+      'Baseline rendering featurePolicyKey "' +
+        options.featurePolicyKey +
+        '" diverges from policy snapshot key "' +
+        canonicalPolicyKey +
+        '".'
     );
   }
   const featurePolicyKey = canonicalPolicyKey;
+  const msaa = resolveBaselineSampleCount(options.graphics.device, options.sampleCount);
   if ((options.mesh === undefined) !== (options.material === undefined)) {
     throw new Error(
       'Baseline rendering mesh and material registrations must be provided together.'
@@ -107,6 +132,8 @@ export function validateOptions(
       : { materialResources: options.materialResources }),
     environment,
     environmentLighting,
+    sampleCount: msaa.sampleCount,
+    ...(msaa.fallbackReason === undefined ? {} : { msaaFallbackReason: msaa.fallbackReason }),
     ...(background === undefined ? {} : { background }),
     ...(options.forceSeparatePasses === undefined
       ? {}
@@ -195,6 +222,7 @@ export function createBaselineBackgroundFrame(
     background: bg,
     colorFormat: 'rgba16float',
     depthFormat: 'depth24plus',
+    sampleCount: options.sampleCount,
     ...(options.environment === undefined ? {} : { environmentAsset: options.environment }),
     environmentCache: sharedEnvironmentTextureCache,
     environmentIntensity: options.environmentLighting.intensity,

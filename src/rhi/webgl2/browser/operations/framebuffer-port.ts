@@ -249,6 +249,15 @@ function attachFramebufferTexture(
   attachmentPoint: number,
   subresource: ReturnType<typeof attachmentSubresource>
 ): void {
+  if (subresource.facts.storage === 'renderbuffer') {
+    glCall(gl, 'framebufferRenderbuffer', [
+      constant(gl, 'FRAMEBUFFER'),
+      attachmentPoint,
+      constant(gl, 'RENDERBUFFER'),
+      subresource.texture
+    ]);
+    return;
+  }
   if (subresource.facts.target === 'TEXTURE_2D_ARRAY') {
     glCall(gl, 'framebufferTextureLayer', [
       constant(gl, 'FRAMEBUFFER'),
