@@ -15,7 +15,13 @@ import {
   type WebGPUNativeTexturePort
 } from '../src';
 
-const COMMAND_BUFFER_COUNT = 1_000;
+const profile = process.env.AETHER_BENCH_PROFILE ?? 'smoke';
+if (profile !== 'smoke' && profile !== 'standard' && profile !== 'nightly') {
+  throw new Error(`Unknown RHI benchmark profile: ${profile}.`);
+}
+// The scale exercises recording, submission, and WebGL2 deferred replay without changing semantics.
+const COMMAND_BUFFER_COUNT = profile === 'smoke' ? 1_000 : profile === 'standard' ? 5_000 : 20_000;
+const SURFACE_FRAME_COUNT = profile === 'smoke' ? 10 : profile === 'standard' ? 60 : 240;
 
 class WebGL2BenchmarkContext {
   readonly info = { name: 'Benchmark WebGL2' };
@@ -150,17 +156,17 @@ const webgpuColorView = webgpuColor.createView();
 bench(
   'keeps WebGL2 surface backing allocation bounded across frame and resize axes',
   () => {
-    runSurfaceLeaseScenario(10, 0);
+    runSurfaceLeaseScenario(SURFACE_FRAME_COUNT, 0);
     runSurfaceLeaseScenario(COMMAND_BUFFER_COUNT, 0);
-    runSurfaceLeaseScenario(10, 1);
-    runSurfaceLeaseScenario(10, 4);
+    runSurfaceLeaseScenario(SURFACE_FRAME_COUNT, 1);
+    runSurfaceLeaseScenario(SURFACE_FRAME_COUNT, 4);
     runPerFrameAllocationReference(COMMAND_BUFFER_COUNT);
   },
   { iterations: 1, warmupIterations: 0 }
 );
 
 bench(
-  'records and submits 1000 deterministic command buffers',
+  `records and submits ${COMMAND_BUFFER_COUNT} deterministic command buffers`,
   () => {
     const device = new NullDevice();
     const buffers = [];

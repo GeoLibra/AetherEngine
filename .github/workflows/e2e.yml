@@ -137,3 +137,46 @@ jobs:
             e2e/specs/*-snapshots/*-linux.png
           if-no-files-found: ignore
           retention-days: 7
+
+  e2e-macos:
+    needs: resolve
+    if: >-
+      needs.resolve.outputs.has-projects == 'true' &&
+      (contains(needs.resolve.outputs.matrix, 'webgl2-render') ||
+      contains(needs.resolve.outputs.matrix, 'webgpu-render') ||
+      contains(needs.resolve.outputs.matrix, 'react-vite-webgl2') ||
+      contains(needs.resolve.outputs.matrix, 'react-vite-webgpu'))
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [webgl2-render, webgpu-render, react-vite-webgl2, react-vite-webgpu]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install chromium
+      - name: Run ${{ matrix.project }}
+        env:
+          E2E_PROJECT: ${{ matrix.project }}
+          UPDATE_SNAPSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots || false }}
+        run: |
+          snapshot_args=""
+          if [ "$UPDATE_SNAPSHOTS" = "true" ]; then snapshot_args="--update-snapshots=all"; fi
+          pnpm e2e --project="$E2E_PROJECT" $snapshot_args
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-macos-${{ matrix.project }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/
+            playwright-report/
+            e2e/specs/*-snapshots/*-darwin.png
+          if-no-files-found: ignore
+          retention-days: 7
