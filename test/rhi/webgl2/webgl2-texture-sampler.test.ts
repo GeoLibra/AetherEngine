@@ -224,6 +224,16 @@ describe('WebGL2 format capability queries', () => {
     const extensions = new Set<string>();
     const formats = queryWebGL2Formats(gl, extensions);
     expect(formats.has('rgba16float')).toBe(false);
+    expect(formats.has('rgba32float')).toBe(false);
+    expect(formats.get('r8unorm')).toMatchObject({
+      sample: true,
+      filter: true,
+      render: true,
+      blend: true,
+      copySrc: true,
+      copyDst: true,
+      sampleCounts: [1, 4]
+    });
   });
 
   it('keeps core half-float filtering without the 32-bit float filtering extension', () => {
@@ -236,6 +246,16 @@ describe('WebGL2 format capability queries', () => {
     expect(cap.sample).toBe(true);
     expect(cap.render).toBe(true);
     expect(cap.sampleCounts).toEqual([1, 4]);
+    expect(formats.get('rgba32float')).toMatchObject({
+      sample: true,
+      filter: false,
+      render: true,
+      blend: false,
+      storage: false,
+      copySrc: true,
+      copyDst: true,
+      sampleCounts: [1]
+    });
   });
 
   it('declares rgba16float filter=true when both float color and linear filtering extensions are present', () => {

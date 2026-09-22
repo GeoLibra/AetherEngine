@@ -166,6 +166,18 @@ async function createDevice() {
 }
 
 describe('WebGPU direct command recording', () => {
+  test('rejects cross-format texture copies before native encoder forwarding', async () => {
+    const { device, native } = await createDevice();
+    const source = device.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: 1 });
+    const destination = device.createTexture({ size: [1, 1], format: 'r8unorm', usage: 2 });
+    const encoder = device.createCommandEncoder();
+
+    expect(() =>
+      encoder.copyTextureToTexture({ texture: source }, { texture: destination }, [1, 1])
+    ).toThrow(/require identical formats/i);
+    expect(native.encoders[0]?.calls).toEqual([]);
+  });
+
   test('forwards copy commands immediately through exactly one native encoder', async () => {
     const { device, native } = await createDevice();
     const source = device.createBuffer({ size: 16, usage: 1 });

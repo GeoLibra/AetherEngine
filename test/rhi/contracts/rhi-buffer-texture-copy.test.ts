@@ -81,4 +81,73 @@ describe('RHI buffer-texture copy contract', () => {
       encoder.copyBufferToTexture({ buffer, bytesPerRow: 256 }, { texture, origin: [2, 0] }, [4, 4])
     ).toThrow('Texture copy origin must align to 4x4 format blocks.');
   });
+
+  test('normalizes the 16-byte integer texel layout used by light-list textures', () => {
+    const device = new NullDevice();
+    const buffer = device.createBuffer({ size: 1024, usage: BUFFER_COPY_SRC });
+    const texture = device.createTexture({
+      size: [2, 1],
+      format: 'rgba32uint',
+      usage: TEXTURE_COPY_DST
+    });
+    const encoder = device.createCommandEncoder();
+
+    encoder.copyBufferToTexture({ buffer, bytesPerRow: 256 }, { texture }, [2, 1]);
+
+    expect(encoder.finish().getCommandStream()).toHaveLength(1);
+  });
+
+  test('rejects multisample textures before a backend copy operation is recorded', () => {
+    const device = new NullDevice();
+    const buffer = device.createBuffer({ size: 1024, usage: BUFFER_COPY_SRC });
+    const texture = device.createTexture({
+      size: [4, 2],
+      format: 'rgba8unorm',
+      usage: TEXTURE_COPY_DST,
+      sampleCount: 4
+    });
+    const encoder = device.createCommandEncoder();
+
+    expect(() =>
+      encoder.copyBufferToTexture({ buffer, bytesPerRow: 256 }, { texture }, [4, 2])
+    ).toThrow(/single-sample texture/i);
+    expect(() => encoder.copyTextureToTexture({ texture }, { texture }, [4, 2])).toThrow(
+      /Texture copies require a single-sample texture/i
+    );
+  });
+
+  test('rejects texture-to-texture format conversion before backend lowering', () => {
+    const device = new NullDevice();
+    const source = device.createTexture({
+      size: [1, 1],
+      format: 'rgba8unorm',
+      usage: TEXTURE_COPY_SRC
+    });
+    const destination = device.createTexture({
+      size: [1, 1],
+      format: 'r8unorm',
+      usage: TEXTURE_COPY_DST
+    });
+    const encoder = device.createCommandEncoder();
+
+    expect(() =>
+      encoder.copyTextureToTexture({ texture: source }, { texture: destination }, [1, 1])
+    ).toThrow(/require identical formats/i);
+  });
+
+  test('rejects overlapping aliases but permits disjoint ranges in one texture mip', () => {
+    const device = new NullDevice();
+    const texture = device.createTexture({
+      size: [8, 1],
+      format: 'rgba8unorm',
+      usage: TEXTURE_COPY_SRC | TEXTURE_COPY_DST
+    });
+    const encoder = device.createCommandEncoder();
+
+    expect(() =>
+      encoder.copyTextureToTexture({ texture, origin: [0, 0] }, { texture, origin: [1, 0] }, [2, 1])
+    ).toThrow(/cannot overlap/i);
+    encoder.copyTextureToTexture({ texture, origin: [0, 0] }, { texture, origin: [4, 0] }, [2, 1]);
+    expect(encoder.finish().getCommandStream()).toHaveLength(1);
+  });
 });

@@ -37,6 +37,8 @@ export function queryWebGL2Formats(
   const maxSamples = numberParameter(gl, 'MAX_SAMPLES');
   const sampleCounts = maxSamples >= 4 ? [1, 4] : [1];
   const formats = new Map<GPUTextureFormat, FormatCapabilities>();
+  formats.set('r8unorm', format(true, true, true, true, sampleCounts));
+  formats.set('rg8unorm', format(true, true, true, true, sampleCounts));
   formats.set('rgba8unorm', format(true, true, true, true, sampleCounts));
   formats.set('rgba8unorm-srgb', format(true, true, true, true, sampleCounts));
   // RGBA32UI color rendering and integer sampling are core WebGL2 capabilities.
@@ -46,6 +48,9 @@ export function queryWebGL2Formats(
     // Half-float linear filtering is core in WebGL2; OES_texture_float_linear
     // controls 32-bit floating-point filtering, not RGBA16F.
     formats.set('rgba16float', format(true, true, true, false, sampleCounts));
+    // RGBA32F is renderable with EXT_color_buffer_float, but linear filtering
+    // requires a separate extension and portable blending is not guaranteed.
+    formats.set('rgba32float', format(true, false, true, false, [1]));
   }
   return formats;
 }

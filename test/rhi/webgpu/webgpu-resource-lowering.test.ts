@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   WebGPUAdapter,
+  WebGPUNativeOperationError,
   type WebGPUNativeAdapterPort,
   type WebGPUNativeDevicePort,
   type WebGPUNativeDeviceRequest,
@@ -81,6 +82,9 @@ class NativeDevice implements WebGPUNativeDevicePort {
   createComputePipeline(descriptor: Readonly<Record<string, unknown>>): WebGPUNativeResourcePort {
     this.calls.push({ operation: 'compute-pipeline', descriptor });
     return new NativeResource();
+  }
+  createCommandEncoder(): never {
+    throw new Error('Encoder creation is not configured for this test device.');
   }
 }
 
@@ -184,6 +188,33 @@ describe('WebGPU resource lowering', () => {
       'belongs to a different WebGPUDevice.'
     );
     expect(second.native.calls).toHaveLength(callCount);
+  });
+
+  test('wraps texture and command-encoder native failures with their operation and label', async () => {
+    const { device, native } = await createDevice();
+    const textureFailure = new Error('texture allocation failed');
+    native.createTexture = () => {
+      throw textureFailure;
+    };
+    native.createCommandEncoder = () => {
+      throw new Error('encoder allocation failed');
+    };
+
+    expect(() =>
+      device.createTexture({ label: 'color-target', size: [1, 1], format: 'rgba8unorm', usage: 1 })
+    ).toThrow(WebGPUNativeOperationError);
+    expect(() => device.createCommandEncoder({ label: 'frame-encoder' })).toThrow(
+      'WebGPU operation createCommandEncoder failed for "frame-encoder".'
+    );
+    try {
+      device.createTexture({ label: 'color-target', size: [1, 1], format: 'rgba8unorm', usage: 1 });
+    } catch (error) {
+      expect(error).toMatchObject({
+        operation: 'createTexture',
+        resourceLabel: 'color-target',
+        cause: textureFailure
+      });
+    }
   });
 
   test('enforces the unmapped to mapping-pending to mapped state machine', async () => {

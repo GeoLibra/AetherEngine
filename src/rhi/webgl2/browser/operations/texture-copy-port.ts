@@ -26,9 +26,11 @@ export function createBrowserWebGL2TextureCopyPort(
       const upload =
         copy.format === 'rgba32uint'
           ? new Uint32Array(data.buffer, data.byteOffset + offset, byteLength / 4)
-          : copy.format === 'rgba16float'
-            ? new Uint16Array(data.buffer, data.byteOffset + offset, byteLength / 2)
-            : new Uint8Array(data.buffer, data.byteOffset + offset, byteLength);
+          : copy.format === 'rgba32float'
+            ? new Float32Array(data.buffer, data.byteOffset + offset, byteLength / 4)
+            : copy.format === 'rgba16float'
+              ? new Uint16Array(data.buffer, data.byteOffset + offset, byteLength / 2)
+              : new Uint8Array(data.buffer, data.byteOffset + offset, byteLength);
       texSubImage(gl, copy, extent, upload);
       setRowLength(gl, 'UNPACK_ROW_LENGTH', 0, 4);
     },
@@ -65,16 +67,36 @@ export function createBrowserWebGL2TextureCopyPort(
             'WebGL2 native RGBA16F buffer readback is unsupported: HALF_FLOAT read type is required.'
           );
         }
+        if (
+          copy.format === 'rgba32float' &&
+          (glCall(gl, 'getParameter', [constant(gl, 'IMPLEMENTATION_COLOR_READ_FORMAT')]) !==
+            constant(gl, 'RGBA') ||
+            glCall(gl, 'getParameter', [constant(gl, 'IMPLEMENTATION_COLOR_READ_TYPE')]) !==
+              constant(gl, 'FLOAT'))
+        ) {
+          throw new Error(
+            'WebGL2 native RGBA32F buffer readback is unsupported: FLOAT read type is required.'
+          );
+        }
         glCall(gl, 'bindBuffer', [constant(gl, 'PIXEL_PACK_BUFFER'), buffer]);
         setAlignment(gl, 'PACK_ALIGNMENT', 4);
         setRowLength(gl, 'PACK_ROW_LENGTH', destination.bytesPerRow, bytesPerPixel(copy.format));
-        const format = copy.format === 'rgba32uint' ? 'RGBA_INTEGER' : 'RGBA';
+        const format =
+          copy.format === 'rgba32uint'
+            ? 'RGBA_INTEGER'
+            : copy.format === 'r8unorm'
+              ? 'RED'
+              : copy.format === 'rg8unorm'
+                ? 'RG'
+                : 'RGBA';
         const type =
           copy.format === 'rgba32uint'
             ? 'UNSIGNED_INT'
-            : copy.format === 'rgba16float'
-              ? 'HALF_FLOAT'
-              : 'UNSIGNED_BYTE';
+            : copy.format === 'rgba32float'
+              ? 'FLOAT'
+              : copy.format === 'rgba16float'
+                ? 'HALF_FLOAT'
+                : 'UNSIGNED_BYTE';
         glCall(gl, 'readPixels', [
           copy.x,
           copy.y,
@@ -129,15 +151,22 @@ function textureCopy(
 ): TextureCopy {
   const texture = requiredObject(value, 'texture');
   const textureFacts = facts.get(texture);
+  if (textureFacts?.storage === 'renderbuffer') {
+    throw new Error(
+      'WebGL2 texture copies require a single-sample texture; resolve multisample renderbuffers first.'
+    );
+  }
   if (
     textureFacts === undefined ||
-    (textureFacts.format !== 'rgba8unorm' &&
-      textureFacts.format !== 'rgba8unorm-srgb' &&
+    (textureFacts.format !== 'r8unorm' &&
+      textureFacts.format !== 'rg8unorm' &&
+      textureFacts.format !== 'rgba8unorm' &&
       textureFacts.format !== 'rgba32uint' &&
+      textureFacts.format !== 'rgba32float' &&
       textureFacts.format !== 'rgba16float')
   )
     throw new Error(
-      'WebGL2 texture copy supports owned RGBA8Unorm, RGBA8Unorm-sRGB, RGBA16Float and RGBA32Uint textures only.'
+      'WebGL2 texture copy supports raw-byte R8Unorm, RG8Unorm, RGBA8Unorm, RGBA16Float, RGBA32Float and RGBA32Uint textures only; RGBA8Unorm-sRGB copy would apply color conversion and is unsupported.'
     );
   const origin =
     typeof value.origin === 'object' && value.origin !== null
@@ -171,13 +200,22 @@ function texSubImage(
   extent: CopyExtent,
   data: unknown
 ): void {
-  const format = copy.format === 'rgba32uint' ? 'RGBA_INTEGER' : 'RGBA';
+  const format =
+    copy.format === 'rgba32uint'
+      ? 'RGBA_INTEGER'
+      : copy.format === 'r8unorm'
+        ? 'RED'
+        : copy.format === 'rg8unorm'
+          ? 'RG'
+          : 'RGBA';
   const type =
     copy.format === 'rgba32uint'
       ? 'UNSIGNED_INT'
-      : copy.format === 'rgba16float'
-        ? 'HALF_FLOAT'
-        : 'UNSIGNED_BYTE';
+      : copy.format === 'rgba32float'
+        ? 'FLOAT'
+        : copy.format === 'rgba16float'
+          ? 'HALF_FLOAT'
+          : 'UNSIGNED_BYTE';
   glCall(gl, 'texSubImage2D', [
     constant(gl, 'TEXTURE_2D'),
     copy.mipLevel,
@@ -245,7 +283,10 @@ function setRowLength(
 }
 
 function bytesPerPixel(format: string): number {
+  if (format === 'r8unorm') return 1;
+  if (format === 'rg8unorm') return 2;
   if (format === 'rgba32uint') return 16;
+  if (format === 'rgba32float') return 16;
   if (format === 'rgba16float') return 8;
   return 4;
 }

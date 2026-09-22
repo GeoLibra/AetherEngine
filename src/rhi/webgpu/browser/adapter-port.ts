@@ -5,10 +5,15 @@ import { lowerBrowserDeviceRequest } from './device-port';
 import type { BrowserWebGPUAdapterRequestOptions, BrowserWebGPUEnvironment } from './types';
 
 const BROWSER_WEBGPU_FORMATS: readonly GPUTextureFormat[] = Object.freeze([
+  'r8unorm',
+  'rg8unorm',
   'rgba8unorm',
   'rgba8unorm-srgb',
   'bgra8unorm',
   'bgra8unorm-srgb',
+  'rgba16float',
+  'rgba32float',
+  'rgba32uint',
   'depth24plus',
   'depth24plus-stencil8',
   'depth32float'
@@ -116,13 +121,15 @@ function createFormatCapabilities(): ReadonlyMap<GPUTextureFormat, FormatCapabil
       format,
       Object.freeze({
         sample: true,
-        filter: !format.startsWith('depth'),
+        filter: !format.startsWith('depth') && format !== 'rgba32uint' && format !== 'rgba32float',
         render: true,
-        blend: !format.startsWith('depth'),
-        storage: format === 'rgba8unorm',
+        blend: !format.startsWith('depth') && format !== 'rgba32uint' && format !== 'rgba32float',
+        storage: format === 'rgba8unorm' || format === 'rgba32uint' || format === 'rgba32float',
         copySrc: true,
         copyDst: true,
-        sampleCounts: Object.freeze([1, 4])
+        sampleCounts: Object.freeze(
+          format === 'rgba32uint' || format === 'rgba32float' ? [1] : [1, 4]
+        )
       })
     ])
   );
