@@ -30,6 +30,7 @@ import {
   executeGlbIngestBenchmark
 } from '../../benchmark/asset-pipeline/gltf-ingestion';
 import { cookCanonicalMeshDocument } from '../../src/assets/cooker';
+import { AssetRequestStage, planAssetStageAdmission } from '../../src/assets/request-scheduler';
 
 describe('asset pipeline benchmark semantic oracle', () => {
   test('bucketed scheduler matches the full-sort reference with merged consumers and budgets', () => {
@@ -68,6 +69,38 @@ describe('asset pipeline benchmark semantic oracle', () => {
     });
 
     expect(result.admitted.map((item) => item.key)).toEqual(['asset/a', 'asset/m', 'asset/z']);
+  });
+
+  test('production stage admission matches the legacy full-sort oracle for compatible upload demands', () => {
+    const demands = createAssetRequestFixture(128, 0x5eed);
+    demands.push({ ...demands[7]!, consumerId: 'duplicate-consumer', explicitPriority: 99 });
+    const budget = { maxRequests: 24, maxBytes: 2_000_000 } as const;
+    const expected = scheduleAssetRequestsReference(demands, budget);
+    const result = planAssetStageAdmission(
+      AssetRequestStage.Upload,
+      demands.map((demand) => ({
+        key: demand.key as never,
+        assetId: `asset:benchmark/${demand.key}` as never,
+        stage: AssetRequestStage.Upload,
+        consumerId: demand.consumerId,
+        priority: {
+          class: demand.priorityClass,
+          explicit: demand.explicitPriority,
+          screenContribution: demand.screenContribution,
+          dependencyDepth: 0,
+          age: demand.age,
+          retryPenalty: 0
+        },
+        estimated: { inFlightBytes: demand.estimatedBytes },
+        revision: 1
+      })),
+      schedulerBudget(budget.maxRequests, budget.maxBytes)
+    );
+
+    expect(result.admitted.map((demand) => demand.key)).toEqual(
+      expected.admitted.map((demand) => demand.key)
+    );
+    expect(result.counters.duplicateConsumers).toBe(1);
   });
 
   test('validates canonical mesh fixtures with a stable bounds oracle', () => {
@@ -147,3 +180,25 @@ describe('asset pipeline benchmark semantic oracle', () => {
     expect(result.totalByteLength).toBeGreaterThan(0);
   });
 });
+
+function schedulerBudget(maxRequests: number, maxBytes: number) {
+  return {
+    maxRequests: {
+      metadata: maxRequests,
+      read: maxRequests,
+      decode: maxRequests,
+      finalize: maxRequests,
+      upload: maxRequests
+    },
+    maxInFlightBytes: {
+      metadata: maxBytes,
+      read: maxBytes,
+      decode: maxBytes,
+      finalize: maxBytes,
+      upload: maxBytes
+    },
+    frameFinalizeMilliseconds: Number.MAX_SAFE_INTEGER,
+    frameUploadBytes: Number.MAX_SAFE_INTEGER,
+    frameUploadCommands: Number.MAX_SAFE_INTEGER
+  } as const;
+}

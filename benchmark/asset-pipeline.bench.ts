@@ -31,6 +31,7 @@ import {
   executeGlbIngestBenchmark
 } from './asset-pipeline/gltf-ingestion';
 import { cookCanonicalMeshDocument } from '../src/assets/cooker';
+import { AssetRequestStage, planAssetStageAdmission } from '../src/assets/request-scheduler';
 
 const profile = process.env.AETHER_BENCH_PROFILE ?? 'smoke';
 const vfsByteLength = profile === 'nightly' ? 1_048_576 : profile === 'standard' ? 65_536 : 1_024;
@@ -117,6 +118,53 @@ for (const size of sizes) {
   bench(`bucketed subject schedules ${size} asset demands`, () => {
     const result = scheduleAssetRequestsBucketed(fixture, budget);
     expect(result.oracleHash).toBe(expected.oracleHash);
+    expect(result.counters.duplicateConsumers).toBe(Math.floor(size / 10));
+  });
+
+  const productionDemands = fixture.map((demand) => ({
+    key: demand.key as never,
+    assetId: `asset:benchmark/${demand.key}` as never,
+    stage: AssetRequestStage.Upload,
+    consumerId: demand.consumerId,
+    priority: {
+      class: demand.priorityClass,
+      explicit: demand.explicitPriority,
+      screenContribution: demand.screenContribution,
+      dependencyDepth: 0,
+      age: demand.age,
+      retryPenalty: 0
+    },
+    estimated: { inFlightBytes: demand.estimatedBytes },
+    revision: 1
+  }));
+  const productionBudget = Object.freeze({
+    maxRequests: Object.freeze({
+      metadata: budget.maxRequests,
+      read: budget.maxRequests,
+      decode: budget.maxRequests,
+      finalize: budget.maxRequests,
+      upload: budget.maxRequests
+    }),
+    maxInFlightBytes: Object.freeze({
+      metadata: budget.maxBytes,
+      read: budget.maxBytes,
+      decode: budget.maxBytes,
+      finalize: budget.maxBytes,
+      upload: budget.maxBytes
+    }),
+    frameFinalizeMilliseconds: Number.MAX_SAFE_INTEGER,
+    frameUploadBytes: Number.MAX_SAFE_INTEGER,
+    frameUploadCommands: Number.MAX_SAFE_INTEGER
+  });
+  bench(`production stage admission schedules ${size} asset demands`, () => {
+    const result = planAssetStageAdmission(
+      AssetRequestStage.Upload,
+      productionDemands,
+      productionBudget
+    );
+    expect(result.admitted.map((demand) => demand.key)).toEqual(
+      expected.admitted.map((demand) => demand.key)
+    );
     expect(result.counters.duplicateConsumers).toBe(Math.floor(size / 10));
   });
 }
