@@ -113,6 +113,15 @@ export type { RHIExtensionToken } from './contracts/extension';
 export type { WebGPUPipelineCreationResult } from './webgpu/types';
 export type { WebGPUFastPathMetrics } from './webgpu/metrics';
 export { webgpuCompat } from './core/webgpu-compat';
+export { UploadPlanner } from './core/upload-planner';
+export { executeBudgetedBufferWrite } from './core/upload-execution';
+export type {
+  DeferredUploadReservation,
+  UploadPlannerOptions,
+  UploadPlannerSnapshot,
+  UploadReservation
+} from './core/upload-planner';
+export type { BudgetedBufferWriteResult } from './core/upload-execution';
 export type {
   AdapterCapabilities,
   DeviceCapabilities,

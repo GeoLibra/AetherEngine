@@ -99,8 +99,7 @@ export function defineMaterialSchema<const D extends MaterialFieldDefinitions>(
     }
   });
 
-  let schema: MaterialSchema<D>;
-  schema = Object.freeze({
+  const schema: MaterialSchema<D> = Object.freeze({
     id: typeSchema.id,
     version: typeSchema.version,
     fingerprint,

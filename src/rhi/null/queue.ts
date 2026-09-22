@@ -37,6 +37,8 @@ export class NullQueue implements RHIQueue {
   private completedCount = 0;
   private failedCount = 0;
   private deviceLostCount = 0;
+  private uploadCallCount = 0;
+  private uploadByteCount = 0;
 
   constructor(
     private readonly owner: NullDeviceOwner,
@@ -84,6 +86,8 @@ export class NullQueue implements RHIQueue {
 
   metrics(): RHIQueueMetrics {
     return Object.freeze({
+      uploadCalls: this.uploadCallCount,
+      uploadBytes: this.uploadByteCount,
       submitted: this.submittedCount,
       pending: this.pending.length,
       completed: this.completedCount,
@@ -110,6 +114,7 @@ export class NullQueue implements RHIQueue {
     const bytes = toByteCopy(data);
     validateBufferRange(offset, bytes.byteLength, buffer.size);
     target.writeBytes(offset, bytes);
+    this.recordUpload(bytes.byteLength);
   }
 
   writeBufferRanges(buffer: RHIBuffer, ranges: readonly BufferWriteRange[]): void {
@@ -121,24 +126,31 @@ export class NullQueue implements RHIQueue {
     });
     for (const write of writes) {
       target.writeBytes(write.offset, write.bytes);
+      this.recordUpload(write.bytes.byteLength);
     }
   }
 
   writeTexture(
     destination: GPUImageCopyTexture,
-    _data: RHIUploadData,
+    data: RHIUploadData,
     dataLayout: GPUImageDataLayout,
     size: GPUExtent3D
   ): void {
     validateImageDataLayout(dataLayout);
     const normalizedSize = normalizeAndValidateExtent(size);
     validateTextureCopyView(destination, this.owner, normalizedSize);
+    this.recordUpload(toByteCopy(data).byteLength);
   }
 
   private settleNext(status: 'completed' | 'failed', error?: unknown): void {
     const entry = this.pending[0];
     if (entry === undefined) throw new Error('NullQueue has no pending submission.');
     this.settle(entry, status, error);
+  }
+
+  private recordUpload(byteLength: number): void {
+    this.uploadCallCount += 1;
+    this.uploadByteCount += byteLength;
   }
 
   private settle(

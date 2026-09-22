@@ -113,6 +113,7 @@ describe('WebGPU queue uploads', () => {
       [8, 5, 6],
       [10, 7, 8]
     ]);
+    expect(device.queue.metrics()).toMatchObject({ uploadCalls: 3, uploadBytes: 8 });
 
     expect(() =>
       device.queue.writeBufferRanges(buffer, [

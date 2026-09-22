@@ -180,7 +180,9 @@ export {
   WebGPUSurface,
   WebGPUNativeDeviceRequestError,
   WebGPUNativeOperationError,
-  webgpuCompat
+  webgpuCompat,
+  UploadPlanner,
+  executeBudgetedBufferWrite
 } from './rhi';
 export type {
   AdapterCapabilities,
@@ -279,7 +281,12 @@ export type {
   RHITextureDescriptor,
   RHITextureViewDescriptor,
   SubmissionResult,
-  SupportStatus
+  SupportStatus,
+  UploadPlannerOptions,
+  UploadPlannerSnapshot,
+  UploadReservation,
+  DeferredUploadReservation,
+  BudgetedBufferWriteResult
 } from './rhi';
 export { WebGL2ContextControlExtension } from './rhi';
 export type {

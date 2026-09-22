@@ -181,6 +181,8 @@ describe('WebGPU submission epochs', () => {
     expect(device.fastPathMetrics().nativeQueueSubmits).toBe(1);
     expect(submission.status).toBe('pending');
     expect(device.queue.metrics()).toEqual({
+      uploadCalls: 0,
+      uploadBytes: 0,
       submitted: 1,
       pending: 1,
       completed: 0,
@@ -192,6 +194,8 @@ describe('WebGPU submission epochs', () => {
     native.queue.complete(0);
     await expect(submission.done).resolves.toEqual({ status: 'completed' });
     expect(device.queue.metrics()).toEqual({
+      uploadCalls: 0,
+      uploadBytes: 0,
       submitted: 1,
       pending: 0,
       completed: 1,

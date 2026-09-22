@@ -102,7 +102,10 @@ export class WebGPUQueue implements RHIQueue {
   metrics(): RHIQueueMetrics {
     let leasedResources = 0;
     for (const epoch of this.pending.values()) leasedResources += epoch.resources.size;
+    const upload = this.fastPath.snapshot();
     return Object.freeze({
+      uploadCalls: upload.uploadCalls,
+      uploadBytes: upload.uploadBytes,
       submitted: this.submittedCount,
       pending: this.pending.size,
       completed: this.completedCount,

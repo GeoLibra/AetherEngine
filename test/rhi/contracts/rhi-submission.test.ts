@@ -21,6 +21,8 @@ describe('Null RHI submissions', () => {
     const pendingMetrics = device.queue.metrics();
     expect(Object.isFrozen(pendingMetrics)).toBe(true);
     expect(pendingMetrics).toEqual({
+      uploadCalls: 0,
+      uploadBytes: 0,
       submitted: 1,
       pending: 1,
       completed: 0,

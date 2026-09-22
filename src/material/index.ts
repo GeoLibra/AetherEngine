@@ -22,13 +22,19 @@ export type {
   MaterialRenderStateConflict,
   ResolvedMaterialRenderState
 } from './render-state';
-export { compileMaterialParameterLayout, writeMaterialParameters } from './parameter-layout';
+export {
+  compileMaterialParameterLayout,
+  createMaterialParameterUploadRanges,
+  uploadMaterialParameterRanges,
+  writeMaterialParameters
+} from './parameter-layout';
 export type {
   CompiledMaterialParameterField,
   CompiledMaterialParameterLayout,
   MaterialDirtyRange,
   MaterialParameterWrite,
-  MaterialParameterWriteCounters
+  MaterialParameterWriteCounters,
+  MaterialParameterUploadResult
 } from './parameter-layout';
 export {
   createMaterialParameterBlock,

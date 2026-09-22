@@ -2,7 +2,11 @@ import { assertBufferUnmapped, validateBufferCopy } from './buffer';
 import { NullComputePassEncoder, NullPassEncoder, NullRenderPassEncoder } from './passes';
 import { normalizeAndValidateExtent, validateTextureCopyView } from './texture';
 import { toResourceRef } from '../core/resource-ref';
-import { validateBufferTextureCopy } from '../core/texture-copy-layout';
+import {
+  validateBufferTextureCopy,
+  validateTextureCopyAlias,
+  validateTextureCopyCompatibility
+} from '../core/texture-copy-layout';
 import { assertResourceLive, assertResourceOwnedBy, NullResourceBase } from './resource';
 import type { NullDeviceOwner } from './resource';
 import { assertRHIFeature } from './capability-validation';
@@ -184,6 +188,8 @@ export class NullCommandEncoder implements RHICommandEncoder {
     const normalizedSize = normalizeAndValidateExtent(copySize);
     const normalizedSource = validateTextureCopyView(source, this.owner, normalizedSize);
     const normalizedDestination = validateTextureCopyView(destination, this.owner, normalizedSize);
+    validateTextureCopyCompatibility(source.texture, destination.texture);
+    validateTextureCopyAlias(source, destination, normalizedSize);
     this.lease(source.texture);
     this.lease(destination.texture);
     this.stats.copy.copyTextureToTexture += 1;
