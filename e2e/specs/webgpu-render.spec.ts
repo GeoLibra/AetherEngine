@@ -23,7 +23,7 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
       renderPasses: 1,
       drawCalls: 0,
       indexedDrawCalls: 2,
-      nativeQueueSubmits: 4,
+      nativeQueueSubmits: 12,
       validationErrors: 0,
       lightListGolden: {
         matchesCpuOracle: true,
@@ -33,6 +33,23 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
         overflowed: true,
         zeroLights: true,
         zeroReceivers: true
+      },
+      clusterLightListGolden: {
+        matchesCpuOracle: true,
+        directionalIndices: [0],
+        headerCount: 4,
+        lightIndexCount: expect.any(Number),
+        overflowed: false
+      },
+      textureCopyGolden: {
+        matchesSource: true,
+        integerMatchesSource: true,
+        halfFloatMatchesSource: true,
+        floatMatchesSource: true,
+        singleChannelMatchesSource: true,
+        twoChannelMatchesSource: true,
+        srgbMatchesSource: true,
+        bytes: [17, 61, 143, 255]
       }
     }
   });
@@ -54,7 +71,7 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
       physicalSize: [320, 180],
       surfaceGeneration: 2,
       rendered: true,
-      nativeQueueSubmits: 5,
+      nativeQueueSubmits: 13,
       validationErrors: 0
     }
   });
@@ -67,7 +84,7 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
       physicalSize: [0, 0],
       surfaceGeneration: 3,
       rendered: false,
-      nativeQueueSubmits: 5,
+      nativeQueueSubmits: 13,
       validationErrors: 0
     }
   });
@@ -81,7 +98,7 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
       physicalSize: [256, 144],
       surfaceGeneration: 4,
       rendered: true,
-      nativeQueueSubmits: 6,
+      nativeQueueSubmits: 14,
       validationErrors: 0
     }
   });

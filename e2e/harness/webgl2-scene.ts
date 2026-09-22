@@ -9,6 +9,7 @@ import {
 } from '../../src';
 import { createE2EDrawPacket, executeOpaqueScene } from './opaque-scene';
 import { runWebGlLightListGolden } from './webgl2-light-list';
+import { runWebGL2TextureCopyGolden } from './webgl2-texture-copy';
 
 const TRIANGLE_INDEX_COUNT = 3;
 const CUBE_INDEX_COUNT = 6;
@@ -21,6 +22,7 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
   const glErrors: number[] = [gl?.getError() ?? -1];
   if (gl === null) throw new Error('WebGL2 context disappeared after session creation.');
   const lightList = await runWebGlLightListGolden(session, gl);
+  const textureCopyGolden = await runWebGL2TextureCopyGolden(session, gl);
   glErrors.push(gl.getError());
   const index = session.device.createBuffer({ size: INDICES.byteLength, usage: 0x18 });
   session.device.queue.writeBuffer(index, 0, INDICES);
@@ -143,6 +145,7 @@ export async function runWebGL2Scene(canvas: HTMLCanvasElement) {
       glCalls: currentMetrics.glCalls,
       glErrors: Object.freeze([...glErrors]),
       lightList,
+      textureCopyGolden,
       centerPixel: [...centerPixel],
       presentedPixel: [...presentedPixel]
     });
