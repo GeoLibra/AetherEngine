@@ -1,4 +1,4 @@
-import type { Plane, Vec3 } from './types';
+import type { DepthConvention, Plane, Vec3 } from './types';
 
 export type FrustumIntersection = 'outside' | 'intersecting' | 'inside';
 export const ALL_FRUSTUM_PLANES = 0b11_1111;
@@ -19,19 +19,24 @@ export class Frustum {
   private constructor(readonly planes: readonly Plane[]) {}
 
   /** Uses the Gribb–Hartmann algorithm to extract frustum planes from a View-Projection matrix. */
-  static fromViewProjection(matrix: ArrayLike<number>): Frustum {
+  static fromViewProjection(
+    matrix: ArrayLike<number>,
+    depthMode: DepthConvention['mode'] = 'standard'
+  ): Frustum {
     const row0 = row(matrix, 0);
     const row1 = row(matrix, 1);
     const row2 = row(matrix, 2);
     const row3 = row(matrix, 3);
+    const near = depthMode === 'standard' ? row2 : subtract(row3, row2);
+    const far = depthMode === 'standard' ? subtract(row3, row2) : row2;
     return new Frustum(
       Object.freeze([
         plane(add(row3, row0)),
         plane(subtract(row3, row0)),
         plane(add(row3, row1)),
         plane(subtract(row3, row1)),
-        plane(row2),
-        plane(subtract(row3, row2))
+        plane(near),
+        optionalPlane(far)
       ])
     );
   }
@@ -160,4 +165,11 @@ function plane(value: readonly [number, number, number, number]): Plane {
     normal: Object.freeze([value[0] / length, value[1] / length, value[2] / length]) as Vec3,
     distance: value[3] / length
   });
+}
+
+/** A zero-normal far half-space is the exact representation of an infinite projection. */
+function optionalPlane(value: readonly [number, number, number, number]): Plane {
+  const length = Math.hypot(value[0], value[1], value[2]);
+  if (length >= 1e-12) return plane(value);
+  return Object.freeze({ normal: Object.freeze([0, 0, 0]) as Vec3, distance: Infinity });
 }

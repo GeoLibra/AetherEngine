@@ -34,9 +34,6 @@ export const CameraRenderSource = defineObjectComponent<CameraRenderSourceView>(
     try {
       const projection = input.projection as CameraRenderSourceView['projection'];
       validateCameraProjection(projection);
-      if (projection.far === 'infinite') {
-        throw new Error('CameraRenderSource automatic projection currently requires finite far.');
-      }
       const rect = input.viewportRect;
       if (!isRecord(rect)) throw new Error('Camera viewportRect must be an object.');
       const viewportRect = {

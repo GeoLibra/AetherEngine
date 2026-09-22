@@ -105,6 +105,47 @@ export const Mat4 = Object.freeze({
     ]);
   },
 
+  /**
+   * Builds a right-handed zero-to-one-depth perspective projection with no finite far clip.
+   *
+   * The resulting matrix remains invertible. CPU culling must pair it with a frustum that
+   * treats the far half-space as unbounded rather than attempting to normalize its zero normal.
+   */
+  perspectiveInfinite(
+    verticalFov: number,
+    aspect: number,
+    near: number,
+    depth: DepthConvention = STANDARD_DEPTH
+  ): Float32Array {
+    if (!(verticalFov > 0 && verticalFov < Math.PI)) {
+      throw new Error('Perspective verticalFov must be between zero and PI radians.');
+    }
+    if (!(aspect > 0 && near > 0)) {
+      throw new Error('Infinite perspective requires positive aspect and near plane.');
+    }
+    const focal = 1 / Math.tan(verticalFov * 0.5);
+    const depthScale = depth.mode === 'standard' ? -1 : 0;
+    const depthOffset = depth.mode === 'standard' ? -near : near;
+    return new Float32Array([
+      focal / aspect,
+      0,
+      0,
+      0,
+      0,
+      focal,
+      0,
+      0,
+      0,
+      0,
+      depthScale,
+      -1,
+      0,
+      0,
+      depthOffset,
+      0
+    ]);
+  },
+
   transformPoint(matrix: ArrayLike<number>, point: Vec3): Vec3 {
     const transformed = Mat4.transformPointHomogeneous(matrix, [...point, 1]);
     const inverseW = transformed[3] === 0 ? 1 : 1 / transformed[3];

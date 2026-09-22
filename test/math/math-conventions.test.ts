@@ -6,6 +6,7 @@ import {
   Mat4,
   Quat,
   REVERSE_DEPTH,
+  STANDARD_DEPTH,
   degreesToRadians,
   projectPoint,
   radiansToDegrees,
@@ -121,6 +122,26 @@ describe('Foundation math conventions', () => {
     expect(ndcZ(projection, -1)).toBeCloseTo(1);
     expect(ndcZ(projection, -100)).toBeCloseTo(0);
     expect(REVERSE_DEPTH).toEqual({ mode: 'reverse', clear: 0, compare: 'greater' });
+
+    const frustum = Frustum.fromViewProjection(projection, 'reverse');
+    expect(frustum.containsPoint([0, 0, -1])).toBe(true);
+    expect(frustum.containsPoint([0, 0, -99])).toBe(true);
+    expect(frustum.containsPoint([0, 0, -0.5])).toBe(false);
+    expect(frustum.containsPoint([0, 0, -101])).toBe(false);
+  });
+
+  test('keeps infinite-far perspective invertible and omits only the unbounded culling plane', () => {
+    for (const depth of [STANDARD_DEPTH, REVERSE_DEPTH] as const) {
+      const projection = Mat4.perspectiveInfinite(Math.PI / 2, 1, 0.1, depth);
+      expect(ndcZ(projection, -0.1)).toBeCloseTo(depth.mode === 'standard' ? 0 : 1, 6);
+      expect(ndcZ(projection, -1_000_000)).toBeCloseTo(depth.mode === 'standard' ? 1 : 0, 6);
+      expect(() => Mat4.invert(projection)).not.toThrow();
+
+      const frustum = Frustum.fromViewProjection(projection, depth.mode);
+      expect(frustum.containsPoint([0, 0, -1])).toBe(true);
+      expect(frustum.containsPoint([0, 0, -1_000_000])).toBe(true);
+      expect(frustum.containsPoint([0, 0, 1])).toBe(false);
+    }
   });
 
   test('round-trips world and top-left-origin screen coordinates', () => {

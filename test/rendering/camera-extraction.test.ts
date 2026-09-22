@@ -42,7 +42,7 @@ function fixture() {
   return { main, render, extraction };
 }
 
-function spawn(main: World): Entity {
+function spawn(main: World, source: CameraRenderSourceView = intent()): Entity {
   return main
     .spawn()
     .insert(WorldTransform, {
@@ -53,7 +53,7 @@ function spawn(main: World): Entity {
       originCell: [0, 0, 0],
       determinantSign: 1
     })
-    .insert(CameraRenderSource, { ...intent() })
+    .insert(CameraRenderSource, { ...source })
     .build();
 }
 
@@ -113,6 +113,33 @@ describe('camera surface View extraction', () => {
     expect(resized.views[0]!.revision).toBe(2);
     expect(resized.revision.diff.changes).toEqual([]);
     resized.revision.release();
+  });
+
+  test('automatically publishes standard and reverse infinite-far perspective views', () => {
+    for (const depthMode of ['standard', 'reverse'] as const) {
+      const { main, extraction } = fixture();
+      const camera = spawn(main, {
+        ...intent(),
+        projection: {
+          kind: 'perspective',
+          near: 0.1,
+          far: 'infinite',
+          verticalFovRadians: Math.PI / 2
+        },
+        depthMode
+      });
+      const result = extraction.extract({
+        sourceTick: 1,
+        transforms: new Map([[camera, transform(camera)]]),
+        bindings: [binding(camera)]
+      });
+      const view = result.views[0]!;
+      expect(view.far).toBe('infinite');
+      expect(view.projection[10]).toBeCloseTo(depthMode === 'standard' ? -1 : 0);
+      expect(result.visibilityViews[0]!.frustum?.containsPoint([0, 0, -1_000_000])).toBe(true);
+      expect(result.visibilityViews[0]!.frustum?.containsPoint([0, 0, 1])).toBe(false);
+      result.revision.release();
+    }
   });
 
   test('rejects invalid jitter bindings before publishing a RenderWorld revision', () => {

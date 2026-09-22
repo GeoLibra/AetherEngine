@@ -197,11 +197,15 @@ export class CameraViewExtraction {
 
 function projectionMatrix(intent: CameraRenderSourceView, aspect: number): Float32Array {
   const projection = intent.projection;
-  if (projection.far === 'infinite')
-    throw new Error(
-      'Automatic infinite-far projection is not implemented; provide explicit projection matrices.'
-    );
   if (projection.kind === 'perspective') {
+    if (projection.far === 'infinite') {
+      return Mat4.perspectiveInfinite(
+        projection.verticalFovRadians!,
+        aspect,
+        projection.near,
+        intent.depthMode === 'standard' ? STANDARD_DEPTH : REVERSE_DEPTH
+      );
+    }
     return Mat4.perspective(
       projection.verticalFovRadians!,
       aspect,
@@ -209,6 +213,9 @@ function projectionMatrix(intent: CameraRenderSourceView, aspect: number): Float
       projection.far,
       intent.depthMode === 'standard' ? STANDARD_DEPTH : REVERSE_DEPTH
     );
+  }
+  if (projection.far === 'infinite') {
+    throw new Error('Infinite far is supported only by perspective cameras.');
   }
   const halfHeight = projection.orthographicHalfHeight!;
   const halfWidth = halfHeight * aspect;
