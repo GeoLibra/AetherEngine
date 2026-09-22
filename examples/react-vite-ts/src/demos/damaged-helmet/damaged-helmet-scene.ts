@@ -50,6 +50,11 @@ export interface MountedDamagedHelmetScene {
   readonly backend: BrowserGraphicsSession['backend'];
   readonly environmentMode: 'hdr' | 'synthetic';
   readonly backgroundMode?: 'hdr' | 'solid' | 'none';
+  readonly sampleCount?: 1 | 4;
+  /** Terminal graphics loss for the current device/context generation. */
+  readonly lost?: BrowserGraphicsSession['lost'];
+  /** Resolves when the canvas can host a replacement graphics session. */
+  readonly recoveryReady?: BrowserGraphicsSession['recoveryReady'];
   diagnostics(): BaselineRenderDiagnostics | undefined;
   modelDiagnostics(): DamagedHelmetDiagnostics;
   nativeMetrics(): unknown;
@@ -79,6 +84,7 @@ export interface DamagedHelmetSceneOptions {
   readonly environmentIntensity?: number;
   readonly diffuseIrradiance?: readonly [number, number, number];
   readonly radianceTint?: readonly [number, number, number];
+  readonly sampleCount?: 1 | 4;
 }
 
 const HelmetRotatingTag = defineTagComponent({
@@ -256,6 +262,7 @@ export async function mountDamagedHelmetScene(
 
   const renderingPlugin = createBaselineRenderingPlugin({
     graphics,
+    ...(options.sampleCount === undefined ? {} : { sampleCount: options.sampleCount }),
     mesh: { handle: meshHandle, payloadVersion: 1, data: primitive.meshData },
     material: { handle: materialHandle, payloadVersion: 1, material: cookedMaterial },
     materialResources: registry,
@@ -417,6 +424,9 @@ export async function mountDamagedHelmetScene(
 
   return Object.freeze({
     backend: graphics.backend,
+    lost: graphics.lost,
+    recoveryReady: graphics.recoveryReady,
+    sampleCount: app.getResource(BaselineRenderDiagnosticsResource)?.sampleCount ?? 1,
     environmentMode: useHdr && environmentAsset ? 'hdr' : 'synthetic',
     backgroundMode: (activeBackground.kind === 'environment'
       ? 'hdr'

@@ -3,6 +3,8 @@ import {
   BrowserRunner,
   CameraRenderSource,
   DirectionalLightSource,
+  PointLightSource,
+  SpotLightSource,
   FrameTimeResource,
   Mat4,
   MaterialAssetType,
@@ -28,6 +30,8 @@ import {
   type BaselineRenderDiagnostics,
   type BrowserGraphicsSession,
   type DirectionalLightSourceView,
+  type PointLightSourceView,
+  type SpotLightSourceView,
   type EnvironmentAsset,
   type MaterialField,
   type MaterialValue,
@@ -66,6 +70,11 @@ export interface MountedAetherScene {
   readonly backend: BrowserGraphicsSession['backend'];
   readonly environmentMode: 'hdr' | 'synthetic';
   readonly backgroundMode?: 'hdr' | 'solid' | 'none';
+  readonly sampleCount?: 1 | 4;
+  /** Terminal graphics loss for the current device/context generation. */
+  readonly lost?: BrowserGraphicsSession['lost'];
+  /** Resolves when the canvas can host a replacement graphics session. */
+  readonly recoveryReady?: BrowserGraphicsSession['recoveryReady'];
   diagnostics(): BaselineRenderDiagnostics | undefined;
   csmDiagnostics(): CsmSceneDiagnostics | undefined;
   nativeMetrics(): unknown;
@@ -103,6 +112,18 @@ export interface AetherSceneOptions {
   readonly metallic?: number;
   /** Enables directional sunlight; defaults to true. */
   readonly sunlight?: boolean;
+  /** Requests 1x or 4x raster MSAA; unsupported devices report the selected fallback in diagnostics. */
+  readonly sampleCount?: 1 | 4;
+  /** Directional CSM quality controls forwarded to the baseline renderer. */
+  readonly directionalShadow?: Readonly<{
+    resolution?: 1024 | 2048 | 4096;
+    cascadeLambda?: number;
+    constantBias?: number;
+    slopeBias?: number;
+    pcfKernel?: 3 | 5;
+  }>;
+  /** Optional local shadow source used by the CSM demo to exercise spot/point receiver paths. */
+  readonly localShadow?: 'none' | 'spot' | 'point';
 }
 
 const RotatingTag = defineTagComponent({
@@ -263,6 +284,10 @@ export async function mountAetherScene(
 
   const renderingPlugin = createBaselineRenderingPlugin({
     graphics,
+    ...(options.sampleCount === undefined ? {} : { sampleCount: options.sampleCount }),
+    ...(options.directionalShadow === undefined
+      ? {}
+      : { directionalShadow: options.directionalShadow }),
     mesh: { handle: meshHandle, payloadVersion: 1, data: mesh },
     material: { handle: materialHandle, payloadVersion: 1, material },
     ...(environmentAsset
@@ -318,6 +343,36 @@ export async function mountAetherScene(
                   historyKey: 'example.main-camera'
                 })
                 .build();
+              if (options.localShadow === 'spot') {
+                world
+                  .spawn()
+                  .insert(SpotLightSource, {
+                    position: [2.5, 3, -1],
+                    direction: [-0.5, -1, -0.4],
+                    colorLinear: [1, 0.35, 0.12],
+                    luminousIntensityCandela: 220,
+                    range: 12,
+                    innerRadians: 0.25,
+                    outerRadians: 0.5,
+                    enabled: true,
+                    layerMask: 1,
+                    castsShadow: true
+                  })
+                  .build();
+              } else if (options.localShadow === 'point') {
+                world
+                  .spawn()
+                  .insert(PointLightSource, {
+                    position: [1.5, 2.5, -1.5],
+                    colorLinear: [0.15, 0.4, 1],
+                    luminousIntensityCandela: 180,
+                    range: 10,
+                    enabled: true,
+                    layerMask: 1,
+                    castsShadow: true
+                  })
+                  .build();
+              }
 
               const meshSource = {
                 mesh: { handle: meshHandle, payloadVersion: 1 },
@@ -361,7 +416,13 @@ export async function mountAetherScene(
           builder.addSystem('Update', {
             id: 'example.standard-lit-scene.rotate-and-csm',
             reads: [FrameTimeResource, MeshRenderSource],
-            writes: [WorldTransform, DirectionalLightSource, CsmDiagnosticsResource],
+            writes: [
+              WorldTransform,
+              DirectionalLightSource,
+              PointLightSource,
+              SpotLightSource,
+              CsmDiagnosticsResource
+            ],
             run(world) {
               const frameTime = world.getResource(FrameTimeResource);
               if (frameTime === undefined) {
@@ -391,11 +452,26 @@ export async function mountAetherScene(
                   });
                 }
               }
+              const pointLights = [...world.query([PointLightSource])];
+              for (const [entity, lightSource] of pointLights) {
+                const source = lightSource as PointLightSourceView;
+                if (source.castsShadow !== castsShadow) {
+                  world.insertComponent(entity, PointLightSource, { ...source, castsShadow });
+                }
+              }
+              const spotLights = [...world.query([SpotLightSource])];
+              for (const [entity, lightSource] of spotLights) {
+                const source = lightSource as SpotLightSourceView;
+                if (source.castsShadow !== castsShadow) {
+                  world.insertComponent(entity, SpotLightSource, { ...source, castsShadow });
+                }
+              }
 
               // Compute real-time CSM (Cascaded Shadow Maps)
               const cameraNear = 0.1;
               const cascadeCount = 3;
-              const lambda = 0.8;
+              const lambda = options.directionalShadow?.cascadeLambda ?? 0.8;
+              const shadowResolution = options.directionalShadow?.resolution ?? 1024;
               const splits = computeCascadeSplits(cameraNear, shadowDistance, cascadeCount, lambda);
               const aspect =
                 canvas.width > 0 && canvas.height > 0 ? canvas.width / canvas.height : 16 / 9;
@@ -411,7 +487,7 @@ export async function mountAetherScene(
                 const cascade = buildStableCascade({
                   cornersWorld: corners,
                   lightDirection,
-                  usableResolution: 1024,
+                  usableResolution: shadowResolution,
                   casterDepthRange: { min: -20, max: 40 },
                   radiusQuantum: 0.5
                 });
@@ -431,7 +507,7 @@ export async function mountAetherScene(
                     viewId: 'example.main-camera',
                     kind: 'directional-cascade',
                     subresourceIndex: index,
-                    resolutionClass: 1024,
+                    resolutionClass: shadowResolution,
                     importance: 1 / (index + 1),
                     casterRevision: 1
                   });
@@ -441,7 +517,7 @@ export async function mountAetherScene(
 
               const selection = selectShadowRequests(shadowRequests, {
                 maxRequests: 4,
-                maxTexels: 1024 * 1024 * 4
+                maxTexels: shadowResolution * shadowResolution * 4
               });
 
               const diagnostics: CsmSceneDiagnostics = Object.freeze({
@@ -490,6 +566,9 @@ export async function mountAetherScene(
   let destroyed = false;
   return Object.freeze({
     backend: graphics.backend,
+    lost: graphics.lost,
+    recoveryReady: graphics.recoveryReady,
+    sampleCount: app.getResource(BaselineRenderDiagnosticsResource)?.sampleCount ?? 1,
     environmentMode: activeEnvironmentMode,
     backgroundMode: activeBgMode,
     diagnostics: () => app.getResource(BaselineRenderDiagnosticsResource),
@@ -516,6 +595,7 @@ export async function mountAetherScene(
     },
     setCastsShadow(enabled: boolean) {
       castsShadow = enabled;
+      demandRunner?.frame();
     },
     setSunlight(enabled: boolean) {
       sunlight = enabled;

@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { LevaPanel, useControls, folder, useCreateStore } from 'leva';
 import type { MountedAetherScene } from '../../aether-scene';
+import {
+  DEMO_ANTI_ALIASING_OPTIONS,
+  DemoAntiAliasing,
+  demoAntiAliasingNotice,
+  resolveDemoSampleCount,
+  type DemoAntiAliasing as DemoAntiAliasingMode
+} from '../../anti-aliasing';
 import { AetherSceneHost } from '../../scene-host';
 import type { DemoProps } from '../types';
 
@@ -17,6 +24,17 @@ const STATIC_BACKEND_PREFERENCE = (() => {
   const requested = new URLSearchParams(window.location.search).get('backend');
   const hasPreference = VALID_BACKENDS.has(requested as any);
   return hasPreference ? ([requested as 'webgpu' | 'webgl2'] as const) : undefined;
+})();
+
+const STATIC_SAMPLE_COUNT = (() => {
+  if (typeof window === 'undefined') return undefined;
+  return new URLSearchParams(window.location.search).get('samples') === '4' ? 4 : undefined;
+})();
+
+const STATIC_LOCAL_SHADOW = (() => {
+  if (typeof window === 'undefined') return 'none' as const;
+  const requested = new URLSearchParams(window.location.search).get('localShadow');
+  return requested === 'spot' || requested === 'point' ? requested : 'none';
 })();
 
 export function CsmBoxDemo({ mountScene = true }: DemoProps) {
@@ -43,7 +61,14 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
       backgroundMode,
       backgroundMultiplier,
       metallic,
-      roughness
+      roughness,
+      antiAliasing,
+      shadowResolution,
+      pcfKernel,
+      cascadeLambda,
+      constantBias,
+      slopeBias,
+      localShadow
     }
   ] = useControls(
     () => ({
@@ -74,6 +99,11 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
           label: 'Sky Multiplier'
         },
         sunlight: { value: true, label: 'Sunlight (12k Lux)' },
+        localShadow: {
+          value: STATIC_LOCAL_SHADOW,
+          options: { None: 'none', 'Spot Shadow': 'spot', 'Point Shadow': 'point' },
+          label: 'Local Shadow'
+        },
         castsShadow: { value: true, label: 'Cast Shadows' },
         lightAngle: { value: 45, min: 0, max: 360, step: 1, label: 'Light Azimuth (°)' },
         shadowDistance: { value: 25, min: 5, max: 60, step: 1, label: 'Shadow Dist (m)' }
@@ -81,6 +111,24 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
       'Object Material': folder({
         metallic: { value: 0.85, min: 0.0, max: 1.0, step: 0.01, label: 'Metallic' },
         roughness: { value: 0.15, min: 0.0, max: 1.0, step: 0.01, label: 'Roughness' }
+      }),
+      'Rendering Quality': folder({
+        antiAliasing: {
+          value: STATIC_SAMPLE_COUNT === 4 ? DemoAntiAliasing.Msaa4 : DemoAntiAliasing.None,
+          options: DEMO_ANTI_ALIASING_OPTIONS,
+          label: 'Anti-aliasing'
+        }
+      }),
+      'Shadow Quality': folder({
+        shadowResolution: {
+          value: 1024,
+          options: { '1024': 1024, '2048': 2048, '4096': 4096 },
+          label: 'Shadow Map'
+        },
+        pcfKernel: { value: 3, options: { '3×3': 3, '5×5': 5 }, label: 'PCF Filter' },
+        cascadeLambda: { value: 0.8, min: 0, max: 1, step: 0.05, label: 'Cascade Lambda' },
+        constantBias: { value: 0.0005, min: 0, max: 0.01, step: 0.0001, label: 'Constant Bias' },
+        slopeBias: { value: 0.002, min: 0, max: 0.02, step: 0.0005, label: 'Slope Bias' }
       })
     }),
     { store },
@@ -115,6 +163,13 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
     if (target === null) return;
     const host = hostRef.current!;
     let cancelled = false;
+    const unsubscribeScene = host.subscribe((scene) => {
+      if (cancelled) return;
+      sceneRef.current = scene;
+      if (scene !== null) {
+        (window as unknown as Record<string, unknown>).__aetherScene = scene;
+      }
+    });
 
     setStatus({
       kind: 'loading',
@@ -124,12 +179,22 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
     void host
       .mount(target, {
         ...(STATIC_BACKEND_PREFERENCE ? { preference: STATIC_BACKEND_PREFERENCE } : {}),
+        sampleCount:
+          STATIC_SAMPLE_COUNT ?? resolveDemoSampleCount(antiAliasing as DemoAntiAliasingMode),
+        directionalShadow: {
+          resolution: shadowResolution as 1024 | 2048 | 4096,
+          pcfKernel: pcfKernel as 3 | 5,
+          cascadeLambda,
+          constantBias,
+          slopeBias
+        },
         environment: environmentMode as any,
         background: backgroundMode as 'hdr' | 'solid' | 'none',
         backgroundMultiplier,
         metallic,
         roughness,
-        sunlight
+        sunlight,
+        localShadow: localShadow as 'none' | 'spot' | 'point'
       })
       .then((scene) => {
         if (cancelled) return;
@@ -142,9 +207,12 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
               ? 'Relax Inn 4K HDR'
               : 'Venice Sunset HDR';
         const bgLabel = scene.backgroundMode ? ` + ${scene.backgroundMode} bg` : '';
+        const antiAliasingNotice = demoAntiAliasingNotice(antiAliasing as DemoAntiAliasingMode);
         setStatus({
           kind: 'ready',
-          message: `Rendering with ${scene.backend} (${envLabel}${bgLabel})`
+          message:
+            antiAliasingNotice ??
+            `Rendering with ${scene.backend} ${scene.sampleCount ?? 1}× MSAA (${envLabel}${bgLabel})`
         });
       })
       .catch((error: unknown) => {
@@ -160,10 +228,22 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
 
     return () => {
       cancelled = true;
+      unsubscribeScene();
       sceneRef.current = null;
       void host.unmount();
     };
-  }, [mountScene, environmentMode, backgroundMode]);
+  }, [
+    mountScene,
+    environmentMode,
+    backgroundMode,
+    antiAliasing,
+    shadowResolution,
+    pcfKernel,
+    cascadeLambda,
+    constantBias,
+    slopeBias,
+    localShadow
+  ]);
 
   return (
     <div className="demo-content">

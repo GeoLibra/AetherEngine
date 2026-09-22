@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 
 declare global {
   interface Window {
@@ -6,6 +6,7 @@ declare global {
       state(): Record<string, unknown>;
       resize(width: number, height: number): void;
       setRotation(angleRadians: number): void;
+      setCastsShadow(enabled: boolean): void;
     };
     __damagedHelmetScene?: {
       state(): Record<string, unknown>;
@@ -13,19 +14,22 @@ declare global {
       setRotation(angleRadians: number | null): Promise<void> | void;
       setAnimate?(enabled: boolean): void;
     };
+    __aetherScene?: {
+      diagnostics(): { readonly status: string } | undefined;
+    };
   }
 }
 
 test('renders the public React example and survives surface suspension', async ({ page }, info) => {
   const backend = info.project.name.endsWith('webgl2') ? 'webgl2' : 'webgpu';
-  await page.goto(`/?e2e&backend=${backend}`);
+  await page.goto(`/?e2e&backend=${backend}&samples=4`);
   await expect
     .poll(() => page.evaluate(() => window.__AETHER_EXAMPLE__?.state()), { timeout: 20_000 })
     .toMatchObject({
       backend,
       environmentMode: 'hdr',
       backgroundMode: 'hdr',
-      diagnostics: { status: 'rendered', indexedDrawCalls: 10, indexCount: 360 }
+      diagnostics: { status: 'rendered', indexedDrawCalls: 10, indexCount: 360, sampleCount: 4 }
     });
   const initial = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
   const screenshotDiffRatio = 0.01;
@@ -75,6 +79,57 @@ test('renders the public React example and survives surface suspension', async (
   });
 });
 
+test('renders the spot-shadow receiver demo without graph binding errors', async ({
+  page
+}, info) => {
+  await expectLocalShadow(page, info, 'spot');
+});
+
+test('renders the point-shadow receiver demo without graph binding errors', async ({
+  page
+}, info) => {
+  await expectLocalShadow(page, info, 'point');
+});
+
+test('WebGL2 restores a real lost context by replacing the scene generation', async ({
+  page
+}, info) => {
+  test.skip(!info.project.name.endsWith('webgl2'), 'WEBGL_lose_context applies only to WebGL2.');
+  await page.goto('/?backend=webgl2&samples=4');
+  await expect(page.locator('.status-ready')).toBeVisible({ timeout: 25_000 });
+  const didTrigger = await page.evaluate(async () => {
+    const canvas = document.querySelector('canvas');
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error('Demo canvas is missing.');
+    const before = window.__aetherScene;
+    if (before === undefined) throw new Error('Mounted scene is missing.');
+    const context = canvas.getContext('webgl2');
+    const extension = context?.getExtension('WEBGL_lose_context');
+    if (extension === null || extension === undefined) return false;
+    extension.loseContext();
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    extension.restoreContext();
+    (window as unknown as { __aetherRecoveryBefore?: unknown }).__aetherRecoveryBefore = before;
+    return true;
+  });
+  test.skip(!didTrigger, 'Current browser does not expose WEBGL_lose_context.');
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const before = (window as unknown as { __aetherRecoveryBefore?: unknown })
+            .__aetherRecoveryBefore;
+          const current = window.__aetherScene;
+          return (
+            current !== undefined &&
+            current !== before &&
+            current.diagnostics()?.status === 'rendered'
+          );
+        }),
+      { timeout: 25_000 }
+    )
+    .toBe(true);
+});
+
 test('navigates to DamagedHelmet demo and renders glTF PBR model', async ({ page }, info) => {
   page.on('console', (msg) => console.log(`[PAGE LOG] ${msg.type()}: ${msg.text()}`));
   page.on('pageerror', (err) => console.log(`[PAGE ERROR] ${err.message}`));
@@ -85,7 +140,7 @@ test('navigates to DamagedHelmet demo and renders glTF PBR model', async ({ page
     console.log(`[FAILED REQUEST] ${req.url()}: ${req.failure()?.errorText}`);
   });
   const backend = info.project.name.endsWith('webgl2') ? 'webgl2' : 'webgpu';
-  await page.goto(`/damaged-helmet?e2e&backend=${backend}`);
+  await page.goto(`/damaged-helmet?e2e&backend=${backend}&samples=4`);
 
   const statusLocator = page.locator('.status-ready');
   await expect(statusLocator).toBeVisible({ timeout: 25_000 });
@@ -100,11 +155,15 @@ test('navigates to DamagedHelmet demo and renders glTF PBR model', async ({ page
     .poll(() => page.evaluate(() => window.__damagedHelmetScene?.state()), { timeout: 20_000 })
     .toMatchObject({
       backend,
-      diagnostics: { status: 'rendered', indexedDrawCalls: 5, indexCount: 231780 }
+      diagnostics: { status: 'rendered', indexedDrawCalls: 5, indexCount: 231780, sampleCount: 4 }
     });
 
   const initialHelmet = await page.evaluate(() => window.__damagedHelmetScene!.state());
   expectBackendClean(initialHelmet, backend);
+  await expect(page.locator('canvas')).toHaveScreenshot('damaged-helmet-initial.png', {
+    animations: 'disabled',
+    maxDiffPixelRatio: 0.01
+  });
 
   // Rotation verification: verify pose changes deterministically
   await page.evaluate(() => window.__damagedHelmetScene!.setRotation(Math.PI / 6));
@@ -138,14 +197,18 @@ test('navigates to DamagedHelmet demo and renders glTF PBR model', async ({ page
     .toMatchObject({ diagnostics: { status: 'rendered', surfaceGeneration: 4 } });
   const recoveredHelmet = await page.evaluate(() => window.__damagedHelmetScene!.state());
   expectBackendClean(recoveredHelmet, backend);
+  await expect(page.locator('canvas')).toHaveScreenshot('damaged-helmet-recovered.png', {
+    animations: 'disabled',
+    maxDiffPixelRatio: 0.01
+  });
 
-  const boxTab = page.getByRole('button', { name: /CSM Box PBR/i });
-  await boxTab.click({ force: true });
-  await expect(page).toHaveURL(`/?e2e&backend=${backend}`);
+  // Acceptance mode hides navigation to keep image snapshots deterministic; exercise
+  // route selection directly while preserving the requested MSAA configuration.
+  await page.goto(`/?e2e&backend=${backend}&samples=4`);
+  await expect(page).toHaveURL(`/?e2e&backend=${backend}&samples=4`);
 
-  const helmetTab = page.getByRole('button', { name: /Damaged Helmet/i });
-  await helmetTab.click({ force: true });
-  await expect(page).toHaveURL(`/damaged-helmet?e2e&backend=${backend}`);
+  await page.goto(`/damaged-helmet?e2e&backend=${backend}&samples=4`);
+  await expect(page).toHaveURL(`/damaged-helmet?e2e&backend=${backend}&samples=4`);
 });
 
 function expectBackendClean(state: Record<string, unknown>, backend: string): void {
@@ -163,4 +226,47 @@ async function cleanFrame(page: Page, backend: string): Promise<number> {
   const state = await page.evaluate(() => window.__AETHER_EXAMPLE__!.state());
   expectBackendClean(state, backend);
   return (state.diagnostics as { frame: number }).frame;
+}
+
+async function expectLocalShadow(
+  page: Page,
+  info: TestInfo,
+  localShadow: 'spot' | 'point'
+): Promise<void> {
+  const backend = info.project.name.endsWith('webgl2') ? 'webgl2' : 'webgpu';
+  await page.goto(`/?e2e&backend=${backend}&samples=4&localShadow=${localShadow}`);
+  await expect
+    .poll(() => page.evaluate(() => window.__AETHER_EXAMPLE__?.state()), { timeout: 20_000 })
+    .toMatchObject({
+      backend,
+      diagnostics: {
+        status: 'rendered',
+        indexedDrawCalls: localShadow === 'spot' ? 12 : 22,
+        indexCount: localShadow === 'spot' ? 432 : 792,
+        sampleCount: 4
+      }
+    });
+  expectBackendClean(await page.evaluate(() => window.__AETHER_EXAMPLE__!.state()), backend);
+  await expect(page.locator('canvas')).toHaveScreenshot(
+    `react-vite-${localShadow}-shadow-enabled.png`,
+    {
+      animations: 'disabled',
+      maxDiffPixelRatio: 0.01
+    }
+  );
+  const enabled = await page.locator('canvas').screenshot();
+  const frame = await page.evaluate(
+    () => (window.__AETHER_EXAMPLE__!.state().diagnostics as { frame: number }).frame
+  );
+  await page.evaluate(() => window.__AETHER_EXAMPLE__!.setCastsShadow(false));
+  await expect.poll(() => cleanFrame(page, backend)).toBeGreaterThan(frame);
+  await expect(page.locator('canvas')).toHaveScreenshot(
+    `react-vite-${localShadow}-shadow-disabled.png`,
+    {
+      animations: 'disabled',
+      maxDiffPixelRatio: 0.01
+    }
+  );
+  const disabled = await page.locator('canvas').screenshot();
+  expect(disabled).not.toEqual(enabled);
 }
