@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@aether/engine": "workspace:*",
+    "@radix-ui/react-slider": "^1.4.7",
     "@vitejs/plugin-react": "^4.3.4",
     "leva": "^0.10.1",
     "react": "^19.0.0",

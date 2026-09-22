@@ -1,6 +1,7 @@
 import type { DemoDefinition } from './types';
 import { CsmBoxDemo } from './csm-box/CsmBoxDemo';
 import { DamagedHelmetDemo } from './damaged-helmet/DamagedHelmetDemo';
+import { PbrInspectorDemo } from './pbr-inspector/PbrInspectorDemo';
 
 export const DEMO_REGISTRY: readonly DemoDefinition[] = Object.freeze([
   {
@@ -21,6 +22,15 @@ export const DEMO_REGISTRY: readonly DemoDefinition[] = Object.freeze([
     description:
       'Real-world glTF model with 5 PBR texture slots, MikkTSpace tangents, and HDR IBL.',
     component: DamagedHelmetDemo
+  },
+  {
+    id: 'pbr-inspector',
+    path: '/pbr-inspector',
+    aliases: Object.freeze(['/inspector', '/helmet-inspector']),
+    title: 'PBR Inspector',
+    subtitle: 'Schema → PowerPanel → Radix',
+    description: 'A minimal live-material inspector for the Damaged Helmet glTF example.',
+    component: PbrInspectorDemo
   }
 ]);
 

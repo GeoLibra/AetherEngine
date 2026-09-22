@@ -18,6 +18,7 @@ import {
   definePlugin,
   defineResource,
   defineTagComponent,
+  StandardLitMaterialSchema,
   parseGlbContainer,
   adaptGltfToCanonical,
   decodeBrowserImageTexture,
@@ -33,6 +34,9 @@ import {
   type DirectionalLightSourceView,
   type EnvironmentAsset,
   type Vec3,
+  type MaterialField,
+  type MaterialValue,
+  type StandardLitMaterial,
   type ViewBackground,
   type WorldTransformView
 } from '@aether/engine';
@@ -68,6 +72,10 @@ export interface MountedDamagedHelmetScene {
   setLightDirection(direction: readonly [number, number, number]): void;
   setBackgroundMultiplier(value: number): void;
   setEnvironmentIntensity(value: number): void;
+  setMetallic(value: number): void;
+  setRoughness(value: number): void;
+  setNormalScale(value: number): void;
+  setOcclusionStrength(value: number): void;
   resize(width: number, height: number): Promise<void> | void;
   destroy(): Promise<void>;
 }
@@ -202,7 +210,40 @@ export async function mountDamagedHelmetScene(
   // 5. Cook geometry (computes MikkTSpace tangents for 14,556 vertices)
   const cookedMesh = cookCanonicalMeshDocument(rawMeshDoc, { materials: [rawMatDoc] });
   const primitive = cookedMesh.primitives[0]!;
-  const cookedMaterial = cookCanonicalMaterial(rawMatDoc, { samplers: bundle.samplers });
+  const baseMaterial = cookCanonicalMaterial(rawMatDoc, { samplers: bundle.samplers });
+  let liveMetallic = baseMaterial.instance.parameters.get(
+    StandardLitMaterialSchema.fields.metallic
+  );
+  let liveRoughness = baseMaterial.instance.parameters.get(
+    StandardLitMaterialSchema.fields.roughness
+  );
+  let liveNormalScale = baseMaterial.instance.parameters.get(
+    StandardLitMaterialSchema.fields.normalScale
+  );
+  let liveOcclusionStrength = baseMaterial.instance.parameters.get(
+    StandardLitMaterialSchema.fields.occlusionStrength
+  );
+  const cookedMaterial = Object.freeze({
+    asset: baseMaterial.asset,
+    resolved: baseMaterial.resolved,
+    instance: Object.freeze({
+      ...baseMaterial.instance,
+      parameters: Object.freeze({
+        ...baseMaterial.instance.parameters,
+        get: <T extends MaterialValue>(field: MaterialField<T>): T => {
+          if ((field as unknown) === StandardLitMaterialSchema.fields.metallic)
+            return liveMetallic as T;
+          if ((field as unknown) === StandardLitMaterialSchema.fields.roughness)
+            return liveRoughness as T;
+          if ((field as unknown) === StandardLitMaterialSchema.fields.normalScale)
+            return liveNormalScale as T;
+          if ((field as unknown) === StandardLitMaterialSchema.fields.occlusionStrength)
+            return liveOcclusionStrength as T;
+          return baseMaterial.instance.parameters.get(field);
+        }
+      })
+    })
+  }) as StandardLitMaterial;
 
   // Dynamically cook scene graph to compute node world transforms from glTF
   const cookedScene = cookCanonicalScene(bundle.scene);
@@ -496,6 +537,26 @@ export async function mountDamagedHelmetScene(
     },
     setEnvironmentIntensity(value: number) {
       renderingPlugin.setEnvironmentIntensity(value);
+      demandRunner?.frame();
+    },
+    setMetallic(value: number) {
+      if (!Number.isFinite(value)) return;
+      liveMetallic = Math.max(0, Math.min(1, value));
+      demandRunner?.frame();
+    },
+    setRoughness(value: number) {
+      if (!Number.isFinite(value)) return;
+      liveRoughness = Math.max(0, Math.min(1, value));
+      demandRunner?.frame();
+    },
+    setNormalScale(value: number) {
+      if (!Number.isFinite(value)) return;
+      liveNormalScale = Math.max(0, Math.min(2, value));
+      demandRunner?.frame();
+    },
+    setOcclusionStrength(value: number) {
+      if (!Number.isFinite(value)) return;
+      liveOcclusionStrength = Math.max(0, Math.min(1, value));
       demandRunner?.frame();
     },
     async resize(width: number, height: number) {
