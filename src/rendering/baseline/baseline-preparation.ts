@@ -5,6 +5,10 @@ import {
   STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE,
   STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT,
   STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE,
+  STANDARD_LIT_CLUSTER_SHADER_ABI_VERSION,
+  STANDARD_LIT_CLUSTER_SHADER_MODULE_KEY,
+  STANDARD_LIT_CLUSTER_WEBGPU_SHADER_ARTIFACT,
+  STANDARD_LIT_CLUSTER_WEBGPU_SHADER_MODULE,
   STANDARD_SHADOW_SHADER_ABI_VERSION,
   STANDARD_SHADOW_SHADER_ARTIFACT,
   STANDARD_SHADOW_SHADER_MODULE,
@@ -40,10 +44,12 @@ import type { PreparedDrawPacket } from '../phase';
 import { createPreparedToken, type PreparedBindGroupLayoutToken } from '../../render-graph';
 import type { ExtractedView } from '../camera';
 import type { RenderEntityId } from '../world';
+import { ReadonlyMapSnapshot } from '../world/readonly-collection-snapshot';
 import type { RenderTransformFact } from '../mesh';
 import type {
   BaselineEnvironmentFrame,
   BaselineDirectionalShadowFrame,
+  BaselineLocalShadowFrame,
   BaselineLightListFrame,
   BaselineRenderingOptions
 } from './types';
@@ -51,8 +57,17 @@ import type { EnvironmentAsset } from '../../assets';
 import {
   BuiltInFeature,
   BuiltInFeatureImplementation,
+  LIGHT_LIST_LIGHT_WORDS,
+  LIGHT_LIST_HEADER_WORDS,
   LIGHT_LIST_SHADER_MAX_LIGHTS,
+  CLUSTER_FORWARD_HEADER_WORDS,
+  CLUSTER_FORWARD_MAX_SLICES,
+  CLUSTER_FORWARD_SLICE_WORDS,
+  packClusterForwardMetadata,
+  packClusterGridForWebGpu,
+  packWebGpuClusterLights,
   packWebGlLightListInput,
+  prepareWebGpuClusterLightListRecorder,
   packWebGpuLightListInput,
   prepareWebGlLightListRecorder,
   prepareWebGpuLightListRecorder,
@@ -64,6 +79,12 @@ import {
   type PreparedLight,
   type PreparedWebGlLightListRecorder,
   type PreparedWebGpuLightListRecorder,
+  type PreparedWebGpuClusterLightListRecorder,
+  type ClusterCapacity,
+  type ClusterGrid,
+  type ShadowRequest,
+  packLocalShadowReceiverUniform,
+  type LocalShadowReceiverRecord,
   type WebGlFragmentLightListBuildContext,
   type WebGpuLightListBuildContext
 } from '../lighting';
@@ -113,16 +134,20 @@ const EMPTY_DYNAMIC_OFFSETS: readonly number[] = Object.freeze([]);
 
 type RegisteredOptions = Omit<
   NormalizedBaselineRenderingOptions,
-  'featurePolicy' | 'featurePolicyKey' | 'environment'
+  'featurePolicy' | 'featurePolicyKey' | 'environment' | 'sampleCount'
 > &
   Required<Pick<NormalizedBaselineRenderingOptions, 'mesh' | 'material'>> & {
     readonly environment?: EnvironmentAsset | undefined;
     readonly featurePolicy?: PreparedFeaturePolicy | undefined;
     readonly featurePolicyKey?: string | undefined;
+    /** Direct preparation tests may omit this; normalized runtime options always provide it. */
+    readonly sampleCount?: 1 | 4 | undefined;
   };
 
 /** Preparation-owned standard-lit GPU resources shared across immutable frame packets. */
 export class BaselineStandardLitPreparation {
+  /** Effective pipeline sample count; direct preparation tests default to single sample. */
+  readonly sampleCount: 1 | 4;
   private readonly mesh: PreparedMesh;
   private readonly pipeline: ReturnType<
     RegisteredOptions['graphics']['device']['createRenderPipeline']
@@ -136,6 +161,16 @@ export class BaselineStandardLitPreparation {
   private readonly shaderModule: ReturnType<
     RegisteredOptions['graphics']['device']['createShaderModule']
   >;
+  private readonly clusterShaderModule?: ReturnType<
+    RegisteredOptions['graphics']['device']['createShaderModule']
+  >;
+  private readonly clusterPipeline?: ReturnType<
+    RegisteredOptions['graphics']['device']['createRenderPipeline']
+  >;
+  private readonly clusterBindGroupLayouts?: readonly RHIBindGroupLayout[];
+  private readonly clusterPipelineLayout?: ReturnType<
+    RegisteredOptions['graphics']['device']['createPipelineLayout']
+  >;
   private readonly shadowShaderModule: ReturnType<
     RegisteredOptions['graphics']['device']['createShaderModule']
   >;
@@ -148,12 +183,15 @@ export class BaselineStandardLitPreparation {
   >;
   private readonly pipelineKey: string;
   private readonly bindingLayoutHash: string;
+  private readonly clusterPipelineKey?: string;
+  private readonly clusterBindingLayoutHash?: string;
   private readonly pendingSubmissions = new Set<Promise<unknown>>();
   private readonly environmentBundle?: PreparedEnvironmentBundle | undefined;
   private readonly environmentBuffer: RHIBuffer;
   private readonly environmentTextures: EnvironmentTextureSet;
   private readonly materialTextures: PreparedStandardLitTextureBindings;
   private readonly disabledShadowBuffer: RHIBuffer;
+  private readonly disabledLocalShadowBuffer: RHIBuffer;
   private readonly disabledShadowTexture: RHITexture;
   private readonly shadowFormat: 'depth32float' | 'depth24plus';
   readonly postColor: BaselinePostColorPreparation;
@@ -167,14 +205,21 @@ export class BaselineStandardLitPreparation {
   private readonly lightListCapacity: CpuLightListCapacity;
   private readonly lightListRecorder:
     PreparedWebGpuLightListRecorder | PreparedWebGlLightListRecorder | undefined;
+  private readonly clusterLightListRecorder?: PreparedWebGpuClusterLightListRecorder;
+  private readonly clusterCapacity: ClusterCapacity;
   readonly lightListBindGroupLayoutToken = createPreparedToken(
     'bind-group-layout',
     'standard-lit-light-list'
+  );
+  readonly clusterLightListBindGroupLayoutToken = createPreparedToken(
+    'bind-group-layout',
+    'standard-lit-cluster-light-list'
   );
   private frameAllocationGeneration = 0;
   private disposed = false;
 
   constructor(private readonly options: RegisteredOptions) {
+    this.sampleCount = options.sampleCount ?? 1;
     this.environmentIntensity = options.environmentLighting.intensity;
     const { device } = options.graphics;
     this.shadowFormat = shadowDepthFormat(options.graphics.backend);
@@ -243,6 +288,38 @@ export class BaselineStandardLitPreparation {
           ? STANDARD_LIT_LIST_WEBGL2_SHADER_MODULE
           : STANDARD_LIT_LIST_WEBGPU_SHADER_MODULE
     });
+    if (options.graphics.backend === 'webgpu') {
+      const clusterManifest = createCookedShaderBindingManifest(
+        STANDARD_LIT_CLUSTER_WEBGPU_SHADER_ARTIFACT,
+        STANDARD_LIT_CLUSTER_SHADER_ABI_VERSION
+      );
+      const clusterCompiled = compileBindingLayoutPlan(clusterManifest);
+      if (clusterCompiled.kind !== 'success') {
+        throw new Error(
+          `Clustered standard-lit binding layout is invalid: ${clusterCompiled.diagnostic.message}`
+        );
+      }
+      const clusterEntry = new LayoutCache().resolve({
+        plan: clusterCompiled.plan,
+        layoutRevision: STANDARD_LIT_CLUSTER_SHADER_ABI_VERSION,
+        featurePolicyHash: this.featurePolicyKey,
+        target: 'webgpu',
+        deviceGeneration: device.generation
+      }).entry;
+      const clusterLayout = new DeviceLayoutCache().resolve(clusterEntry, device);
+      if (clusterLayout.status === 'unsupported') {
+        throw new Error(
+          `Clustered standard-lit device layout is unsupported: ${clusterLayout.diagnostic.message}`
+        );
+      }
+      this.clusterBindGroupLayouts = clusterLayout.layout.bindGroupLayouts;
+      this.clusterPipelineLayout = clusterLayout.layout.pipelineLayout;
+      this.clusterBindingLayoutHash = clusterCompiled.plan.hash;
+      this.clusterShaderModule = device.createShaderModule({
+        label: 'aether-standard-lit-cluster',
+        code: STANDARD_LIT_CLUSTER_WEBGPU_SHADER_MODULE
+      });
+    }
     const shadowManifest = createCookedShaderBindingManifest(
       STANDARD_SHADOW_SHADER_ARTIFACT,
       STANDARD_SHADOW_SHADER_ABI_VERSION
@@ -286,6 +363,7 @@ export class BaselineStandardLitPreparation {
       ...(options.materialResources === undefined ? {} : { resolver: options.materialResources })
     });
     this.disabledShadowBuffer = uniformBuffer(device, new Uint32Array(96));
+    this.disabledLocalShadowBuffer = uniformBuffer(device, new Uint32Array(324));
     // The standard-lit binding is always a depth texture array, even when CSM is disabled.
     this.disabledShadowTexture = device.createTexture({
       size: [1, 1, 4],
@@ -328,6 +406,11 @@ export class BaselineStandardLitPreparation {
       (this.featurePolicy.prepared.get(BuiltInFeature.LightListBuild) as CpuLightListCapacity) ??
       BASELINE_LIGHT_LIST_CAPACITY;
     validateBaselineLightListCapacity(this.lightListCapacity);
+    this.clusterCapacity = Object.freeze({
+      maxDirectionalLights: this.lightListCapacity.maxDirectionalLights,
+      maxLightsPerCluster: this.lightListCapacity.maxLightsPerReceiver,
+      maxClusterIndices: this.lightListCapacity.maxLightIndices
+    });
     this.lightListImplementation = createBaselineLightListImplementation(
       lightListDecision.implementation,
       this.lightListCapacity,
@@ -336,6 +419,7 @@ export class BaselineStandardLitPreparation {
 
     if (lightListDecision.implementation === BuiltInFeatureImplementation.WebGpuComputeLightList) {
       this.lightListRecorder = prepareWebGpuLightListRecorder(device);
+      this.clusterLightListRecorder = prepareWebGpuClusterLightListRecorder(device);
     } else if (
       lightListDecision.implementation === BuiltInFeatureImplementation.WebGlFragmentLightList
     ) {
@@ -417,8 +501,38 @@ export class BaselineStandardLitPreparation {
         targets: [
           blend !== undefined ? { format: 'rgba16float', blend } : { format: 'rgba16float' }
         ]
-      }
+      },
+      multisample: { count: this.sampleCount }
     });
+    if (this.clusterPipelineLayout !== undefined && this.clusterShaderModule !== undefined) {
+      this.clusterPipeline = device.createRenderPipeline({
+        label: 'aether-standard-lit-cluster-forward',
+        layout: this.clusterPipelineLayout,
+        vertex: {
+          module: this.clusterShaderModule,
+          entryPoint: 'standardLitVertex',
+          buffers: vertexBuffersLayout
+        },
+        primitive: {
+          topology: 'triangle-list',
+          frontFace: options.mesh.data.frontFace,
+          cullMode
+        },
+        depthStencil: {
+          format: 'depth24plus',
+          depthWriteEnabled: options.material.material.asset.renderState.depthWrite ?? true,
+          depthCompare: 'less'
+        },
+        fragment: {
+          module: this.clusterShaderModule,
+          entryPoint: 'standardLitFragment',
+          targets: [
+            blend !== undefined ? { format: 'rgba16float', blend } : { format: 'rgba16float' }
+          ]
+        },
+        multisample: { count: this.sampleCount }
+      });
+    }
     this.shadowPipeline = device.createRenderPipeline({
       label: 'aether-standard-shadow',
       layout: this.shadowPipelineLayout,
@@ -478,18 +592,36 @@ export class BaselineStandardLitPreparation {
       blendStateHash: createCanonicalKey({ colorWrite: 'all', blend: blend ?? null }).hash,
       attachmentFormats: ['rgba16float'],
       depthStencilFormat: 'depth24plus',
-      sampleCount: 1,
+      sampleCount: this.sampleCount,
       featurePolicyHash: this.featurePolicyKey,
       deviceGeneration: device.generation
     }).hash;
+    if (this.clusterPipeline !== undefined) {
+      this.clusterPipelineKey = createCanonicalKey({
+        pipeline: this.pipelineKey,
+        shaderModuleKey: STANDARD_LIT_CLUSTER_SHADER_MODULE_KEY
+      }).hash;
+    }
   }
 
   createPacket(input: {
     entity: RenderEntityId;
     transform: RenderTransformFact;
     view: ExtractedView;
+    /** Selects the WebGPU clustered-forward shader and its group-3 ABI. */
+    lighting?: 'receiver-list' | 'clustered';
   }): PreparedDrawPacket {
     this.assertLive();
+    const clustered = input.lighting === 'clustered';
+    if (
+      clustered &&
+      (this.clusterBindGroupLayouts === undefined || this.clusterPipeline === undefined)
+    ) {
+      throw new Error(
+        'Clustered StandardLit packets require the WebGPU clustered-forward pipeline.'
+      );
+    }
+    const bindGroupLayouts = clustered ? this.clusterBindGroupLayouts! : this.bindGroupLayouts;
     const { device } = this.options.graphics;
     const buffers = [
       uniformBuffer(device, objectUniform(input.transform, input.entity)),
@@ -512,7 +644,7 @@ export class BaselineStandardLitPreparation {
             : [{ binding: 0, resource: { buffer: buffers[group]! } }];
         bindGroups.push(
           device.createBindGroup({
-            layout: this.bindGroupLayouts[group]!,
+            layout: bindGroupLayouts[group]!,
             entries
           })
         );
@@ -521,7 +653,25 @@ export class BaselineStandardLitPreparation {
       disposeResources([...bindGroups, ...buffers]);
       throw error;
     }
-    return this.packet(input.entity, buffers, bindGroups);
+    return this.packet(
+      input.entity,
+      buffers,
+      bindGroups,
+      clustered
+        ? {
+            pipeline: this.clusterPipeline!,
+            phase:
+              this.options.material.material.asset.renderState.surface === 'transparent'
+                ? 'transparent'
+                : this.options.material.material.asset.renderState.surface === 'alpha-mask'
+                  ? 'alpha-test'
+                  : 'opaque',
+            pipelineKey: this.clusterPipelineKey!,
+            drawKey: `${input.entity}:clustered`,
+            bindingLayoutHash: this.clusterBindingLayoutHash!
+          }
+        : undefined
+    );
   }
 
   /** Creates one cascade-specific depth caster packet with alpha coverage matching StandardLit. */
@@ -578,6 +728,47 @@ export class BaselineStandardLitPreparation {
     });
   }
 
+  /** Groups spot/point caster packets into a submission-scoped local shadow frame. */
+  createLocalShadowFrame(input: {
+    requests: readonly ShadowRequest[];
+    packetsByRequestKey: ReadonlyMap<string, readonly PreparedDrawPacket[]>;
+    receiverRecords: readonly LocalShadowReceiverRecord[];
+  }): BaselineLocalShadowFrame {
+    this.assertLive();
+    const shadowUniformBuffer = uniformBuffer(
+      this.options.graphics.device,
+      packLocalShadowReceiverUniform(input.receiverRecords)
+    );
+    let released = false;
+    let retained = false;
+    return Object.freeze({
+      requests: Object.freeze([...input.requests]),
+      packetsByRequestKey: new ReadonlyMapSnapshot(input.packetsByRequestKey),
+      uniformBuffer: shadowUniformBuffer,
+      release: () => {
+        if (released) return;
+        released = true;
+        if (!retained) {
+          shadowUniformBuffer.dispose();
+          for (const packets of input.packetsByRequestKey.values())
+            for (const packet of packets) packet.release();
+        }
+      },
+      retain: (submission: RHISubmission) => {
+        if (released || retained)
+          throw new Error('Baseline local shadow frame cannot be retained.');
+        retained = true;
+        const pending = submission.done.finally(() => {
+          shadowUniformBuffer.dispose();
+          for (const packets of input.packetsByRequestKey.values())
+            for (const packet of packets) packet.release();
+          this.pendingSubmissions.delete(pending);
+        });
+        this.pendingSubmissions.add(pending);
+      }
+    });
+  }
+
   /** Uploads receiver CSM data and binds its lifetime to the frame submission. */
   createDirectionalShadowFrame(input: {
     requests: BaselineDirectionalShadowFrame['requests'];
@@ -585,6 +776,9 @@ export class BaselineStandardLitPreparation {
     view: ExtractedView;
     cascades: readonly { readonly splitFar: number; readonly viewProjection: readonly number[] }[];
     lightIndex: number;
+    constantBias?: number;
+    slopeBias?: number;
+    pcfKernel?: 3 | 5;
   }): BaselineDirectionalShadowFrame {
     this.assertLive();
     if (input.cascades.length !== 4) {
@@ -595,8 +789,8 @@ export class BaselineStandardLitPreparation {
       ...Array.from(input.view.view),
       ...input.cascades.map((cascade) => cascade.splitFar),
       1,
-      0.0005,
-      0.002,
+      input.constantBias ?? 0.0005,
+      input.slopeBias ?? 0.002,
       1 / input.requests[0]!.resolutionClass,
       0,
       0,
@@ -609,6 +803,7 @@ export class BaselineStandardLitPreparation {
     ]);
     const words = new Uint32Array(floats.buffer);
     words[88] = input.lightIndex;
+    words[89] = ((input.pcfKernel ?? 3) - 1) / 2;
     const shadowUniformBuffer = uniformBuffer(this.options.graphics.device, words);
     let released = false;
     let retained = false;
@@ -651,8 +846,16 @@ export class BaselineStandardLitPreparation {
     });
   }
 
-  get disabledShadowReceiver(): Readonly<{ buffer: RHIBuffer; map: RHITexture }> {
-    return Object.freeze({ buffer: this.disabledShadowBuffer, map: this.disabledShadowTexture });
+  get disabledShadowReceiver(): Readonly<{
+    buffer: RHIBuffer;
+    localBuffer: RHIBuffer;
+    map: RHITexture;
+  }> {
+    return Object.freeze({
+      buffer: this.disabledShadowBuffer,
+      localBuffer: this.disabledLocalShadowBuffer,
+      map: this.disabledShadowTexture
+    });
   }
 
   /** Updates the active environment intensity without rebuilding GPU pipelines or unmounting. */
@@ -682,6 +885,7 @@ export class BaselineStandardLitPreparation {
       background: bg,
       colorFormat: 'rgba16float',
       depthFormat: 'depth24plus',
+      sampleCount: this.sampleCount,
       environmentAsset: this.options.environment,
       environmentCache: sharedEnvironmentTextureCache,
       environmentIntensity,
@@ -696,15 +900,60 @@ export class BaselineStandardLitPreparation {
     viewLayerMask: number;
     lights: readonly PreparedLight[];
     receivers: readonly LightReceiver[];
+    /** A prepared per-view grid opts the WebGPU forward path into cluster assignment. */
+    clusterGrid?: ClusterGrid;
   }): BaselineLightListFrame {
     this.assertLive();
     const { device } = this.options.graphics;
     const lightListDecision = this.featurePolicy.snapshot.decisions.get(
       BuiltInFeature.LightListBuild
     );
+    if (
+      input.clusterGrid !== undefined &&
+      this.options.graphics.backend === 'webgpu' &&
+      this.clusterLightListRecorder !== undefined
+    ) {
+      const packedLights = packWebGpuClusterLights(input);
+      const packedGrid = packClusterGridForWebGpu(input.clusterGrid, this.clusterCapacity);
+      const packedMetadata = packClusterForwardMetadata(input.clusterGrid);
+      const upload = (label: string, words: Uint32Array, usage: number) => {
+        const buffer = device.createBuffer({ label, size: Math.max(16, words.byteLength), usage });
+        device.queue.writeBuffer(buffer, 0, words);
+        return buffer;
+      };
+      // WGSL uses fixed-size uniform arrays for portable WebGPU/WebGL-style reflection; pad
+      // variable uploads to the reflected minimum binding sizes rather than binding a short view.
+      const lightWords = new Uint32Array(
+        LIGHT_LIST_HEADER_WORDS + LIGHT_LIST_SHADER_MAX_LIGHTS * LIGHT_LIST_LIGHT_WORDS
+      );
+      lightWords.set(packedLights.words);
+      const metadataWords = new Uint32Array(
+        CLUSTER_FORWARD_HEADER_WORDS + CLUSTER_FORWARD_MAX_SLICES * CLUSTER_FORWARD_SLICE_WORDS
+      );
+      metadataWords.set(packedMetadata.words);
+      return this.ownedClusterLightListFrame({
+        source: 'gpu-cluster',
+        lights: upload(
+          'aether-cluster-packed-lights',
+          lightWords,
+          STORAGE_UNIFORM_UPLOAD_BUFFER_USAGE
+        ),
+        clusters: upload('aether-cluster-grid', packedGrid.words, STORAGE_UPLOAD_BUFFER_USAGE),
+        metadata: upload(
+          'aether-cluster-forward-metadata',
+          metadataWords,
+          STORAGE_UNIFORM_UPLOAD_BUFFER_USAGE
+        ),
+        grid: input.clusterGrid,
+        capacity: this.clusterCapacity,
+        recorder: this.clusterLightListRecorder,
+        forwardBindGroupLayoutToken: this.clusterLightListBindGroupLayoutToken,
+        forwardBindGroupLayout: this.clusterBindGroupLayouts?.[3] ?? this.lightListBindGroupLayout
+      });
+    }
     if (lightListDecision?.implementation === BuiltInFeatureImplementation.WebGpuComputeLightList) {
       const packed = packWebGpuLightListInput({ ...input, capacity: this.lightListCapacity });
-      const lightWords = new Uint32Array(4 + LIGHT_LIST_SHADER_MAX_LIGHTS * 12);
+      const lightWords = new Uint32Array(4 + LIGHT_LIST_SHADER_MAX_LIGHTS * LIGHT_LIST_LIGHT_WORDS);
       lightWords.set(packed.lights);
       const lights = device.createBuffer({
         size: lightWords.byteLength,
@@ -761,9 +1010,9 @@ export class BaselineStandardLitPreparation {
         receiverCount: input.receivers.length,
         maxTextureDimension2D,
         implementation: this.lightListImplementation as RenderFeatureImplementation<
-            CpuLightListCapacity,
-            WebGlFragmentLightListBuildContext
-          >,
+          CpuLightListCapacity,
+          WebGlFragmentLightListBuildContext
+        >,
         capacity: this.lightListCapacity,
         recorder: this.lightListRecorder as PreparedWebGlLightListRecorder,
         forwardBindGroupLayoutToken: this.lightListBindGroupLayoutToken,
@@ -831,11 +1080,14 @@ export class BaselineStandardLitPreparation {
     await Promise.allSettled([...this.pendingSubmissions]);
     disposePreparedMesh(this.mesh);
     this.pipeline.dispose();
+    this.clusterPipeline?.dispose();
     this.shadowPipeline.dispose();
     this.lightListRecorder?.dispose();
+    this.clusterLightListRecorder?.dispose();
     this.environmentBuffer.dispose();
     this.materialTextures.dispose();
     this.disabledShadowBuffer.dispose();
+    this.disabledLocalShadowBuffer.dispose();
     this.disabledShadowTexture.dispose();
     if (this.environmentBundle !== undefined) {
       this.environmentBundle.release();
@@ -848,10 +1100,13 @@ export class BaselineStandardLitPreparation {
     disposeResources(this.postColorOwnedResources);
     this.defaultColorBuffer.dispose();
     this.shaderModule.dispose();
+    this.clusterShaderModule?.dispose();
     this.shadowShaderModule.dispose();
     this.pipelineLayout.dispose();
+    this.clusterPipelineLayout?.dispose();
     this.shadowPipelineLayout.dispose();
     disposeResources(this.bindGroupLayouts);
+    if (this.clusterBindGroupLayouts !== undefined) disposeResources(this.clusterBindGroupLayouts);
     disposeResources(this.shadowBindGroupLayouts);
   }
 
@@ -864,13 +1119,14 @@ export class BaselineStandardLitPreparation {
       phase: PreparedDrawPacket['phase'];
       pipelineKey: string;
       drawKey: string;
+      bindingLayoutHash?: string;
     }>
   ): PreparedDrawPacket {
     const submesh = this.mesh.submeshes[0]!;
     let released = false;
     let retained = false;
     const bindingKey = createBindingKey({
-      bindingLayoutHash: this.bindingLayoutHash,
+      bindingLayoutHash: overrides?.bindingLayoutHash ?? this.bindingLayoutHash,
       resources: [],
       bufferAllocationGeneration: ++this.frameAllocationGeneration,
       ringGeneration: 1,
@@ -972,6 +1228,40 @@ export class BaselineStandardLitPreparation {
         this.pendingSubmissions.add(pending);
       }
     }) as BaselineLightListFrame;
+  }
+
+  private ownedClusterLightListFrame(frame: {
+    source: 'gpu-cluster';
+    lights: RHIBuffer;
+    clusters: RHIBuffer;
+    metadata: RHIBuffer;
+    grid: ClusterGrid;
+    capacity: ClusterCapacity;
+    recorder: PreparedWebGpuClusterLightListRecorder;
+    forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
+    forwardBindGroupLayout: RHIBindGroupLayout;
+  }): BaselineLightListFrame {
+    let released = false;
+    let retained = false;
+    const resources = [frame.lights, frame.clusters, frame.metadata];
+    return Object.freeze({
+      ...frame,
+      release: () => {
+        if (released) return;
+        released = true;
+        if (!retained) disposeResources(resources);
+      },
+      retain: (submission: RHISubmission) => {
+        if (released || retained)
+          throw new Error('Baseline cluster LightList frame cannot be retained.');
+        retained = true;
+        const pending = submission.done.finally(() => {
+          disposeResources(resources);
+          this.pendingSubmissions.delete(pending);
+        });
+        this.pendingSubmissions.add(pending);
+      }
+    });
   }
 
   private ownedCpuLightListFrame(frame: {

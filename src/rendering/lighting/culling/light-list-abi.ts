@@ -3,7 +3,7 @@ import type { CpuLightListCapacity, LightReceiver, PreparedLight } from '../type
 
 export const LIGHT_LIST_ABI_VERSION = 2;
 export const LIGHT_LIST_HEADER_WORDS = 4;
-export const LIGHT_LIST_LIGHT_WORDS = 12;
+export const LIGHT_LIST_LIGHT_WORDS = 16;
 export const LIGHT_LIST_RECEIVER_WORDS = 12;
 export const LIGHT_LIST_SHADER_MAX_LIGHTS = 256;
 export const LIGHT_LIST_SHADER_MAX_DIRECTIONAL_LIGHTS = 64;
@@ -55,27 +55,8 @@ export function packWebGpuLightListInput(input: {
   lightWords[0] = orderedLights.length;
   lightWords[1] = input.viewLayerMask;
   orderedLights.forEach((light, index) => {
-    assertUint32(light.entity, 'Light-list light entity');
     const base = LIGHT_LIST_HEADER_WORDS + index * LIGHT_LIST_LIGHT_WORDS;
-    lightWords[base] = light.kind === 'directional' ? 0 : light.kind === 'point' ? 1 : 2;
-    lightWords[base + 1] = (light.enabled ? 1 : 0) | (light.castsShadow ? 2 : 0);
-    lightWords[base + 2] = light.layerMask;
-    lightWords[base + 3] = light.entity;
-    if (light.kind === 'directional') {
-      writeFloat(lightWords, base + 4, light.direction[0]);
-      writeFloat(lightWords, base + 5, light.direction[1]);
-      writeFloat(lightWords, base + 6, light.direction[2]);
-      writeFloat(lightWords, base + 11, light.illuminanceLux);
-    } else {
-      writeFloat(lightWords, base + 4, light.position[0]);
-      writeFloat(lightWords, base + 5, light.position[1]);
-      writeFloat(lightWords, base + 6, light.position[2]);
-      writeFloat(lightWords, base + 7, light.range);
-      writeFloat(lightWords, base + 11, light.luminousIntensityCandela);
-    }
-    writeFloat(lightWords, base + 8, light.colorLinear[0]);
-    writeFloat(lightWords, base + 9, light.colorLinear[1]);
-    writeFloat(lightWords, base + 10, light.colorLinear[2]);
+    writeWebGpuPackedLightRecord(lightWords, base, light);
   });
   const receiverWords = new Uint32Array(
     LIGHT_LIST_HEADER_WORDS + receivers.length * LIGHT_LIST_RECEIVER_WORDS
@@ -105,6 +86,53 @@ export function packWebGpuLightListInput(input: {
     }
   });
   return { orderedLights, lights: lightWords, receivers: receiverWords };
+}
+
+/**
+ * Writes one `LIGHT_LIST_LIGHT_WORDS` record into a caller-owned upload buffer.
+ *
+ * The fixed record is consumed by both receiver-list and clustered forward paths: directional
+ * vectors occupy words 4..6, finite-light positions/range occupy words 4..7, linear RGB and
+ * photometric intensity occupy words 8..11, and spot direction/outer half-angle occupy words
+ * 12..15. `base` is a word offset, not a byte offset.
+ *
+ * @throws When `base` does not address a complete record or the entity/layer identifiers are
+ * not unsigned 32-bit values.
+ */
+export function writeWebGpuPackedLightRecord(
+  words: Uint32Array,
+  base: number,
+  light: PreparedLight
+): void {
+  if (!Number.isInteger(base) || base < 0 || base + LIGHT_LIST_LIGHT_WORDS > words.length)
+    throw new Error('Light-list packed record does not fit its destination buffer.');
+  assertUint32(light.entity, 'Light-list light entity');
+  assertUint32(light.layerMask, 'Light-list light layer mask');
+  words[base] = light.kind === 'directional' ? 0 : light.kind === 'point' ? 1 : 2;
+  words[base + 1] = (light.enabled ? 1 : 0) | (light.castsShadow ? 2 : 0);
+  words[base + 2] = light.layerMask;
+  words[base + 3] = light.entity;
+  if (light.kind === 'directional') {
+    writeFloat(words, base + 4, light.direction[0]);
+    writeFloat(words, base + 5, light.direction[1]);
+    writeFloat(words, base + 6, light.direction[2]);
+    writeFloat(words, base + 11, light.illuminanceLux);
+  } else {
+    writeFloat(words, base + 4, light.position[0]);
+    writeFloat(words, base + 5, light.position[1]);
+    writeFloat(words, base + 6, light.position[2]);
+    writeFloat(words, base + 7, light.range);
+    writeFloat(words, base + 11, light.luminousIntensityCandela);
+  }
+  writeFloat(words, base + 8, light.colorLinear[0]);
+  writeFloat(words, base + 9, light.colorLinear[1]);
+  writeFloat(words, base + 10, light.colorLinear[2]);
+  if (light.kind === 'spot') {
+    writeFloat(words, base + 12, light.direction[0]);
+    writeFloat(words, base + 13, light.direction[1]);
+    writeFloat(words, base + 14, light.direction[2]);
+    writeFloat(words, base + 15, light.outerRadians);
+  }
 }
 
 /** Decodes copied storage-buffer words and rejects counts outside their captured buffers. */

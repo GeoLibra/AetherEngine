@@ -1,0 +1,96 @@
+struct Words { values: array<u32>, }
+@group(0) @binding(0) var<storage, read> lights: Words;
+@group(0) @binding(1) var<storage, read> clusters: Words;
+@group(0) @binding(2) var<storage, read_write> directional: Words;
+@group(0) @binding(3) var<storage, read_write> headers: Words;
+@group(0) @binding(4) var<storage, read_write> indices: Words;
+@group(0) @binding(5) var<storage, read_write> overflow: Words;
+
+const LIGHT_HEADER_WORDS: u32 = 4u;
+const LIGHT_RECORD_WORDS: u32 = 16u;
+const CLUSTER_HEADER_WORDS: u32 = 8u;
+const CLUSTER_RECORD_WORDS: u32 = 10u;
+const DIRECTIONAL_OVERFLOW: u32 = 0x80000000u;
+const LOCAL_OVERFLOW: u32 = 0x40000000u;
+const TERNARY_ITERATIONS: u32 = 64u;
+
+fn f(word: u32) -> f32 { return bitcast<f32>(word); }
+fn squaredDistanceToAabb(point: vec3<f32>, lower: vec3<f32>, upper: vec3<f32>) -> f32 {
+  let delta = point - max(lower, min(point, upper));
+  return dot(delta, delta);
+}
+fn dotRangeMin(lower: vec3<f32>, upper: vec3<f32>, axis: vec3<f32>) -> f32 { return dot(min(lower * axis, upper * axis), vec3<f32>(1.0)); }
+fn dotRangeMax(lower: vec3<f32>, upper: vec3<f32>, axis: vec3<f32>) -> f32 { return dot(max(lower * axis, upper * axis), vec3<f32>(1.0)); }
+fn spotIntersectsAabb(lightBase: u32, lower: vec3<f32>, upper: vec3<f32>) -> bool {
+  let apex = vec3<f32>(f(lights.values[lightBase + 4u]), f(lights.values[lightBase + 5u]), f(lights.values[lightBase + 6u]));
+  let range = f(lights.values[lightBase + 7u]);
+  let rawAxis = vec3<f32>(f(lights.values[lightBase + 12u]), f(lights.values[lightBase + 13u]), f(lights.values[lightBase + 14u]));
+  let axisLength = length(rawAxis);
+  if (axisLength == 0.0 || range <= 0.0) { return false; }
+  let axis = rawAxis / axisLength;
+  if (dotRangeMin(lower, upper, axis) > dot(apex, axis) + range || dotRangeMax(lower, upper, axis) < dot(apex, axis)) { return false; }
+  if (squaredDistanceToAabb(apex, lower, upper) > range * range) { return false; }
+  var low = 0.0;
+  var high = range;
+  for (var iteration = 0u; iteration < TERNARY_ITERATIONS; iteration += 1u) {
+    let step = (high - low) / 3.0;
+    let first = low + step;
+    let second = high - step;
+    if (squaredDistanceToAabb(apex + axis * first, lower, upper) <= squaredDistanceToAabb(apex + axis * second, lower, upper)) { high = second; }
+    else { low = first; }
+  }
+  let t = (low + high) * 0.5;
+  return sqrt(squaredDistanceToAabb(apex + axis * t, lower, upper)) <= t * tan(f(lights.values[lightBase + 15u]));
+}
+
+// Deliberately serial reference dispatch: its order, truncation, and cone test mirror the CPU oracle.
+@compute @workgroup_size(1)
+fn buildClusterLightList() {
+  let lightCount = lights.values[0u];
+  let viewMask = lights.values[1u];
+  let clusterCount = min(clusters.values[0u], arrayLength(&headers.values) / 4u);
+  let maxDirectional = min(clusters.values[4u], arrayLength(&directional.values));
+  let maxLightsPerCluster = clusters.values[5u];
+  let maxIndices = min(clusters.values[6u], arrayLength(&indices.values));
+  var directionalCount = 0u;
+  var flags = 0u;
+  for (var lightIndex = 0u; lightIndex < lightCount; lightIndex += 1u) {
+    let lightBase = LIGHT_HEADER_WORDS + lightIndex * LIGHT_RECORD_WORDS;
+    let enabledLight = (lights.values[lightBase + 1u] & 1u) != 0u && (lights.values[lightBase + 2u] & viewMask) != 0u;
+    if (enabledLight && lights.values[lightBase] == 0u) {
+      if (directionalCount < maxDirectional) { directional.values[directionalCount] = lightIndex; directionalCount += 1u; }
+      else { flags |= DIRECTIONAL_OVERFLOW; }
+    }
+  }
+  var emitted = 0u;
+  for (var cluster = 0u; cluster < clusterCount; cluster += 1u) {
+    let clusterBase = CLUSTER_HEADER_WORDS + cluster * CLUSTER_RECORD_WORDS;
+    let lower = vec3<f32>(f(clusters.values[clusterBase + 4u]), f(clusters.values[clusterBase + 5u]), f(clusters.values[clusterBase + 6u]));
+    let upper = vec3<f32>(f(clusters.values[clusterBase + 7u]), f(clusters.values[clusterBase + 8u]), f(clusters.values[clusterBase + 9u]));
+    let offset = emitted;
+    var count = 0u;
+    var localOverflow = 0u;
+    for (var lightIndex = 0u; lightIndex < lightCount; lightIndex += 1u) {
+      let lightBase = LIGHT_HEADER_WORDS + lightIndex * LIGHT_RECORD_WORDS;
+      let kind = lights.values[lightBase];
+      let enabledLight = (lights.values[lightBase + 1u] & 1u) != 0u && (lights.values[lightBase + 2u] & viewMask) != 0u;
+      if (!enabledLight || kind == 0u) { continue; }
+      let position = vec3<f32>(f(lights.values[lightBase + 4u]), f(lights.values[lightBase + 5u]), f(lights.values[lightBase + 6u]));
+      let range = f(lights.values[lightBase + 7u]);
+      let pointIntersects = squaredDistanceToAabb(position, lower, upper) <= range * range;
+      let intersects = select(pointIntersects, spotIntersectsAabb(lightBase, lower, upper), kind == 2u);
+      if (intersects) {
+        if (count < maxLightsPerCluster && emitted < maxIndices) { indices.values[emitted] = lightIndex; emitted += 1u; count += 1u; }
+        else { localOverflow = 1u; flags |= LOCAL_OVERFLOW; }
+      }
+    }
+    let headerBase = cluster * 4u;
+    headers.values[headerBase] = cluster;
+    headers.values[headerBase + 1u] = offset;
+    headers.values[headerBase + 2u] = count;
+    headers.values[headerBase + 3u] = localOverflow;
+  }
+  overflow.values[0u] = flags | min(directionalCount, 0x3fffffffu);
+  overflow.values[1u] = clusterCount;
+  overflow.values[2u] = emitted;
+}

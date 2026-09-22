@@ -14,50 +14,47 @@ interface ReviewedNestedMutableExposure extends NestedMutableExposure {
  * VFS returns caller-owned detached bytes with frozen metadata, not immutable byte storage.
  * Its ownership and native Buffer isolation are covered by the focused VFS contract tests.
  */
-const NESTED_MUTABLE_ALLOWLIST: readonly ReviewedNestedMutableExposure[] = Object.freeze([
-  {
-    location: 'assets/vfs/integrity.ts:62:10',
-    propertyPath: 'bytes',
-    kind: 'Uint8Array',
-    rationale:
-      'The public full-read contract transfers a detached byte copy to the caller; only metadata is immutable.'
-  },
-  {
-    location: 'rendering/lighting/culling/cluster-light-list.ts:285:10',
-    propertyPath: 'lightWords',
-    kind: 'Uint32Array',
-    rationale:
-      'PackedCpuClusterWords is a published immutable snapshot of typed word buffers crossing the CPU-to-GPU submission boundary; upload consumers read the frozen arrays.'
-  },
-  {
-    location: 'rendering/lighting/culling/cluster-light-list.ts:285:10',
-    propertyPath: 'directionalWords',
-    kind: 'Uint32Array',
-    rationale:
-      'PackedCpuClusterWords is a published immutable snapshot of typed word buffers crossing the CPU-to-GPU submission boundary; upload consumers read the frozen arrays.'
-  },
-  {
-    location: 'rendering/lighting/culling/cluster-light-list.ts:285:10',
-    propertyPath: 'headerWords',
-    kind: 'Uint32Array',
-    rationale:
-      'PackedCpuClusterWords is a published immutable snapshot of typed word buffers crossing the CPU-to-GPU submission boundary; upload consumers read the frozen arrays.'
-  },
-  {
-    location: 'rendering/lighting/culling/cluster-light-list.ts:285:10',
-    propertyPath: 'indexWords',
-    kind: 'Uint32Array',
-    rationale:
-      'PackedCpuClusterWords is a published immutable snapshot of typed word buffers crossing the CPU-to-GPU submission boundary; upload consumers read the frozen arrays.'
-  },
-  {
-    location: 'rendering/lighting/culling/cluster-light-list.ts:285:10',
-    propertyPath: 'overflowWords',
-    kind: 'Uint32Array',
-    rationale:
-      'PackedCpuClusterWords is a published immutable snapshot of typed word buffers crossing the CPU-to-GPU submission boundary; upload consumers read the frozen arrays.'
-  }
-]);
+const NESTED_MUTABLE_ALLOWLIST: readonly ReviewedNestedMutableExposure[] = Object.freeze(
+  [
+    {
+      location: 'assets/vfs/integrity.ts:62:10',
+      propertyPath: 'bytes',
+      kind: 'Uint8Array',
+      rationale:
+        'The public full-read contract transfers a detached byte copy to the caller; only metadata is immutable.'
+    },
+    ...(
+      ['lightWords', 'directionalWords', 'headerWords', 'indexWords', 'overflowWords'] as const
+    ).map((propertyPath) => ({
+      location: 'rendering/lighting/culling/cluster-light-list.ts:416:10',
+      propertyPath,
+      kind: 'Uint32Array' as const,
+      rationale:
+        'PackedCpuClusterWords is a published immutable snapshot of typed word buffers crossing the CPU-to-GPU submission boundary; upload consumers read the frozen arrays.'
+    })),
+    {
+      location: 'rendering/lighting/culling/cluster-light-list.ts:108:10',
+      propertyPath: 'words',
+      kind: 'Uint32Array',
+      rationale:
+        'PackedClusterGridWords transfers a freshly allocated, module-owned storage-buffer payload to the GPU cluster builder; consumers must treat the typed words as immutable.'
+    },
+    {
+      location: 'rendering/lighting/culling/cluster-light-list.ts:132:10',
+      propertyPath: 'words',
+      kind: 'Uint32Array',
+      rationale:
+        'PackedWebGpuClusterLights transfers a freshly allocated, module-owned storage-buffer payload to the GPU cluster builder; consumers must treat the typed words as immutable.'
+    },
+    {
+      location: 'rendering/lighting/culling/cluster-forward-abi.ts:55:10',
+      propertyPath: 'words',
+      kind: 'Uint32Array',
+      rationale:
+        'PackedClusterForwardMetadata transfers a freshly allocated, module-owned uniform payload to the forward cluster lookup; consumers must treat the typed words as immutable.'
+    }
+  ].sort((left, right) => left.location.localeCompare(right.location))
+);
 
 function nestedMutableExposures(sourceText: string): readonly NestedMutableExposure[] {
   return analyzeFreezeSource(sourceText).flatMap((call) => call.nestedMutableBuiltIns);

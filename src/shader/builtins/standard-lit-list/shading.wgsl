@@ -19,6 +19,7 @@ struct ObjectData {
 /// Per-view camera matrices and world-space position (16-byte aligned).
 struct ViewData {
   viewProjection: mat4x4<f32>, // 64 bytes
+  view: mat4x4<f32>,           // 64 bytes; world-to-camera transform for cluster depth selection
   cameraPosition: vec3<f32>,   // 12 bytes, alignment 16
 };
 
@@ -63,7 +64,7 @@ fn evaluatePackedLight(
   viewDirection: vec3<f32>,
   surface: StandardLitSurface
 ) -> vec3<f32> {
-  let base = 4u + index * 12u;
+  let base = 4u + index * 16u;
   let vector = vec3<f32>(
     bitcast<f32>(lightWord(base + 4u)),
     bitcast<f32>(lightWord(base + 5u)),
@@ -90,15 +91,27 @@ fn evaluatePackedLight(
   }
   let delta = vector - worldPosition;
   let distanceSquared = max(dot(delta, delta), 0.000001);
+  let lightDirection = normalize(delta);
+  if (lightWord(base) == 2u) {
+    let spotAxis = normalize(vec3<f32>(
+      bitcast<f32>(lightWord(base + 12u)),
+      bitcast<f32>(lightWord(base + 13u)),
+      bitcast<f32>(lightWord(base + 14u))
+    ));
+    let coneCosine = dot(normalize(worldPosition - vector), spotAxis);
+    if (coneCosine < cos(bitcast<f32>(lightWord(base + 15u)))) {
+      return vec3<f32>(0.0);
+    }
+  }
   return cookTorranceDirect(
     normal,
     viewDirection,
-    normalize(delta),
+    lightDirection,
     surface.baseColor.rgb,
     surface.metallic,
     surface.roughness,
     color * intensity / distanceSquared
-  );
+  ) * localShadowVisibility(index, worldPosition, normal, lightDirection);
 }
 
 // ----------------------------------------------------------------------------

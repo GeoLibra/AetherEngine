@@ -13,6 +13,24 @@ export interface DirectionalLightSourceView {
   readonly castsShadow: boolean;
 }
 
+/** MainWorld physical intent for a finite point light in world-space meters and candela. */
+export interface PointLightSourceView {
+  readonly position: Vec3;
+  readonly colorLinear: LinearRgb;
+  readonly luminousIntensityCandela: number;
+  readonly range: number;
+  readonly enabled: boolean;
+  readonly layerMask: number;
+  readonly castsShadow: boolean;
+}
+
+/** MainWorld physical intent for a finite cone light; angles are radians. */
+export interface SpotLightSourceView extends PointLightSourceView {
+  readonly direction: Vec3;
+  readonly innerRadians: number;
+  readonly outerRadians: number;
+}
+
 /** Monotonic source boundary for directional-light RenderWorld publication. */
 export interface DirectionalLightExtractionInput {
   readonly sourceTick: number;

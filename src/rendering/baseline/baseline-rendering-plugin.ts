@@ -3,17 +3,11 @@ import type { Plugin, AppBuilder } from '../../app/types';
 import { serviceValue } from '../../app/utils';
 import { defineResource } from '../../ecs/resource';
 import { CameraRenderSource } from '../camera';
-import { DirectionalLightSource } from '../lighting';
+import { DirectionalLightSource, PointLightSource, SpotLightSource } from '../lighting';
 import { MeshRenderSource } from '../mesh';
 import { WorldTransform } from '../../transform';
-import type {
-  BaselineRenderDiagnostics,
-  BaselineRenderingOptions
-} from './types';
-import {
-  assertGraphicsReady,
-  validateOptions
-} from './baseline-options';
+import type { BaselineRenderDiagnostics, BaselineRenderingOptions } from './types';
+import { assertGraphicsReady, validateOptions } from './baseline-options';
 import type { ViewBackground } from '../background/types';
 import {
   BaselineBackgroundControlImpl,
@@ -79,7 +73,9 @@ export function createBaselineRenderingPlugin(
             .registerComponent(WorldTransform)
             .registerComponent(CameraRenderSource)
             .registerComponent(MeshRenderSource)
-            .registerComponent(DirectionalLightSource);
+            .registerComponent(DirectionalLightSource)
+            .registerComponent(PointLightSource)
+            .registerComponent(SpotLightSource);
         }
       });
       builder.addSystem('PreRender', {

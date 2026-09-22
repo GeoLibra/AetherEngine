@@ -1,6 +1,7 @@
 export type {
   BaselineEnvironmentFrame,
   BaselineDirectionalShadowFrame,
+  BaselineLocalShadowFrame,
   BaselineEnvironmentLighting,
   BaselineEnvironmentOptions,
   BaselineLightListFrame,

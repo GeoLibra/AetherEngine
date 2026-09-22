@@ -17,15 +17,15 @@ import type { PreparedBindGroupLayoutToken } from '../../../render-graph';
 import type {
   PreparedWebGlLightListRecorder,
   PreparedWebGpuLightListRecorder,
+  PreparedWebGpuClusterLightListRecorder,
+  ClusterCapacity,
+  ClusterGrid,
   ShadowRequest,
   CpuLightListCapacity,
   WebGlFragmentLightListBuildContext,
   WebGpuLightListBuildContext
 } from '../../lighting';
-import type {
-  PreparedFeaturePolicy,
-  RenderFeatureImplementation
-} from '../../../feature-policy';
+import type { PreparedFeaturePolicy, RenderFeatureImplementation } from '../../../feature-policy';
 import type { PreparedDrawPacket } from '../../phase';
 import type { RenderView } from '../../visibility';
 import type { StandardLitResourceResolver } from '../../material';
@@ -50,14 +50,40 @@ export interface BaselineDirectionalShadowFrame {
   retain(submission: RHISubmission): void;
 }
 
+/** Local spot/point caster packets; receiver binding is owned separately from depth production. */
+export interface BaselineLocalShadowFrame {
+  readonly requests: readonly ShadowRequest[];
+  readonly packetsByRequestKey: ReadonlyMap<string, readonly PreparedDrawPacket[]>;
+  readonly uniformBuffer: RHIBuffer;
+  release(): void;
+  retain(submission: RHISubmission): void;
+}
+
 /** Submission-scoped LightList inputs consumed by forward shading. */
 export type BaselineLightListFrame =
+  | Readonly<{
+      /** WebGPU clustered-forward inputs and deterministic assignment recorder. */
+      source: 'gpu-cluster';
+      lights: RHIBuffer;
+      clusters: RHIBuffer;
+      metadata: RHIBuffer;
+      grid: ClusterGrid;
+      capacity: ClusterCapacity;
+      recorder: PreparedWebGpuClusterLightListRecorder;
+      forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
+      forwardBindGroupLayout: RHIBindGroupLayout;
+      release(): void;
+      retain(submission: RHISubmission): void;
+    }>
   | Readonly<{
       source: 'gpu-compute';
       lights: RHIBuffer;
       receivers: RHIBuffer;
       receiverCount: number;
-      implementation: RenderFeatureImplementation<CpuLightListCapacity, WebGpuLightListBuildContext>;
+      implementation: RenderFeatureImplementation<
+        CpuLightListCapacity,
+        WebGpuLightListBuildContext
+      >;
       capacity: CpuLightListCapacity;
       recorder: PreparedWebGpuLightListRecorder;
       forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
@@ -71,7 +97,10 @@ export type BaselineLightListFrame =
       receivers: RHITexture;
       receiverCount: number;
       maxTextureDimension2D: number;
-      implementation: RenderFeatureImplementation<CpuLightListCapacity, WebGlFragmentLightListBuildContext>;
+      implementation: RenderFeatureImplementation<
+        CpuLightListCapacity,
+        WebGlFragmentLightListBuildContext
+      >;
       capacity: CpuLightListCapacity;
       recorder: PreparedWebGlLightListRecorder;
       forwardBindGroupLayoutToken: PreparedBindGroupLayoutToken;
@@ -107,6 +136,7 @@ export type BaselineRenderDiagnostics =
       frame: 0;
       viewId: string;
       status: 'idle';
+      sampleCount: 1 | 4;
       deviceGeneration: number;
       surfaceGeneration: number;
     }>
@@ -118,6 +148,7 @@ export type BaselineRenderDiagnostics =
       indexedDrawCalls: number;
       indexCount: number;
       submissionId: number;
+      sampleCount: 1 | 4;
       deviceGeneration: number;
       surfaceGeneration: number;
     }>
@@ -126,6 +157,7 @@ export type BaselineRenderDiagnostics =
       viewId: string;
       status: 'skipped';
       reason: BaselineRenderSkipReason;
+      sampleCount: 1 | 4;
       deviceGeneration: number;
       surfaceGeneration: number;
     }>;
@@ -150,9 +182,13 @@ export type BaselinePreparedFrame =
       lightList?: BaselineLightListFrame;
       /** Optional four-cascade directional shadow caster snapshot. */
       shadow?: BaselineDirectionalShadowFrame;
+      /** Optional spot/point depth caster requests published after directional cascade layers. */
+      localShadow?: BaselineLocalShadowFrame;
       /** Always-valid receiver resources used when no directional shadow was selected. */
-      shadowReceiver?: Readonly<{ buffer: RHIBuffer; map: RHITexture }>;
+      shadowReceiver?: Readonly<{ buffer: RHIBuffer; localBuffer: RHIBuffer; map: RHITexture }>;
       postColor?: BaselinePostColorPreparation;
+      /** Effective raster sample count after capability-based policy selection. */
+      sampleCount?: 1 | 4 | undefined;
       deviceGeneration: number;
       surfaceGeneration: number;
     }>;
@@ -183,6 +219,16 @@ export interface NormalizedBaselineEnvironmentLighting {
 /** Dependencies for the opt-in single-surface baseline renderer. */
 export interface BaselineRenderingOptions {
   readonly graphics: BrowserGraphicsSession;
+  /** Requested raster sample count. Four samples are selected only when every baseline attachment supports them. */
+  readonly sampleCount?: 1 | 4 | undefined;
+  /** Directional CSM quality controls. Defaults preserve the baseline 1024/3x3 profile. */
+  readonly directionalShadow?: Readonly<{
+    resolution?: 1024 | 2048 | 4096;
+    cascadeLambda?: number;
+    constantBias?: number;
+    slopeBias?: number;
+    pcfKernel?: 3 | 5;
+  }>;
   /** Stable public identity for the single baseline view. Defaults to `main`. */
   readonly viewId?: string;
   /** FeaturePolicy snapshot identity consumed by preparation and Queue. */

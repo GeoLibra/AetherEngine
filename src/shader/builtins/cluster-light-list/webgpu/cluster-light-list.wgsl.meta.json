@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "imports": [],
+  "entryPoints": [{ "name": "buildClusterLightList", "stage": "compute" }],
+  "materialBindings": [],
+  "cookPolicy": { "optimization": "performance", "preserveNames": true }
+}

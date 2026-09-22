@@ -9,16 +9,13 @@ import type {
 import {
   LIGHT_LIST_SHADER_MAX_DIRECTIONAL_LIGHTS,
   LIGHT_LIST_SHADER_MAX_INDICES,
+  LIGHT_LIST_LIGHT_WORDS,
   LIGHT_LIST_SHADER_MAX_LIGHTS,
   LIGHT_LIST_SHADER_MAX_RECEIVERS,
   packWebGpuLightListInput
 } from '../../lighting/culling/light-list-abi';
-import {
-  packWebGlLightListInput
-} from '../../lighting/culling/light-list-webgl-abi';
-import {
-  calculateWebGlLightListPacking
-} from '../../lighting/culling/light-list-packing';
+import { packWebGlLightListInput } from '../../lighting/culling/light-list-webgl-abi';
+import { calculateWebGlLightListPacking } from '../../lighting/culling/light-list-packing';
 
 const STORAGE_UNIFORM_UPLOAD_BUFFER_USAGE = (1 << 3) | (1 << 6) | (1 << 7);
 const SAMPLED_UPLOAD_TEXTURE_USAGE = (1 << 2) | (1 << 4);
@@ -55,7 +52,7 @@ export function packCpuLightListForWebGpu(
   cpuResult: CpuLightListResult
 ): PackedWebGpuCpuLightListWords {
   const packedGpu = packWebGpuLightListInput({ ...input, capacity });
-  const lightWords = new Uint32Array(4 + LIGHT_LIST_SHADER_MAX_LIGHTS * 12);
+  const lightWords = new Uint32Array(4 + LIGHT_LIST_SHADER_MAX_LIGHTS * LIGHT_LIST_LIGHT_WORDS);
   lightWords.set(packedGpu.lights);
 
   const directionalWords = new Uint32Array(LIGHT_LIST_SHADER_MAX_DIRECTIONAL_LIGHTS);

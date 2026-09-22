@@ -64,6 +64,15 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     targetBackend: 'webgpu'
   },
   {
+    id: 'cluster-light-list-webgpu',
+    exportName: 'CLUSTER_LIGHT_LIST_SHADER_ARTIFACT',
+    sourcePath: 'src/shader/builtins/cluster-light-list/webgpu/cluster-light-list.wgsl',
+    metadataPath: 'src/shader/builtins/cluster-light-list/webgpu/cluster-light-list.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/cluster-light-list/webgpu/cluster-light-list.generated.ts',
+    sourceUri: 'asset://aether/builtins/cluster-light-list.wgsl',
+    targetBackend: 'webgpu'
+  },
+  {
     id: 'light-list-webgl2',
     exportName: 'LIGHT_LIST_WEBGL2_SHADER_ARTIFACT',
     sourcePath: 'src/shader/builtins/light-list/webgl2/light-list.wgsl',
@@ -89,6 +98,16 @@ export const BUILT_IN_RECIPES: readonly BuiltInShaderRecipe[] = Object.freeze([
     outputPath: 'src/shader/builtins/standard-lit-list/webgl2/standard-lit-list.generated.ts',
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl',
     targetBackend: 'webgl2'
+  },
+  {
+    id: 'standard-lit-cluster-webgpu',
+    exportName: 'STANDARD_LIT_CLUSTER_WEBGPU_SHADER_ARTIFACT',
+    sourcePath: 'src/shader/builtins/standard-lit-cluster/webgpu/standard-lit-cluster.wgsl',
+    metadataPath:
+      'src/shader/builtins/standard-lit-cluster/webgpu/standard-lit-cluster.wgsl.meta.json',
+    outputPath: 'src/shader/builtins/standard-lit-cluster/webgpu/standard-lit-cluster.generated.ts',
+    sourceUri: 'asset://aether/builtins/standard-lit-cluster-webgpu.wgsl',
+    targetBackend: 'webgpu'
   }
 ]);
 

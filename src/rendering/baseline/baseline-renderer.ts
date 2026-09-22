@@ -12,8 +12,10 @@ import {
   recordPreparedShadowDraws,
   shadowDepthFormat,
   shadowRequestKey,
+  contributeWebGpuClusterLightList,
   type WebGlFragmentLightListBuildOutput,
-  type WebGpuLightListBuildOutput
+  type WebGpuLightListBuildOutput,
+  type WebGpuClusterLightListOutput
 } from '../lighting';
 import type {
   BaselinePreparedFrame,
@@ -77,25 +79,33 @@ export class BaselineRenderer {
     const shadowDrawResources = new Map();
     const shadowTokensByRequest = new Map<string, readonly PreparedDrawResourcesToken[]>();
     let shadowMap: ReturnType<RenderGraphBuilder['createTexture']> | undefined;
-    if (prepared.shadow !== undefined) {
-      for (const request of prepared.shadow.requests) {
-        const key = shadowRequestKey(request);
-        const packets = prepared.shadow.packetsByRequestKey.get(key) ?? [];
-        const tokens = packets.map((packet, index) => {
-          const token = createPreparedToken(
-            'draw-resources',
-            `${prepared.view.id}:shadow:${request.subresourceIndex}:${index}`
-          );
-          shadowDrawResources.set(token, packet);
-          return token;
-        });
-        shadowTokensByRequest.set(key, Object.freeze(tokens));
-      }
-      shadowMap = declareShadowDepthPasses(graph, prepared.shadow.requests, {
-        format: shadowDepthFormat(this.options.graphics.backend),
-        draws: (request) => shadowTokensByRequest.get(shadowRequestKey(request)) ?? [],
-        record: recordPreparedShadowDraws
-      }).texture;
+    const shadowFrames = [prepared.shadow, prepared.localShadow].filter(
+      (frame): frame is NonNullable<typeof frame> => frame !== undefined
+    );
+    if (shadowFrames.length > 0) {
+      for (const shadowFrame of shadowFrames)
+        for (const request of shadowFrame.requests) {
+          const key = shadowRequestKey(request);
+          const packets = shadowFrame.packetsByRequestKey.get(key) ?? [];
+          const tokens = packets.map((packet, index) => {
+            const token = createPreparedToken(
+              'draw-resources',
+              `${prepared.view.id}:shadow:${request.subresourceIndex}:${index}`
+            );
+            shadowDrawResources.set(token, packet);
+            return token;
+          });
+          shadowTokensByRequest.set(key, Object.freeze(tokens));
+        }
+      shadowMap = declareShadowDepthPasses(
+        graph,
+        shadowFrames.flatMap((frame) => frame.requests),
+        {
+          format: shadowDepthFormat(this.options.graphics.backend),
+          draws: (request) => shadowTokensByRequest.get(shadowRequestKey(request)) ?? [],
+          record: recordPreparedShadowDraws
+        }
+      ).texture;
     }
     const shadowReceiver = contributeShadowReceiver(graph, prepared, shadowMap);
     const post =
@@ -130,23 +140,37 @@ export class BaselineRenderer {
             }
           : undefined
       );
+    const sampleCount = prepared.sampleCount ?? 1;
+    const renderColorTarget =
+      sampleCount === 1
+        ? colorTarget
+        : graph.createTexture(
+            attachment(
+              configuration.width,
+              configuration.height,
+              post === undefined ? configuration.format : 'rgba16float',
+              'color-attachment',
+              sampleCount
+            )
+          );
     const depthTarget = graph.createTexture(
       attachment(
         configuration.width,
         configuration.height,
         'depth24plus',
-        'depth-stencil-attachment'
+        'depth-stencil-attachment',
+        sampleCount
       )
     );
 
-    let activeColorTarget = colorTarget;
+    let activeColorTarget = renderColorTarget;
     let activeDepthTarget = depthTarget;
     const bgSystem =
       bgContribution !== undefined && bgFrame !== undefined && bgFrame.status === 'ready'
         ? createBackgroundRenderSystem({
             viewId: prepared.view.id,
             prepared: bgFrame,
-            colorTarget,
+            colorTarget: renderColorTarget,
             depthTarget,
             publishColor(color) {
               activeColorTarget = color;
@@ -168,17 +192,20 @@ export class BaselineRenderer {
         configuration.width,
         configuration.height,
         post === undefined ? configuration.format : 'rgba16float',
-        'color-attachment'
+        'color-attachment',
+        sampleCount
       ),
       depth: attachment(
         configuration.width,
         configuration.height,
         'depth24plus',
-        'depth-stencil-attachment'
+        'depth-stencil-attachment',
+        sampleCount
       ),
       colorLoadOp: bgSystem !== undefined ? 'load' : 'clear',
       depthLoadOp: bgSystem !== undefined ? 'load' : 'clear',
       colorTarget: () => activeColorTarget,
+      ...(sampleCount === 1 ? {} : { resolveTarget: colorTarget }),
       depthTarget: () => activeDepthTarget,
       present: post === undefined,
       ...(post === undefined ? {} : { publishColor: post.publishSource }),
@@ -186,8 +213,9 @@ export class BaselineRenderer {
         ? {}
         : {
             lightList: {
-              source: lightList.output.source,
+              source: lightList.source === 'gpu-cluster' ? 'gpu-cluster' : lightList.output.source,
               packedLights: lightList.lights as never,
+              ...(lightList.source === 'gpu-cluster' ? { metadata: lightList.metadata } : {}),
               output: lightList.output as never,
               bindGroupLayout: prepared.lightList.forwardBindGroupLayoutToken
             } as NonNullable<Parameters<typeof createOpaqueRenderSystem>[0]['lightList']>
@@ -233,6 +261,10 @@ export class BaselineRenderer {
         if (lightList.receivers !== undefined) {
           resources.set(lightList.lights, lightFrame.lights);
           resources.set(lightList.receivers, (lightFrame as any).receivers);
+        } else if (lightList.source === 'gpu-cluster' && lightFrame.source === 'gpu-cluster') {
+          resources.set(lightList.lights, lightFrame.lights);
+          resources.set(lightList.clusters, lightFrame.clusters);
+          resources.set(lightList.metadata, lightFrame.metadata);
         } else if ('cpuBuffers' in lightList && lightList.cpuBuffers) {
           for (const item of lightList.cpuBuffers) {
             resources.set(item.handle, item.raw);
@@ -247,6 +279,10 @@ export class BaselineRenderer {
         resources.set(
           shadowReceiver.buffer,
           prepared.shadow?.uniformBuffer ?? prepared.shadowReceiver.buffer
+        );
+        resources.set(
+          shadowReceiver.localBuffer,
+          prepared.localShadow?.uniformBuffer ?? prepared.shadowReceiver.localBuffer
         );
         if (shadowMap === undefined) resources.set(shadowReceiver.map, prepared.shadowReceiver.map);
       }
@@ -301,7 +337,7 @@ export class BaselineRenderer {
         ...(resources.size === 0 ? {} : { resources }),
         ...(renderPipelines.size === 0 ? {} : { preparedRenderPipelines: renderPipelines }),
         ...(bindGroupLayouts.size === 0 ? {} : { preparedBindGroupLayouts: bindGroupLayouts }),
-        ...(lightFrame?.source === 'gpu-compute'
+        ...(lightFrame?.source === 'gpu-compute' || lightFrame?.source === 'gpu-cluster'
           ? {
               preparedComputePipelines: new Map([
                 [lightFrame.recorder.pipelineToken, lightFrame.recorder.pipeline]
@@ -311,11 +347,13 @@ export class BaselineRenderer {
       });
       lightFrame?.retain(execution.submission);
       prepared.shadow?.retain(execution.submission);
+      prepared.localShadow?.retain(execution.submission);
       bgFrame?.retain(execution.submission);
     } catch (error) {
       for (const packet of phase.snapshot.packets) packet.release();
       prepared.lightList?.release();
       prepared.shadow?.release();
+      prepared.localShadow?.release();
       prepared.background?.release();
       throw error;
     }
@@ -327,6 +365,7 @@ export class BaselineRenderer {
       indexedDrawCalls: execution.commandStats.draw.indexedDrawCalls,
       indexCount: execution.commandStats.draw.indexCount,
       submissionId: execution.submission.id,
+      sampleCount: prepared.sampleCount ?? 1,
       deviceGeneration: device.generation,
       surfaceGeneration: surface.generation
     });
@@ -392,6 +431,7 @@ function contributeShadowReceiver(
 ) {
   if (prepared.shadowReceiver === undefined) return undefined;
   const rawBuffer = prepared.shadow?.uniformBuffer ?? prepared.shadowReceiver.buffer;
+  const rawLocalBuffer = prepared.localShadow?.uniformBuffer ?? prepared.shadowReceiver.localBuffer;
   const buffer = graph.createBuffer(
     { size: rawBuffer.size, usage: ['uniform'] },
     {
@@ -399,6 +439,16 @@ function contributeShadowReceiver(
         kind: 'imported',
         initialState: 'uniform',
         acquire: { kind: 'external-acquire', id: `${prepared.view.id}:shadow-receiver` }
+      }
+    }
+  );
+  const localBuffer = graph.createBuffer(
+    { size: rawLocalBuffer.size, usage: ['uniform'] },
+    {
+      origin: {
+        kind: 'imported',
+        initialState: 'uniform',
+        acquire: { kind: 'external-acquire', id: `${prepared.view.id}:local-shadow-receiver` }
       }
     }
   );
@@ -422,7 +472,7 @@ function contributeShadowReceiver(
         }
       }
     );
-  return Object.freeze({ buffer, map });
+  return Object.freeze({ buffer, localBuffer, map });
 }
 
 function contributeLightList(
@@ -465,6 +515,36 @@ function contributeLightList(
     if (output === undefined) throw new Error('WebGPU LightList did not publish output.');
     return { lights, receivers, output, source: 'gpu-compute' as const };
   }
+  if (prepared.lightList.source === 'gpu-cluster') {
+    const imported = (raw: RHIBuffer, id: string, usage: readonly ('storage-read' | 'uniform')[]) =>
+      graph.createBuffer(
+        { size: raw.size, usage },
+        { origin: { ...origin, initialState: usage[0]!, acquire: { ...origin.acquire, id } } }
+      );
+    const lights = imported(prepared.lightList.lights, `${baseId}:cluster:lights`, [
+      'storage-read',
+      'uniform'
+    ]);
+    const clusters = imported(prepared.lightList.clusters, `${baseId}:cluster:grid`, [
+      'storage-read'
+    ]);
+    const metadata = imported(prepared.lightList.metadata, `${baseId}:cluster:metadata`, [
+      'uniform'
+    ]);
+    let output: WebGpuClusterLightListOutput | undefined;
+    contributeWebGpuClusterLightList(
+      graph,
+      { lights, clusters },
+      prepared.lightList.grid.clusterCount,
+      prepared.lightList.capacity,
+      prepared.lightList.recorder,
+      (value) => {
+        output = value;
+      }
+    );
+    if (output === undefined) throw new Error('WebGPU clustered LightList did not publish output.');
+    return { lights, clusters, metadata, output, source: 'gpu-cluster' as const };
+  }
   if (prepared.lightList.source === 'webgl-fragment') {
     const textureHandle = (raw: RHITexture, id: string) =>
       graph.createTexture(
@@ -496,6 +576,9 @@ function contributeLightList(
   }
 
   // CPU bounded fallback
+  if (prepared.lightList.source !== 'cpu-list') {
+    throw new Error('Unsupported baseline LightList source.');
+  }
   if (prepared.lightList.backendTarget === 'webgpu') {
     const rawLights = prepared.lightList.lights as RHIBuffer;
     const rawDir = prepared.lightList.directional as RHIBuffer;
@@ -584,7 +667,9 @@ function contributeLightList(
         width: rawHeaders.width,
         height: rawHeaders.height,
         indexRows: Math.ceil(prepared.lightList.capacity.maxLightsPerReceiver / 4),
-        receiverRows: Math.ceil(rawHeaders.height / (1 + Math.ceil(prepared.lightList.capacity.maxLightsPerReceiver / 4)))
+        receiverRows: Math.ceil(
+          rawHeaders.height / (1 + Math.ceil(prepared.lightList.capacity.maxLightsPerReceiver / 4))
+        )
       }
     },
     source: 'cpu-list-webgl' as const
@@ -600,6 +685,7 @@ function skipped(
     viewId: prepared.view.id,
     status: 'skipped',
     reason,
+    sampleCount: prepared.status === 'ready' ? (prepared.sampleCount ?? 1) : 1,
     deviceGeneration: prepared.deviceGeneration,
     surfaceGeneration: prepared.surfaceGeneration
   });
@@ -609,14 +695,15 @@ function attachment(
   width: number,
   height: number,
   format: TextureDescriptor['format'],
-  usage: 'color-attachment' | 'depth-stencil-attachment'
+  usage: 'color-attachment' | 'depth-stencil-attachment',
+  sampleCount: 1 | 4 = 1
 ): TextureDescriptor {
   return Object.freeze({
     width,
     height,
     depthOrArrayLayers: 1,
     mipLevelCount: 1,
-    sampleCount: 1,
+    sampleCount,
     format,
     usage: Object.freeze([usage])
   });

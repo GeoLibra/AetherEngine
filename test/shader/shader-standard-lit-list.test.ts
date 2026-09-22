@@ -36,6 +36,18 @@ describe('standard-lit LightList built-in shader', () => {
       { kind: 'texture', binding: 5, name: 'emissiveTexture' },
       { kind: 'sampler', binding: 6, name: 'surfaceSampler' }
     ]);
+    expect(
+      STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT.bufferLayouts.find(
+        (layout) => layout.name === 'viewData'
+      )
+    ).toMatchObject({
+      byteSize: 144,
+      fields: [
+        { path: 'viewProjection', offset: 0 },
+        { path: 'view', offset: 64 },
+        { path: 'cameraPosition', offset: 128 }
+      ]
+    });
   });
   test('maps the shared environment sampler to every fused WebGL2 texture unit', () => {
     const translated = BUILT_IN_WEBGL2_TRANSLATOR.translate({
@@ -78,5 +90,33 @@ describe('standard-lit LightList built-in shader', () => {
     expect(webgl).not.toContain('geometrySchlickGgxDirect');
     expect(webgpu).toContain('let energyCompensation =');
     expect(webgl).toContain('energyCompensation');
+  });
+
+  test('keeps the local spot and point shadow receiver ABI live in the forward shader', () => {
+    const webgpu = STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT.modules.wgsl;
+    const fragmentBindings = STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT.entryPoints.find(
+      (entryPoint) => entryPoint.name === 'standardLitFragment'
+    )?.bindings;
+
+    expect(fragmentBindings).toContainEqual(
+      expect.objectContaining({
+        group: 3,
+        binding: 13,
+        name: 'localShadowReceiverData',
+        kind: 'uniform-buffer'
+      })
+    );
+    expect(webgpu).toContain('fn localShadowVisibility');
+    expect(webgpu).toContain('metadata.z + face');
+    expect(webgpu).toContain(
+      'textureSampleCompareLevel(directionalShadowMap, directionalShadowSampler'
+    );
+    expect(webgpu).toContain('if (metadata.y == 1u)');
+  });
+
+  test('allocates the complete 16-word spot-capable light record capacity', () => {
+    expect(STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT.modules.wgsl).toContain(
+      'array<vec4<u32>, 1025>'
+    );
   });
 });

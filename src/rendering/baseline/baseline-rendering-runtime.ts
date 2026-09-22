@@ -3,10 +3,17 @@ import type { Entity } from '../../ecs/types';
 import { CameraRenderSource, CameraRenderExtractor, CameraViewExtraction } from '../camera';
 import {
   buildDirectionalShadowCascades,
+  buildClusterGrid,
+  buildLocalShadowCasterViews,
+  buildLocalShadowReceiverLayout,
+  buildLocalShadowRequests,
   BuiltInFeature,
+  BuiltInFeatureImplementation,
   DirectionalLightExtraction,
   DirectionalLightExtractor,
   DirectionalLightSource,
+  LocalLightExtraction,
+  LocalLightExtractor,
   shadowRequestKey
 } from '../lighting';
 import { prepareBaselinePostColor, type BaselinePostColorPreparation } from './baseline-post-color';
@@ -42,10 +49,7 @@ import {
   type NormalizedBaselineRenderingOptions
 } from './baseline-options';
 import type { ViewBackground } from '../background/types';
-import type {
-  FeaturePolicyPublication,
-  PreparedFeaturePolicy
-} from '../../feature-policy/types';
+import type { FeaturePolicyPublication, PreparedFeaturePolicy } from '../../feature-policy/types';
 
 const EMPTY_PACKETS = Object.freeze([]);
 
@@ -58,6 +62,7 @@ export class BaselineRenderingRuntime {
   private renderWorld: RenderWorld | undefined;
   private meshExtraction: MeshRenderExtraction | undefined;
   private lightExtraction: DirectionalLightExtraction | undefined;
+  private localLightExtraction: LocalLightExtraction | undefined;
   private cameraExtraction: CameraViewExtraction | undefined;
   private standardLit: BaselineStandardLitPreparation | undefined;
   private standalonePostColor: BaselinePostColorPreparation | undefined;
@@ -80,7 +85,10 @@ export class BaselineRenderingRuntime {
     this.currentPolicyKey = options.featurePolicyKey;
     this.lastConsumedRevision = options.featurePolicy.snapshot.revision;
     this.diagnostics = Object.freeze({
-      frame: 0, viewId: options.viewId, status: 'idle',
+      frame: 0,
+      viewId: options.viewId,
+      status: 'idle',
+      sampleCount: options.sampleCount,
       deviceGeneration: options.graphics.device.generation,
       surfaceGeneration: options.graphics.surface.generation
     });
@@ -93,6 +101,7 @@ export class BaselineRenderingRuntime {
     const transforms = collectTransforms(world);
     this.meshExtraction!.extract({ sourceTick, transforms }).release();
     this.lightExtraction!.extract({ sourceTick }).release();
+    this.localLightExtraction!.extract({ sourceTick }).release();
     const cameras = [...world.query([CameraRenderSource])]
       .map(([entity]) => entity)
       .sort((left, right) => left - right);
@@ -102,11 +111,17 @@ export class BaselineRenderingRuntime {
     const bindings =
       cameras[0] === undefined || configuration === undefined || suspended
         ? []
-        : [{
-            camera: cameras[0], viewId: this.options.viewId, surface: 'main',
-            logicalWidth: configuration.width, logicalHeight: configuration.height,
-            devicePixelRatio: 1, featurePolicyKey: this.currentPolicyKey
-          }];
+        : [
+            {
+              camera: cameras[0],
+              viewId: this.options.viewId,
+              surface: 'main',
+              logicalWidth: configuration.width,
+              logicalHeight: configuration.height,
+              devicePixelRatio: 1,
+              featurePolicyKey: this.currentPolicyKey
+            }
+          ];
     const camera = this.cameraExtraction!.extract({ sourceTick, transforms, bindings });
     const view = camera.visibilityViews[0];
     if (suspended || view === undefined) {
@@ -140,6 +155,7 @@ export class BaselineRenderingRuntime {
         packets: EMPTY_PACKETS,
         ...(background === undefined ? {} : { background }),
         ...(this.standalonePostColor === undefined ? {} : { postColor: this.standalonePostColor }),
+        sampleCount: this.options.sampleCount,
         deviceGeneration: this.options.graphics.device.generation,
         surfaceGeneration: this.options.graphics.surface.generation
       });
@@ -150,19 +166,50 @@ export class BaselineRenderingRuntime {
       const bounds = fields.get(MeshWorldBoundsField) as MeshBounds | undefined;
       const visibility = fields.get(MeshVisibilityField) as RenderVisibilityFact | undefined;
       if (bounds === undefined || visibility === undefined) return [];
-      return [{
-        entity, layerMask: visibility.layerMask, enabled: visibility.visible,
-        bounds: { kind: 'sphere' as const, ...bounds.sphere },
-        boundsRevision: camera.revision.revision
-      }];
+      return [
+        {
+          entity,
+          layerMask: visibility.layerMask,
+          enabled: visibility.visible,
+          bounds: { kind: 'sphere' as const, ...bounds.sphere },
+          boundsRevision: camera.revision.revision
+        }
+      ];
     });
     const visible = computeVisibility(view, candidates).items;
     const matching = visible.filter(({ renderEntity }) =>
       this.matchesRegistration(camera.revision, renderEntity)
     );
-    const lights = this.lightExtraction!.lights().filter(
-      (candidate) => candidate.enabled && (candidate.layerMask & view.layerMask) !== 0
-    );
+    const lights = [
+      ...this.lightExtraction!.lights(),
+      ...this.localLightExtraction!.lights()
+    ].filter((candidate) => candidate.enabled && (candidate.layerMask & view.layerMask) !== 0);
+    const cameraView = camera.views[0]!;
+    // 8 × 4 × 8 exactly fills the current fragment header ABI (256 clusters) while keeping
+    // the deterministic reference path bounded. The grid is rebuilt from the extracted view,
+    // never from mutable MainWorld camera state.
+    const clusterGrid =
+      this.options.graphics.backend === 'webgpu' &&
+      this.currentPolicy.snapshot.decisions.get(BuiltInFeature.LightListBuild)?.implementation ===
+        BuiltInFeatureImplementation.WebGpuComputeLightList
+        ? buildClusterGrid({
+            viewId: cameraView.viewId,
+            projectionRevision: cameraView.revision,
+            viewTransformRevision: cameraView.revision,
+            deviceGeneration: this.options.graphics.device.generation,
+            viewport: {
+              width: cameraView.viewportPixels.width,
+              height: cameraView.viewportPixels.height
+            },
+            cameraNear: cameraView.near,
+            cameraFar: cameraView.far === 'infinite' ? 100 : cameraView.far,
+            slicing: { depth: 'finite', shape: 'logarithmic', lambda: 0.6 },
+            sliceCount: 8,
+            inverseViewProjection: cameraView.inverseViewProjection,
+            tilesX: 8,
+            tilesY: 4
+          })
+        : undefined;
     const packets = matching.map((selected) => {
       const transform = camera.revision.snapshot
         .get(selected.renderEntity)
@@ -172,18 +219,25 @@ export class BaselineRenderingRuntime {
       return this.standardLit!.createPacket({
         entity: selected.renderEntity,
         transform,
-        view: camera.views[0]!
+        view: cameraView,
+        ...(clusterGrid === undefined ? {} : { lighting: 'clustered' as const })
       });
     });
     const receivers = matching.map(({ renderEntity }) => {
       const candidate = candidates.find(({ entity }) => entity === renderEntity);
       if (candidate === undefined) throw new Error('Visible baseline receiver is missing bounds.');
-      return Object.freeze({ renderEntity, layerMask: candidate.layerMask, enabled: candidate.enabled, bounds: candidate.bounds });
+      return Object.freeze({
+        renderEntity,
+        layerMask: candidate.layerMask,
+        enabled: candidate.enabled,
+        bounds: candidate.bounds
+      });
     });
     const lightList = this.standardLit.createLightListFrame({
       viewLayerMask: view.layerMask,
       lights,
-      receivers
+      receivers,
+      ...(clusterGrid === undefined ? {} : { clusterGrid })
     });
     const shadowLight = lights.find(
       (candidate) => candidate.kind === 'directional' && candidate.castsShadow
@@ -200,17 +254,20 @@ export class BaselineRenderingRuntime {
               shadowDistance: camera.views[0]!.far === 'infinite' ? 100 : camera.views[0]!.far,
               lightDirection: shadowDirection,
               cascadeCount: 4,
-              resolution: 1024
+              resolution: this.options.directionalShadow?.resolution ?? 1024,
+              lambda: this.options.directionalShadow?.cascadeLambda ?? 0.6
             });
-            const requests = cascades.map((_, cascade) => Object.freeze({
-              lightEntity: shadowLight.entity,
-              viewId: view.id,
-              kind: 'directional-cascade' as const,
-              subresourceIndex: cascade,
-              resolutionClass: 1024,
-              importance: 1 - cascade / cascades.length,
-              casterRevision: sourceTick
-            }));
+            const requests = cascades.map((_, cascade) =>
+              Object.freeze({
+                lightEntity: shadowLight.entity,
+                viewId: view.id,
+                kind: 'directional-cascade' as const,
+                subresourceIndex: cascade,
+                resolutionClass: this.options.directionalShadow?.resolution ?? 1024,
+                importance: 1 - cascade / cascades.length,
+                casterRevision: sourceTick
+              })
+            );
             const packetsByRequestKey = new Map(
               requests.map((request, cascade) => [
                 shadowRequestKey(request),
@@ -243,7 +300,57 @@ export class BaselineRenderingRuntime {
               packetsByRequestKey,
               view: camera.views[0]!,
               cascades,
-              lightIndex: orderedLightIndex
+              lightIndex: orderedLightIndex,
+              constantBias: this.options.directionalShadow?.constantBias ?? 0.0005,
+              slopeBias: this.options.directionalShadow?.slopeBias ?? 0.002,
+              pcfKernel: this.options.directionalShadow?.pcfKernel ?? 3
+            });
+          })();
+    const localShadowRequests = buildLocalShadowRequests({
+      viewId: view.id,
+      lights,
+      resolutionClass: this.options.directionalShadow?.resolution ?? 1024,
+      casterRevision: sourceTick
+    });
+    const localShadow =
+      localShadowRequests.length === 0
+        ? undefined
+        : (() => {
+            const casterViews = buildLocalShadowCasterViews({
+              requests: localShadowRequests,
+              lights
+            });
+            const packetsByRequestKey = new Map(
+              casterViews.map((caster) => [
+                shadowRequestKey(caster.request),
+                Object.freeze(
+                  matching.map(({ renderEntity }) => {
+                    const transform = camera.revision.snapshot
+                      .get(renderEntity)
+                      ?.get(MeshTransformField) as RenderTransformFact | undefined;
+                    if (transform === undefined)
+                      throw new Error(
+                        'Visible baseline local shadow caster is missing its transform.'
+                      );
+                    return this.standardLit!.createShadowPacket({
+                      entity: renderEntity,
+                      transform,
+                      viewProjection: caster.viewProjection,
+                      cascade: caster.request.subresourceIndex + 4
+                    });
+                  })
+                )
+              ])
+            );
+            const receiverRecords = buildLocalShadowReceiverLayout({
+              requests: localShadowRequests,
+              lights,
+              firstLayer: shadow === undefined ? 0 : 4
+            });
+            return this.standardLit!.createLocalShadowFrame({
+              requests: localShadowRequests,
+              packetsByRequestKey,
+              receiverRecords
             });
           })();
     const background = this.standardLit.createBackgroundFrame(
@@ -259,8 +366,10 @@ export class BaselineRenderingRuntime {
       ...(background === undefined ? {} : { background }),
       lightList,
       ...(shadow === undefined ? {} : { shadow }),
+      ...(localShadow === undefined ? {} : { localShadow }),
       shadowReceiver: this.standardLit.disabledShadowReceiver,
       postColor: this.standardLit.postColor,
+      sampleCount: this.standardLit.sampleCount,
       deviceGeneration: this.options.graphics.device.generation,
       surfaceGeneration: this.options.graphics.surface.generation
     });
@@ -280,15 +389,20 @@ export class BaselineRenderingRuntime {
 
   frame(): BaselineRenderDiagnostics {
     this.assertLive();
-    const skipReason = this.preparedSkip ?? (this.prepared === undefined ? 'missing-resource' : undefined);
-    this.diagnostics = skipReason !== undefined
-      ? Object.freeze({
-          frame: this.diagnostics.frame + 1, viewId: this.options.viewId,
-          status: 'skipped', reason: skipReason,
-          deviceGeneration: this.options.graphics.device.generation,
-          surfaceGeneration: this.options.graphics.surface.generation
-        })
-      : this.renderer.frame(this.prepared!);
+    const skipReason =
+      this.preparedSkip ?? (this.prepared === undefined ? 'missing-resource' : undefined);
+    this.diagnostics =
+      skipReason !== undefined
+        ? Object.freeze({
+            frame: this.diagnostics.frame + 1,
+            viewId: this.options.viewId,
+            status: 'skipped',
+            reason: skipReason,
+            sampleCount: this.options.sampleCount,
+            deviceGeneration: this.options.graphics.device.generation,
+            surfaceGeneration: this.options.graphics.surface.generation
+          })
+        : this.renderer.frame(this.prepared!);
     return this.diagnostics;
   }
 
@@ -305,15 +419,16 @@ export class BaselineRenderingRuntime {
    * Constructs candidate preparation first; keeps current state intact if construction throws.
    * Releases retirement only after previous preparation's pending GPU submissions are terminal.
    */
-  updateFeaturePolicy(
-    publicationOrPolicy: FeaturePolicyPublication | PreparedFeaturePolicy
-  ): void {
+  updateFeaturePolicy(publicationOrPolicy: FeaturePolicyPublication | PreparedFeaturePolicy): void {
     const isPublication = 'current' in publicationOrPolicy;
     const nextPolicy = isPublication ? publicationOrPolicy.current : publicationOrPolicy;
     const publication = isPublication ? publicationOrPolicy : undefined;
 
     // Deduplicate repeat deliveries: if revision is already consumed and policy unchanged, no-op
-    if (nextPolicy.snapshot.revision === this.lastConsumedRevision && nextPolicy === this.currentPolicy) {
+    if (
+      nextPolicy.snapshot.revision === this.lastConsumedRevision &&
+      nextPolicy === this.currentPolicy
+    ) {
       return;
     }
 
@@ -329,10 +444,12 @@ export class BaselineRenderingRuntime {
       this.currentPolicy.snapshot.hash;
     const nextShaderKey =
       nextPolicy.snapshot.cacheDomainHashes.get('shader-pipeline') ?? nextPolicy.snapshot.hash;
-    const currentLightListDecision =
-      this.currentPolicy.snapshot.decisions.get(BuiltInFeature.LightListBuild)?.implementation;
-    const nextLightListDecision =
-      nextPolicy.snapshot.decisions.get(BuiltInFeature.LightListBuild)?.implementation;
+    const currentLightListDecision = this.currentPolicy.snapshot.decisions.get(
+      BuiltInFeature.LightListBuild
+    )?.implementation;
+    const nextLightListDecision = nextPolicy.snapshot.decisions.get(
+      BuiltInFeature.LightListBuild
+    )?.implementation;
 
     // Domain-specific invalidation: only recreate GPU resources if pipeline key or LightList decision changed
     const needsRebuild =
@@ -401,6 +518,7 @@ export class BaselineRenderingRuntime {
     this.discardPrepared();
     this.meshExtraction?.dispose();
     this.lightExtraction?.dispose();
+    this.localLightExtraction?.dispose();
     this.cameraExtraction?.dispose();
     this.renderer.dispose();
     for (const res of [...this.standalonePostColorResources].reverse()) res.dispose();
@@ -423,10 +541,12 @@ export class BaselineRenderingRuntime {
       .registerExtractor(MeshRenderExtractor)
       .registerExtractor(CameraRenderExtractor)
       .registerExtractor(DirectionalLightExtractor)
+      .registerExtractor(LocalLightExtractor)
       .build();
     this.renderWorld = new RenderWorld({ extractorPlan: plan });
     this.meshExtraction = new MeshRenderExtraction(world, this.renderWorld);
     this.lightExtraction = new DirectionalLightExtraction(world, this.renderWorld);
+    this.localLightExtraction = new LocalLightExtraction(world, this.renderWorld);
     this.cameraExtraction = new CameraViewExtraction(world, this.renderWorld);
   }
 
@@ -442,6 +562,7 @@ export class BaselineRenderingRuntime {
           for (const packet of packets) packet.release();
         }
       }
+      this.prepared.localShadow?.release();
       this.prepared.lightList?.release();
       this.prepared.shadow?.release();
       this.prepared.background?.release();
@@ -457,8 +578,7 @@ export class BaselineRenderingRuntime {
     const fields = revision.snapshot.get(entity);
     const mesh = fields?.get(MeshAssetField) as RenderMeshFact | undefined;
     const materials = fields?.get(MeshMaterialsField) as
-      | readonly RenderMaterialBinding[]
-      | undefined;
+      readonly RenderMaterialBinding[] | undefined;
     return (
       mesh !== undefined &&
       materials !== undefined &&

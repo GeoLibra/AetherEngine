@@ -1,6 +1,8 @@
 export type {
   DirectionalLightExtractionInput,
   DirectionalLightSourceView,
+  PointLightSourceView,
+  SpotLightSourceView,
   LightCommon,
   LinearRgb,
   PreparedLight
@@ -10,6 +12,7 @@ export type {
   ClusterAABB,
   ClusterBuildCounters,
   ClusterBuildResult,
+  ClusterForwardInputs,
   ClusterCapacity,
   ClusterDepthPolicy,
   ClusterGrid,
