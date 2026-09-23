@@ -82,7 +82,8 @@ export function defineMaterialSchema<const D extends MaterialFieldDefinitions>(
       required: true,
       defaultValue: field.defaultValue,
       compare: isScalar(field.valueType) ? 'exact' : 'shallow',
-      serialization: 'save'
+      serialization: 'save',
+      ...(field.editor === undefined ? {} : { editor: field.editor })
     })),
     validate(input) {
       if (!isRecord(input)) {
@@ -216,6 +217,18 @@ function snapshotDefinition(
   return Object.freeze({
     ...field,
     ...(field.aliases === undefined ? {} : { aliases: Object.freeze([...field.aliases]) }),
+    ...(field.editor === undefined
+      ? {}
+      : {
+          editor: Object.freeze({
+            ...field.editor,
+            ...(field.editor.range === undefined
+              ? {}
+              : {
+                  range: Object.freeze([...field.editor.range]) as readonly [number, number]
+                })
+          })
+        }),
     valueType: freezeValueType(field.valueType),
     defaultValue: freezeValue(cloneValue(field.defaultValue))
   });

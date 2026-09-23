@@ -1,4 +1,4 @@
-import type { FieldId, SchemaId, SchemaVersion, TypeSchema } from '../../schema/types';
+import type { EditorHint, FieldId, SchemaId, SchemaVersion, TypeSchema } from '../../schema/types';
 
 declare const materialFieldIndexBrand: unique symbol;
 declare const materialFieldValueBrand: unique symbol;
@@ -80,6 +80,7 @@ export interface MaterialFieldDefinition<T extends MaterialValueType = MaterialV
   readonly valueType: T;
   readonly defaultValue: MaterialValueFromValueType<T>;
   readonly bindingPath: string;
+  readonly editor?: EditorHint;
 }
 
 /** Map of field names to their respective field definitions. */

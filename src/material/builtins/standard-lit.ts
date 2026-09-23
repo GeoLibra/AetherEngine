@@ -63,14 +63,28 @@ export const StandardLitMaterialSchema = defineMaterialSchema({
       name: 'metallic',
       valueType: { kind: 'number', format: 'f32' },
       defaultValue: 0,
-      bindingPath: 'material.metallic'
+      bindingPath: 'material.metallic',
+      editor: {
+        label: 'Metallic',
+        widget: 'slider',
+        range: [0, 1],
+        step: 0.01,
+        group: 'Surface response'
+      }
     },
     roughness: {
       fieldId: 'roughness',
       name: 'roughness',
       valueType: { kind: 'number', format: 'f32' },
       defaultValue: 0.5,
-      bindingPath: 'material.roughness'
+      bindingPath: 'material.roughness',
+      editor: {
+        label: 'Roughness',
+        widget: 'slider',
+        range: [0, 1],
+        step: 0.01,
+        group: 'Surface response'
+      }
     },
     emissiveFactor: {
       fieldId: 'emissive-factor',
@@ -84,14 +98,28 @@ export const StandardLitMaterialSchema = defineMaterialSchema({
       name: 'normalScale',
       valueType: { kind: 'number', format: 'f32' },
       defaultValue: 1,
-      bindingPath: 'material.normalScale'
+      bindingPath: 'material.normalScale',
+      editor: {
+        label: 'Normal scale',
+        widget: 'slider',
+        range: [0, 2],
+        step: 0.01,
+        group: 'Texture response'
+      }
     },
     occlusionStrength: {
       fieldId: 'occlusion-strength',
       name: 'occlusionStrength',
       valueType: { kind: 'number', format: 'f32' },
       defaultValue: 1,
-      bindingPath: 'material.occlusionStrength'
+      bindingPath: 'material.occlusionStrength',
+      editor: {
+        label: 'Occlusion',
+        widget: 'slider',
+        range: [0, 1],
+        step: 0.01,
+        group: 'Texture response'
+      }
     },
     alphaCutoff: {
       fieldId: 'alpha-cutoff',

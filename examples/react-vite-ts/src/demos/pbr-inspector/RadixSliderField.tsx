@@ -1,31 +1,26 @@
 import * as Slider from '@radix-ui/react-slider';
-import type { PbrInspectorField } from './pbr-inspector-schema';
+import type { AtomBindingProperty, NumberDeclaration } from './power-panel/types';
 
-export function RadixSliderField({
-  field,
-  value,
-  onValueChange
-}: Readonly<{
-  field: PbrInspectorField;
-  value: number;
-  onValueChange: (value: number) => void;
-}>) {
-  const valueLabel = value.toFixed(2);
+export function RadixSliderField({ declaration, value, setValue }: AtomBindingProperty) {
+  const field = declaration as NumberDeclaration;
+  const currentValue = typeof value === 'number' ? value : 0;
+  const title = field.title ?? field.path;
+  const valueLabel = currentValue.toFixed(2);
   return (
-    <label className="pbr-slider-field" key={field.id}>
+    <label className="pbr-slider-field">
       <span className="pbr-slider-label">
-        <span>{field.label}</span>
-        <output aria-label={`${field.label} value`}>{valueLabel}</output>
+        <span>{title}</span>
+        <output aria-label={`${title} value`}>{valueLabel}</output>
       </span>
       <Slider.Root
         className="pbr-slider"
-        value={[value]}
-        min={field.minimum}
-        max={field.maximum}
-        step={field.step}
-        aria-label={field.label}
+        value={[currentValue]}
+        min={field.min ?? 0}
+        max={field.max ?? 1}
+        step={field.step ?? 0.01}
+        aria-label={title}
         onValueChange={([nextValue]) => {
-          if (nextValue !== undefined) onValueChange(nextValue);
+          if (nextValue !== undefined) setValue(nextValue);
         }}
       >
         <Slider.Track className="pbr-slider-track">

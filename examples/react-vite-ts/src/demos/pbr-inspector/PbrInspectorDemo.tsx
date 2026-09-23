@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { StandardLitMaterialSchema } from '@aether/engine';
 import { AetherSceneHost } from '../../scene-host';
 import type { DemoProps } from '../types';
 import {
   mountDamagedHelmetScene,
   type MountedDamagedHelmetScene
 } from '../damaged-helmet/damaged-helmet-scene';
-import { PowerPanel } from './PowerPanel';
+import PowerPanel from './power-panel';
 import { RadixSliderField } from './RadixSliderField';
-import {
-  createPbrInspectorSnapshot,
-  derivePbrInspectorGroups,
-  PBR_INSPECTOR_SCHEMA,
-  type PbrParameterKey
-} from './pbr-inspector-schema';
+import { createMaterialPanelLayout, createMaterialPanelValue } from './material-power-panel';
+import { FieldType } from './power-panel/types';
+
+const EDITABLE_PARAMETER_NAMES = new Set(
+  StandardLitMaterialSchema.typeSchema.fields
+    .filter((field) => field.editor?.widget === 'slider')
+    .map((field) => field.name)
+);
+const PBR_FIELD_MAP = Object.freeze({ [FieldType.Slider]: RadixSliderField });
 
 /** Demonstrates Schema declaration → PowerPanel → Radix UI → live PBR material update. */
 export function PbrInspectorDemo({ mountScene = true }: DemoProps) {
@@ -21,9 +25,14 @@ export function PbrInspectorDemo({ mountScene = true }: DemoProps) {
   const hostRef = useRef<AetherSceneHost<MountedDamagedHelmetScene> | null>(null);
   if (hostRef.current === null) hostRef.current = new AetherSceneHost(mountDamagedHelmetScene);
 
-  const [values, setValues] = useState(createPbrInspectorSnapshot);
+  const [values, setValues] = useState(() =>
+    createMaterialPanelValue(StandardLitMaterialSchema.typeSchema)
+  );
   const [status, setStatus] = useState('Loading glTF PBR material…');
-  const groups = useMemo(() => derivePbrInspectorGroups(PBR_INSPECTOR_SCHEMA), []);
+  const declaration = useMemo(
+    () => createMaterialPanelLayout(StandardLitMaterialSchema.typeSchema),
+    []
+  );
 
   useEffect(() => {
     if (!mountScene || canvas.current === null) return;
@@ -51,7 +60,8 @@ export function PbrInspectorDemo({ mountScene = true }: DemoProps) {
     };
   }, [mountScene]);
 
-  const update = (key: PbrParameterKey, value: number) => {
+  const update = (key: string, value: unknown) => {
+    if (!EDITABLE_PARAMETER_NAMES.has(key) || typeof value !== 'number') return;
     setValues((current) => Object.freeze({ ...current, [key]: value }));
     const scene = sceneRef.current;
     if (scene !== null) applyOne(scene, key, value);
@@ -68,12 +78,11 @@ export function PbrInspectorDemo({ mountScene = true }: DemoProps) {
             <p>Schema-derived controls · Radix adapter</p>
           </div>
           <PowerPanel
-            groups={groups}
-            values={values}
-            onValueChange={update}
-            renderField={(field, value, onValueChange) => (
-              <RadixSliderField field={field} value={value} onValueChange={onValueChange} />
-            )}
+            declaration={declaration}
+            fieldMap={PBR_FIELD_MAP}
+            value={values}
+            onChange={({ path, value }) => update(path, value)}
+            rowClassName="pbr-panel-fields"
           />
           <p className="pbr-status" role="status">
             {status}
@@ -84,16 +93,14 @@ export function PbrInspectorDemo({ mountScene = true }: DemoProps) {
   );
 }
 
-function applyAll(
-  scene: MountedDamagedHelmetScene,
-  values: Readonly<Record<PbrParameterKey, number>>
-) {
-  for (const [key, value] of Object.entries(values) as readonly [PbrParameterKey, number][]) {
+function applyAll(scene: MountedDamagedHelmetScene, values: Readonly<Record<string, unknown>>) {
+  for (const [key, value] of Object.entries(values)) {
+    if (typeof value !== 'number') continue;
     applyOne(scene, key, value);
   }
 }
 
-function applyOne(scene: MountedDamagedHelmetScene, key: PbrParameterKey, value: number) {
+function applyOne(scene: MountedDamagedHelmetScene, key: string, value: number) {
   switch (key) {
     case 'metallic':
       scene.setMetallic(value);
