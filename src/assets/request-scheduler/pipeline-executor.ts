@@ -2,18 +2,39 @@ import type { JobBudgetClass, JobScheduler, JobType } from '../../jobs';
 import type { RHIDevice } from '../../rhi';
 import type { VirtualFileSystem } from '../vfs';
 import { AssetRequestStage } from './constants';
-import type { AssetStageExecutor, MergedAssetRequestDemand } from './types';
+import type { AssetStageExecutor, AssetUploadDeferral, MergedAssetRequestDemand } from './types';
+import { assertAssetUploadDeferral } from './upload-deferral';
 
 /** Authority-owned recipe for one asset operation selected by a scheduler request key and revision. */
 export interface AssetPipelineOperation {
   readonly uri: string;
   readonly decodeJob: JobType<Uint8Array, unknown>;
   readonly finalize: (decoded: unknown, request: MergedAssetRequestDemand) => unknown;
+  /** Publishes the validated canonical CPU payload at the scheduler's finalize commit boundary. */
+  readonly publishCpuPayload?: (
+    decoded: unknown,
+    finalized: unknown,
+    request: MergedAssetRequestDemand
+  ) => void;
+  /** Uploads finalized data, or defers before any upload side effect when staging admission fails. */
   readonly upload: (
     finalized: unknown,
     device: RHIDevice,
     request: MergedAssetRequestDemand
-  ) => void | Promise<void>;
+  ) =>
+    | void
+    | AssetUploadDeferral
+    | AssetPipelineUploadCandidate
+    | Promise<void | AssetUploadDeferral | AssetPipelineUploadCandidate>;
+}
+
+/** An unpublished upload result whose ownership transfers only at the scheduler commit boundary. */
+export interface AssetPipelineUploadCandidate {
+  readonly status: 'staged';
+  /** Atomically publish into the owning asset/prepared-variant registry. */
+  commit(): void;
+  /** Idempotently dispose unpublished physical resources after cancellation or failed commit. */
+  discard(): void;
 }
 
 /** Resolves a scheduler operation to the VFS/Jobs/RHI recipe owned by Asset Runtime. */
@@ -59,6 +80,7 @@ interface PipelineState {
   bytes?: Uint8Array;
   decoded?: unknown;
   finalized?: unknown;
+  candidate?: AssetPipelineUploadCandidate;
 }
 
 /**
@@ -66,7 +88,8 @@ interface PipelineState {
  *
  * It deliberately does not publish assets: the caller must publish only after the scheduler's
  * revision revalidation reports `completed`. Intermediate bytes and decoded values remain private
- * to this executor and are discarded after a successful upload.
+ * to this executor across upload deferral and are discarded after success, failure, or the final
+ * consumer's cancellation notification.
  */
 export class AssetPipelineExecutor implements AssetStageExecutor {
   private readonly states = new Map<string, PipelineState>();
@@ -78,7 +101,7 @@ export class AssetPipelineExecutor implements AssetStageExecutor {
     private readonly registry: AssetPipelineOperationResolver
   ) {}
 
-  async execute(request: MergedAssetRequestDemand): Promise<void> {
+  async execute(request: MergedAssetRequestDemand): Promise<void | AssetUploadDeferral> {
     try {
       switch (request.stage) {
         case AssetRequestStage.Metadata:
@@ -94,12 +117,11 @@ export class AssetPipelineExecutor implements AssetStageExecutor {
           this.finalize(request);
           return;
         case AssetRequestStage.Upload:
-          await this.upload(request);
-          return;
+          return await this.upload(request);
       }
     } catch (error) {
       // Failed/cancelled stage work must not retain bytes until an unrelated retry happens.
-      this.states.delete(operationIdentity(request));
+      this.discard(request);
       throw error;
     }
   }
@@ -108,6 +130,31 @@ export class AssetPipelineExecutor implements AssetStageExecutor {
     let retainedBytes = 0;
     for (const state of this.states.values()) retainedBytes += state.bytes?.byteLength ?? 0;
     return Object.freeze({ pendingOperations: this.states.size, retainedBytes });
+  }
+
+  /** Releases retained read/decode/finalize data for an abandoned deferred operation. */
+  discard(request: MergedAssetRequestDemand): void {
+    const identity = operationIdentity(request);
+    const state = this.states.get(identity);
+    this.states.delete(identity);
+    state?.candidate?.discard();
+  }
+
+  /** Publishes only the candidate whose revision has survived scheduler revalidation. */
+  commit(request: MergedAssetRequestDemand): void {
+    const identity = operationIdentity(request);
+    const state = this.states.get(identity);
+    if (state === undefined) return;
+    state.candidate?.commit();
+    this.states.delete(identity);
+  }
+
+  /** Publishes CPU data only after the scheduler confirms finalize is still current. */
+  commitStage(request: MergedAssetRequestDemand): void {
+    if (request.stage !== AssetRequestStage.Finalize) return;
+    const state = this.states.get(operationIdentity(request));
+    if (state === undefined) return;
+    state.operation.publishCpuPayload?.(state.decoded, state.finalized, request);
   }
 
   private metadata(request: MergedAssetRequestDemand): void {
@@ -158,12 +205,24 @@ export class AssetPipelineExecutor implements AssetStageExecutor {
     state.finalized = state.operation.finalize(state.decoded, request);
   }
 
-  private async upload(request: MergedAssetRequestDemand): Promise<void> {
+  private async upload(request: MergedAssetRequestDemand): Promise<void | AssetUploadDeferral> {
     const state = this.stateFor(request);
     if (state.finalized === undefined) {
       throw new Error(`Asset pipeline "${request.key}" has no finalized value.`);
     }
-    await state.operation.upload(state.finalized, this.device, request);
+    const result = await state.operation.upload(state.finalized, this.device, request);
+    if (result !== undefined) {
+      if (isUploadCandidate(result)) {
+        state.candidate = Object.freeze({
+          status: 'staged',
+          commit: () => result.commit(),
+          discard: () => result.discard()
+        });
+        return;
+      }
+      assertAssetUploadDeferral(result);
+      return Object.freeze({ status: 'deferred', reason: result.reason });
+    }
     this.states.delete(operationIdentity(request));
   }
 
@@ -181,6 +240,19 @@ export class AssetPipelineExecutor implements AssetStageExecutor {
     this.states.set(identity, state);
     return state;
   }
+}
+
+function isUploadCandidate(value: unknown): value is AssetPipelineUploadCandidate {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'status' in value &&
+    value.status === 'staged' &&
+    'commit' in value &&
+    typeof value.commit === 'function' &&
+    'discard' in value &&
+    typeof value.discard === 'function'
+  );
 }
 
 function operationIdentity(request: MergedAssetRequestDemand): string {
@@ -202,5 +274,11 @@ function validateOperation(operation: AssetPipelineOperation): void {
   }
   if (typeof operation.finalize !== 'function' || typeof operation.upload !== 'function') {
     throw new Error('Asset pipeline operation requires finalize and upload functions.');
+  }
+  if (
+    operation.publishCpuPayload !== undefined &&
+    typeof operation.publishCpuPayload !== 'function'
+  ) {
+    throw new Error('Asset pipeline CPU publication hook must be a function when provided.');
   }
 }

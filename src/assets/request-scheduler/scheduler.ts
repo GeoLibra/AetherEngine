@@ -1,5 +1,6 @@
 import { mergeAssetRequestDemands, planAssetStageAdmission } from './admission';
 import { AssetRequestStage } from './constants';
+import { assertAssetUploadDeferral } from './upload-deferral';
 import type {
   AssetPrioritySignals,
   AssetRequestDemand,
@@ -12,6 +13,7 @@ import type {
   AssetStageAdmissionPlan,
   AssetStageExecutionResult,
   AssetStageExecutor,
+  AssetUploadDeferral,
   MergedAssetRequestDemand
 } from './types';
 
@@ -24,6 +26,11 @@ import type {
 export class AssetRequestScheduler {
   private readonly leases = new Map<string, MutableLease>();
   private readonly operations = new Map<AssetRequestKey, Map<string, AssetRequestDemand>>();
+  private readonly deferredExecutors = new Map<
+    AssetRequestKey,
+    Readonly<{ request: MergedAssetRequestDemand; executor: AssetStageExecutor }>
+  >();
+  private readonly inFlight = new Set<AssetRequestKey>();
   private nextLeaseId = 1;
   private currentRevision = 0;
 
@@ -91,13 +98,62 @@ export class AssetRequestScheduler {
     const plan = this.plan(stage, budget);
     const results: AssetStageExecutionResult[] = [];
     for (const request of plan.admitted) {
-      try {
-        await executor.execute(request);
-      } catch (error) {
-        results.push(Object.freeze({ key: request.key, stage, status: 'failed', error }));
+      if (this.inFlight.has(request.key)) {
+        results.push(
+          Object.freeze({
+            key: request.key,
+            stage,
+            status: 'failed',
+            error: new Error(`Asset request "${request.key}" is already executing.`)
+          })
+        );
         continue;
       }
-      results.push(this.settleExecution(request.key, stage));
+      const retained = this.deferredExecutors.get(request.key);
+      if (retained !== undefined && retained.executor !== executor) {
+        results.push(
+          Object.freeze({
+            key: request.key,
+            stage,
+            status: 'failed',
+            error: new Error(
+              `Deferred asset operation "${request.key}" requires its original executor.`
+            )
+          })
+        );
+        continue;
+      }
+      this.inFlight.add(request.key);
+      try {
+        const execution = await executor.execute(request);
+        if (execution !== undefined) {
+          assertUploadDeferral(stage, execution);
+          const result = this.settleDeferral(request, execution);
+          if (result.status === 'deferred' && executor.discard !== undefined) {
+            this.deferredExecutors.set(request.key, { request, executor });
+          } else if (result.status === 'stale') {
+            this.deferredExecutors.delete(request.key);
+            executor.discard?.(request);
+          }
+          results.push(result);
+          continue;
+        }
+      } catch (error) {
+        this.deferredExecutors.delete(request.key);
+        results.push(Object.freeze({ key: request.key, stage, status: 'failed', error }));
+        continue;
+      } finally {
+        this.inFlight.delete(request.key);
+      }
+      this.deferredExecutors.delete(request.key);
+      try {
+        const result = this.settleExecution(request, executor);
+        if (result.status === 'stale') executor.discard?.(request);
+        results.push(result);
+      } catch (error) {
+        executor.discard?.(request);
+        results.push(Object.freeze({ key: request.key, stage, status: 'failed', error }));
+      }
     }
     return Object.freeze(results);
   }
@@ -129,22 +185,43 @@ export class AssetRequestScheduler {
     this.currentRevision += 1;
   }
 
-  private settleExecution(
-    key: AssetRequestKey,
-    stage: AssetRequestStageType
+  private settleDeferral(
+    request: MergedAssetRequestDemand,
+    deferral: AssetUploadDeferral
   ): AssetStageExecutionResult {
-    const operation = this.operations.get(key);
-    const first = operation?.values().next().value as AssetRequestDemand | undefined;
-    if (operation === undefined || first === undefined || first.stage !== stage) {
+    if (!this.isCurrentExecution(request)) {
+      return Object.freeze({ key: request.key, stage: request.stage, status: 'stale' });
+    }
+    return Object.freeze({
+      key: request.key,
+      stage: request.stage,
+      status: 'deferred',
+      reason: deferral.reason
+    });
+  }
+
+  private settleExecution(
+    request: MergedAssetRequestDemand,
+    executor: AssetStageExecutor
+  ): AssetStageExecutionResult {
+    const { key, stage } = request;
+    if (!this.isCurrentExecution(request)) {
       return Object.freeze({ key, stage, status: 'stale' });
     }
+    const operation = this.operations.get(key)!;
     if (stage === AssetRequestStage.Upload) {
-      this.operations.delete(key);
       for (const leaseId of operation.keys()) {
         const lease = this.leases.get(leaseId);
         if (lease === undefined || lease.status !== 'active') {
           return Object.freeze({ key, stage, status: 'stale' });
         }
+      }
+      // Authority publication is synchronous: no cancellation can interleave between validation
+      // and the lease transition, and a failed publish leaves the operation retryable.
+      executor.commit?.(request);
+      this.operations.delete(key);
+      for (const leaseId of operation.keys()) {
+        const lease = this.leases.get(leaseId)!;
         lease.status = 'completed';
       }
       this.currentRevision += 1;
@@ -152,8 +229,22 @@ export class AssetRequestScheduler {
     }
     const nextStage = NEXT_STAGE[stage];
     if (nextStage === undefined) return Object.freeze({ key, stage, status: 'stale' });
+    executor.commitStage?.(request);
     this.advance(key, nextStage);
     return Object.freeze({ key, stage, status: 'advanced' });
+  }
+
+  private isCurrentExecution(request: MergedAssetRequestDemand): boolean {
+    const operation = this.operations.get(request.key);
+    const first = operation?.values().next().value as AssetRequestDemand | undefined;
+    return (
+      operation !== undefined &&
+      first !== undefined &&
+      first.stage === request.stage &&
+      first.revision === request.revision &&
+      first.assetId === request.assetId &&
+      request.consumerIds.some((consumerId) => operation.has(consumerId))
+    );
   }
 
   private updatePriority(lease: MutableLease, priority: AssetPrioritySignals): void {
@@ -172,16 +263,27 @@ export class AssetRequestScheduler {
     if (typeof reason !== 'string' || !reason.trim()) {
       throw new Error('Asset request cancellation reason must be non-empty.');
     }
+    let discarded:
+      | Readonly<{
+          request: MergedAssetRequestDemand;
+          executor: AssetStageExecutor;
+        }>
+      | undefined;
     if (lease.status === 'active') {
       const operation = this.operations.get(lease.key);
       if (operation === undefined)
         throw new Error('Asset request operation is missing for a live lease.');
       operation.delete(lease.id);
-      if (operation.size === 0) this.operations.delete(lease.key);
+      if (operation.size === 0) {
+        this.operations.delete(lease.key);
+        discarded = this.deferredExecutors.get(lease.key);
+        this.deferredExecutors.delete(lease.key);
+      }
     }
     lease.status = 'cancelled';
     this.leases.delete(lease.id);
     this.currentRevision += 1;
+    discarded?.executor.discard?.(discarded.request);
   }
 
   private activeDemandsForStage(stage: AssetRequestStageType): readonly AssetRequestDemand[] {
@@ -228,6 +330,16 @@ interface MutableLease {
   readonly key: AssetRequestKey;
   status: AssetRequestLeaseStatus;
   demand: AssetRequestDemand;
+}
+
+function assertUploadDeferral(
+  stage: AssetRequestStageType,
+  result: unknown
+): asserts result is AssetUploadDeferral {
+  if (stage !== AssetRequestStage.Upload) {
+    throw new Error('Only an upload-stage executor may defer admitted work.');
+  }
+  assertAssetUploadDeferral(result);
 }
 
 function validateCompatibleOperation(

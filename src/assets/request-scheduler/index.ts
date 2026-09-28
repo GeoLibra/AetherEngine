@@ -16,11 +16,13 @@ export type {
   AssetStageAdmissionPlan,
   AssetStageExecutionResult,
   AssetStageExecutor,
+  AssetUploadDeferral,
   DeferredAssetRequest,
   MergedAssetRequestDemand
 } from './types';
 export type {
   AssetPipelineExecutorSnapshot,
   AssetPipelineOperation,
-  AssetPipelineOperationResolver
+  AssetPipelineOperationResolver,
+  AssetPipelineUploadCandidate
 } from './pipeline-executor';

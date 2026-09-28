@@ -17,4 +17,10 @@ export type {
   SourceEntry
 } from './render-world-types';
 
-export type { PreparedAsset, PreparedAssetLease, PreparedVariantKey } from './prepared-asset-types';
+export type {
+  PreparedAsset,
+  PreparedAssetLease,
+  PreparedAssetRegistrySnapshot,
+  PreparedAssetResidencySnapshot,
+  PreparedVariantKey
+} from './prepared-asset-types';

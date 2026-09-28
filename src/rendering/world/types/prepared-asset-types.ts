@@ -30,3 +30,23 @@ export interface PreparedAssetLease<T> {
   retainUntil(submission: RHISubmission): void;
   dispose(): void;
 }
+
+/** Renderer-owned residency facts for one GPU variant. Byte size is null when its payload
+ * does not expose an authoritative `byteLength` number. */
+export interface PreparedAssetResidencySnapshot {
+  readonly key: PreparedVariantKey;
+  readonly state: 'resident' | 'evicting';
+  readonly bytes: number | null;
+  readonly activeLeases: number;
+  readonly activeSubmissions: number;
+}
+
+/** Aggregate prepared GPU residency counters for diagnostics and Asset Status composition. */
+export interface PreparedAssetRegistrySnapshot {
+  readonly residentVariants: number;
+  readonly evictingVariants: number;
+  readonly knownBytes: number;
+  readonly unknownByteVariants: number;
+  readonly activeLeases: number;
+  readonly activeSubmissions: number;
+}

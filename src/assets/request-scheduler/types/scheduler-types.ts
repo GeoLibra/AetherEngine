@@ -109,14 +109,29 @@ export type AssetRequestLeaseStatus = 'active' | 'completed' | 'cancelled';
 
 /** Injected authority-owned execution of one already-admitted stage operation. */
 export interface AssetStageExecutor {
-  execute(request: MergedAssetRequestDemand): void | Promise<void>;
+  execute(
+    request: MergedAssetRequestDemand
+  ): void | AssetUploadDeferral | Promise<void | AssetUploadDeferral>;
+  /** Synchronously publishes a staged upload only after request identity has been revalidated. */
+  commit?(request: MergedAssetRequestDemand): void;
+  /** Publishes validated CPU payload after finalize and request revalidation. */
+  commitStage?(request: MergedAssetRequestDemand): void;
+  /** Idempotently release private state when a deferred request is cancelled or becomes stale. */
+  discard?(request: MergedAssetRequestDemand): void;
+}
+
+/** Temporary upload backpressure; the executor must have performed no upload side effects. */
+export interface AssetUploadDeferral {
+  readonly status: 'deferred';
+  readonly reason: 'frame-byte-budget' | 'frame-command-budget' | 'ring-capacity';
 }
 
 /** One executor result after the scheduler revalidates the operation boundary. */
 export interface AssetStageExecutionResult {
   readonly key: AssetRequestKey;
   readonly stage: AssetRequestStage;
-  readonly status: 'advanced' | 'completed' | 'stale' | 'failed';
+  readonly status: 'advanced' | 'completed' | 'deferred' | 'stale' | 'failed';
+  readonly reason?: AssetUploadDeferral['reason'];
   readonly error?: unknown;
 }
 

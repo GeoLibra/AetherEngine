@@ -207,6 +207,155 @@ describe('Asset request stage admission', () => {
     lease.cancel('consumer releases completed result');
     expect(lease.status).toBe('cancelled');
   });
+
+  test('keeps a deferred upload pending and completes it on a later successful execution', async () => {
+    const scheduler = new AssetRequestScheduler();
+    const lease = scheduler.request(demand('asset/deferred', 'consumer'));
+
+    expect(
+      await scheduler.execute(AssetRequestStage.Upload, BUDGET, {
+        execute: () => ({ status: 'deferred', reason: 'ring-capacity' })
+      })
+    ).toEqual([
+      expect.objectContaining({
+        key: 'asset/deferred',
+        stage: 'upload',
+        status: 'deferred',
+        reason: 'ring-capacity'
+      })
+    ]);
+    expect(lease.status).toBe('active');
+    expect(scheduler.snapshot().operations).toHaveLength(1);
+
+    expect(await scheduler.execute(AssetRequestStage.Upload, BUDGET, { execute() {} })).toEqual([
+      expect.objectContaining({ key: 'asset/deferred', status: 'completed' })
+    ]);
+    expect(lease.status).toBe('completed');
+  });
+
+  test('discards retained upload work when the last consumer cancels after deferral', async () => {
+    const scheduler = new AssetRequestScheduler();
+    const first = scheduler.request(demand('asset/cancelled', 'first'));
+    const second = scheduler.request(demand('asset/cancelled', 'second'));
+    const discarded: string[] = [];
+    const executor = {
+      execute: () => ({ status: 'deferred', reason: 'ring-capacity' }) as const,
+      discard: (request: { key: string }) => discarded.push(request.key)
+    };
+    await scheduler.execute(AssetRequestStage.Upload, BUDGET, executor);
+
+    first.cancel('first consumer left');
+    expect(discarded).toEqual([]);
+    second.cancel('last consumer left');
+    expect(discarded).toEqual(['asset/cancelled']);
+    expect(scheduler.snapshot().operations).toEqual([]);
+  });
+
+  test('discards deferred executor state after a cancellation race', async () => {
+    const scheduler = new AssetRequestScheduler();
+    const lease = scheduler.request(demand('asset/raced', 'consumer'));
+    const discarded: string[] = [];
+    const results = await scheduler.execute(AssetRequestStage.Upload, BUDGET, {
+      execute() {
+        lease.cancel('cancelled during upload admission');
+        return { status: 'deferred', reason: 'ring-capacity' };
+      },
+      discard(request) {
+        discarded.push(request.key);
+      }
+    });
+
+    expect(results).toEqual([expect.objectContaining({ status: 'stale' })]);
+    expect(discarded).toEqual(['asset/raced']);
+  });
+
+  test('does not defer or complete an upload for a replacement request with the same key', async () => {
+    const scheduler = new AssetRequestScheduler();
+    const oldLease = scheduler.request(demand('asset/reused', 'old'));
+    let replacement: ReturnType<typeof scheduler.request> | undefined;
+    const result = await scheduler.execute(AssetRequestStage.Upload, BUDGET, {
+      execute() {
+        oldLease.cancel('replaced');
+        replacement = scheduler.request({ ...demand('asset/reused', 'new'), revision: 2 });
+        return { status: 'deferred', reason: 'ring-capacity' };
+      }
+    });
+
+    expect(result).toEqual([expect.objectContaining({ key: 'asset/reused', status: 'stale' })]);
+    expect(replacement?.status).toBe('active');
+    expect(scheduler.snapshot().operations[0]?.revision).toBe(2);
+  });
+
+  test('does not complete a replacement request from an older successful upload', async () => {
+    const scheduler = new AssetRequestScheduler();
+    const oldLease = scheduler.request(demand('asset/reused-success', 'old'));
+    let replacement: ReturnType<typeof scheduler.request> | undefined;
+    const result = await scheduler.execute(AssetRequestStage.Upload, BUDGET, {
+      execute() {
+        oldLease.cancel('replaced');
+        replacement = scheduler.request({
+          ...demand('asset/reused-success', 'new'),
+          revision: 2
+        });
+      }
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({ key: 'asset/reused-success', status: 'stale' })
+    ]);
+    expect(replacement?.status).toBe('active');
+  });
+
+  test('reports invalid or non-upload deferral as executor failure', async () => {
+    const scheduler = new AssetRequestScheduler();
+    scheduler.request(demand('asset/invalid', 'consumer'));
+    const invalid = await scheduler.execute(AssetRequestStage.Upload, BUDGET, {
+      execute: () => ({ status: 'deferred', reason: 'unknown' }) as never
+    });
+    expect(invalid[0]).toMatchObject({ status: 'failed' });
+    expect(invalid[0]?.error).toEqual(
+      new Error('Upload executor returned an invalid deferral result.')
+    );
+    expect(scheduler.snapshot().operations).toHaveLength(1);
+
+    const other = new AssetRequestScheduler();
+    other.request({ ...demand('asset/non-upload', 'consumer'), stage: AssetRequestStage.Metadata });
+    const wrongStage = await other.execute(AssetRequestStage.Metadata, BUDGET, {
+      execute: () => ({ status: 'deferred', reason: 'ring-capacity' })
+    });
+    expect(wrongStage[0]).toMatchObject({ status: 'failed' });
+    expect(wrongStage[0]?.error).toEqual(
+      new Error('Only an upload-stage executor may defer admitted work.')
+    );
+  });
+
+  test('does not execute the same upload request concurrently', async () => {
+    const scheduler = new AssetRequestScheduler();
+    scheduler.request(demand('asset/in-flight', 'consumer'));
+    let finish!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    let calls = 0;
+    const executor = {
+      async execute() {
+        calls += 1;
+        await gate;
+      }
+    };
+    const first = scheduler.execute(AssetRequestStage.Upload, BUDGET, executor);
+    const second = scheduler.execute(AssetRequestStage.Upload, BUDGET, executor);
+    await Promise.resolve();
+    finish();
+    const overlapping = await second;
+
+    expect(calls).toBe(1);
+    expect(overlapping[0]).toMatchObject({ status: 'failed' });
+    expect(overlapping[0]?.error).toEqual(
+      new Error('Asset request "asset/in-flight" is already executing.')
+    );
+    expect(await first).toEqual([expect.objectContaining({ status: 'completed' })]);
+  });
 });
 
 function secondPriority() {

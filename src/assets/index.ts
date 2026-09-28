@@ -7,6 +7,7 @@ export * from './importer';
 export * from './importers/loaders-gl';
 export * from './importers/gltf';
 export * from './render-artifact-package';
+export * from './runtime';
 export * from './request-scheduler';
 export type * from './types';
 export * from './vfs';

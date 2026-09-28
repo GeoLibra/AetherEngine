@@ -1,6 +1,12 @@
 import type { RHISubmission } from '../../rhi';
 import type { FeaturePolicyCacheInvalidation } from '../../feature-policy/types';
-import type { PreparedAsset, PreparedAssetLease, PreparedVariantKey } from './types';
+import type {
+  PreparedAsset,
+  PreparedAssetLease,
+  PreparedAssetRegistrySnapshot,
+  PreparedAssetResidencySnapshot,
+  PreparedVariantKey
+} from './types';
 
 interface Entry<T> {
   readonly prepared: PreparedAsset<T>;
@@ -9,6 +15,7 @@ interface Entry<T> {
   submissions: number; // Outstanding active submissions on the GPU queue
   retired: boolean; // Marked for discard when leases/submissions drop to zero
   destroyed: boolean; // Keeps track of physical destruction status
+  readonly bytes: number | null;
 }
 
 /**
@@ -19,20 +26,81 @@ interface Entry<T> {
 export class PreparedAssetRegistry {
   private readonly entries = new Map<string, Entry<unknown>>();
 
+  /** Returns the renderer-owned lifetime state for one prepared GPU variant. */
+  inspect(key: PreparedVariantKey): PreparedAssetResidencySnapshot | undefined {
+    const entry = this.entries.get(preparedKey(key));
+    if (entry === undefined) return undefined;
+    return Object.freeze({
+      key: Object.freeze({ ...entry.prepared.key }),
+      state: entry.retired ? 'evicting' : 'resident',
+      bytes: entry.bytes,
+      activeLeases: entry.leases,
+      activeSubmissions: entry.submissions
+    });
+  }
+
+  /** Summarizes published and fence-pending prepared GPU variants for status composition. */
+  snapshot(): PreparedAssetRegistrySnapshot {
+    let residentVariants = 0;
+    let evictingVariants = 0;
+    let knownBytes = 0;
+    let unknownByteVariants = 0;
+    let activeLeases = 0;
+    let activeSubmissions = 0;
+    for (const entry of this.entries.values()) {
+      if (entry.retired) evictingVariants += 1;
+      else residentVariants += 1;
+      if (entry.bytes === null) unknownByteVariants += 1;
+      else knownBytes += entry.bytes;
+      activeLeases += entry.leases;
+      activeSubmissions += entry.submissions;
+    }
+    return Object.freeze({
+      residentVariants,
+      evictingVariants,
+      knownBytes,
+      unknownByteVariants,
+      activeLeases,
+      activeSubmissions
+    });
+  }
+
   /**
    * Publishes a newly prepared GPU asset to the registry.
    */
   publish<T>(prepared: PreparedAsset<T>, destroy: (value: T) => void = () => undefined): void {
-    const id = preparedKey(prepared.key);
-    if (this.entries.has(id)) throw new Error(`Prepared asset variant already exists: ${id}`);
-    this.entries.set(id, {
-      prepared: deepFreezePrepared(prepared),
-      destroy: destroy as (value: unknown) => void,
-      leases: 0,
-      submissions: 0,
-      retired: false,
-      destroyed: false
+    this.publishBatch([prepared], destroy);
+  }
+
+  /**
+   * Publishes a non-empty set of variants together after validating every identity.
+   *
+   * No observer can acquire a partial set: validation and snapshot construction finish before
+   * the synchronous map insertion begins. A duplicate leaves the registry unchanged.
+   */
+  publishBatch<T>(
+    prepared: readonly PreparedAsset<T>[],
+    destroy: (value: T) => void = () => undefined
+  ): void {
+    if (prepared.length === 0) throw new Error('Prepared asset batch must not be empty.');
+    const seen = new Set<string>();
+    const entries = prepared.map((asset) => {
+      const id = preparedKey(asset.key);
+      if (seen.has(id)) throw new Error(`Prepared asset batch has duplicate variant: ${id}`);
+      if (this.entries.has(id)) throw new Error(`Prepared asset variant already exists: ${id}`);
+      seen.add(id);
+      const entry: Entry<unknown> = {
+        prepared: deepFreezePrepared(asset),
+        destroy: destroy as (value: unknown) => void,
+        leases: 0,
+        submissions: 0,
+        retired: false,
+        destroyed: false,
+        bytes: readByteLength(asset.value)
+      };
+      return { id, entry };
     });
+    for (const { id, entry } of entries) this.entries.set(id, entry);
   }
 
   /**
@@ -54,10 +122,12 @@ export class PreparedAssetRegistry {
         if (disposed) throw new Error('Cannot retain a disposed prepared asset lease.');
         entry.submissions++;
         // Release the submission reservation once the GPU has finished executing it.
-        void submission.done.finally(() => {
+        const release = () => {
           entry.submissions--;
           registry.collect(entry, preparedKey(key));
-        });
+        };
+        // Both terminal branches release ownership without creating an unhandled rejection.
+        void submission.done.then(release, release);
       },
       dispose() {
         if (disposed) return;
@@ -113,6 +183,15 @@ export class PreparedAssetRegistry {
     this.entries.delete(id);
     entry.destroy(entry.prepared.value);
   }
+}
+
+function readByteLength(value: unknown): number | null {
+  if (typeof value !== 'object' || value === null || !('byteLength' in value)) return null;
+  const byteLength = value.byteLength;
+  if (typeof byteLength !== 'number' || !Number.isSafeInteger(byteLength) || byteLength < 0) {
+    return null;
+  }
+  return byteLength;
 }
 
 /**

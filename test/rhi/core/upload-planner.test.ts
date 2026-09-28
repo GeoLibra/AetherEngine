@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import { UploadPlanner } from '../../../src/rhi/core/upload-planner';
 import { NullDevice } from '../../../src/rhi';
+import type { RHISubmission } from '../../../src/rhi';
 
 describe('UploadPlanner', () => {
   test('admits aligned staging ranges within the frame byte and command budgets', () => {
@@ -129,5 +130,31 @@ describe('UploadPlanner', () => {
     await Promise.resolve();
 
     expect(planner.snapshot()).toMatchObject({ liveBytes: 0, allocatedBytes: 8 });
+  });
+
+  test('retires a reservation when the submission promise rejects', async () => {
+    const planner = new UploadPlanner({
+      capacityBytes: 16,
+      maxFrameBytes: 16,
+      maxFrameCommands: 1,
+      alignment: 16
+    });
+    planner.beginFrame(1);
+    const reservation = planner.reserve(8);
+    if (reservation.status !== 'admitted') throw new Error('Expected admitted reservation.');
+    let rejectSubmission!: (reason: Error) => void;
+    const done = new Promise<never>((_, reject) => {
+      rejectSubmission = reject;
+    });
+    planner.retireAfter(reservation, {
+      id: 1,
+      status: 'pending',
+      done
+    } as RHISubmission);
+
+    rejectSubmission(new Error('device lost'));
+    await expect(done).rejects.toThrow('device lost');
+    await Promise.resolve();
+    expect(planner.snapshot().liveBytes).toBe(0);
   });
 });

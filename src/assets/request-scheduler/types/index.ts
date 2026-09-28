@@ -13,6 +13,7 @@ export type {
   AssetStageAdmissionPlan,
   AssetStageExecutionResult,
   AssetStageExecutor,
+  AssetUploadDeferral,
   DeferredAssetRequest,
   MergedAssetRequestDemand
 } from './scheduler-types';

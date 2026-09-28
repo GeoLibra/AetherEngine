@@ -148,7 +148,12 @@ export class UploadPlanner {
    */
   retireAfter(reservation: UploadReservation, submission: RHISubmission): void {
     this.requireLiveReservation(reservation);
-    void submission.done.then(() => this.retireReservation(reservation));
+    // A rejected terminal promise still releases the submission's staging ownership.
+    // Handle both branches explicitly so the observer cannot create an unhandled rejection.
+    void submission.done.then(
+      () => this.retireReservation(reservation),
+      () => this.retireReservation(reservation)
+    );
   }
 
   /** Retires every staging range whose submission epoch has reached a terminal result. */
