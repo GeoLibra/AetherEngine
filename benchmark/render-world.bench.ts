@@ -28,6 +28,7 @@ import {
   runPreparedDrawPhaseReference,
   runPreparedDrawPhaseSubject
 } from './render-world/prepared-draw-phase-scenario';
+import { createPreparedAssetLookupFixture } from './render-world/prepared-asset-status-scenario';
 
 const Position = defineRenderField<[number, number, number]>('position');
 const Visible = defineRenderField<boolean>('visible');
@@ -180,6 +181,27 @@ for (const size of [100, 1_000, 10_000]) {
     },
     { iterations: 1, warmupIterations: 0 }
   );
+}
+
+for (const totalVariants of [100, 1_000, 10_000]) {
+  for (const targetVariants of [1, Math.min(16, totalVariants)]) {
+    const fixture = createPreparedAssetLookupFixture(totalVariants, targetVariants);
+    const expected = fixture.expected;
+    bench(
+      `full-scan status reference for ${targetVariants}/${totalVariants} prepared variants`,
+      () => expect(fixture.reference()).toEqual(expected),
+      { iterations: 1, warmupIterations: 0 }
+    );
+    bench(
+      `looks up ${targetVariants}/${totalVariants} prepared status variants by asset ID`,
+      () => {
+        const actual = fixture.subject();
+        expect(actual).toEqual(expected);
+        expect(actual).toHaveLength(fixture.targetVariants);
+      },
+      { iterations: 1, warmupIterations: 0 }
+    );
+  }
 }
 
 for (const size of [100, 1_000]) {

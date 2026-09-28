@@ -8,6 +8,8 @@ import type {
   PreparedVariantKey
 } from './types';
 
+const EMPTY_PREPARED_ASSET_RESIDENCY: readonly PreparedAssetResidencySnapshot[] = Object.freeze([]);
+
 interface Entry<T> {
   readonly prepared: PreparedAsset<T>;
   readonly destroy: (value: T) => void;
@@ -26,6 +28,8 @@ interface Entry<T> {
 export class PreparedAssetRegistry {
   private readonly entries = new Map<string, Entry<unknown>>();
 
+  private readonly variantsByAssetId = new Map<string, Set<string>>();
+
   /** Returns the renderer-owned lifetime state for one prepared GPU variant. */
   inspect(key: PreparedVariantKey): PreparedAssetResidencySnapshot | undefined {
     const entry = this.entries.get(preparedKey(key));
@@ -37,6 +41,30 @@ export class PreparedAssetRegistry {
       activeLeases: entry.leases,
       activeSubmissions: entry.submissions
     });
+  }
+
+  /** Returns snapshots for every retained GPU variant owned by one stable asset ID. */
+  inspectAsset(assetId: string): readonly PreparedAssetResidencySnapshot[] {
+    if (typeof assetId !== 'string' || assetId.trim().length === 0) {
+      throw new Error('Prepared asset lookup requires a non-empty asset ID.');
+    }
+    const variantIds = this.variantsByAssetId.get(assetId);
+    if (variantIds === undefined) return EMPTY_PREPARED_ASSET_RESIDENCY;
+    return Object.freeze(
+      [...variantIds].map((id) => {
+        const entry = this.entries.get(id);
+        if (entry === undefined) {
+          throw new Error(`Prepared asset index references missing variant: ${id}`);
+        }
+        return Object.freeze({
+          key: Object.freeze({ ...entry.prepared.key }),
+          state: entry.retired ? ('evicting' as const) : ('resident' as const),
+          bytes: entry.bytes,
+          activeLeases: entry.leases,
+          activeSubmissions: entry.submissions
+        });
+      })
+    );
   }
 
   /** Summarizes published and fence-pending prepared GPU variants for status composition. */
@@ -100,7 +128,16 @@ export class PreparedAssetRegistry {
       };
       return { id, entry };
     });
-    for (const { id, entry } of entries) this.entries.set(id, entry);
+    for (const { id, entry } of entries) {
+      this.entries.set(id, entry);
+      const assetId = entry.prepared.key.assetId;
+      let variants = this.variantsByAssetId.get(assetId);
+      if (variants === undefined) {
+        variants = new Set();
+        this.variantsByAssetId.set(assetId, variants);
+      }
+      variants.add(id);
+    }
   }
 
   /**
@@ -181,6 +218,12 @@ export class PreparedAssetRegistry {
     if (!entry.retired || entry.leases > 0 || entry.submissions > 0 || entry.destroyed) return;
     entry.destroyed = true;
     this.entries.delete(id);
+    const assetId = entry.prepared.key.assetId;
+    const variants = this.variantsByAssetId.get(assetId);
+    if (variants === undefined || !variants.delete(id)) {
+      throw new Error(`Prepared asset index is missing collected variant: ${id}`);
+    }
+    if (variants.size === 0) this.variantsByAssetId.delete(assetId);
     entry.destroy(entry.prepared.value);
   }
 }

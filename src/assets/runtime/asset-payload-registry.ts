@@ -6,8 +6,12 @@ import type {
   AssetPayloadEvictionResult,
   AssetPayloadInput,
   AssetPayloadLease,
+  AssetPayloadRegistrySnapshot,
+  AssetPayloadRevisionResidency,
   AssetPayloadResolveResult
 } from './types';
+
+const EMPTY_ASSET_PAYLOAD_REVISIONS: readonly AssetPayloadRevisionResidency[] = Object.freeze([]);
 
 interface AssetRecord {
   readonly handle: AssetHandle<unknown>;
@@ -50,6 +54,33 @@ export class AssetPayloadRegistry {
   /** Returns the total bytes of payload revisions still owned by this registry. */
   get residentBytes(): number {
     return this.residentBytesValue;
+  }
+
+  /** Returns current and lease-retained CPU revision residency for one typed handle. */
+  inspect<T>(handle: AssetHandle<T>): AssetPayloadRegistrySnapshot {
+    const record = this.findRecord(handle);
+    if (record === undefined) {
+      return Object.freeze({
+        residentBytes: 0,
+        activeLeases: 0,
+        revisions: EMPTY_ASSET_PAYLOAD_REVISIONS
+      });
+    }
+    const revisions = Object.freeze(
+      [...record.revisions.values()].map((revision) =>
+        Object.freeze({
+          version: revision.payload.version,
+          bytes: revision.payload.byteLength,
+          activeLeases: revision.leases,
+          current: record.currentVersion === revision.payload.version
+        })
+      )
+    );
+    return Object.freeze({
+      residentBytes: revisions.reduce((total, revision) => total + revision.bytes, 0),
+      activeLeases: revisions.reduce((total, revision) => total + revision.activeLeases, 0),
+      revisions
+    });
   }
 
   /** Registers a stable typed handle before requests or payload publication. */

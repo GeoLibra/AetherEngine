@@ -263,4 +263,39 @@ describe('AssetPayloadRegistry', () => {
     });
     expect(registry.residentBytes).toBe(12);
   });
+
+  test('inspects current and leased-retired CPU revision bytes per asset', () => {
+    const registry = new AssetPayloadRegistry({ cpuResidentByteBudget: 16 });
+    registry.register(handle);
+    const publish = (version: number) =>
+      registry.publish(
+        handle,
+        {
+          version,
+          contentHash: `sha256:inspect-${version}`,
+          byteLength: 8,
+          value: { bounds: { min: [version] } },
+          dependencies: []
+        },
+        (value) => ({ bounds: { min: [...value.bounds.min] } })
+      );
+    publish(1);
+    const lease = registry.acquire(handle);
+    publish(2);
+
+    expect(registry.inspect(handle)).toEqual({
+      residentBytes: 16,
+      activeLeases: 1,
+      revisions: [
+        { version: 1, bytes: 8, activeLeases: 1, current: false },
+        { version: 2, bytes: 8, activeLeases: 0, current: true }
+      ]
+    });
+    lease?.dispose();
+    expect(registry.inspect(handle)).toEqual({
+      residentBytes: 8,
+      activeLeases: 0,
+      revisions: [{ version: 2, bytes: 8, activeLeases: 0, current: true }]
+    });
+  });
 });

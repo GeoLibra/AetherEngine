@@ -68,4 +68,28 @@ describe('prepared asset residency observation', () => {
     expect(registry.inspect(key)?.bytes).toBeNull();
     expect(registry.snapshot()).toMatchObject({ knownBytes: 0, unknownByteVariants: 1 });
   });
+
+  test('lists all resident and fence-pending variants for one asset only', () => {
+    const registry = new PreparedAssetRegistry();
+    const firstKey = { ...key, assetId: 'mesh:asset-a', payloadVersion: 1 };
+    const secondKey = { ...key, assetId: 'mesh:asset-a', payloadVersion: 2 };
+    const otherAssetKey = { ...key, assetId: 'mesh:asset-b' };
+    registry.publish({ key: firstKey, value: { byteLength: 32 } });
+    registry.publish({ key: secondKey, value: { byteLength: 64 } });
+    registry.publish({ key: otherAssetKey, value: { byteLength: 128 } });
+    const firstLease = registry.acquire(firstKey);
+    registry.retire(firstKey);
+
+    expect(registry.inspectAsset('mesh:asset-a')).toMatchObject([
+      { key: firstKey, state: 'evicting', bytes: 32, activeLeases: 1 },
+      { key: secondKey, state: 'resident', bytes: 64, activeLeases: 0 }
+    ]);
+    expect(registry.inspectAsset('mesh:asset-b')).toMatchObject([
+      { key: otherAssetKey, state: 'resident', bytes: 128 }
+    ]);
+    firstLease?.dispose();
+    expect(registry.inspectAsset('mesh:asset-a')).toMatchObject([
+      { key: secondKey, state: 'resident', bytes: 64 }
+    ]);
+  });
 });

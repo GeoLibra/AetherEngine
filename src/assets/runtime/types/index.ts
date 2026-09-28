@@ -1,8 +1,14 @@
 export type {
+  AssetGpuResidencyReader,
+  AssetGpuVariantIdentity,
+  AssetGpuVariantResidency,
   AssetPayload,
   AssetPayloadAvailability,
   AssetPayloadEvictionResult,
   AssetPayloadInput,
   AssetPayloadLease,
-  AssetPayloadResolveResult
+  AssetPayloadRegistrySnapshot,
+  AssetPayloadRevisionResidency,
+  AssetPayloadResolveResult,
+  AssetStatusSnapshot
 } from './asset-runtime-types';
