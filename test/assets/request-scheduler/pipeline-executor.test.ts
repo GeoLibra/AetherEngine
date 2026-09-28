@@ -42,6 +42,7 @@ describe('AssetPipelineExecutor', () => {
           {
             version: demand.revision,
             contentHash: 'sha256:mesh-v1',
+            byteLength: (decoded as Uint8Array).byteLength,
             value: { bytes: decoded as Uint8Array },
             dependencies: []
           },
@@ -126,6 +127,7 @@ describe('AssetPipelineExecutor', () => {
           {
             version: demand.revision,
             contentHash: 'sha256:cancelled',
+            byteLength: (decoded as Uint8Array).byteLength,
             value: { bytes: decoded as Uint8Array },
             dependencies: []
           },

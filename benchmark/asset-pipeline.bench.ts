@@ -350,6 +350,14 @@ for (const count of glbVertexCounts) {
     expect(result.checksum).toBe(payloadFixture.expectedChecksum);
     expect(result.owned).toBe(true);
   });
+  const leaseCount = profile === 'nightly' ? 100_000 : profile === 'standard' ? 10_000 : 1_000;
+  bench(`acquires and releases ${leaseCount} CPU payload leases (${count} vertices)`, () => {
+    expect(payloadFixture.cycleLeases(leaseCount)).toEqual({
+      acquisitions: leaseCount,
+      releases: leaseCount,
+      bytes: expectedBytes
+    });
+  });
 }
 
 for (const count of glbVertexCounts) {
