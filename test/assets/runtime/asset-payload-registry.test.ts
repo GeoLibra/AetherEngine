@@ -249,19 +249,10 @@ describe('AssetPayloadRegistry', () => {
       payload: { version: 1, dependencies: [{ assetId: dependency.assetId }] }
     });
     expect(registry.residentBytes).toBe(16);
-    expect(registry.evict(dependency)).toMatchObject({ kind: 'evicted', version: 1, bytes: 4 });
-    expect(() =>
-      registry.publish(
-        handle,
-        { ...parentInput, version: 2, contentHash: 'sha256:parent-v2' },
-        (value) => ({ bounds: { min: [...value.bounds.min] } })
-      )
-    ).toThrow(/dependency.*not CPU-published/i);
-    expect(registry.resolve(handle)).toMatchObject({
-      kind: 'available',
-      payload: { version: 1, contentHash: 'sha256:parent-v1' }
-    });
-    expect(registry.residentBytes).toBe(12);
+    expect(registry.evict(dependency)).toEqual({ kind: 'leased', version: 1, leaseCount: 1 });
+    expect(registry.evict(handle)).toEqual({ kind: 'evicted', version: 1, bytes: 12 });
+    expect(registry.evict(dependency)).toEqual({ kind: 'evicted', version: 1, bytes: 4 });
+    expect(registry.residentBytes).toBe(0);
   });
 
   test('inspects current and leased-retired CPU revision bytes per asset', () => {
@@ -297,5 +288,84 @@ describe('AssetPayloadRegistry', () => {
       activeLeases: 0,
       revisions: [{ version: 2, bytes: 8, activeLeases: 0, current: true }]
     });
+  });
+
+  test('rejects a hot-reload dependency cycle without replacing last good payloads', () => {
+    interface Payload {
+      readonly label: string;
+    }
+    const type = defineAssetType<Payload>('asset.cycle-test');
+    const first = createAssetHandle(type, 'asset:cycle-first');
+    const second = createAssetHandle(type, 'asset:cycle-second');
+    const registry = new AssetPayloadRegistry({ cpuResidentByteBudget: 24 });
+    registry.register(first);
+    registry.register(second);
+    const publish = (
+      target: typeof first,
+      version: number,
+      dependencies: readonly (typeof first)[]
+    ) =>
+      registry.publish(
+        target,
+        {
+          version,
+          contentHash: `sha256:${target.assetId}-v${version}`,
+          byteLength: 8,
+          value: { label: `${target.assetId}-v${version}` },
+          dependencies
+        },
+        (value) => ({ ...value })
+      );
+    publish(first, 1, []);
+    publish(second, 1, [first]);
+    const residentBytes = registry.residentBytes;
+
+    expect(() => publish(first, 2, [second])).toThrow(
+      /dependency cycle.*cycle-first.*cycle-second.*cycle-first/i
+    );
+    expect(registry.resolve(first)).toMatchObject({
+      kind: 'available',
+      payload: { version: 1, contentHash: 'sha256:asset:cycle-first-v1' }
+    });
+    expect(registry.residentBytes).toBe(residentBytes);
+    expect(registry.inspect(first).revisions).toEqual([
+      { version: 1, bytes: 8, activeLeases: 1, current: true }
+    ]);
+  });
+
+  test('pins transitive CPU dependency revisions until every dependent is evicted', () => {
+    interface Payload {
+      readonly label: string;
+    }
+    const type = defineAssetType<Payload>('asset.transitive-lease-test');
+    const first = createAssetHandle(type, 'asset:lease-first');
+    const second = createAssetHandle(type, 'asset:lease-second');
+    const third = createAssetHandle(type, 'asset:lease-third');
+    const registry = new AssetPayloadRegistry({ cpuResidentByteBudget: 24 });
+    registry.register(first);
+    registry.register(second);
+    registry.register(third);
+    const publish = (target: typeof first, dependencies: readonly (typeof first)[]) =>
+      registry.publish(
+        target,
+        {
+          version: 1,
+          contentHash: `sha256:${target.assetId}`,
+          byteLength: 8,
+          value: { label: target.assetId },
+          dependencies
+        },
+        (value) => ({ ...value })
+      );
+    publish(first, []);
+    publish(second, [first]);
+    publish(third, [second]);
+
+    expect(registry.evict(first)).toEqual({ kind: 'leased', version: 1, leaseCount: 1 });
+    expect(registry.evict(second)).toEqual({ kind: 'leased', version: 1, leaseCount: 1 });
+    expect(registry.evict(third)).toEqual({ kind: 'evicted', version: 1, bytes: 8 });
+    expect(registry.evict(second)).toEqual({ kind: 'evicted', version: 1, bytes: 8 });
+    expect(registry.evict(first)).toEqual({ kind: 'evicted', version: 1, bytes: 8 });
+    expect(registry.residentBytes).toBe(0);
   });
 });

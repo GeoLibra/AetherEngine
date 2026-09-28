@@ -8,6 +8,7 @@ interface MeshCpuPayload {
 const meshType = defineAssetType<MeshCpuPayload>('asset.benchmark-mesh-payload');
 const dependencyType = defineAssetType<{ readonly value: number }>('asset.benchmark-dependency');
 const parentType = defineAssetType<{ readonly value: number }>('asset.benchmark-dependent-parent');
+const graphType = defineAssetType<{ readonly value: number }>('asset.benchmark-dependency-graph');
 
 /** Prepares published CPU dependencies outside the measured parent-publication operation. */
 export function createAssetDependencyPublicationFixture(dependencyCount: number): Readonly<{
@@ -55,6 +56,61 @@ export function createAssetDependencyPublicationFixture(dependencyCount: number)
         dependencyCount: payload.dependencies.length,
         residentBytes: registry.residentBytes
       });
+    }
+  });
+}
+
+/** Prepares a dependency chain whose proposed closing edge must be rejected atomically. */
+export function createAssetDependencyCycleFixture(depth: number): Readonly<{
+  rejectCycle(): Readonly<{ cycleLength: number; retainedVersion: number; residentBytes: number }>;
+}> {
+  if (!Number.isSafeInteger(depth) || depth < 1) {
+    throw new Error('Asset dependency graph depth must be a positive safe integer.');
+  }
+  const registry = new AssetPayloadRegistry();
+  const target = createAssetHandle(graphType, 'asset:benchmark-cycle-target');
+  registry.register(target);
+  const publish = (
+    handle: typeof target,
+    version: number,
+    dependencies: readonly (typeof target)[]
+  ) =>
+    registry.publish(
+      handle,
+      {
+        version,
+        contentHash: `sha256:${handle.assetId}-${version}`,
+        byteLength: 4,
+        value: Object.freeze({ value: version }),
+        dependencies
+      },
+      (value) => Object.freeze({ ...value })
+    );
+  publish(target, 1, []);
+  let previous = target;
+  for (let index = 0; index < depth; index++) {
+    const next = createAssetHandle(graphType, `asset:benchmark-cycle-node/${index}`);
+    registry.register(next);
+    publish(next, 1, [previous]);
+    previous = next;
+  }
+  return Object.freeze({
+    rejectCycle() {
+      try {
+        publish(target, 2, [previous]);
+      } catch (error) {
+        if (!(error instanceof Error) || !/dependency cycle/i.test(error.message)) throw error;
+        const retained = registry.resolve(target);
+        if (retained.kind !== 'available' || retained.payload.version !== 1) {
+          throw new Error('Dependency-cycle benchmark replaced the last-good payload.');
+        }
+        return Object.freeze({
+          cycleLength: depth + 2,
+          retainedVersion: retained.payload.version,
+          residentBytes: registry.residentBytes
+        });
+      }
+      throw new Error('Dependency-cycle benchmark unexpectedly accepted a cyclic publication.');
     }
   });
 }

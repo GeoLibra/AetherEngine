@@ -13,11 +13,17 @@ import type {
 
 const EMPTY_ASSET_PAYLOAD_REVISIONS: readonly AssetPayloadRevisionResidency[] = Object.freeze([]);
 
+interface AssetRevision {
+  readonly payload: AssetPayload<unknown>;
+  readonly dependencyLeases: readonly AssetPayloadLease<unknown>[];
+  leases: number;
+}
+
 interface AssetRecord {
   readonly handle: AssetHandle<unknown>;
   currentVersion?: number;
   latestPublishedVersion: number;
-  readonly revisions: Map<number, { readonly payload: AssetPayload<unknown>; leases: number }>;
+  readonly revisions: Map<number, AssetRevision>;
 }
 
 /** Hard CPU-payload residency limit owned by this registry. */
@@ -32,6 +38,8 @@ export interface AssetPayloadRegistryOptions {
  */
 export class AssetPayloadRegistry {
   private readonly records = new Map<string, AssetRecord>();
+
+  private readonly dependencyGraph = new Map<string, readonly string[]>();
 
   private residentBytesValue = 0;
 
@@ -170,6 +178,7 @@ export class AssetPayloadRegistry {
         throw new Error(`Asset dependency "${dependency.assetId}" is not CPU-published.`);
       }
     }
+    this.assertNoDependencyCycle(handle.assetId, dependencies);
 
     const reclaimable = [...record.revisions.values()]
       .filter((revision) => revision.leases === 0)
@@ -188,12 +197,35 @@ export class AssetPayloadRegistry {
       value,
       dependencies
     });
+    const dependencyLeases: AssetPayloadLease<unknown>[] = [];
+    try {
+      for (const dependency of dependencies) {
+        const lease = this.acquire(dependency);
+        if (lease === undefined) {
+          throw new Error(
+            `Asset dependency "${dependency.assetId}" lost its CPU revision during publication.`
+          );
+        }
+        dependencyLeases.push(lease);
+      }
+    } catch (error) {
+      for (const lease of dependencyLeases) lease.dispose();
+      throw error;
+    }
     for (const [version, revision] of record.revisions) {
       if (revision.leases === 0) this.removeRevision(record, version);
     }
-    record.revisions.set(input.version, { payload, leases: 0 });
+    record.revisions.set(input.version, {
+      payload,
+      dependencyLeases: Object.freeze(dependencyLeases),
+      leases: 0
+    });
     record.currentVersion = input.version;
     record.latestPublishedVersion = input.version;
+    this.dependencyGraph.set(
+      handle.assetId,
+      Object.freeze(dependencies.map((dependency) => dependency.assetId))
+    );
     this.residentBytesValue += input.byteLength;
     return payload;
   }
@@ -236,6 +268,7 @@ export class AssetPayloadRegistry {
     const { version, byteLength } = revision.payload;
     this.removeRevision(record, version);
     delete record.currentVersion;
+    this.dependencyGraph.delete(handle.assetId);
     return Object.freeze({ kind: 'evicted', version, bytes: byteLength });
   }
 
@@ -248,6 +281,46 @@ export class AssetPayloadRegistry {
     this.residentBytesValue -= revision.payload.byteLength;
     if (this.residentBytesValue < 0)
       throw new Error('Asset resident byte accounting became negative.');
+    for (const dependencyLease of revision.dependencyLeases) dependencyLease.dispose();
+  }
+
+  private assertNoDependencyCycle(
+    assetId: string,
+    dependencies: readonly AssetHandle<unknown>[]
+  ): void {
+    for (const dependency of dependencies) {
+      const path = this.findDependencyPath(dependency.assetId, assetId);
+      if (path !== undefined) {
+        throw new Error(`Asset dependency cycle: ${assetId} -> ${path.join(' -> ')}`);
+      }
+    }
+  }
+
+  private findDependencyPath(
+    startAssetId: string,
+    targetAssetId: string
+  ): readonly string[] | undefined {
+    const pending = [startAssetId];
+    const previous = new Map<string, string | undefined>([[startAssetId, undefined]]);
+    for (let index = 0; index < pending.length; index++) {
+      const current = pending[index]!;
+      if (current === targetAssetId) {
+        const path: string[] = [];
+        let cursor: string | undefined = current;
+        while (cursor !== undefined) {
+          path.push(cursor);
+          cursor = previous.get(cursor);
+        }
+        path.reverse();
+        return path;
+      }
+      for (const next of this.dependencyGraph.get(current) ?? []) {
+        if (previous.has(next)) continue;
+        previous.set(next, current);
+        pending.push(next);
+      }
+    }
+    return undefined;
   }
 
   private findRecord<T>(handle: AssetHandle<T>): AssetRecord | undefined {

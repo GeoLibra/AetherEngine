@@ -32,6 +32,7 @@ import {
 } from './asset-pipeline/gltf-ingestion';
 import { cookCanonicalMeshDocument } from '../src/assets/cooker';
 import {
+  createAssetDependencyCycleFixture,
   createAssetDependencyPublicationFixture,
   createAssetPayloadPublicationFixture
 } from './asset-pipeline/asset-payload-publication';
@@ -372,6 +373,17 @@ for (const dependencyCount of [0, 16, 128]) {
       version: expectedVersion,
       dependencyCount,
       residentBytes: dependencyCount * 4 + 4
+    });
+  });
+}
+
+for (const depth of [1, 16, 128]) {
+  const fixture = createAssetDependencyCycleFixture(depth);
+  bench(`rejects cyclic CPU asset publication at dependency depth ${depth}`, () => {
+    expect(fixture.rejectCycle()).toEqual({
+      cycleLength: depth + 2,
+      retainedVersion: 1,
+      residentBytes: (depth + 1) * 4
     });
   });
 }
