@@ -31,7 +31,10 @@ import {
   executeGlbIngestBenchmark
 } from './asset-pipeline/gltf-ingestion';
 import { cookCanonicalMeshDocument } from '../src/assets/cooker';
-import { createAssetPayloadPublicationFixture } from './asset-pipeline/asset-payload-publication';
+import {
+  createAssetDependencyPublicationFixture,
+  createAssetPayloadPublicationFixture
+} from './asset-pipeline/asset-payload-publication';
 import {
   createGltfMeshBatchOperationBenchmark,
   createGltfMeshOperationBenchmark
@@ -356,6 +359,19 @@ for (const count of glbVertexCounts) {
       acquisitions: leaseCount,
       releases: leaseCount,
       bytes: expectedBytes
+    });
+  });
+}
+
+for (const dependencyCount of [0, 16, 128]) {
+  const fixture = createAssetDependencyPublicationFixture(dependencyCount);
+  let expectedVersion = 0;
+  bench(`publishes CPU asset with ${dependencyCount} ready dependencies`, () => {
+    expectedVersion++;
+    expect(fixture.publishParent()).toEqual({
+      version: expectedVersion,
+      dependencyCount,
+      residentBytes: dependencyCount * 4 + 4
     });
   });
 }

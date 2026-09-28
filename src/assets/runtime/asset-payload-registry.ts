@@ -99,7 +99,7 @@ export class AssetPayloadRegistry {
    * Publishes a newer CPU payload only after cloning caller-owned data and dependencies.
    * The clone callback must return a deep, independently owned immutable payload representation.
    *
-   * @throws If the handle is unregistered, the revision is invalid/stale, or cloning fails.
+   * @throws If the handle/dependencies are unavailable, the revision is invalid/stale, or cloning fails.
    */
   publish<T>(
     handle: AssetHandle<T>,
@@ -129,6 +129,17 @@ export class AssetPayloadRegistry {
       );
     }
 
+    const dependencies = Object.freeze(input.dependencies.map(copyDependencyHandle));
+    for (const dependency of dependencies) {
+      const dependencyRecord = this.findRecord(dependency);
+      if (dependencyRecord === undefined) {
+        throw new Error(`Asset dependency "${dependency.assetId}" is not registered.`);
+      }
+      if (dependencyRecord.currentVersion === undefined) {
+        throw new Error(`Asset dependency "${dependency.assetId}" is not CPU-published.`);
+      }
+    }
+
     const reclaimable = [...record.revisions.values()]
       .filter((revision) => revision.leases === 0)
       .reduce((bytes, revision) => bytes + revision.payload.byteLength, 0);
@@ -139,7 +150,6 @@ export class AssetPayloadRegistry {
     if (isObjectLike(input.value) && value === input.value) {
       throw new Error('Asset payload clone must not retain the caller-owned top-level object.');
     }
-    const dependencies = Object.freeze(input.dependencies.map(copyDependencyHandle));
     const payload = Object.freeze({
       version: input.version,
       contentHash: input.contentHash,

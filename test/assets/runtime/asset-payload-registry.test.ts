@@ -15,6 +15,18 @@ describe('AssetPayloadRegistry', () => {
   test('publishes an owned immutable revision and reports CPU availability separately', () => {
     const registry = new AssetPayloadRegistry();
     registry.register(handle);
+    registry.register(dependency);
+    registry.publish(
+      dependency,
+      {
+        version: 1,
+        contentHash: 'sha256:material-v1',
+        byteLength: 4,
+        value: { color: '#abc' },
+        dependencies: []
+      },
+      (value) => ({ ...value })
+    );
     expect(registry.availability(handle)).toEqual({ kind: 'unloaded' });
 
     const source = { bounds: { min: [0, 1, 2] } };
@@ -189,5 +201,66 @@ describe('AssetPayloadRegistry', () => {
     expect(registry.residentBytes).toBe(8);
     expect(registry.resolve(handle)).toMatchObject({ kind: 'available', payload: { version: 2 } });
     expect(() => publish(2, 8)).toThrow(/not newer/i);
+  });
+
+  test('blocks parent publication until every required dependency is CPU-published', () => {
+    const registry = new AssetPayloadRegistry();
+    registry.register(handle);
+    registry.register(dependency);
+    const parentInput = {
+      version: 1,
+      contentHash: 'sha256:parent-v1',
+      byteLength: 12,
+      value: { bounds: { min: [3] } },
+      dependencies: [dependency]
+    };
+
+    const unregisteredDependency = createAssetHandle(
+      MaterialPayloadType,
+      'material:unregistered-dependency'
+    );
+    expect(() =>
+      registry.publish(
+        handle,
+        { ...parentInput, dependencies: [unregisteredDependency] },
+        (value) => ({ bounds: { min: [...value.bounds.min] } })
+      )
+    ).toThrow(/dependency.*not registered/i);
+    expect(() =>
+      registry.publish(handle, parentInput, (value) => ({ bounds: { min: [...value.bounds.min] } }))
+    ).toThrow(/dependency.*not CPU-published/i);
+    expect(registry.availability(handle)).toEqual({ kind: 'unloaded' });
+    expect(registry.residentBytes).toBe(0);
+
+    registry.publish(
+      dependency,
+      {
+        version: 1,
+        contentHash: 'sha256:material-v1',
+        byteLength: 4,
+        value: { color: '#fff' },
+        dependencies: []
+      },
+      (value) => ({ ...value })
+    );
+    registry.publish(handle, parentInput, (value) => ({ bounds: { min: [...value.bounds.min] } }));
+    expect(registry.resolve(handle)).toMatchObject({
+      kind: 'available',
+      payload: { version: 1, dependencies: [{ assetId: dependency.assetId }] }
+    });
+    expect(registry.residentBytes).toBe(16);
+    expect(registry.evict(dependency)).toMatchObject({ kind: 'evicted', version: 1, bytes: 4 });
+    expect(() =>
+      registry.publish(
+        handle,
+        { ...parentInput, version: 2, contentHash: 'sha256:parent-v2' },
+        (value) => ({ bounds: { min: [...value.bounds.min] } })
+      )
+    ).toThrow(/dependency.*not CPU-published/i);
+    expect(registry.resolve(handle)).toMatchObject({
+      kind: 'available',
+      payload: { version: 1, contentHash: 'sha256:parent-v1' }
+    });
+    expect(registry.residentBytes).toBe(12);
   });
 });

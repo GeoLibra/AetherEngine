@@ -6,6 +6,58 @@ interface MeshCpuPayload {
 }
 
 const meshType = defineAssetType<MeshCpuPayload>('asset.benchmark-mesh-payload');
+const dependencyType = defineAssetType<{ readonly value: number }>('asset.benchmark-dependency');
+const parentType = defineAssetType<{ readonly value: number }>('asset.benchmark-dependent-parent');
+
+/** Prepares published CPU dependencies outside the measured parent-publication operation. */
+export function createAssetDependencyPublicationFixture(dependencyCount: number): Readonly<{
+  publishParent(): Readonly<{ version: number; dependencyCount: number; residentBytes: number }>;
+}> {
+  if (!Number.isSafeInteger(dependencyCount) || dependencyCount < 0) {
+    throw new Error('Asset dependency benchmark count must be a non-negative safe integer.');
+  }
+  const registry = new AssetPayloadRegistry();
+  const dependencies = Array.from({ length: dependencyCount }, (_, index) => {
+    const handle = createAssetHandle(dependencyType, `asset:benchmark-dependency/${index}`);
+    registry.register(handle);
+    registry.publish(
+      handle,
+      {
+        version: 1,
+        contentHash: `sha256:benchmark-dependency-${index}`,
+        byteLength: 4,
+        value: { value: index },
+        dependencies: []
+      },
+      (value) => Object.freeze({ ...value })
+    );
+    return handle;
+  });
+  const parent = createAssetHandle(parentType, `asset:benchmark-parent/${dependencyCount}`);
+  registry.register(parent);
+  let version = 0;
+  return Object.freeze({
+    publishParent() {
+      version++;
+      const payload = registry.publish(
+        parent,
+        {
+          version,
+          contentHash: `sha256:benchmark-parent-${version}`,
+          byteLength: 4,
+          value: Object.freeze({ value: version }),
+          dependencies
+        },
+        (value) => Object.freeze({ ...value })
+      );
+      return Object.freeze({
+        version: payload.version,
+        dependencyCount: payload.dependencies.length,
+        residentBytes: registry.residentBytes
+      });
+    }
+  });
+}
 
 /** Creates deterministic CPU-payload copy and publication scenarios for one mesh scale. */
 export function createAssetPayloadPublicationFixture(vertexCount: number): Readonly<{
