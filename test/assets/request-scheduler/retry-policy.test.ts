@@ -176,6 +176,90 @@ describe('asset retry policy', () => {
     expect(scheduler.snapshot().retries).toEqual([]);
     expect(attempts).toBe(1);
   });
+
+  test('opens a stage/failure circuit after repeated provider failures and permits one half-open probe', async () => {
+    let now = 0;
+    const scheduler = new AssetRequestScheduler({
+      retryPolicy: {
+        ...policy,
+        baseDelayMilliseconds: 10,
+        maximumDelayMilliseconds: 10,
+        jitterRatio: 0
+      },
+      circuitBreaker: { failureThreshold: 2, openMilliseconds: 100 },
+      nowMilliseconds: () => now
+    });
+    scheduler.request(demand('asset/circuit-a'));
+    scheduler.request(demand('asset/circuit-b'));
+    const fail = {
+      execute() {
+        throw new AssetRequestStageFailure('provider-failure', 'provider is unavailable');
+      }
+    };
+
+    const firstFailure = await scheduler.execute(
+      AssetRequestStage.Metadata,
+      { ...budget, maxRequests: { ...budget.maxRequests, metadata: 1 } },
+      fail
+    );
+    expect(firstFailure[0]?.status).toBe('failed');
+    now = 10;
+    const secondFailure = await scheduler.execute(
+      AssetRequestStage.Metadata,
+      { ...budget, maxRequests: { ...budget.maxRequests, metadata: 1 } },
+      fail
+    );
+    expect(secondFailure[0]?.status).toBe('failed');
+
+    expect(scheduler.snapshot().circuits).toEqual([
+      expect.objectContaining({
+        stage: AssetRequestStage.Metadata,
+        failure: 'provider-failure',
+        kind: 'open',
+        openUntilMilliseconds: 110
+      })
+    ]);
+    expect(
+      scheduler.plan(AssetRequestStage.Metadata, {
+        ...budget,
+        maxRequests: { ...budget.maxRequests, metadata: 2 }
+      }).admitted
+    ).toEqual([]);
+    now = 110;
+    const probe = await scheduler.execute(
+      AssetRequestStage.Metadata,
+      { ...budget, maxRequests: { ...budget.maxRequests, metadata: 2 } },
+      { execute() {} }
+    );
+    expect(probe).toHaveLength(1);
+    expect(probe[0]?.status).toBe('advanced');
+    expect(scheduler.snapshot().circuits).toEqual([]);
+  });
+
+  test('reopens a half-open circuit after an untyped probe failure', async () => {
+    let now = 0;
+    const scheduler = new AssetRequestScheduler({
+      retryPolicy: { ...policy, jitterRatio: 0 },
+      circuitBreaker: { failureThreshold: 1, openMilliseconds: 20 },
+      nowMilliseconds: () => now
+    });
+    scheduler.request(demand('asset/circuit-probe'));
+    await scheduler.execute(AssetRequestStage.Metadata, budget, {
+      execute() {
+        throw new AssetRequestStageFailure('provider-failure', 'offline');
+      }
+    });
+    now = 20;
+    await scheduler.execute(AssetRequestStage.Metadata, budget, {
+      execute() {
+        throw new Error('probe failed unexpectedly');
+      }
+    });
+
+    expect(scheduler.snapshot().circuits).toEqual([
+      expect.objectContaining({ kind: 'open', openUntilMilliseconds: 40, failure: 'unknown' })
+    ]);
+  });
 });
 
 function demand(key: string): AssetRequestDemand {

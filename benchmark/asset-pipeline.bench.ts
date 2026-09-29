@@ -140,6 +140,32 @@ bench('holds one backoff request outside admission among 1000 pending assets', (
   expect(plan.admitted.some((request) => request.key === 'asset:retry-gate/0')).toBe(false);
 });
 
+const circuitGateScheduler = new AssetRequestScheduler({
+  circuitBreaker: { failureThreshold: 1, openMilliseconds: 5_000 },
+  nowMilliseconds: () => retryGateNow
+});
+circuitGateScheduler.request({
+  key: 'asset:circuit-gate/probe' as never,
+  assetId: 'asset:circuit-gate/probe' as never,
+  stage: AssetRequestStage.Metadata,
+  consumerId: 'benchmark/circuit-gate',
+  priority: { class: 'visible', explicit: 0, dependencyDepth: 0, age: 0, retryPenalty: 0 },
+  estimated: { inFlightBytes: 4 },
+  revision: 1
+});
+await circuitGateScheduler.execute(AssetRequestStage.Metadata, retryGateBudget, {
+  execute() {
+    throw new AssetRequestStageFailure('offline', 'benchmark circuit open');
+  }
+});
+bench('blocks matching provider requests while a stage circuit is open', () => {
+  const plan = circuitGateScheduler.plan(AssetRequestStage.Metadata, retryGateBudget);
+  expect(plan.admitted).toHaveLength(0);
+  expect(circuitGateScheduler.snapshot().circuits).toMatchObject([
+    { stage: AssetRequestStage.Metadata, failure: 'offline', kind: 'open' }
+  ]);
+});
+
 // Range read benchmarks
 const rangeChunkSize = profile === 'nightly' ? 65_536 : profile === 'standard' ? 16_384 : 1_024;
 const rangePackageSize = rangeChunkSize * 16;

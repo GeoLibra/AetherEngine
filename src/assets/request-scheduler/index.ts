@@ -28,7 +28,9 @@ export type {
   AssetRetryPolicy,
   AssetRetryableFailure,
   AssetRequestRetrySnapshot,
-  AssetRequestSchedulerOptions
+  AssetRequestSchedulerOptions,
+  AssetRequestCircuitBreakerPolicy,
+  AssetRequestCircuitSnapshot
 } from './types';
 export type {
   AssetPipelineExecutorSnapshot,

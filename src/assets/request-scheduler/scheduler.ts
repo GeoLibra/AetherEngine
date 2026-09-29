@@ -1,5 +1,6 @@
 import { mergeAssetRequestDemands, planAssetStageAdmission } from './admission';
 import { AssetRequestStage } from './constants';
+import { AssetRequestCircuitBreaker } from './circuit-breaker';
 import { DEFAULT_ASSET_RETRY_POLICY, planAssetRetry } from './retry-policy';
 import { AssetRequestStageFailure } from './stage-failure';
 import { assertAssetUploadDeferral } from './upload-deferral';
@@ -41,6 +42,8 @@ export class AssetRequestScheduler {
 
   private readonly retryAttempts = new Map<AssetRequestKey, number>();
 
+  private readonly circuitBreaker: AssetRequestCircuitBreaker;
+
   private readonly retryPolicy: AssetRetryPolicy;
 
   private readonly nowMilliseconds: () => number;
@@ -51,6 +54,7 @@ export class AssetRequestScheduler {
   /** Creates a scheduler with injectable time and deterministic retry bounds. */
   constructor(options: AssetRequestSchedulerOptions = {}) {
     this.retryPolicy = options.retryPolicy ?? DEFAULT_ASSET_RETRY_POLICY;
+    this.circuitBreaker = new AssetRequestCircuitBreaker(options.circuitBreaker);
     this.nowMilliseconds = options.nowMilliseconds ?? Date.now;
   }
 
@@ -96,7 +100,8 @@ export class AssetRequestScheduler {
       operations,
       activeLeases: this.activeLeaseCount(),
       completedLeases,
-      retries: this.retrySnapshots()
+      retries: this.retrySnapshots(),
+      circuits: this.circuitBreaker.snapshots(this.readNowMilliseconds())
     });
   }
 
@@ -105,7 +110,17 @@ export class AssetRequestScheduler {
     const now = this.readNowMilliseconds();
     const demands = this.activeDemandsForStage(stage).filter((demand) => {
       const retry = this.retryStates.get(demand.key);
-      return retry === undefined || (retry.kind === 'backoff' && retry.retryAtMilliseconds <= now);
+      const retryReady =
+        retry === undefined || (retry.kind === 'backoff' && retry.retryAtMilliseconds <= now);
+      const probeKey = this.circuitBreaker.probeCandidate(
+        stage,
+        this.activeDemandsForStage(stage),
+        now
+      );
+      return (
+        (retryReady || demand.key === probeKey) &&
+        (!this.circuitBreaker.hasCircuit(stage) || demand.key === probeKey)
+      );
     });
     return planAssetStageAdmission(stage, demands, budget);
   }
@@ -122,7 +137,20 @@ export class AssetRequestScheduler {
   ): Promise<readonly AssetStageExecutionResult[]> {
     const plan = this.plan(stage, budget);
     const results: AssetStageExecutionResult[] = [];
+    const circuit = this.circuitBreaker
+      .snapshots(this.readNowMilliseconds())
+      .find((snapshot) => snapshot.stage === stage);
+    const circuitProbeKey =
+      circuit !== undefined && circuit.kind === 'half-open'
+        ? this.circuitBreaker.probeCandidate(
+            stage,
+            this.activeDemandsForStage(stage),
+            this.readNowMilliseconds()
+          )
+        : undefined;
     for (const request of plan.admitted) {
+      if (circuitProbeKey !== undefined && request.key !== circuitProbeKey) continue;
+      if (!this.circuitBreaker.claim(stage, request.key, this.readNowMilliseconds())) continue;
       if (this.inFlight.has(request.key)) {
         results.push(
           Object.freeze({
@@ -161,28 +189,46 @@ export class AssetRequestScheduler {
             executor.discard?.(request);
           }
           results.push(result);
+          this.circuitBreaker.releaseProbe(request.key);
+          if (circuitProbeKey !== undefined) break;
           continue;
         }
       } catch (error) {
         this.deferredExecutors.delete(request.key);
         results.push(this.settleFailure(request, error));
+        this.circuitBreaker.releaseProbe(request.key);
+        if (circuitProbeKey !== undefined) break;
         continue;
       } finally {
         this.inFlight.delete(request.key);
       }
       this.deferredExecutors.delete(request.key);
+      let executionResult: AssetStageExecutionResult;
       try {
-        const result = this.settleExecution(request, executor);
-        if (result.status === 'advanced' || result.status === 'completed') {
+        executionResult = this.settleExecution(request, executor);
+        if (executionResult.status === 'advanced' || executionResult.status === 'completed') {
           this.retryStates.delete(request.key);
           this.retryAttempts.delete(request.key);
         }
-        if (result.status === 'stale') executor.discard?.(request);
-        results.push(result);
+        if (executionResult.status === 'stale') executor.discard?.(request);
+        results.push(executionResult);
       } catch (error) {
+        this.deferredExecutors.delete(request.key);
+        const result = this.settleFailure(request, error);
         executor.discard?.(request);
-        results.push(this.settleFailure(request, error));
+        results.push(result);
+        this.circuitBreaker.releaseProbe(request.key);
+        if (circuitProbeKey !== undefined) break;
+        continue;
       }
+      if (
+        this.circuitBreaker.isProbe(request.key) &&
+        (executionResult.status === 'advanced' || executionResult.status === 'completed')
+      ) {
+        this.circuitBreaker.recordSuccess(request.stage);
+      }
+      this.circuitBreaker.releaseProbe(request.key);
+      if (circuitProbeKey !== undefined) break;
     }
     return Object.freeze(results);
   }
@@ -336,8 +382,29 @@ export class AssetRequestScheduler {
     if (!this.isCurrentExecution(request)) {
       return Object.freeze({ key: request.key, stage: request.stage, status: 'stale', error });
     }
-    if (!(error instanceof AssetRequestStageFailure)) {
+    const typedFailure = error instanceof AssetRequestStageFailure;
+    if (this.circuitBreaker.isProbe(request.key) && typedFailure) {
+      this.circuitBreaker.recordProbeFailure(
+        request.stage,
+        error.failure,
+        this.readNowMilliseconds()
+      );
+      this.circuitBreaker.releaseProbe(request.key);
       return Object.freeze({ key: request.key, stage: request.stage, status: 'failed', error });
+    }
+    if (!typedFailure) {
+      if (this.circuitBreaker.isProbe(request.key)) {
+        this.circuitBreaker.recordProbeFailure(
+          request.stage,
+          'unknown',
+          this.readNowMilliseconds()
+        );
+        this.circuitBreaker.releaseProbe(request.key);
+      }
+      return Object.freeze({ key: request.key, stage: request.stage, status: 'failed', error });
+    }
+    if (isCircuitRetryableFailure(error.failure)) {
+      this.circuitBreaker.recordFailure(request.stage, error.failure, this.readNowMilliseconds());
     }
     const attempt = (this.retryAttempts.get(request.key) ?? 0) + 1;
     const decision = planAssetRetry(
@@ -445,6 +512,10 @@ interface MutableLease {
 type RetryState =
   | Readonly<{ kind: 'backoff'; attempt: number; retryAtMilliseconds: number }>
   | Readonly<{ kind: 'stopped'; attempt: number; failure: string }>;
+
+function isCircuitRetryableFailure(failure: string): boolean {
+  return failure === 'offline' || failure === 'timeout' || failure === 'provider-failure';
+}
 
 function assertUploadDeferral(
   stage: AssetRequestStageType,

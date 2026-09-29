@@ -1,5 +1,9 @@
 import type { AssetId } from '../../types';
-import type { AssetRetryDecision, AssetRequestRetrySnapshot } from './retry-policy-types';
+import type {
+  AssetRetryDecision,
+  AssetRequestCircuitSnapshot,
+  AssetRequestRetrySnapshot
+} from './retry-policy-types';
 
 /** Canonical identity for one deduplicated asset request operation. */
 export type AssetRequestKey = string & { readonly __assetRequestKey: unique symbol };
@@ -144,4 +148,5 @@ export interface AssetRequestSchedulerSnapshot {
   readonly activeLeases: number;
   readonly completedLeases: number;
   readonly retries: readonly AssetRequestRetrySnapshot[];
+  readonly circuits: readonly AssetRequestCircuitSnapshot[];
 }

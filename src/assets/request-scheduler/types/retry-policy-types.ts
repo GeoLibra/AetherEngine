@@ -44,5 +44,20 @@ export type AssetRequestRetrySnapshot =
 /** Injected retry policy and clock for deterministic scheduler admission. */
 export interface AssetRequestSchedulerOptions {
   readonly retryPolicy?: AssetRetryPolicy;
+  readonly circuitBreaker?: AssetRequestCircuitBreakerPolicy;
   readonly nowMilliseconds?: () => number;
 }
+
+/** Bounded circuit behavior shared by failures from one scheduler stage and category. */
+export interface AssetRequestCircuitBreakerPolicy {
+  readonly failureThreshold: number;
+  readonly openMilliseconds: number;
+}
+
+/** Observable circuit state for one scheduler stage and typed failure category. */
+export type AssetRequestCircuitSnapshot = Readonly<{
+  stage: import('./scheduler-types').AssetRequestStage;
+  failure: string;
+  kind: 'open' | 'half-open';
+  openUntilMilliseconds: number;
+}>;
