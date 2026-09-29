@@ -1,6 +1,7 @@
 export { mergeAssetRequestDemands, planAssetStageAdmission } from './admission';
 export { AssetRequestScheduler } from './scheduler';
 export { AssetPipelineExecutor, AssetPipelineOperationRegistry } from './pipeline-executor';
+export { planAssetRetry } from './retry-policy';
 export { AssetRequestStage } from './constants';
 export type {
   AssetPriorityClass,
@@ -19,6 +20,12 @@ export type {
   AssetUploadDeferral,
   DeferredAssetRequest,
   MergedAssetRequestDemand
+} from './types';
+export type {
+  AssetRetryDecision,
+  AssetRetryInput,
+  AssetRetryPolicy,
+  AssetRetryableFailure
 } from './types';
 export type {
   AssetPipelineExecutorSnapshot,

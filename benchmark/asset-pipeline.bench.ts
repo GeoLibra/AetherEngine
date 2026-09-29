@@ -36,6 +36,7 @@ import {
   createAssetDependencyPublicationFixture,
   createAssetPayloadPublicationFixture
 } from './asset-pipeline/asset-payload-publication';
+import { planAssetRetry } from '../src/assets/request-scheduler';
 import {
   createGltfMeshBatchOperationBenchmark,
   createGltfMeshOperationBenchmark
@@ -385,6 +386,32 @@ for (const depth of [1, 16, 128]) {
       retainedVersion: 1,
       residentBytes: (depth + 1) * 4
     });
+  });
+}
+
+const retryPolicy = Object.freeze({
+  baseDelayMilliseconds: 250,
+  maximumDelayMilliseconds: 8_000,
+  maximumAttempts: 6,
+  jitterRatio: 0.2
+});
+for (const completedAttempts of [1, 3, 5]) {
+  bench(`plans deterministic asset retry after attempt ${completedAttempts}`, () => {
+    const decision = planAssetRetry(
+      {
+        requestKey: 'asset:benchmark-retry/mesh',
+        failure: 'timeout',
+        completedAttempts,
+        nowMilliseconds: 10_000
+      },
+      retryPolicy
+    );
+    expect(decision.kind).toBe('retry');
+    if (decision.kind !== 'retry') return;
+    expect(decision.nextAttempt).toBe(completedAttempts + 1);
+    expect(decision.retryAtMilliseconds).toBe(10_000 + decision.delayMilliseconds);
+    expect(decision.delayMilliseconds).toBeGreaterThanOrEqual(0);
+    expect(decision.delayMilliseconds).toBeLessThanOrEqual(8_000);
   });
 }
 
