@@ -137,7 +137,8 @@ describe('Asset request stage admission', () => {
       revision: 5,
       operations: [],
       activeLeases: 0,
-      completedLeases: 0
+      completedLeases: 0,
+      retries: []
     });
     expect(() => first.updatePriority(secondPriority())).toThrow('cancelled asset request lease');
   });

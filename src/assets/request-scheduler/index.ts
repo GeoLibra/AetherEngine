@@ -1,8 +1,9 @@
 export { mergeAssetRequestDemands, planAssetStageAdmission } from './admission';
 export { AssetRequestScheduler } from './scheduler';
 export { AssetPipelineExecutor, AssetPipelineOperationRegistry } from './pipeline-executor';
-export { planAssetRetry } from './retry-policy';
+export { DEFAULT_ASSET_RETRY_POLICY, planAssetRetry } from './retry-policy';
 export { AssetRequestStage } from './constants';
+export { AssetRequestStageFailure } from './stage-failure';
 export type {
   AssetPriorityClass,
   AssetPrioritySignals,
@@ -25,7 +26,9 @@ export type {
   AssetRetryDecision,
   AssetRetryInput,
   AssetRetryPolicy,
-  AssetRetryableFailure
+  AssetRetryableFailure,
+  AssetRequestRetrySnapshot,
+  AssetRequestSchedulerOptions
 } from './types';
 export type {
   AssetPipelineExecutorSnapshot,

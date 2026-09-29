@@ -1,5 +1,13 @@
 import type { AssetRetryDecision, AssetRetryInput, AssetRetryPolicy } from './types';
 
+/** Default bounded retry behavior for explicitly typed transient stage failures. */
+export const DEFAULT_ASSET_RETRY_POLICY: AssetRetryPolicy = Object.freeze({
+  baseDelayMilliseconds: 250,
+  maximumDelayMilliseconds: 8_000,
+  maximumAttempts: 4,
+  jitterRatio: 0.2
+});
+
 /** Plans a deterministic bounded retry time for one transient scheduler failure. */
 export function planAssetRetry(
   input: AssetRetryInput,

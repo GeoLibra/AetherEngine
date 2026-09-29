@@ -1,11 +1,26 @@
 import { describe, expect, test } from 'vitest';
-import { planAssetRetry } from '../../../src/assets/request-scheduler';
+import {
+  AssetRequestScheduler,
+  AssetRequestStage,
+  AssetRequestStageFailure,
+  planAssetRetry,
+  type AssetRequestDemand,
+  type AssetSchedulerBudget
+} from '../../../src/assets/request-scheduler';
 
 const policy = Object.freeze({
   baseDelayMilliseconds: 1_000,
   maximumDelayMilliseconds: 8_000,
   maximumAttempts: 4,
   jitterRatio: 0.2
+});
+
+const budget: AssetSchedulerBudget = Object.freeze({
+  maxRequests: Object.freeze({ metadata: 1, read: 1, decode: 1, finalize: 1, upload: 1 }),
+  maxInFlightBytes: Object.freeze({ metadata: 64, read: 64, decode: 64, finalize: 64, upload: 64 }),
+  frameFinalizeMilliseconds: 1,
+  frameUploadBytes: 64,
+  frameUploadCommands: 1
 });
 
 describe('asset retry policy', () => {
@@ -96,4 +111,87 @@ describe('asset retry policy', () => {
       )
     ).toThrow(/jitter/i);
   });
+
+  test('holds a transiently failed operation until its retry time, then resumes it', async () => {
+    let now = 10_000;
+    let attempts = 0;
+    const scheduler = new AssetRequestScheduler({
+      retryPolicy: { ...policy, baseDelayMilliseconds: 1_000, jitterRatio: 0 },
+      nowMilliseconds: () => now
+    });
+    scheduler.request(demand('asset/retry-gate'));
+
+    const first = await scheduler.execute(AssetRequestStage.Metadata, budget, {
+      execute() {
+        attempts += 1;
+        throw new AssetRequestStageFailure('offline', 'provider is offline');
+      }
+    });
+    expect(first[0]).toMatchObject({
+      status: 'failed',
+      retry: {
+        kind: 'retry',
+        nextAttempt: 2,
+        delayMilliseconds: 1_000,
+        retryAtMilliseconds: 11_000
+      }
+    });
+    expect(scheduler.plan(AssetRequestStage.Metadata, budget).admitted).toEqual([]);
+    expect(
+      await scheduler.execute(AssetRequestStage.Metadata, budget, {
+        execute() {
+          attempts += 1;
+        }
+      })
+    ).toEqual([]);
+    expect(attempts).toBe(1);
+
+    now = 11_000;
+    expect(await scheduler.execute(AssetRequestStage.Metadata, budget, { execute() {} })).toEqual([
+      expect.objectContaining({ status: 'advanced' })
+    ]);
+    expect(scheduler.snapshot().retries).toEqual([]);
+  });
+
+  test('keeps permanent failures suppressed and observable until the consumer cancels', async () => {
+    const scheduler = new AssetRequestScheduler({
+      retryPolicy: policy,
+      nowMilliseconds: () => 10_000
+    });
+    const lease = scheduler.request(demand('asset/permanent-failure'));
+    let attempts = 0;
+    const first = await scheduler.execute(AssetRequestStage.Metadata, budget, {
+      execute() {
+        attempts += 1;
+        throw new AssetRequestStageFailure('integrity', 'digest mismatch');
+      }
+    });
+
+    expect(first[0]).toMatchObject({ status: 'failed', retry: { kind: 'not-retryable' } });
+    expect(scheduler.plan(AssetRequestStage.Metadata, budget).admitted).toEqual([]);
+    expect(scheduler.snapshot().retries).toMatchObject([
+      { key: 'asset/permanent-failure', kind: 'stopped', attempt: 1 }
+    ]);
+    lease.cancel('discard permanently invalid asset');
+    expect(scheduler.snapshot().retries).toEqual([]);
+    expect(attempts).toBe(1);
+  });
 });
+
+function demand(key: string): AssetRequestDemand {
+  return Object.freeze({
+    key: key as AssetRequestDemand['key'],
+    assetId: `asset:${key}` as AssetRequestDemand['assetId'],
+    stage: AssetRequestStage.Metadata,
+    consumerId: key,
+    priority: Object.freeze({
+      class: 'visible',
+      explicit: 0,
+      dependencyDepth: 0,
+      age: 0,
+      retryPenalty: 0
+    }),
+    estimated: Object.freeze({ inFlightBytes: 4 }),
+    revision: 1
+  });
+}

@@ -1,4 +1,5 @@
 import type { AssetId } from '../../types';
+import type { AssetRetryDecision, AssetRequestRetrySnapshot } from './retry-policy-types';
 
 /** Canonical identity for one deduplicated asset request operation. */
 export type AssetRequestKey = string & { readonly __assetRequestKey: unique symbol };
@@ -133,6 +134,7 @@ export interface AssetStageExecutionResult {
   readonly status: 'advanced' | 'completed' | 'deferred' | 'stale' | 'failed';
   readonly reason?: AssetUploadDeferral['reason'];
   readonly error?: unknown;
+  readonly retry?: AssetRetryDecision;
 }
 
 /** Immutable scheduler-owned pending-operation snapshot for inspection and admission. */
@@ -141,4 +143,5 @@ export interface AssetRequestSchedulerSnapshot {
   readonly operations: readonly MergedAssetRequestDemand[];
   readonly activeLeases: number;
   readonly completedLeases: number;
+  readonly retries: readonly AssetRequestRetrySnapshot[];
 }

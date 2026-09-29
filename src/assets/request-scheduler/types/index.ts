@@ -21,5 +21,7 @@ export type {
   AssetRetryDecision,
   AssetRetryInput,
   AssetRetryPolicy,
-  AssetRetryableFailure
+  AssetRetryableFailure,
+  AssetRequestRetrySnapshot,
+  AssetRequestSchedulerOptions
 } from './retry-policy-types';

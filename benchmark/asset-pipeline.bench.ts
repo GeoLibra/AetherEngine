@@ -45,6 +45,7 @@ import { validateMeshData } from '../src/geometry';
 import { NullDevice, UploadPlanner } from '../src/rhi';
 import { disposePreparedMesh, prepareMesh, prepareMeshBudgeted } from '../src/rendering/mesh';
 import {
+  AssetRequestStageFailure,
   AssetRequestScheduler,
   AssetRequestStage,
   planAssetStageAdmission,
@@ -72,6 +73,72 @@ for (const mountCount of [1, 16, 128]) {
     result.bytes[0] = 255;
   });
 }
+
+const retryGateNow = 10_000;
+const retryGateScheduler = new AssetRequestScheduler({
+  retryPolicy: {
+    baseDelayMilliseconds: 5_000,
+    maximumDelayMilliseconds: 20_000,
+    maximumAttempts: 3,
+    jitterRatio: 0
+  },
+  nowMilliseconds: () => retryGateNow
+});
+const retryGateBudget = Object.freeze({
+  maxRequests: Object.freeze({
+    metadata: 2_000,
+    read: 2_000,
+    decode: 2_000,
+    finalize: 2_000,
+    upload: 2_000
+  }),
+  maxInFlightBytes: Object.freeze({
+    metadata: 1_000_000,
+    read: 1_000_000,
+    decode: 1_000_000,
+    finalize: 1_000_000,
+    upload: 1_000_000
+  }),
+  frameFinalizeMilliseconds: 1_000_000,
+  frameUploadBytes: 1_000_000,
+  frameUploadCommands: 2_000
+});
+const retryGateFailureBudget = Object.freeze({
+  ...retryGateBudget,
+  maxRequests: Object.freeze({
+    ...retryGateBudget.maxRequests,
+    metadata: 1
+  })
+});
+for (let index = 0; index < 1_000; index++) {
+  retryGateScheduler.request({
+    key: `asset:retry-gate/${index}` as never,
+    assetId: `asset:retry-gate/${index}` as never,
+    stage: AssetRequestStage.Metadata,
+    consumerId: `benchmark/${index}`,
+    priority: {
+      class: 'visible',
+      explicit: 0,
+      dependencyDepth: 0,
+      age: 0,
+      retryPenalty: 0
+    },
+    estimated: { inFlightBytes: 4 },
+    revision: 1
+  });
+}
+await retryGateScheduler.execute(AssetRequestStage.Metadata, retryGateFailureBudget, {
+  execute(request) {
+    if (request.key === 'asset:retry-gate/0') {
+      throw new AssetRequestStageFailure('offline', 'benchmark transient failure');
+    }
+  }
+});
+bench('holds one backoff request outside admission among 1000 pending assets', () => {
+  const plan = retryGateScheduler.plan(AssetRequestStage.Metadata, retryGateBudget);
+  expect(plan.admitted).toHaveLength(999);
+  expect(plan.admitted.some((request) => request.key === 'asset:retry-gate/0')).toBe(false);
+});
 
 // Range read benchmarks
 const rangeChunkSize = profile === 'nightly' ? 65_536 : profile === 'standard' ? 16_384 : 1_024;

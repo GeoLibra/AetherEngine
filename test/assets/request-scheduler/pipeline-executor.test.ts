@@ -258,9 +258,10 @@ describe('AssetPipelineExecutor', () => {
       registry(baseOperation())
     );
 
-    await expect(executor.execute(request(AssetRequestStage.Read))).rejects.toThrow(
-      'Asset pipeline read for "asset/key" failed: offline.'
-    );
+    await expect(executor.execute(request(AssetRequestStage.Read))).rejects.toMatchObject({
+      failure: 'offline',
+      message: 'Asset pipeline read for "asset/key" failed: offline.'
+    });
     expect(executor.snapshot()).toEqual({ pendingOperations: 0, retainedBytes: 0 });
   });
 

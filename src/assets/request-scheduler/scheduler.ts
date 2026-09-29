@@ -1,13 +1,18 @@
 import { mergeAssetRequestDemands, planAssetStageAdmission } from './admission';
 import { AssetRequestStage } from './constants';
+import { DEFAULT_ASSET_RETRY_POLICY, planAssetRetry } from './retry-policy';
+import { AssetRequestStageFailure } from './stage-failure';
 import { assertAssetUploadDeferral } from './upload-deferral';
 import type {
   AssetPrioritySignals,
+  AssetRequestRetrySnapshot,
+  AssetRequestSchedulerOptions,
   AssetRequestDemand,
   AssetRequestKey,
   AssetRequestLease,
   AssetRequestLeaseStatus,
   AssetRequestSchedulerSnapshot,
+  AssetRetryPolicy,
   AssetRequestStage as AssetRequestStageType,
   AssetSchedulerBudget,
   AssetStageAdmissionPlan,
@@ -20,8 +25,8 @@ import type {
 /**
  * Owns independent consumer leases over deduplicated pending asset operations.
  *
- * This scheduler intentionally owns admission facts only. Transport, decoding, upload execution,
- * publication, retries, and residency remain authority-owned integrations.
+ * This scheduler owns admission and typed retry timing only. Transport, decoding, upload execution,
+ * publication, and residency remain authority-owned integrations.
  */
 export class AssetRequestScheduler {
   private readonly leases = new Map<string, MutableLease>();
@@ -31,8 +36,23 @@ export class AssetRequestScheduler {
     Readonly<{ request: MergedAssetRequestDemand; executor: AssetStageExecutor }>
   >();
   private readonly inFlight = new Set<AssetRequestKey>();
+
+  private readonly retryStates = new Map<AssetRequestKey, RetryState>();
+
+  private readonly retryAttempts = new Map<AssetRequestKey, number>();
+
+  private readonly retryPolicy: AssetRetryPolicy;
+
+  private readonly nowMilliseconds: () => number;
+
   private nextLeaseId = 1;
   private currentRevision = 0;
+
+  /** Creates a scheduler with injectable time and deterministic retry bounds. */
+  constructor(options: AssetRequestSchedulerOptions = {}) {
+    this.retryPolicy = options.retryPolicy ?? DEFAULT_ASSET_RETRY_POLICY;
+    this.nowMilliseconds = options.nowMilliseconds ?? Date.now;
+  }
 
   /** Registers one independently cancellable consumer demand. */
   request(demand: AssetRequestDemand): AssetRequestLease {
@@ -75,13 +95,18 @@ export class AssetRequestScheduler {
       revision: this.currentRevision,
       operations,
       activeLeases: this.activeLeaseCount(),
-      completedLeases
+      completedLeases,
+      retries: this.retrySnapshots()
     });
   }
 
   /** Plans one stage using the current active consumer leases without retaining caller data. */
   plan(stage: AssetRequestStageType, budget: AssetSchedulerBudget): AssetStageAdmissionPlan {
-    const demands = this.activeDemandsForStage(stage);
+    const now = this.readNowMilliseconds();
+    const demands = this.activeDemandsForStage(stage).filter((demand) => {
+      const retry = this.retryStates.get(demand.key);
+      return retry === undefined || (retry.kind === 'backoff' && retry.retryAtMilliseconds <= now);
+    });
     return planAssetStageAdmission(stage, demands, budget);
   }
 
@@ -140,7 +165,7 @@ export class AssetRequestScheduler {
         }
       } catch (error) {
         this.deferredExecutors.delete(request.key);
-        results.push(Object.freeze({ key: request.key, stage, status: 'failed', error }));
+        results.push(this.settleFailure(request, error));
         continue;
       } finally {
         this.inFlight.delete(request.key);
@@ -148,11 +173,15 @@ export class AssetRequestScheduler {
       this.deferredExecutors.delete(request.key);
       try {
         const result = this.settleExecution(request, executor);
+        if (result.status === 'advanced' || result.status === 'completed') {
+          this.retryStates.delete(request.key);
+          this.retryAttempts.delete(request.key);
+        }
         if (result.status === 'stale') executor.discard?.(request);
         results.push(result);
       } catch (error) {
         executor.discard?.(request);
-        results.push(Object.freeze({ key: request.key, stage, status: 'failed', error }));
+        results.push(this.settleFailure(request, error));
       }
     }
     return Object.freeze(results);
@@ -283,6 +312,10 @@ export class AssetRequestScheduler {
     lease.status = 'cancelled';
     this.leases.delete(lease.id);
     this.currentRevision += 1;
+    if (!this.operations.has(lease.key)) {
+      this.retryStates.delete(lease.key);
+      this.retryAttempts.delete(lease.key);
+    }
     discarded?.executor.discard?.(discarded.request);
   }
 
@@ -294,6 +327,83 @@ export class AssetRequestScheduler {
       }
     }
     return Object.freeze(demands);
+  }
+
+  private settleFailure(
+    request: MergedAssetRequestDemand,
+    error: unknown
+  ): AssetStageExecutionResult {
+    if (!this.isCurrentExecution(request)) {
+      return Object.freeze({ key: request.key, stage: request.stage, status: 'stale', error });
+    }
+    if (!(error instanceof AssetRequestStageFailure)) {
+      return Object.freeze({ key: request.key, stage: request.stage, status: 'failed', error });
+    }
+    const attempt = (this.retryAttempts.get(request.key) ?? 0) + 1;
+    const decision = planAssetRetry(
+      {
+        requestKey: request.key,
+        failure: error.failure,
+        completedAttempts: attempt,
+        nowMilliseconds: this.readNowMilliseconds(),
+        ...(error.retryAfterMilliseconds === undefined
+          ? {}
+          : { retryAfterMilliseconds: error.retryAfterMilliseconds })
+      },
+      this.retryPolicy
+    );
+    this.retryAttempts.set(request.key, attempt);
+    if (decision.kind === 'retry') {
+      this.retryStates.set(request.key, {
+        kind: 'backoff',
+        attempt,
+        retryAtMilliseconds: decision.retryAtMilliseconds
+      });
+    } else {
+      this.retryStates.set(request.key, {
+        kind: 'stopped',
+        attempt,
+        failure: error.failure
+      });
+    }
+    this.currentRevision += 1;
+    return Object.freeze({
+      key: request.key,
+      stage: request.stage,
+      status: 'failed',
+      error,
+      retry: decision
+    });
+  }
+
+  private retrySnapshots(): readonly AssetRequestRetrySnapshot[] {
+    return Object.freeze(
+      [...this.retryStates.entries()]
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([key, retry]) =>
+          retry.kind === 'backoff'
+            ? Object.freeze({
+                key,
+                kind: retry.kind,
+                attempt: retry.attempt,
+                retryAtMilliseconds: retry.retryAtMilliseconds
+              })
+            : Object.freeze({
+                key,
+                kind: retry.kind,
+                attempt: retry.attempt,
+                failure: retry.failure
+              })
+        )
+    );
+  }
+
+  private readNowMilliseconds(): number {
+    const now = this.nowMilliseconds();
+    if (!Number.isSafeInteger(now) || now < 0) {
+      throw new Error('Asset scheduler clock must return a non-negative safe integer.');
+    }
+    return now;
   }
 
   private mergedOperations(): readonly MergedAssetRequestDemand[] {
@@ -331,6 +441,10 @@ interface MutableLease {
   status: AssetRequestLeaseStatus;
   demand: AssetRequestDemand;
 }
+
+type RetryState =
+  | Readonly<{ kind: 'backoff'; attempt: number; retryAtMilliseconds: number }>
+  | Readonly<{ kind: 'stopped'; attempt: number; failure: string }>;
 
 function assertUploadDeferral(
   stage: AssetRequestStageType,

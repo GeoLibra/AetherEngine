@@ -30,3 +30,19 @@ export type AssetRetryDecision =
     }>
   | Readonly<{ kind: 'not-retryable' }>
   | Readonly<{ kind: 'attempt-limit' }>;
+
+/** Observable scheduler retry gate for a still-live logical operation. */
+export type AssetRequestRetrySnapshot =
+  | Readonly<{
+      key: string;
+      kind: 'backoff';
+      attempt: number;
+      retryAtMilliseconds: number;
+    }>
+  | Readonly<{ key: string; kind: 'stopped'; attempt: number; failure: string }>;
+
+/** Injected retry policy and clock for deterministic scheduler admission. */
+export interface AssetRequestSchedulerOptions {
+  readonly retryPolicy?: AssetRetryPolicy;
+  readonly nowMilliseconds?: () => number;
+}

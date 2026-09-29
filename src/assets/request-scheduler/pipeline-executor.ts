@@ -4,6 +4,7 @@ import type { VirtualFileSystem } from '../vfs';
 import { AssetRequestStage } from './constants';
 import type { AssetStageExecutor, AssetUploadDeferral, MergedAssetRequestDemand } from './types';
 import { assertAssetUploadDeferral } from './upload-deferral';
+import { AssetRequestStageFailure } from './stage-failure';
 
 /** Authority-owned recipe for one asset operation selected by a scheduler request key and revision. */
 export interface AssetPipelineOperation {
@@ -165,7 +166,14 @@ export class AssetPipelineExecutor implements AssetStageExecutor {
     const state = this.stateFor(request);
     const result = await this.vfs.read({ uri: state.operation.uri });
     if (result.kind !== 'success') {
-      throw new Error(`Asset pipeline read for "${request.key}" failed: ${result.kind}.`);
+      const message = `Asset pipeline read for "${request.key}" failed: ${result.kind}.`;
+      if (result.kind === 'offline') {
+        throw new AssetRequestStageFailure('offline', message);
+      }
+      if (result.kind === 'provider-failure' && result.retry?.canRetry === true) {
+        throw new AssetRequestStageFailure('provider-failure', message, result.retry.retryAfterMs);
+      }
+      throw new Error(message);
     }
     state.bytes = new Uint8Array(result.bytes);
   }
