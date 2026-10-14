@@ -152,6 +152,8 @@ export * from './native-runtime';
 export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
 export { HostService, createHostPlugin } from './plugins/host-plugin';
 export { createFeaturePolicyPlugin } from './plugins/feature-policy-plugin';
+export { createResidencyPressureFeaturePolicySource } from './feature-policy/residency-pressure-source';
+export type { ResidencyPressureFeaturePolicySource } from './feature-policy/residency-pressure-source';
 export { createResidencyPressurePlugin } from './plugins/residency-pressure-plugin';
 export type {
   ResidencyPressureFrame,

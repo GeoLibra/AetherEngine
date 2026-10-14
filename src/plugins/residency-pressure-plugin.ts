@@ -41,6 +41,8 @@ export function createResidencyPressurePlugin(options: {
     Partial<Pick<AssetRequestScheduler, 'cancelPressureEligible'>>;
   readonly frame: () => ResidencyPressureFrame;
   readonly onResult: (result: ResidencyPressureFrameResult) => void;
+  /** Receives pressure for approved FeaturePolicy profile selection and restaging. */
+  readonly qualitySource?: { update(pressure: 'normal' | 'constrained' | 'critical'): void };
 }) {
   return definePlugin({
     id: 'aether.residency-pressure',
@@ -73,6 +75,7 @@ export function createResidencyPressurePlugin(options: {
               : 'normal';
           options.scheduler?.setPressure(pressure);
           options.scheduler?.cancelPressureEligible?.();
+          options.qualitySource?.update(pressure);
           options.onResult(Object.freeze({ pressure, cpu, gpu: Object.freeze(gpu) }));
         }
       });
