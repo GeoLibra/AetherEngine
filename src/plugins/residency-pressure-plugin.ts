@@ -1,5 +1,6 @@
 import { definePlugin } from '../app/utils';
 import { AssetPayloadRegistry } from '../assets/runtime';
+import { AssetRequestScheduler } from '../assets/request-scheduler';
 import {
   enforceCpuResidencyBudget,
   enforceGpuResidencyBudget,
@@ -17,6 +18,8 @@ export interface ResidencyPressureFrame {
 
 /** Observed physical reclamation and unmet pressure for each independently owned pool. */
 export interface ResidencyPressureFrameResult {
+  /** Critical when pinned residency exceeds budget; constrained during active reclamation. */
+  readonly pressure: 'normal' | 'constrained' | 'critical';
   readonly cpu: Readonly<{ releasedBytes: number; remainingPressureBytes: number }>;
   readonly gpu: readonly Readonly<{
     deviceGeneration: number;
@@ -33,6 +36,8 @@ export interface ResidencyPressureFrameResult {
 export function createResidencyPressurePlugin(options: {
   readonly payloads: AssetPayloadRegistry;
   readonly prepared: PreparedAssetRegistry;
+  /** Scheduler whose next admission observes this frame's pressure result. */
+  readonly scheduler?: Pick<AssetRequestScheduler, 'setPressure'>;
   readonly frame: () => ResidencyPressureFrame;
   readonly onResult: (result: ResidencyPressureFrameResult) => void;
 }) {
@@ -59,7 +64,14 @@ export function createResidencyPressurePlugin(options: {
             frame.cpuBudgetBytes,
             frame.subjects
           );
-          options.onResult(Object.freeze({ cpu, gpu: Object.freeze(gpu) }));
+          const pools = [cpu, ...gpu];
+          const pressure = pools.some((pool) => pool.remainingPressureBytes > 0)
+            ? 'critical'
+            : pools.some((pool) => pool.releasedBytes > 0)
+              ? 'constrained'
+              : 'normal';
+          options.scheduler?.setPressure(pressure);
+          options.onResult(Object.freeze({ pressure, cpu, gpu: Object.freeze(gpu) }));
         }
       });
     }
