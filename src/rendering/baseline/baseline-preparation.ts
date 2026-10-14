@@ -1185,6 +1185,7 @@ export class BaselineStandardLitPreparation {
       },
       retain: (submission: RHISubmission) => {
         if (released || retained) throw new Error('Baseline draw packet cannot be retained.');
+        this.meshLease.retainUntil(submission);
         retained = true;
         const pending = submission.done.finally(() => {
           releaseFrameResources();
