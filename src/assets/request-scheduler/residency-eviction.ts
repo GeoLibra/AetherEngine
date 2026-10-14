@@ -1,7 +1,4 @@
-import type {
-  AssetResidencyEvictionOwner,
-  AssetResidencyPressurePlan
-} from './types/residency-pressure-types';
+import type { AssetResidencyEvictionOwner, AssetResidencyPressurePlan } from './types';
 
 /**
  * Applies an eviction proposal through pool owners that revalidate leases and resource identity.

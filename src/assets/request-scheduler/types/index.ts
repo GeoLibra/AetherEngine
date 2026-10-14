@@ -27,3 +27,8 @@ export type {
   AssetRequestCircuitBreakerPolicy,
   AssetRequestCircuitSnapshot
 } from './retry-policy-types';
+export type {
+  AssetResidencyCandidate,
+  AssetResidencyPressurePlan,
+  AssetResidencyEvictionOwner
+} from './residency-pressure-types';

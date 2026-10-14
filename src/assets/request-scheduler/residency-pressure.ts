@@ -1,7 +1,4 @@
-import type {
-  AssetResidencyCandidate,
-  AssetResidencyPressurePlan
-} from './types/residency-pressure-types';
+import type { AssetResidencyCandidate, AssetResidencyPressurePlan } from './types';
 
 /**
  * Proposes cold, inexpensive residency evictions within one CPU or device-generation pool.
