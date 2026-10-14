@@ -44,6 +44,8 @@ import type { PreparedDrawPacket } from '../phase';
 import { createPreparedToken, type PreparedBindGroupLayoutToken } from '../../render-graph';
 import type { ExtractedView } from '../camera';
 import type { RenderEntityId } from '../world';
+import { PreparedAssetRegistry } from '../world';
+import type { PreparedAssetLease, PreparedVariantKey } from '../world';
 import { ReadonlyMapSnapshot } from '../world/readonly-collection-snapshot';
 import type { RenderTransformFact } from '../mesh';
 import type {
@@ -149,6 +151,9 @@ export class BaselineStandardLitPreparation {
   /** Effective pipeline sample count; direct preparation tests default to single sample. */
   readonly sampleCount: 1 | 4;
   private readonly mesh: PreparedMesh;
+  private readonly meshResidency = new PreparedAssetRegistry();
+  private readonly meshLease: PreparedAssetLease<PreparedMesh>;
+  private readonly meshVariantKey: PreparedVariantKey;
   private readonly pipeline: ReturnType<
     RegisteredOptions['graphics']['device']['createRenderPipeline']
   >;
@@ -557,12 +562,19 @@ export class BaselineStandardLitPreparation {
         targets: []
       }
     });
-    this.mesh = prepareMesh(device, options.mesh.data, {
+    const preparedMesh = prepareMesh(device, options.mesh.data, {
       assetId: options.mesh.handle.assetId,
       payloadVersion: options.mesh.payloadVersion,
       featurePolicyKey: this.featurePolicyKey,
       abiVersion: 'baseline-mesh-v1'
-    }).value;
+    });
+    this.meshVariantKey = preparedMesh.key;
+    this.meshResidency.publish(preparedMesh, disposePreparedMesh);
+    const meshLease = this.meshResidency.acquire<PreparedMesh>(preparedMesh.key);
+    if (meshLease === undefined)
+      throw new Error('Published baseline mesh residency must be acquirable.');
+    this.meshLease = meshLease;
+    this.mesh = meshLease.prepared.value;
     this.bindingLayoutHash = compiled.plan.hash;
     this.pipelineKey = createPipelineKey({
       shaderModuleKey: STANDARD_LIT_LIST_SHADER_MODULE_KEY,
@@ -1078,7 +1090,8 @@ export class BaselineStandardLitPreparation {
     if (this.disposed) return;
     this.disposed = true;
     await Promise.allSettled([...this.pendingSubmissions]);
-    disposePreparedMesh(this.mesh);
+    this.meshResidency.retire(this.meshVariantKey);
+    this.meshLease.dispose();
     this.pipeline.dispose();
     this.clusterPipeline?.dispose();
     this.shadowPipeline.dispose();

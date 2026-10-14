@@ -418,6 +418,7 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
         'engine/design/v2/05-assets-scene/',
         'src/assets/cook/',
         'src/assets/request-scheduler/',
+        'src/rendering/baseline/baseline-preparation.ts',
         'src/plugins/residency-pressure-plugin.ts',
         'src/rendering/world/residency-pressure.ts',
         'test/plugins/residency-pressure-plugin.test.ts',
