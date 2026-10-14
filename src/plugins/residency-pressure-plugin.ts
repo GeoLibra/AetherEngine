@@ -37,7 +37,8 @@ export function createResidencyPressurePlugin(options: {
   readonly payloads: AssetPayloadRegistry;
   readonly prepared: PreparedAssetRegistry;
   /** Scheduler whose next admission observes this frame's pressure result. */
-  readonly scheduler?: Pick<AssetRequestScheduler, 'setPressure'>;
+  readonly scheduler?: Pick<AssetRequestScheduler, 'setPressure'> &
+    Partial<Pick<AssetRequestScheduler, 'cancelPressureEligible'>>;
   readonly frame: () => ResidencyPressureFrame;
   readonly onResult: (result: ResidencyPressureFrameResult) => void;
 }) {
@@ -71,6 +72,7 @@ export function createResidencyPressurePlugin(options: {
               ? 'constrained'
               : 'normal';
           options.scheduler?.setPressure(pressure);
+          options.scheduler?.cancelPressureEligible?.();
           options.onResult(Object.freeze({ pressure, cpu, gpu: Object.freeze(gpu) }));
         }
       });

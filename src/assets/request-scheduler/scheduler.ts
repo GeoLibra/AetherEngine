@@ -67,6 +67,38 @@ export class AssetRequestScheduler {
     this.currentRevision += 1;
   }
 
+  /**
+   * Cancels only opted-in optional queued operations under critical pressure.
+   * Shared work is protected if any consumer is required, interactive, or not cancellable.
+   * Active executors retain ownership until terminal completion.
+   * Returns the cancelled operation keys for diagnostics.
+   */
+  cancelPressureEligible(): readonly AssetRequestKey[] {
+    if (this.pressureLevel !== 'critical') return EMPTY_CANCELLED_REQUEST_KEYS;
+    const cancelled: AssetRequestKey[] = [];
+    for (const [key, operation] of this.operations) {
+      if (this.inFlight.has(key)) continue;
+      const demands = [...operation.values()];
+      if (
+        !demands.every(
+          (demand) =>
+            demand.cancelOnCriticalPressure === true &&
+            demand.required !== true &&
+            demand.priority.class !== 'interactive'
+        )
+      )
+        continue;
+      for (const demand of demands) {
+        const lease = this.leases.get(demand.consumerId);
+        if (lease === undefined)
+          throw new Error('Pressure cancellation retained a missing consumer lease.');
+        this.cancel(lease, 'critical-residency-pressure');
+      }
+      cancelled.push(key);
+    }
+    return Object.freeze(cancelled);
+  }
+
   /** Creates a scheduler with injectable time and deterministic retry bounds. */
   constructor(options: AssetRequestSchedulerOptions = {}) {
     this.retryPolicy = options.retryPolicy ?? DEFAULT_ASSET_RETRY_POLICY;
@@ -79,6 +111,11 @@ export class AssetRequestScheduler {
     if (demand.required !== undefined && typeof demand.required !== 'boolean') {
       throw new Error('Asset request required declaration must be boolean.');
     }
+    if (
+      demand.cancelOnCriticalPressure !== undefined &&
+      typeof demand.cancelOnCriticalPressure !== 'boolean'
+    )
+      throw new Error('Pressure cancellation declaration must be boolean.');
     const id = `asset-request-lease:${this.nextLeaseId++}`;
     const operation = this.operations.get(demand.key) ?? new Map<string, AssetRequestDemand>();
     if (operation.size > 0) validateCompatibleOperation(demand, operation.values().next().value);
@@ -531,6 +568,8 @@ const NEXT_STAGE: Readonly<Partial<Record<AssetRequestStageType, AssetRequestSta
     [AssetRequestStage.Decode]: AssetRequestStage.Finalize,
     [AssetRequestStage.Finalize]: AssetRequestStage.Upload
   });
+
+const EMPTY_CANCELLED_REQUEST_KEYS: readonly AssetRequestKey[] = Object.freeze([]);
 
 interface MutableLease {
   readonly id: string;

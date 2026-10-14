@@ -23,6 +23,27 @@ const BUDGET: AssetSchedulerBudget = Object.freeze({
 });
 
 describe('Asset request stage admission', () => {
+  test('cancels opted-in queued work but protects a shared required consumer', () => {
+    const scheduler = new AssetRequestScheduler();
+    const optional = scheduler.request({
+      ...demand('asset/optional', 'optional', { class: 'background' }),
+      cancelOnCriticalPressure: true
+    });
+    const shared = scheduler.request({
+      ...demand('asset/shared-pressure', 'optional', { class: 'background' }),
+      cancelOnCriticalPressure: true
+    });
+    const required = scheduler.request({
+      ...demand('asset/shared-pressure', 'required', { class: 'background' }),
+      required: true
+    });
+    expect(scheduler.cancelPressureEligible()).toEqual([]);
+    scheduler.setPressure('critical');
+    expect(scheduler.cancelPressureEligible()).toEqual(['asset/optional']);
+    expect(optional.status).toBe('cancelled');
+    expect(shared.status).toBe('active');
+    expect(required.status).toBe('active');
+  });
   test('pauses pressure-ineligible work and resumes its surviving consumer on recovery', () => {
     const scheduler = new AssetRequestScheduler();
     const background = scheduler.request(demand('asset/background', 'b', { class: 'background' }));

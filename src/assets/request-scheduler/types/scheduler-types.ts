@@ -38,6 +38,8 @@ export interface AssetRequestCost {
 export interface AssetRequestDemand {
   /** Product-declared essential demand that remains admissible under critical pressure. */
   readonly required?: boolean;
+  /** Opts optional queued work into cancellation under critical memory pressure. */
+  readonly cancelOnCriticalPressure?: boolean;
   readonly key: AssetRequestKey;
   readonly assetId: AssetId;
   readonly stage: AssetRequestStage;
