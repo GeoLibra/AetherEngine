@@ -6,3 +6,5 @@ export * from './extractor-registry';
 export * from './persistent-entity-map';
 export * from './submission-retained-value';
 export * from './prepared-assets';
+export { enforceCpuResidencyBudget, enforceGpuResidencyBudget } from './residency-pressure';
+export type { ResidencyPressureSubject } from './residency-pressure';

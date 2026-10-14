@@ -12,6 +12,16 @@ const key: PreparedVariantKey = {
 };
 
 describe('prepared asset residency observation', () => {
+  test('revalidates pressure eviction and keeps a newly leased variant available', () => {
+    const registry = new PreparedAssetRegistry();
+    registry.publish({ key, value: { byteLength: 96 } });
+    const lease = registry.acquire(key);
+    expect(registry.evictUnreferenced(key)).toBe(false);
+    expect(registry.inspect(key)?.state).toBe('resident');
+    lease!.dispose();
+    expect(registry.evictUnreferenced(key)).toBe(true);
+    expect(registry.inspect(key)).toBeUndefined();
+  });
   test('reports resident, evicting, and collected states with submission ownership', async () => {
     let settle!: (result: SubmissionResult) => void;
     const submission: RHISubmission = {

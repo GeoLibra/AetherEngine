@@ -25,6 +25,27 @@ const BUDGET: AssetSchedulerBudget = {
 };
 
 describe('AssetPipelineExecutor', () => {
+  test('forwards immutable content expectations to the VFS cache and provider boundary', async () => {
+    const reads: unknown[] = [];
+    const executor = new AssetPipelineExecutor(
+      {
+        read: async (input: unknown) => {
+          reads.push(input);
+          return { kind: 'offline', uri: 'memory:///mesh.bin' };
+        }
+      } as unknown as VirtualFileSystem,
+      {} as JobScheduler,
+      {} as RHIDevice,
+      registry({ ...baseOperation(), expectedIntegrity: 'a'.repeat(64), expectedLength: 42 })
+    );
+    await expect(executor.execute(request(AssetRequestStage.Read) as never)).rejects.toThrow(
+      'offline'
+    );
+    expect(reads).toEqual([
+      { uri: baseOperation().uri, expectedIntegrity: 'a'.repeat(64), expectedLength: 42 }
+    ]);
+    expect(executor.snapshot().retainedBytes).toBe(0);
+  });
   test('publishes CPU payload only after finalize request revalidation and keeps it on upload deferral', async () => {
     interface Payload {
       readonly bytes: Uint8Array;

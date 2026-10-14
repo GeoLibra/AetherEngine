@@ -1,4 +1,23 @@
 import { bench, expect } from 'vitest';
+import { planAssetResidencyPressure } from '../src/assets/request-scheduler/residency-pressure';
+
+const pressureCandidates = Array.from({ length: 1000 }, (_, index) => ({
+  key: `pressure:${index}`,
+  pool: 'cpu',
+  bytes: 8,
+  activeLeases: index % 2,
+  activeSubmissions: 0,
+  priority: 0,
+  lastUseTick: index,
+  rebuildCost: 1
+}));
+bench('plans pressure eviction for 1000 residencies with 50% pinned', () => {
+  const result = planAssetResidencyPressure('cpu', 800, pressureCandidates);
+  expect(result.candidates.map((candidate) => candidate.key)).toEqual(
+    Array.from({ length: 100 }, (_, index) => `pressure:${index * 2}`)
+  );
+  expect(result.unmetBytes).toBe(0);
+});
 import {
   createVFSReadFixture,
   copyVFSReadReference,

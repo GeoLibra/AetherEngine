@@ -187,6 +187,20 @@ export class PreparedAssetRegistry {
   }
 
   /**
+   * Applies a pressure eviction only if the exact variant has no leases or submissions.
+   * Returns false if absent, already retired, or pinned; a refusal leaves it acquirable.
+   */
+  evictUnreferenced(key: PreparedVariantKey): boolean {
+    const id = preparedKey(key);
+    const entry = this.entries.get(id);
+    if (entry === undefined || entry.retired || entry.leases > 0 || entry.submissions > 0)
+      return false;
+    entry.retired = true;
+    this.collect(entry, id);
+    return true;
+  }
+
+  /**
    * Retires all asset variants associated with a specific device generation (e.g. on device loss).
    */
   invalidateDevice(deviceGeneration: number): void {

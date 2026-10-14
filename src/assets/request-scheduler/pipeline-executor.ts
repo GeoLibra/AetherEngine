@@ -9,6 +9,10 @@ import { AssetRequestStageFailure } from './stage-failure';
 /** Authority-owned recipe for one asset operation selected by a scheduler request key and revision. */
 export interface AssetPipelineOperation {
   readonly uri: string;
+  /** Expected immutable source digest, forwarded to every VFS cache/provider read. */
+  readonly expectedIntegrity?: string;
+  /** Expected encoded source size in bytes. */
+  readonly expectedLength?: number;
   readonly decodeJob: JobType<Uint8Array, unknown>;
   readonly finalize: (decoded: unknown, request: MergedAssetRequestDemand) => unknown;
   /** Publishes the validated canonical CPU payload at the scheduler's finalize commit boundary. */
@@ -164,7 +168,15 @@ export class AssetPipelineExecutor implements AssetStageExecutor {
 
   private async read(request: MergedAssetRequestDemand): Promise<void> {
     const state = this.stateFor(request);
-    const result = await this.vfs.read({ uri: state.operation.uri });
+    const result = await this.vfs.read({
+      uri: state.operation.uri,
+      ...(state.operation.expectedIntegrity === undefined
+        ? {}
+        : { expectedIntegrity: state.operation.expectedIntegrity }),
+      ...(state.operation.expectedLength === undefined
+        ? {}
+        : { expectedLength: state.operation.expectedLength })
+    });
     if (result.kind !== 'success') {
       const message = `Asset pipeline read for "${request.key}" failed: ${result.kind}.`;
       if (result.kind === 'offline') {
@@ -172,6 +184,13 @@ export class AssetPipelineExecutor implements AssetStageExecutor {
       }
       if (result.kind === 'provider-failure' && result.retry?.canRetry === true) {
         throw new AssetRequestStageFailure('provider-failure', message, result.retry.retryAfterMs);
+      }
+      if (
+        result.kind === 'integrity' ||
+        result.kind === 'permission' ||
+        result.kind === 'not-found'
+      ) {
+        throw new AssetRequestStageFailure(result.kind, message);
       }
       throw new Error(message);
     }

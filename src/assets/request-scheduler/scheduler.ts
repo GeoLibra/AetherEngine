@@ -108,18 +108,16 @@ export class AssetRequestScheduler {
   /** Plans one stage using the current active consumer leases without retaining caller data. */
   plan(stage: AssetRequestStageType, budget: AssetSchedulerBudget): AssetStageAdmissionPlan {
     const now = this.readNowMilliseconds();
-    const demands = this.activeDemandsForStage(stage).filter((demand) => {
+    const stageDemands = this.activeDemandsForStage(stage);
+    const probeKey = this.circuitBreaker.probeCandidate(stage, stageDemands, now);
+    const hasCircuit = this.circuitBreaker.hasCircuit(stage);
+    const demands = stageDemands.filter((demand) => {
       const retry = this.retryStates.get(demand.key);
       const retryReady =
         retry === undefined || (retry.kind === 'backoff' && retry.retryAtMilliseconds <= now);
-      const probeKey = this.circuitBreaker.probeCandidate(
-        stage,
-        this.activeDemandsForStage(stage),
-        now
-      );
       return (
         (retryReady || demand.key === probeKey) &&
-        (!this.circuitBreaker.hasCircuit(stage) || demand.key === probeKey)
+        (!hasCircuit || demand.key === probeKey)
       );
     });
     return planAssetStageAdmission(stage, demands, budget);
