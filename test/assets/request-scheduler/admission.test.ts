@@ -23,6 +23,22 @@ const BUDGET: AssetSchedulerBudget = Object.freeze({
 });
 
 describe('Asset request stage admission', () => {
+  test('pauses pressure-ineligible work and resumes its surviving consumer on recovery', () => {
+    const scheduler = new AssetRequestScheduler();
+    const background = scheduler.request(demand('asset/background', 'b', { class: 'background' }));
+    const required = scheduler.request({
+      ...demand('asset/required', 'r', { class: 'background' }),
+      required: true
+    });
+    scheduler.setPressure('critical');
+    expect(
+      scheduler.plan(AssetRequestStage.Upload, BUDGET).admitted.map((request) => request.key)
+    ).toEqual(['asset/required']);
+    expect(background.status).toBe('active');
+    expect(required.status).toBe('active');
+    scheduler.setPressure('normal');
+    expect(scheduler.plan(AssetRequestStage.Upload, BUDGET).admitted).toHaveLength(2);
+  });
   test('merges compatible consumers and keeps strongest urgency without mutating inputs', () => {
     const first = demand('asset/shared', 'a', { class: 'prefetch', explicit: 2, age: 1 });
     const second = demand('asset/shared', 'b', {

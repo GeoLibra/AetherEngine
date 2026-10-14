@@ -50,6 +50,22 @@ export class AssetRequestScheduler {
 
   private nextLeaseId = 1;
   private currentRevision = 0;
+  private pressureLevel: 'normal' | 'constrained' | 'critical' = 'normal';
+
+  /** Reports the current composition-owned admission pressure policy. */
+  get pressure(): 'normal' | 'constrained' | 'critical' {
+    return this.pressureLevel;
+  }
+
+  /** Changes admission policy without cancelling consumers or interrupting active operations. */
+  setPressure(level: 'normal' | 'constrained' | 'critical'): void {
+    if (level !== 'normal' && level !== 'constrained' && level !== 'critical') {
+      throw new Error('Asset scheduler pressure level is invalid.');
+    }
+    if (this.pressureLevel === level) return;
+    this.pressureLevel = level;
+    this.currentRevision += 1;
+  }
 
   /** Creates a scheduler with injectable time and deterministic retry bounds. */
   constructor(options: AssetRequestSchedulerOptions = {}) {
@@ -60,6 +76,9 @@ export class AssetRequestScheduler {
 
   /** Registers one independently cancellable consumer demand. */
   request(demand: AssetRequestDemand): AssetRequestLease {
+    if (demand.required !== undefined && typeof demand.required !== 'boolean') {
+      throw new Error('Asset request required declaration must be boolean.');
+    }
     const id = `asset-request-lease:${this.nextLeaseId++}`;
     const operation = this.operations.get(demand.key) ?? new Map<string, AssetRequestDemand>();
     if (operation.size > 0) validateCompatibleOperation(demand, operation.values().next().value);
@@ -109,6 +128,18 @@ export class AssetRequestScheduler {
   plan(stage: AssetRequestStageType, budget: AssetSchedulerBudget): AssetStageAdmissionPlan {
     const now = this.readNowMilliseconds();
     const stageDemands = this.activeDemandsForStage(stage);
+    // Admit shared work if any consumer is eligible, preserving all independent consumer leases.
+    const eligibleKeys = new Set(
+      stageDemands
+        .filter(
+          (demand) =>
+            demand.required === true ||
+            this.pressureLevel === 'normal' ||
+            (this.pressureLevel === 'constrained' && demand.priority.class !== 'background') ||
+            demand.priority.class === 'interactive'
+        )
+        .map((demand) => demand.key)
+    );
     const probeKey = this.circuitBreaker.probeCandidate(stage, stageDemands, now);
     const hasCircuit = this.circuitBreaker.hasCircuit(stage);
     const demands = stageDemands.filter((demand) => {
@@ -116,6 +147,7 @@ export class AssetRequestScheduler {
       const retryReady =
         retry === undefined || (retry.kind === 'backoff' && retry.retryAtMilliseconds <= now);
       return (
+        eligibleKeys.has(demand.key) &&
         (retryReady || demand.key === probeKey) &&
         (!hasCircuit || demand.key === probeKey)
       );

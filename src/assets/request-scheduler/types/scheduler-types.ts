@@ -36,6 +36,8 @@ export interface AssetRequestCost {
 
 /** One caller-owned request demand before scheduler deduplication. */
 export interface AssetRequestDemand {
+  /** Product-declared essential demand that remains admissible under critical pressure. */
+  readonly required?: boolean;
   readonly key: AssetRequestKey;
   readonly assetId: AssetId;
   readonly stage: AssetRequestStage;
