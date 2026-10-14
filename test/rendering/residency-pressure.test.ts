@@ -34,6 +34,28 @@ test('reclaims CPU pressure after the final CPU lease releases its revision', ()
 });
 import { createAssetHandle, defineAssetType } from '../../src/assets';
 
+test('counts device-owned bytes absent from the caller eviction candidate list', () => {
+  const registry = new PreparedAssetRegistry();
+  registry.publish({
+    key: {
+      assetId: 'asset:unlisted',
+      payloadVersion: 1,
+      deviceGeneration: 1,
+      featurePolicyKey: 'default',
+      abiVersion: 'v1'
+    },
+    value: { byteLength: 16 }
+  });
+  expect(enforceGpuResidencyBudget(registry, 1, 0, [])).toEqual({
+    releasedBytes: 0,
+    remainingPressureBytes: 16
+  });
+  expect(enforceGpuResidencyBudget(registry, 2, 0, [])).toEqual({
+    releasedBytes: 0,
+    remainingPressureBytes: 0
+  });
+});
+
 test('enforces device GPU budget while retaining a pinned variant and CPU identity', () => {
   const registry = new PreparedAssetRegistry();
   const handle = createAssetHandle(

@@ -43,6 +43,26 @@ export class PreparedAssetRegistry {
     });
   }
 
+  /** Returns all owned residency, including retired variants, for one device generation. */
+  inspectDevice(deviceGeneration: number): readonly PreparedAssetResidencySnapshot[] {
+    if (!Number.isSafeInteger(deviceGeneration) || deviceGeneration < 0)
+      throw new Error('Device generation must be a non-negative safe integer.');
+    const snapshots: PreparedAssetResidencySnapshot[] = [];
+    for (const entry of this.entries.values()) {
+      if (entry.prepared.key.deviceGeneration !== deviceGeneration) continue;
+      snapshots.push(
+        Object.freeze({
+          key: Object.freeze({ ...entry.prepared.key }),
+          state: entry.retired ? 'evicting' : 'resident',
+          bytes: entry.bytes,
+          activeLeases: entry.leases,
+          activeSubmissions: entry.submissions
+        })
+      );
+    }
+    return Object.freeze(snapshots);
+  }
+
   /** Returns snapshots for every retained GPU variant owned by one stable asset ID. */
   inspectAsset(assetId: string): readonly PreparedAssetResidencySnapshot[] {
     if (typeof assetId !== 'string' || assetId.trim().length === 0) {

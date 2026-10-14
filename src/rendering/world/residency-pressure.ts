@@ -128,7 +128,13 @@ export function enforceGpuResidencyBudget(
       ];
     })
   );
-  const totalBytes = candidates.reduce((total, candidate) => total + candidate.bytes, 0);
+  const totalBytes = prepared.inspectDevice(deviceGeneration).reduce((total, snapshot) => {
+    if (snapshot.bytes === null) throw new Error('GPU pressure requires authoritative byte sizes.');
+    const bytes = total + snapshot.bytes;
+    if (!Number.isSafeInteger(bytes))
+      throw new Error('GPU residency byte total exceeds safe integer range.');
+    return bytes;
+  }, 0);
   const plan = planAssetResidencyPressure(pool, Math.max(0, totalBytes - budgetBytes), candidates);
   const result = applyAssetResidencyPressure(
     plan,
