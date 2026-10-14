@@ -154,6 +154,11 @@ export class BaselineStandardLitPreparation {
   private readonly meshResidency = new PreparedAssetRegistry();
   private readonly meshLease: PreparedAssetLease<PreparedMesh>;
   private readonly meshVariantKey: PreparedVariantKey;
+  private readonly materialTextureLease: PreparedAssetLease<{
+    byteLength: number;
+    bindings: PreparedStandardLitTextureBindings;
+  }>;
+  private readonly materialTextureVariantKey: PreparedVariantKey;
   private readonly pipeline: ReturnType<
     RegisteredOptions['graphics']['device']['createRenderPipeline']
   >;
@@ -367,6 +372,30 @@ export class BaselineStandardLitPreparation {
       samplerId: parameters.get(StandardLitMaterialSchema.fields.sampler).assetId,
       ...(options.materialResources === undefined ? {} : { resolver: options.materialResources })
     });
+    this.materialTextureVariantKey = Object.freeze({
+      assetId: options.material.handle.assetId,
+      payloadVersion: options.material.payloadVersion,
+      deviceGeneration: device.generation,
+      featurePolicyKey: this.featurePolicyKey,
+      abiVersion: 'baseline-material-textures-v1'
+    });
+    this.meshResidency.publish(
+      {
+        key: this.materialTextureVariantKey,
+        value: {
+          byteLength: this.materialTextures.ownedTextureBytes,
+          bindings: this.materialTextures
+        }
+      },
+      (value) => value.bindings.dispose()
+    );
+    const materialTextureLease = this.meshResidency.acquire<{
+      byteLength: number;
+      bindings: PreparedStandardLitTextureBindings;
+    }>(this.materialTextureVariantKey);
+    if (materialTextureLease === undefined)
+      throw new Error('Published baseline material texture residency must be acquirable.');
+    this.materialTextureLease = materialTextureLease;
     this.disabledShadowBuffer = uniformBuffer(device, new Uint32Array(96));
     this.disabledLocalShadowBuffer = uniformBuffer(device, new Uint32Array(324));
     // The standard-lit binding is always a depth texture array, even when CSM is disabled.
@@ -1098,7 +1127,8 @@ export class BaselineStandardLitPreparation {
     this.lightListRecorder?.dispose();
     this.clusterLightListRecorder?.dispose();
     this.environmentBuffer.dispose();
-    this.materialTextures.dispose();
+    this.meshResidency.retire(this.materialTextureVariantKey);
+    this.materialTextureLease.dispose();
     this.disabledShadowBuffer.dispose();
     this.disabledLocalShadowBuffer.dispose();
     this.disabledShadowTexture.dispose();
@@ -1186,6 +1216,7 @@ export class BaselineStandardLitPreparation {
       retain: (submission: RHISubmission) => {
         if (released || retained) throw new Error('Baseline draw packet cannot be retained.');
         this.meshLease.retainUntil(submission);
+        this.materialTextureLease.retainUntil(submission);
         retained = true;
         const pending = submission.done.finally(() => {
           releaseFrameResources();
