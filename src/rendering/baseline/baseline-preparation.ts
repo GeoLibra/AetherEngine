@@ -154,7 +154,13 @@ export class BaselineStandardLitPreparation {
     const environment = sharedEnvironmentTextureCache.inspectResidency(
       this.options.graphics.device
     );
-    return Object.freeze({ owned, environment });
+    const resolver = this.options.materialResources?.inspectResidency?.();
+    return Object.freeze({
+      owned,
+      environment,
+      resolver,
+      resolverPresent: this.options.materialResources !== undefined
+    });
   }
   /** Effective pipeline sample count; direct preparation tests default to single sample. */
   readonly sampleCount: 1 | 4;

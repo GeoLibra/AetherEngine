@@ -51,14 +51,17 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
     const timer = window.setInterval(() => {
       const snapshot = sceneRef.current?.residency?.();
       if (snapshot === undefined) return;
-      const measuredBytes = snapshot.owned.knownBytes + snapshot.environment.bytes;
+      const measuredBytes =
+        snapshot.owned.knownBytes +
+        snapshot.environment.bytes +
+        (snapshot.resolver?.textureBytes ?? 0);
       if (!reducedQuality) fullQualityBytes.current = measuredBytes;
       // Restore against full-quality demand to avoid oscillation after reclamation.
       setAutomaticReduction(
         assetBudgetBytes > 0 && Math.max(measuredBytes, fullQualityBytes.current) > assetBudgetBytes
       );
       setResidency(
-        `Managed assets: ${snapshot.owned.knownBytes} bytes; shared environment: ${snapshot.environment.bytes} bytes; asset leases: ${snapshot.owned.activeLeases + snapshot.environment.leases}`
+        `Managed assets: ${snapshot.owned.knownBytes} bytes; shared environment: ${snapshot.environment.bytes} bytes; resolver textures: ${snapshot.resolver?.textureBytes ?? (snapshot.resolverPresent ? 'unreported' : 0)} bytes; asset leases: ${snapshot.owned.activeLeases + snapshot.environment.leases}`
       );
     }, 500);
     return () => window.clearInterval(timer);
@@ -312,7 +315,8 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
           {status.message}
         </p>
         <p aria-label="Managed asset residency">
-          {residency}. Excludes resolver textures, render targets and pipeline storage.
+          {residency}. Excludes render targets and pipeline storage; unreported resolver storage is
+          not a complete budget.
         </p>
       </section>
     </div>

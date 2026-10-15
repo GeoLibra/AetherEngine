@@ -8,6 +8,8 @@ export interface StandardLitResolvedTexture {
 }
 
 export interface StandardLitResourceResolver {
+  /** Owner-scoped physical texture bytes, counted once across all material bindings. */
+  inspectResidency?(): Readonly<{ textureBytes: number; textureCount: number }>;
   resolveTexture(assetId: string): StandardLitResolvedTexture | undefined;
   resolveSampler(assetId: string): RHISampler | undefined;
 }

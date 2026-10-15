@@ -118,6 +118,20 @@ export class CookedTextureRegistry implements StandardLitResourceResolver {
     return this.preparedSamplers.get(assetId);
   }
 
+  /** Reports live owner allocations; current cooked textures are single-level RGBA8 texels. */
+  inspectResidency(): Readonly<{ textureBytes: number; textureCount: number }> {
+    let textureBytes = 0;
+    let textureCount = 0;
+    for (const texture of this.preparedTextures.values()) {
+      if (texture.state !== 'live') continue;
+      if (texture.format !== 'rgba8unorm' && texture.format !== 'rgba8unorm-srgb')
+        throw new Error('Cooked texture residency requires supported RGBA8 storage.');
+      textureBytes += texture.width * texture.height * 4;
+      textureCount += 1;
+    }
+    return Object.freeze({ textureBytes, textureCount });
+  }
+
   dispose(): void {
     this.disposePrepared();
     this.textureArtifacts.clear();
