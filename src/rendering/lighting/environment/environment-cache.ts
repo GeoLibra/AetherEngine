@@ -14,6 +14,7 @@ import type { PreparedBackgroundBundle } from '../../background/types';
 const SAMPLED_COPY_DST_TEXTURE_USAGE = (1 << 1) | (1 << 2);
 
 interface CachedIblEntry {
+  readonly byteLength: number;
   readonly textures: EnvironmentTextureSet;
   readonly maxValidRadianceLod: number;
   readonly retention: SubmissionRetainedValue<EnvironmentTextureSet>;
@@ -21,6 +22,7 @@ interface CachedIblEntry {
 }
 
 interface CachedBackgroundEntry {
+  readonly byteLength: number;
   readonly texture: RHITexture;
   readonly maxLod: number;
   readonly representation: 'panorama' | 'radiance-level-zero';
@@ -46,6 +48,43 @@ export interface PreparedEnvironmentBundle {
  * 3. Destroying the device or disposing the cache cleans up all allocated textures safely.
  */
 export class EnvironmentTextureCache {
+  private readonly residency = new WeakMap<
+    RHIDevice,
+    Set<CachedIblEntry | CachedBackgroundEntry>
+  >();
+
+  /** Reports shared physical texture bytes once per allocation, retaining retired in-flight data. */
+  inspectResidency(
+    device: RHIDevice
+  ): Readonly<{ bytes: number; allocations: number; leases: number; pendingSubmissions: number }> {
+    let bytes = 0;
+    let allocations = 0;
+    let leases = 0;
+    let pendingSubmissions = 0;
+    const entries = this.residency.get(device);
+    if (entries !== undefined)
+      for (const entry of entries) {
+        const lifetime = entry.retention.snapshot();
+        if (lifetime.state === 'destroyed') {
+          entries.delete(entry);
+          continue;
+        }
+        bytes += entry.byteLength;
+        allocations += 1;
+        leases += lifetime.localLeases;
+        pendingSubmissions += lifetime.pendingSubmissions;
+      }
+    return Object.freeze({ bytes, allocations, leases, pendingSubmissions });
+  }
+
+  private trackResidency(device: RHIDevice, entry: CachedIblEntry | CachedBackgroundEntry): void {
+    let entries = this.residency.get(device);
+    if (entries === undefined) {
+      entries = new Set();
+      this.residency.set(device, entries);
+    }
+    entries.add(entry);
+  }
   private readonly deviceIblCaches = new WeakMap<RHIDevice, Map<string, CachedIblEntry>>();
   private readonly deviceBgCaches = new WeakMap<RHIDevice, Map<string, CachedBackgroundEntry>>();
   public uploadByteCounter = 0;
@@ -94,6 +133,7 @@ export class EnvironmentTextureCache {
 
     // Prepare and upload new GPU textures
     const entry = this.uploadEnvironmentTextures(device, asset);
+    this.trackResidency(device, entry);
     cache.set(key, entry);
 
     const lease = entry.retention.acquire()!;
@@ -167,6 +207,7 @@ export class EnvironmentTextureCache {
 
     // Upload background texture
     const entry = this.uploadBackgroundTexture(device, asset, representation);
+    this.trackResidency(device, entry);
     cache.set(key, entry);
 
     const lease = entry.retention.acquire()!;
@@ -270,6 +311,11 @@ export class EnvironmentTextureCache {
 
     return {
       textures,
+      byteLength:
+        (irrLevel.width * irrLevel.height +
+          radLevels.reduce((total, level) => total + level.width * level.height, 0) +
+          lutLevel.width * lutLevel.height) *
+        8,
       maxValidRadianceLod: artifact.maxValidRadianceLod,
       retention,
       leaseCount: 1
@@ -320,6 +366,10 @@ export class EnvironmentTextureCache {
 
       return {
         texture,
+        byteLength: payload.levels.reduce(
+          (total, level) => total + level.width * level.height * 8,
+          0
+        ),
         maxLod,
         representation: 'panorama',
         retention,
@@ -351,6 +401,7 @@ export class EnvironmentTextureCache {
 
     return {
       texture,
+      byteLength: lvl0.width * lvl0.height * 8,
       maxLod: 0,
       representation: 'radiance-level-zero',
       retention,
