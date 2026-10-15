@@ -58,7 +58,10 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
       if (!reducedQuality) fullQualityBytes.current = measuredBytes;
       // Restore against full-quality demand to avoid oscillation after reclamation.
       setAutomaticReduction(
-        assetBudgetBytes > 0 && Math.max(measuredBytes, fullQualityBytes.current) > assetBudgetBytes
+        assetBudgetBytes > 0 &&
+          ((snapshot.resolverPresent && snapshot.resolver === undefined) ||
+            snapshot.owned.unknownByteVariants > 0 ||
+            Math.max(measuredBytes, fullQualityBytes.current) > assetBudgetBytes)
       );
       setResidency(
         `Managed assets: ${snapshot.owned.knownBytes} bytes; shared environment: ${snapshot.environment.bytes} bytes; resolver textures: ${snapshot.resolver?.textureBytes ?? (snapshot.resolverPresent ? 'unreported' : 0)} bytes; asset leases: ${snapshot.owned.activeLeases + snapshot.environment.leases}`
