@@ -406,6 +406,11 @@ export class BaselineRenderingRuntime {
     return this.diagnostics;
   }
 
+  /** Returns current preparation-owned asset residency and shared environment cache facts. */
+  inspectResidency() {
+    return this.standardLit?.inspectResidency();
+  }
+
   invalidate(): void {
     this.discardPrepared();
   }

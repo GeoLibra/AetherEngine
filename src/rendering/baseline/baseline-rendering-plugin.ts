@@ -28,6 +28,8 @@ export const BaselineRenderDiagnosticsResource = defineResource<BaselineRenderDi
  * Formal plugin interface for baseline rendering exposing typed runtime controls.
  */
 export interface BaselineRenderingPlugin extends Plugin {
+  /** Returns asset-owner byte and lease counters; excludes render-target and pipeline storage. */
+  inspectResidency: BaselineRenderingRuntime['inspectResidency'];
   /** Strongly typed background runtime control resource registered in App. */
   readonly backgroundControl: BaselineBackgroundControl;
   /**
@@ -51,6 +53,7 @@ export function createBaselineRenderingPlugin(
   let unsubscribe: (() => boolean) | undefined;
 
   const plugin: BaselineRenderingPlugin = {
+    inspectResidency: () => runtime.inspectResidency(),
     id: 'aether.baseline-rendering',
     backgroundControl,
     setBackground(bg: ViewBackground): void {

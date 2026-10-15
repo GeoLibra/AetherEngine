@@ -39,8 +39,20 @@ const STATIC_LOCAL_SHADOW = (() => {
 
 export function CsmBoxDemo({ mountScene = true }: DemoProps) {
   const store = useCreateStore();
+  const [pressurePreview, setPressurePreview] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<MountedAetherScene | null>(null);
+  const [residency, setResidency] = useState<string>('Awaiting asset residency');
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const snapshot = sceneRef.current?.residency?.();
+      if (snapshot === undefined) return;
+      setResidency(
+        `Managed assets: ${snapshot.owned.knownBytes} bytes; shared environment: ${snapshot.environment.bytes} bytes; asset leases: ${snapshot.owned.activeLeases + snapshot.environment.leases}`
+      );
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, []);
   const hostRef = useRef<AetherSceneHost | null>(null);
   if (hostRef.current === null) {
     hostRef.current = new AetherSceneHost();
@@ -179,17 +191,18 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
     void host
       .mount(target, {
         ...(STATIC_BACKEND_PREFERENCE ? { preference: STATIC_BACKEND_PREFERENCE } : {}),
-        sampleCount:
-          STATIC_SAMPLE_COUNT ?? resolveDemoSampleCount(antiAliasing as DemoAntiAliasingMode),
+        sampleCount: pressurePreview
+          ? 1
+          : (STATIC_SAMPLE_COUNT ?? resolveDemoSampleCount(antiAliasing as DemoAntiAliasingMode)),
         directionalShadow: {
-          resolution: shadowResolution as 1024 | 2048 | 4096,
-          pcfKernel: pcfKernel as 3 | 5,
+          resolution: pressurePreview ? 1024 : (shadowResolution as 1024 | 2048 | 4096),
+          pcfKernel: pressurePreview ? 3 : (pcfKernel as 3 | 5),
           cascadeLambda,
           constantBias,
           slopeBias
         },
-        environment: environmentMode as any,
-        background: backgroundMode as 'hdr' | 'solid' | 'none',
+        environment: pressurePreview ? 'synthetic' : (environmentMode as any),
+        background: pressurePreview ? 'solid' : (backgroundMode as 'hdr' | 'solid' | 'none'),
         backgroundMultiplier,
         metallic,
         roughness,
@@ -234,6 +247,7 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
     };
   }, [
     mountScene,
+    pressurePreview,
     environmentMode,
     backgroundMode,
     antiAliasing,
@@ -257,9 +271,19 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
         titleBar={{ title: 'Aether CSM Controls' }}
       />
       <section className="demo-shell" aria-label="Aether Engine rendering example">
+        <button
+          type="button"
+          aria-pressed={pressurePreview}
+          onClick={() => setPressurePreview((value) => !value)}
+        >
+          {pressurePreview ? 'Restore selected quality' : 'Preview reduced-memory quality'}
+        </button>
         <canvas ref={canvas} aria-label="Standard-lit three-dimensional box" />
         <p className={`status status-${status.kind}`} role="status" aria-live="polite">
           {status.message}
+        </p>
+        <p aria-label="Managed asset residency">
+          {residency}. Excludes resolver textures, render targets and pipeline storage.
         </p>
       </section>
     </div>

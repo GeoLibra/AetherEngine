@@ -76,6 +76,8 @@ export interface MountedAetherScene {
   /** Resolves when the canvas can host a replacement graphics session. */
   readonly recoveryReady?: BrowserGraphicsSession['recoveryReady'];
   diagnostics(): BaselineRenderDiagnostics | undefined;
+  /** Asset allocations only; render targets, pipelines and resolver-owned textures are excluded. */
+  residency?: ReturnType<typeof createBaselineRenderingPlugin>['inspectResidency'];
   csmDiagnostics(): CsmSceneDiagnostics | undefined;
   nativeMetrics(): unknown;
   validationErrors(): readonly string[];
@@ -572,6 +574,7 @@ export async function mountAetherScene(
     environmentMode: activeEnvironmentMode,
     backgroundMode: activeBgMode,
     diagnostics: () => app.getResource(BaselineRenderDiagnosticsResource),
+    residency: () => renderingPlugin.inspectResidency(),
     csmDiagnostics: () => app.getResource(CsmDiagnosticsResource),
     nativeMetrics: () => {
       const metrics = Reflect.get(graphics.device.queue, 'metrics');

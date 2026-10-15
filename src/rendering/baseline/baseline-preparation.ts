@@ -148,6 +148,14 @@ type RegisteredOptions = Omit<
 
 /** Preparation-owned standard-lit GPU resources shared across immutable frame packets. */
 export class BaselineStandardLitPreparation {
+  /** Owner-reported asset allocations; shared environment storage is counted by its cache. */
+  inspectResidency() {
+    const owned = this.meshResidency.snapshot();
+    const environment = sharedEnvironmentTextureCache.inspectResidency(
+      this.options.graphics.device
+    );
+    return Object.freeze({ owned, environment });
+  }
   /** Effective pipeline sample count; direct preparation tests default to single sample. */
   readonly sampleCount: 1 | 4;
   private readonly mesh: PreparedMesh;
