@@ -40,6 +40,10 @@ const STATIC_LOCAL_SHADOW = (() => {
 export function CsmBoxDemo({ mountScene = true }: DemoProps) {
   const store = useCreateStore();
   const [pressurePreview, setPressurePreview] = useState(false);
+  const [assetBudgetBytes, setAssetBudgetBytes] = useState(0);
+  const [automaticReduction, setAutomaticReduction] = useState(false);
+  const fullQualityBytes = useRef(0);
+  const reducedQuality = pressurePreview || automaticReduction;
   const canvas = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<MountedAetherScene | null>(null);
   const [residency, setResidency] = useState<string>('Awaiting asset residency');
@@ -47,12 +51,18 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
     const timer = window.setInterval(() => {
       const snapshot = sceneRef.current?.residency?.();
       if (snapshot === undefined) return;
+      const measuredBytes = snapshot.owned.knownBytes + snapshot.environment.bytes;
+      if (!reducedQuality) fullQualityBytes.current = measuredBytes;
+      // Restore against full-quality demand to avoid oscillation after reclamation.
+      setAutomaticReduction(
+        assetBudgetBytes > 0 && Math.max(measuredBytes, fullQualityBytes.current) > assetBudgetBytes
+      );
       setResidency(
         `Managed assets: ${snapshot.owned.knownBytes} bytes; shared environment: ${snapshot.environment.bytes} bytes; asset leases: ${snapshot.owned.activeLeases + snapshot.environment.leases}`
       );
     }, 500);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [assetBudgetBytes, reducedQuality]);
   const hostRef = useRef<AetherSceneHost | null>(null);
   if (hostRef.current === null) {
     hostRef.current = new AetherSceneHost();
@@ -191,18 +201,18 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
     void host
       .mount(target, {
         ...(STATIC_BACKEND_PREFERENCE ? { preference: STATIC_BACKEND_PREFERENCE } : {}),
-        sampleCount: pressurePreview
+        sampleCount: reducedQuality
           ? 1
           : (STATIC_SAMPLE_COUNT ?? resolveDemoSampleCount(antiAliasing as DemoAntiAliasingMode)),
         directionalShadow: {
-          resolution: pressurePreview ? 1024 : (shadowResolution as 1024 | 2048 | 4096),
-          pcfKernel: pressurePreview ? 3 : (pcfKernel as 3 | 5),
+          resolution: reducedQuality ? 1024 : (shadowResolution as 1024 | 2048 | 4096),
+          pcfKernel: reducedQuality ? 3 : (pcfKernel as 3 | 5),
           cascadeLambda,
           constantBias,
           slopeBias
         },
-        environment: pressurePreview ? 'synthetic' : (environmentMode as any),
-        background: pressurePreview ? 'solid' : (backgroundMode as 'hdr' | 'solid' | 'none'),
+        environment: reducedQuality ? 'synthetic' : (environmentMode as any),
+        background: reducedQuality ? 'solid' : (backgroundMode as 'hdr' | 'solid' | 'none'),
         backgroundMultiplier,
         metallic,
         roughness,
@@ -247,7 +257,7 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
     };
   }, [
     mountScene,
-    pressurePreview,
+    reducedQuality,
     environmentMode,
     backgroundMode,
     antiAliasing,
@@ -271,6 +281,25 @@ export function CsmBoxDemo({ mountScene = true }: DemoProps) {
         titleBar={{ title: 'Aether CSM Controls' }}
       />
       <section className="demo-shell" aria-label="Aether Engine rendering example">
+        <label>
+          Managed asset budget (bytes; 0 disables)
+          <input
+            aria-label="Managed asset budget bytes"
+            type="number"
+            min="0"
+            step="1"
+            value={assetBudgetBytes}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              if (Number.isSafeInteger(value) && value >= 0) setAssetBudgetBytes(value);
+            }}
+          />
+        </label>
+        <p role="note">
+          {automaticReduction
+            ? 'Automatic reduced-memory quality'
+            : 'Asset budget permits selected quality'}
+        </p>
         <button
           type="button"
           aria-pressed={pressurePreview}
