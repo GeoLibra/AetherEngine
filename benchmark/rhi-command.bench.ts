@@ -1,3 +1,4 @@
+import { runWebGlSrgbUploadWorkload } from './webgl2-upload-scenario';
 import { bench, expect } from 'vitest';
 import {
   NullDevice,
@@ -282,3 +283,19 @@ bench(
   },
   { iterations: 1, warmupIterations: 0 }
 );
+
+for (const count of [16, 256]) {
+  for (const raw of [true, false]) {
+    bench(
+      `sRGB encoded-byte upload ${raw ? 'raw' : 'lowered'} ${count}`,
+      () => {
+        expect(runWebGlSrgbUploadWorkload(count, raw)).toEqual({
+          uploads: count,
+          bytes: count * 4,
+          checksum: count * 128
+        });
+      },
+      { iterations: 1, warmupIterations: 0 }
+    );
+  }
+}

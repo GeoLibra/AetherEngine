@@ -1,9 +1,10 @@
+import { Frustum } from '../../math';
+import { buildBaselineClusterGrid } from './lighting/cluster-grid';
 import type { World } from '../../ecs/world';
 import type { Entity } from '../../ecs/types';
 import { CameraRenderSource, CameraRenderExtractor, CameraViewExtraction } from '../camera';
 import {
   buildDirectionalShadowCascades,
-  buildClusterGrid,
   buildLocalShadowCasterViews,
   buildLocalShadowReceiverLayout,
   buildLocalShadowRequests,
@@ -192,23 +193,7 @@ export class BaselineRenderingRuntime {
       this.options.graphics.backend === 'webgpu' &&
       this.currentPolicy.snapshot.decisions.get(BuiltInFeature.LightListBuild)?.implementation ===
         BuiltInFeatureImplementation.WebGpuComputeLightList
-        ? buildClusterGrid({
-            viewId: cameraView.viewId,
-            projectionRevision: cameraView.revision,
-            viewTransformRevision: cameraView.revision,
-            deviceGeneration: this.options.graphics.device.generation,
-            viewport: {
-              width: cameraView.viewportPixels.width,
-              height: cameraView.viewportPixels.height
-            },
-            cameraNear: cameraView.near,
-            cameraFar: cameraView.far === 'infinite' ? 100 : cameraView.far,
-            slicing: { depth: 'finite', shape: 'logarithmic', lambda: 0.6 },
-            sliceCount: 8,
-            inverseViewProjection: cameraView.inverseViewProjection,
-            tilesX: 8,
-            tilesY: 4
-          })
+        ? buildBaselineClusterGrid(cameraView, lights, this.options.graphics.device.generation)
         : undefined;
     const packets = matching.map((selected) => {
       const transform = camera.revision.snapshot
@@ -324,21 +309,35 @@ export class BaselineRenderingRuntime {
               casterViews.map((caster) => [
                 shadowRequestKey(caster.request),
                 Object.freeze(
-                  matching.map(({ renderEntity }) => {
-                    const transform = camera.revision.snapshot
-                      .get(renderEntity)
-                      ?.get(MeshTransformField) as RenderTransformFact | undefined;
-                    if (transform === undefined)
-                      throw new Error(
-                        'Visible baseline local shadow caster is missing its transform.'
-                      );
-                    return this.standardLit!.createShadowPacket({
-                      entity: renderEntity,
-                      transform,
-                      viewProjection: caster.viewProjection,
-                      cascade: caster.request.subresourceIndex + 4
-                    });
-                  })
+                  computeVisibility(
+                    {
+                      ...view,
+                      layerMask:
+                        view.layerMask &
+                        lights.find((light) => light.entity === caster.request.lightEntity)!
+                          .layerMask,
+                      frustum: Frustum.fromViewProjection(caster.viewProjection)
+                    },
+                    candidates
+                  )
+                    .items.filter(({ renderEntity }) =>
+                      this.matchesRegistration(camera.revision, renderEntity)
+                    )
+                    .map(({ renderEntity }) => {
+                      const transform = camera.revision.snapshot
+                        .get(renderEntity)
+                        ?.get(MeshTransformField) as RenderTransformFact | undefined;
+                      if (transform === undefined)
+                        throw new Error(
+                          'Selected baseline local shadow caster is missing its transform.'
+                        );
+                      return this.standardLit!.createShadowPacket({
+                        entity: renderEntity,
+                        transform,
+                        viewProjection: caster.viewProjection,
+                        cascade: caster.request.subresourceIndex + 4
+                      });
+                    })
                 )
               ])
             );

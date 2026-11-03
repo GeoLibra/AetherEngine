@@ -14,7 +14,7 @@ export function createBrowserWebGL2TextureCopyPort(
 > {
   return {
     writeTexture(destination, data, layout, size): void {
-      const copy = textureCopy(destination, textureFacts);
+      const copy = textureCopy(destination, textureFacts, true);
       const extent = copyExtent(size);
       requireBaselineExtent(extent);
       glCall(gl, 'bindBuffer', [constant(gl, 'PIXEL_UNPACK_BUFFER'), null]);
@@ -35,7 +35,7 @@ export function createBrowserWebGL2TextureCopyPort(
       setRowLength(gl, 'UNPACK_ROW_LENGTH', 0, 4);
     },
     copyBufferToTexture(source, destination, size): void {
-      const copy = textureCopy(destination, textureFacts);
+      const copy = textureCopy(destination, textureFacts, true);
       const extent = copyExtent(size);
       requireBaselineExtent(extent);
       const buffer = requiredObject(source, 'buffer');
@@ -147,7 +147,8 @@ interface CopyExtent {
 
 function textureCopy(
   value: Readonly<Record<string, unknown>>,
-  facts: WeakMap<object, BrowserWebGL2TextureFacts>
+  facts: WeakMap<object, BrowserWebGL2TextureFacts>,
+  allowSrgbUpload = false
 ): TextureCopy {
   const texture = requiredObject(value, 'texture');
   const textureFacts = facts.get(texture);
@@ -156,11 +157,13 @@ function textureCopy(
       'WebGL2 texture copies require a single-sample texture; resolve multisample renderbuffers first.'
     );
   }
+  // Uploads store encoded bytes directly; framebuffer reads/copies may decode sRGB.
   if (
     textureFacts === undefined ||
     (textureFacts.format !== 'r8unorm' &&
       textureFacts.format !== 'rg8unorm' &&
       textureFacts.format !== 'rgba8unorm' &&
+      !(allowSrgbUpload && textureFacts.format === 'rgba8unorm-srgb') &&
       textureFacts.format !== 'rgba32uint' &&
       textureFacts.format !== 'rgba32float' &&
       textureFacts.format !== 'rgba16float')

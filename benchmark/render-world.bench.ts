@@ -1,3 +1,4 @@
+import { baselineLightingFixture } from './render-world/baseline-lighting-scenario';
 import { bench, expect } from 'vitest';
 import {
   RenderExtractorRegistryBuilder,
@@ -302,4 +303,27 @@ function createFrozenMapReadWorkload(size: number): Readonly<{
   }
   transaction.commit().release();
   return Object.freeze({ world, entities: Object.freeze(entities), expectedChecksum });
+}
+
+for (const count of [1, 16]) {
+  bench(
+    `baseline spot shadow with ${count} off-camera casters`,
+    async () => {
+      const { runtime, world } = baselineLightingFixture({
+        light: 'spot',
+        offscreenCasters: count
+      });
+      try {
+        runtime.prepare(world);
+        expect(runtime.frame()).toMatchObject({
+          status: 'rendered',
+          indexedDrawCalls: count + 2,
+          indexCount: 36 * (count + 2)
+        });
+      } finally {
+        await runtime.dispose();
+      }
+    },
+    { iterations: 1, warmupIterations: 0 }
+  );
 }

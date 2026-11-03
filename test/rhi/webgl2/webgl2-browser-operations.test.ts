@@ -501,9 +501,9 @@ describe('browser WebGL2 native operations', () => {
     if (texture === undefined || buffer === undefined)
       throw new Error('Missing sRGB copy resources.');
     expect(() =>
-      port.copyBufferToTexture?.(
-        { buffer, bytesPerRow: 256, rowsPerImage: 1 },
+      port.copyTextureToBuffer?.(
         { texture },
+        { buffer, bytesPerRow: 256, rowsPerImage: 1 },
         { width: 1, height: 1, depthOrArrayLayers: 1 }
       )
     ).toThrow(/sRGB copy would apply color conversion/i);

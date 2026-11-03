@@ -241,8 +241,9 @@ async function expectLocalShadow(
       backend,
       diagnostics: {
         status: 'rendered',
-        indexedDrawCalls: localShadow === 'spot' ? 12 : 22,
-        indexCount: localShadow === 'spot' ? 432 : 792,
+        // Point faces now cull independently; four redundant caster draws are excluded.
+        indexedDrawCalls: localShadow === 'spot' ? 12 : 18,
+        indexCount: localShadow === 'spot' ? 432 : 648,
         sampleCount: 4
       }
     });
