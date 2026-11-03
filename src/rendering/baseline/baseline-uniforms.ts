@@ -352,6 +352,7 @@ export function packBaselineObjectUniform(
 export function packBaselineViewUniform(view: ExtractedView): readonly number[] {
   return [
     ...Array.from(view.viewProjection),
+    ...Array.from(view.view),
     view.cameraPosition[0],
     view.cameraPosition[1],
     view.cameraPosition[2],

@@ -28,6 +28,7 @@ describe('RHI queue uploads', () => {
     expect(Array.from(new Uint8Array(buffer.getMappedRange(4, 8)))).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8
     ]);
+    expect(device.queue.metrics()).toMatchObject({ uploadCalls: 3, uploadBytes: 8 });
   });
 
   test('validates all writeBufferRanges entries before mutating storage', async () => {
@@ -109,6 +110,7 @@ describe('RHI queue uploads', () => {
         { width: 8, height: 8 }
       )
     ).toThrow('Texture copy range exceeds texture "upload-texture" mip level 2 bounds 4x4x1.');
+    expect(device.queue.metrics()).toMatchObject({ uploadCalls: 1, uploadBytes: 64 });
   });
 
   test('keeps 2d array texture layers available across mip levels', () => {

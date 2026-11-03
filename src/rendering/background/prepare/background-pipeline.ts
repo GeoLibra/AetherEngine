@@ -23,6 +23,8 @@ import { SKYBOX_UNIFORM_BYTE_SIZE } from './background-uniforms';
 export interface BackgroundPipelineOptions {
   readonly colorFormat: GPUTextureFormat;
   readonly depthFormat?: GPUTextureFormat | undefined;
+  /** Rasterization sample count for the color and depth attachments. */
+  readonly sampleCount?: number | undefined;
   readonly label?: string | undefined;
 }
 
@@ -81,7 +83,8 @@ export function prepareBackgroundPipeline(
     void device.lost.then(() => clearBackgroundPipelineCache(device));
   }
 
-  const cacheKey = `${options.colorFormat}:${options.depthFormat ?? 'none'}`;
+  const sampleCount = options.sampleCount ?? 1;
+  const cacheKey = `${options.colorFormat}:${options.depthFormat ?? 'none'}:${sampleCount}`;
   const existing = deviceCache.get(cacheKey);
   if (existing !== undefined && existing.deviceGeneration === device.generation) {
     return leasePipeline(existing);
@@ -156,6 +159,7 @@ export function prepareBackgroundPipeline(
       entryPoint: 'skyboxFragment',
       targets: [{ format: options.colorFormat }]
     },
+    multisample: { count: sampleCount },
     ...(options.depthFormat !== undefined
       ? {
           depthStencil: {

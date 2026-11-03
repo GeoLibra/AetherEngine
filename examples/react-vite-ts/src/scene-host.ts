@@ -17,6 +17,12 @@ export interface DestroyableScene {
   destroy(): Promise<void>;
 }
 
+/** A mounted scene that can be recreated after a recoverable graphics loss. */
+interface RecoverableScene extends DestroyableScene {
+  readonly lost: Promise<Readonly<{ readonly recreationAllowed: boolean }>>;
+  readonly recoveryReady: Promise<void>;
+}
+
 export class AetherSceneHost<
   TScene extends DestroyableScene = MountedAetherScene,
   TOptions = AetherSceneOptions
@@ -24,6 +30,7 @@ export class AetherSceneHost<
   private inFlightOperation: Promise<void> = Promise.resolve();
   private currentScene: TScene | null = null;
   private currentCanvas: HTMLCanvasElement | null = null;
+  private readonly sceneListeners = new Set<(scene: TScene | null) => void>();
   private abortController: AbortController | null = null;
   private generation = 0;
   private readonly mountFn: (canvas: HTMLCanvasElement, options?: TOptions) => Promise<TScene>;
@@ -54,6 +61,7 @@ export class AetherSceneHost<
           const oldScene = this.currentScene;
           this.currentScene = null;
           this.currentCanvas = null;
+          this.publishScene(null);
           await oldScene.destroy();
         }
 
@@ -70,6 +78,8 @@ export class AetherSceneHost<
 
         this.currentScene = scene;
         this.currentCanvas = canvas;
+        this.publishScene(scene);
+        this.scheduleGraphicsRecovery(scene, canvas, options);
         return scene;
       });
 
@@ -92,6 +102,7 @@ export class AetherSceneHost<
           const oldScene = this.currentScene;
           this.currentScene = null;
           this.currentCanvas = null;
+          this.publishScene(null);
           await oldScene.destroy();
         }
       });
@@ -109,4 +120,37 @@ export class AetherSceneHost<
   get activeScene(): TScene | null {
     return this.currentScene;
   }
+
+  /** Subscribes to scene replacement caused by host mounting, unmounting, or graphics recovery. */
+  subscribe(listener: (scene: TScene | null) => void): () => boolean {
+    this.sceneListeners.add(listener);
+    return () => this.sceneListeners.delete(listener);
+  }
+
+  private scheduleGraphicsRecovery(
+    scene: TScene,
+    canvas: HTMLCanvasElement,
+    options: TOptions | undefined
+  ): void {
+    if (!isRecoverableScene(scene)) return;
+    void scene.lost
+      .then(async (loss) => {
+        if (!loss.recreationAllowed) return;
+        await scene.recoveryReady;
+        if (this.currentScene !== scene || this.currentCanvas !== canvas) return;
+        await this.mount(canvas, options);
+      })
+      // Recovery failure remains owned by the next explicit mount attempt. This prevents an
+      // unhandled rejection while preserving serial ownership of the canvas lease.
+      .catch(() => {});
+  }
+
+  private publishScene(scene: TScene | null): void {
+    for (const listener of [...this.sceneListeners]) listener(scene);
+  }
+}
+
+function isRecoverableScene(scene: DestroyableScene): scene is RecoverableScene {
+  const candidate = scene as Partial<RecoverableScene>;
+  return candidate.lost instanceof Promise && candidate.recoveryReady instanceof Promise;
 }

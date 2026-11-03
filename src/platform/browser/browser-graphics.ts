@@ -149,6 +149,7 @@ async function createSessionWithLease(
     device,
     surface,
     lost,
+    recoveryReady: lost.then(() => undefined),
     subscribe(listener: (event: BrowserGraphicsLifecycleEvent) => void): () => boolean {
       if (destroyed) throw new Error('Browser graphics session has been destroyed.');
       listeners.add(listener);
@@ -236,12 +237,14 @@ async function createWebGL2Session(
     emit({ kind: 'lost', loss });
     return loss;
   });
+  const recoveryReady = native.restored ?? lost.then(() => undefined);
   return Object.freeze({
     backend: 'webgl2' as const,
     adapter,
     device,
     surface,
     lost,
+    recoveryReady,
     subscribe(listener: (event: BrowserGraphicsLifecycleEvent) => void): () => boolean {
       if (destroyed) throw new Error('Browser graphics session has been destroyed.');
       listeners.add(listener);

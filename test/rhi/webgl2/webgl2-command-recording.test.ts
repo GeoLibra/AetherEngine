@@ -94,6 +94,30 @@ async function createFixture() {
 }
 
 describe('WebGL2 deferred command recording', () => {
+  test('rejects non-color texture copy aspects before replay', async () => {
+    const { device, color } = await createFixture();
+    const target = device.createTexture({ size: [8, 8], format: 'rgba8unorm', usage: 2 });
+    const encoder = device.createCommandEncoder();
+
+    expect(() =>
+      encoder.copyTextureToTexture(
+        { texture: color, aspect: 'depth-only' },
+        { texture: target },
+        [1, 1]
+      )
+    ).toThrow(/color "all" aspect only/i);
+  });
+
+  test('rejects cross-format texture copies before replay', async () => {
+    const { device, color } = await createFixture();
+    const target = device.createTexture({ size: [8, 8], format: 'r8unorm', usage: 2 });
+    const encoder = device.createCommandEncoder();
+
+    expect(() =>
+      encoder.copyTextureToTexture({ texture: color }, { texture: target }, [1, 1])
+    ).toThrow(/require identical formats/i);
+  });
+
   test('records immutable replay commands without calling native GL', async () => {
     const { device, native, pipeline, color, vertex, index } = await createFixture();
     const copyTarget = device.createTexture({ size: [8, 8], format: 'rgba8unorm', usage: 2 });

@@ -176,7 +176,7 @@ describe('WebGL2 submission epochs', () => {
     device.queue.writeBuffer(buffer, 4, new Uint8Array([1, 2, 3, 4]));
 
     expect(native.calls).toEqual(['writeBuffer']);
-    expect(device.queue.metrics()).toMatchObject({ uploadBytes: 4, glCalls: 1 });
+    expect(device.queue.metrics()).toMatchObject({ uploadCalls: 1, uploadBytes: 4, glCalls: 1 });
   });
 
   test('retains a texture behind an attachment view until completion', async () => {

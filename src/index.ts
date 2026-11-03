@@ -152,6 +152,13 @@ export * from './native-runtime';
 export { TimePlugin, createTimePlugin } from './plugins/time-plugin';
 export { HostService, createHostPlugin } from './plugins/host-plugin';
 export { createFeaturePolicyPlugin } from './plugins/feature-policy-plugin';
+export { createResidencyPressureFeaturePolicySource } from './feature-policy/residency-pressure-source';
+export type { ResidencyPressureFeaturePolicySource } from './feature-policy/residency-pressure-source';
+export { createResidencyPressurePlugin } from './plugins/residency-pressure-plugin';
+export type {
+  ResidencyPressureFrame,
+  ResidencyPressureFrameResult
+} from './plugins/residency-pressure-plugin';
 export type { FeaturePolicyPluginOptions } from './plugins/feature-policy-plugin';
 export * from './schema';
 export * from './rendering';
@@ -180,7 +187,9 @@ export {
   WebGPUSurface,
   WebGPUNativeDeviceRequestError,
   WebGPUNativeOperationError,
-  webgpuCompat
+  webgpuCompat,
+  UploadPlanner,
+  executeBudgetedBufferWrite
 } from './rhi';
 export type {
   AdapterCapabilities,
@@ -279,7 +288,12 @@ export type {
   RHITextureDescriptor,
   RHITextureViewDescriptor,
   SubmissionResult,
-  SupportStatus
+  SupportStatus,
+  UploadPlannerOptions,
+  UploadPlannerSnapshot,
+  UploadReservation,
+  DeferredUploadReservation,
+  BudgetedBufferWriteResult
 } from './rhi';
 export { WebGL2ContextControlExtension } from './rhi';
 export type {

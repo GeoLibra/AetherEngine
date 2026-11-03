@@ -141,8 +141,8 @@ function mergeDemands(demands: readonly AssetRequestDemandFixture[]): MutableMer
 function compareDemand(a: MutableMergedDemand, b: MutableMergedDemand): number {
   return (
     PRIORITY_RANK[b.priorityClass] - PRIORITY_RANK[a.priorityClass] ||
-    b.explicitPriority - a.explicitPriority ||
     b.screenContribution - a.screenContribution ||
+    b.explicitPriority - a.explicitPriority ||
     b.age - a.age ||
     a.key.localeCompare(b.key)
   );

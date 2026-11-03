@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgpu.wgsl',
-    contentHash: 'df23bbd84e619736c5db3401fbc01c44a1e71f41d66d32c0309fd400dc8f2e33',
-    byteLength: 28598
+    contentHash: 'f6c8958fd687056162bda4408c7de6a63b9eb72bd54bbbdecd943e065c05c588',
+    byteLength: 32618
   },
   entryPoints: [
     {
@@ -242,6 +242,15 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
           addressSpace: 'handle',
           access: 'read',
           typeName: 'sampler_comparison'
+        },
+        {
+          group: 3,
+          binding: 13,
+          name: 'localShadowReceiverData',
+          kind: 'uniform-buffer',
+          addressSpace: 'uniform',
+          access: 'read',
+          typeName: 'LocalShadowReceiverData'
         }
       ]
     }
@@ -444,6 +453,15 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
       addressSpace: 'handle',
       access: 'read',
       typeName: 'sampler_comparison'
+    },
+    {
+      group: 3,
+      binding: 13,
+      name: 'localShadowReceiverData',
+      kind: 'uniform-buffer',
+      addressSpace: 'uniform',
+      access: 'read',
+      typeName: 'LocalShadowReceiverData'
     }
   ],
   bufferLayouts: [
@@ -481,7 +499,7 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
       group: 1,
       binding: 0,
       name: 'viewData',
-      byteSize: 80,
+      byteSize: 144,
       alignment: 16,
       fields: [
         {
@@ -492,8 +510,15 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
           typeName: 'mat4x4<f32>'
         },
         {
-          path: 'cameraPosition',
+          path: 'view',
           offset: 64,
+          size: 64,
+          alignment: 16,
+          typeName: 'mat4x4<f32>'
+        },
+        {
+          path: 'cameraPosition',
+          offset: 128,
           size: 12,
           alignment: 16,
           typeName: 'vec3<f32>'
@@ -674,15 +699,15 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
       group: 3,
       binding: 0,
       name: 'lightWords',
-      byteSize: 12304,
+      byteSize: 16400,
       alignment: 16,
       fields: [
         {
           path: 'values',
           offset: 0,
-          size: 12304,
+          size: 16400,
           alignment: 16,
-          typeName: 'array<vec4<u32>,769>'
+          typeName: 'array<vec4<u32>,1025>'
         }
       ]
     },
@@ -828,6 +853,29 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
           size: 4,
           alignment: 4,
           typeName: 'u32'
+        },
+        {
+          path: 'pcfRadius',
+          offset: 356,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        }
+      ]
+    },
+    {
+      group: 3,
+      binding: 13,
+      name: 'localShadowReceiverData',
+      byteSize: 1296,
+      alignment: 16,
+      fields: [
+        {
+          path: 'words',
+          offset: 0,
+          size: 1296,
+          alignment: 16,
+          typeName: 'array<vec4<u32>,81>'
         }
       ]
     }
@@ -878,7 +926,8 @@ export const STANDARD_LIT_LIST_WEBGPU_SHADER_ARTIFACT = decodeCookedShaderRuntim
 // Uniform buffer bindings and light list accessors.
 // ============================================================================
 
-struct PackedLightWords { values: array<vec4<u32>, 769> };
+// 4 header words + 256 fixed 16-word records, rounded to vec4<u32> elements.
+struct PackedLightWords { values: array<vec4<u32>, 1025> };
 struct PackedDirectionalWords { values: array<vec4<u32>, 16> };
 struct PackedHeaderWords { values: array<vec4<u32>, 256> };
 struct PackedIndexWords { values: array<vec4<u32>, 1024> };
@@ -1230,21 +1279,31 @@ fn cookTorranceDirect(
 /// - \`splitDepths\`: Far split depths in view space for cascade selection.
 /// - \`params\`: vec4(enabled, constantBias, slopeBias, inverseResolution).
 /// - \`lightIndex\`: Index of the active shadow-casting directional light.
+/// - \`pcfRadius\`: Integer PCF radius in shadow-map texels.
 struct DirectionalShadowData {
   viewProjection: array<mat4x4<f32>, 4>,
   cameraView: mat4x4<f32>,
   splitDepths: vec4<f32>,
   params: vec4<f32>,
   lightIndex: u32,
+  pcfRadius: u32,
 };
 
 @group(3) @binding(10) var<uniform> directionalShadowData: DirectionalShadowData;
 @group(3) @binding(11) var directionalShadowMap: texture_depth_2d_array;
 @group(3) @binding(12) var directionalShadowSampler: sampler_comparison;
 
+/// Fixed-capacity local shadow receiver table. Records are uploaded as five vec4<u32> values:
+/// metadata plus a spot matrix, or point near/far and an identity matrix placeholder.
+struct LocalShadowReceiverData {
+  words: array<vec4<u32>, 81>,
+};
+
+@group(3) @binding(13) var<uniform> localShadowReceiverData: LocalShadowReceiverData;
+
 /// Evaluates directional cascaded shadow visibility factor in [0.0, 1.0].
 /// Performs cascade selection by view depth, clip projection, boundary rejection,
-/// slope-scaled depth biasing, and 3x3 PCF percentage-closer filtering.
+/// slope-scaled depth biasing, and configurable 3x3 or 5x5 PCF percentage-closer filtering.
 ///
 /// Parameters:
 /// - \`lightIndex\`: Index of the light being evaluated.
@@ -1283,9 +1342,10 @@ fn directionalShadowVisibility(
   let normalDotLight = clamp(dot(normal, lightDirection), 0.0, 1.0);
   let bias = directionalShadowData.params.y + directionalShadowData.params.z * (1.0 - normalDotLight);
   let texel = directionalShadowData.params.w;
+  let pcfRadius = i32(directionalShadowData.pcfRadius);
   var visibility = 0.0;
-  for (var y = -1; y <= 1; y += 1) {
-    for (var x = -1; x <= 1; x += 1) {
+  for (var y = -pcfRadius; y <= pcfRadius; y += 1) {
+    for (var x = -pcfRadius; x <= pcfRadius; x += 1) {
       visibility += textureSampleCompareLevel(
         directionalShadowMap,
         directionalShadowSampler,
@@ -1295,7 +1355,60 @@ fn directionalShadowVisibility(
       );
     }
   }
-  return visibility / 9.0;
+  let edge = f32(pcfRadius * 2 + 1);
+  return visibility / (edge * edge);
+}
+
+fn localShadowVisibility(lightIndex: u32, worldPosition: vec3<f32>, normal: vec3<f32>, lightDirection: vec3<f32>) -> f32 {
+  let count = min(localShadowReceiverData.words[0].x, 16u);
+  for (var record = 0u; record < count; record += 1u) {
+    let base = 1u + record * 5u;
+    let metadata = localShadowReceiverData.words[base];
+    if (metadata.x != lightIndex) { continue; }
+    let bias = 0.0005 + 0.002 * (1.0 - clamp(dot(normal, lightDirection), 0.0, 1.0));
+    if (metadata.y == 1u) {
+      let lightBase = 4u + lightIndex * 16u;
+      let lightPosition = vec3<f32>(bitcast<f32>(lightWord(lightBase + 4u)), bitcast<f32>(lightWord(lightBase + 5u)), bitcast<f32>(lightWord(lightBase + 6u)));
+      let direction = worldPosition - lightPosition;
+      let absolute = abs(direction);
+      var face = 0u;
+      var sc = -direction.z;
+      var tc = -direction.y;
+      var signedMajor = direction.x;
+      if (absolute.y >= absolute.x && absolute.y >= absolute.z) {
+        face = select(3u, 2u, direction.y >= 0.0);
+        sc = direction.x;
+        tc = select(-direction.z, direction.z, direction.y >= 0.0);
+        signedMajor = direction.y;
+      } else if (absolute.z >= absolute.x && absolute.z >= absolute.y) {
+        face = select(5u, 4u, direction.z >= 0.0);
+        sc = direction.x;
+        tc = -direction.y;
+        signedMajor = direction.z;
+      } else if (direction.x < 0.0) {
+        face = 1u;
+        sc = direction.z;
+      }
+      let near = bitcast<f32>(localShadowReceiverData.words[base + 1u].x);
+      let far = bitcast<f32>(localShadowReceiverData.words[base + 1u].y);
+      let distanceToLight = length(direction);
+      if (abs(signedMajor) <= 0.000001 || distanceToLight < near || distanceToLight > far) { return 1.0; }
+      let uv = vec2<f32>(sc / abs(signedMajor), tc / abs(signedMajor)) * 0.5 + vec2<f32>(0.5);
+      let depth = far / (far - near) - far * near / ((far - near) * distanceToLight);
+      return textureSampleCompareLevel(directionalShadowMap, directionalShadowSampler, uv, i32(metadata.z + face), depth - bias);
+    }
+    let clip = mat4x4<f32>(
+      bitcast<vec4<f32>>(localShadowReceiverData.words[base + 1u]),
+      bitcast<vec4<f32>>(localShadowReceiverData.words[base + 2u]),
+      bitcast<vec4<f32>>(localShadowReceiverData.words[base + 3u]),
+      bitcast<vec4<f32>>(localShadowReceiverData.words[base + 4u])
+    ) * vec4<f32>(worldPosition, 1.0);
+    let projected = clip.xyz / clip.w;
+    let uv = projected.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+    if (projected.z < 0.0 || projected.z > 1.0 || any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) { return 1.0; }
+    return textureSampleCompareLevel(directionalShadowMap, directionalShadowSampler, uv, i32(metadata.z), projected.z - bias);
+  }
+  return 1.0;
 }
 
 
@@ -1415,6 +1528,7 @@ struct ObjectData {
 /// Per-view camera matrices and world-space position (16-byte aligned).
 struct ViewData {
   viewProjection: mat4x4<f32>, // 64 bytes
+  view: mat4x4<f32>,           // 64 bytes; world-to-camera transform for cluster depth selection
   cameraPosition: vec3<f32>,   // 12 bytes, alignment 16
 };
 
@@ -1459,7 +1573,7 @@ fn evaluatePackedLight(
   viewDirection: vec3<f32>,
   surface: StandardLitSurface
 ) -> vec3<f32> {
-  let base = 4u + index * 12u;
+  let base = 4u + index * 16u;
   let vector = vec3<f32>(
     bitcast<f32>(lightWord(base + 4u)),
     bitcast<f32>(lightWord(base + 5u)),
@@ -1486,15 +1600,27 @@ fn evaluatePackedLight(
   }
   let delta = vector - worldPosition;
   let distanceSquared = max(dot(delta, delta), 0.000001);
+  let lightDirection = normalize(delta);
+  if (lightWord(base) == 2u) {
+    let spotAxis = normalize(vec3<f32>(
+      bitcast<f32>(lightWord(base + 12u)),
+      bitcast<f32>(lightWord(base + 13u)),
+      bitcast<f32>(lightWord(base + 14u))
+    ));
+    let coneCosine = dot(normalize(worldPosition - vector), spotAxis);
+    if (coneCosine < cos(bitcast<f32>(lightWord(base + 15u)))) {
+      return vec3<f32>(0.0);
+    }
+  }
   return cookTorranceDirect(
     normal,
     viewDirection,
-    normalize(delta),
+    lightDirection,
     surface.baseColor.rgb,
     surface.metallic,
     surface.roughness,
     color * intensity / distanceSquared
-  );
+  ) * localShadowVisibility(index, worldPosition, normal, lightDirection);
 }
 
 // ----------------------------------------------------------------------------

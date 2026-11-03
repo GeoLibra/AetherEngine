@@ -8,7 +8,9 @@ import {
   LIGHT_LIST_SHADER_MAX_INDICES,
   LIGHT_LIST_SHADER_MAX_LIGHTS,
   LIGHT_LIST_SHADER_MAX_RECEIVERS,
-  packWebGpuLightListInput
+  decodeWebGpuLightListOutput,
+  packWebGpuLightListInput,
+  writeWebGpuPackedLightRecord
 } from './light-list-abi';
 import { packWebGlLightListInput, type PackedWebGlLightListInput } from './light-list-webgl-abi';
 import { calculateWebGlLightListPacking } from './light-list-packing';
@@ -30,6 +32,135 @@ export interface PackedCpuClusterWords {
   readonly overflowWords: Uint32Array;
 }
 
+/** Cluster-named view of the shared fixed-width GPU output ABI. */
+export interface DecodedWebGpuClusterLightListOutput {
+  readonly directionalIndices: readonly number[];
+  readonly headers: readonly Readonly<{
+    readonly cluster: number;
+    readonly offset: number;
+    readonly count: number;
+    readonly overflowed: boolean;
+  }>[];
+  readonly lightIndices: readonly number[];
+  readonly overflowed: boolean;
+}
+
+/** Packed cluster AABBs consumed by the WebGPU clustered-light reference compute kernel. */
+export interface PackedClusterGridWords {
+  readonly words: Uint32Array;
+  readonly clusterCount: number;
+}
+
+export const CLUSTER_GRID_HEADER_WORDS = 8;
+const CLUSTER_GRID_RECORD_WORDS = 10;
+export const CLUSTER_LIGHT_LIST_HEADER_WORDS = 4;
+export const CLUSTER_LIGHT_LIST_LIGHT_WORDS = 16;
+
+/**
+ * Cluster-specific header around the shared forward packed-light records. The records preserve
+ * every shading field as well as the spot axis and outer cone angle needed by GPU culling, so
+ * cluster indices can be consumed directly by a future forward fragment pass.
+ */
+export interface PackedWebGpuClusterLights {
+  readonly orderedLights: readonly PreparedLight[];
+  readonly words: Uint32Array;
+}
+
+/**
+ * Packs immutable world-space cluster bounds for storage-buffer consumption.
+ * Record layout is `index, tileX, tileY, slice, min.xyz, max.xyz`; float fields retain
+ * their IEEE-754 bits so WGSL can recover them with `bitcast<f32>` without conversion loss.
+ */
+export function packClusterGridForWebGpu(
+  grid: ClusterGrid,
+  capacity: ClusterCapacity = {
+    maxDirectionalLights: LIGHT_LIST_SHADER_MAX_DIRECTIONAL_LIGHTS,
+    maxLightsPerCluster: LIGHT_LIST_SHADER_MAX_LIGHTS,
+    maxClusterIndices: LIGHT_LIST_SHADER_MAX_INDICES
+  }
+): PackedClusterGridWords {
+  validateCapacity(capacity);
+  const words = new Uint32Array(
+    CLUSTER_GRID_HEADER_WORDS + grid.clusterCount * CLUSTER_GRID_RECORD_WORDS
+  );
+  words[0] = grid.clusterCount;
+  words[1] = grid.tilesX;
+  words[2] = grid.tilesY;
+  words[3] = grid.depth;
+  words[4] = capacity.maxDirectionalLights;
+  words[5] = capacity.maxLightsPerCluster;
+  words[6] = capacity.maxClusterIndices;
+  const floatWords = new Uint32Array(new Float32Array(1).buffer);
+  const floatBits = (value: number): number => {
+    if (!Number.isFinite(value)) throw new Error('Cluster bounds must be finite.');
+    new Float32Array(floatWords.buffer)[0] = value;
+    return floatWords[0]!;
+  };
+  for (const cluster of grid.clusters) {
+    const base = CLUSTER_GRID_HEADER_WORDS + cluster.index * CLUSTER_GRID_RECORD_WORDS;
+    words[base] = cluster.index;
+    words[base + 1] = cluster.tileX;
+    words[base + 2] = cluster.tileY;
+    words[base + 3] = cluster.slice;
+    words.set(cluster.min.map(floatBits), base + 4);
+    words.set(cluster.max.map(floatBits), base + 7);
+  }
+  return Object.freeze({ words, clusterCount: grid.clusterCount });
+}
+
+/** Packs view-visible light data for the dedicated GPU clustered-light kernel. */
+export function packWebGpuClusterLights(input: {
+  readonly viewLayerMask: number;
+  readonly lights: readonly PreparedLight[];
+}): PackedWebGpuClusterLights {
+  validateUint32(input.viewLayerMask, 'Cluster light-list viewLayerMask');
+  if (input.lights.length > LIGHT_LIST_SHADER_MAX_LIGHTS) {
+    throw new Error(
+      `Cluster light-list input exceeds the shader maximum of ${LIGHT_LIST_SHADER_MAX_LIGHTS} lights.`
+    );
+  }
+  const orderedLights = orderLightsForGpu(input.lights);
+  const words = new Uint32Array(
+    CLUSTER_LIGHT_LIST_HEADER_WORDS + orderedLights.length * CLUSTER_LIGHT_LIST_LIGHT_WORDS
+  );
+  words[0] = orderedLights.length;
+  words[1] = input.viewLayerMask;
+  orderedLights.forEach((light, index) => {
+    const base = CLUSTER_LIGHT_LIST_HEADER_WORDS + index * CLUSTER_LIGHT_LIST_LIGHT_WORDS;
+    writeWebGpuPackedLightRecord(words, base, light);
+  });
+  return Object.freeze({ orderedLights: Object.freeze(orderedLights), words });
+}
+
+/**
+ * Decodes a copied clustered-light GPU result. The binary layout is intentionally shared with
+ * the established light-list decoder, while this adapter prevents cluster consumers from
+ * treating a cluster index as a render-entity receiver id.
+ */
+export function decodeWebGpuClusterLightListOutput(input: {
+  readonly directionalIndices: Uint32Array;
+  readonly headers: Uint32Array;
+  readonly lightIndices: Uint32Array;
+  readonly overflow: Uint32Array;
+}): DecodedWebGpuClusterLightListOutput {
+  const decoded = decodeWebGpuLightListOutput(input);
+  return Object.freeze({
+    directionalIndices: decoded.directionalIndices,
+    headers: Object.freeze(
+      decoded.headers.map((header) =>
+        Object.freeze({
+          cluster: header.receiver,
+          offset: header.offset,
+          count: header.count,
+          overflowed: header.overflowed
+        })
+      )
+    ),
+    lightIndices: decoded.lightIndices,
+    overflowed: decoded.overflowed
+  });
+}
+
 export interface PackedCpuClusterWebGlTexels {
   readonly width: number;
   readonly height: number;
@@ -45,7 +176,7 @@ const TERNARY_ITERATIONS = 64;
 
 /**
  * Deterministic sphere-versus-AABB overlap test shared by the point light cluster assignment.
- * Uses the closest-point-on-AABB criterion; the future GPU kernel must reproduce it exactly.
+ * Uses the closest-point-on-AABB criterion; the WebGPU reference kernel reproduces it exactly.
  */
 export function sphereIntersectsAABB(center: Vec3, radius: number, bounds: ClusterAABB): boolean {
   if (radius < 0 || !Number.isFinite(radius)) {
@@ -67,7 +198,7 @@ export function sphereIntersectsAABB(center: Vec3, radius: number, bounds: Clust
  * first; the remaining case minimizes the squared distance from the AABB to the cone axis over
  * the segment `[0..range]` via a fixed-iteration ternary search (the distance-to-AABB function
  * is convex along the axis) and accepts when the closest distance is inside the cone radius
- * `t * tan(outerRadians)`. This is the CPU reference the future GPU kernel must match exactly.
+ * `t * tan(outerRadians)`. This is the CPU reference matched by the WebGPU reference kernel.
  */
 export function coneIntersectsAABB(input: {
   readonly apex: Vec3;

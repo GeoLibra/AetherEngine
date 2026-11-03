@@ -1,4 +1,23 @@
 import { bench, expect } from 'vitest';
+import { planAssetResidencyPressure } from '../src/assets/request-scheduler/residency-pressure';
+
+const pressureCandidates = Array.from({ length: 1000 }, (_, index) => ({
+  key: `pressure:${index}`,
+  pool: 'cpu',
+  bytes: 8,
+  activeLeases: index % 2,
+  activeSubmissions: 0,
+  priority: 0,
+  lastUseTick: index,
+  rebuildCost: 1
+}));
+bench('plans pressure eviction for 1000 residencies with 50% pinned', () => {
+  const result = planAssetResidencyPressure('cpu', 800, pressureCandidates);
+  expect(result.candidates.map((candidate) => candidate.key)).toEqual(
+    Array.from({ length: 100 }, (_, index) => `pressure:${index * 2}`)
+  );
+  expect(result.unmetBytes).toBe(0);
+});
 import {
   createVFSReadFixture,
   copyVFSReadReference,
@@ -31,6 +50,26 @@ import {
   executeGlbIngestBenchmark
 } from './asset-pipeline/gltf-ingestion';
 import { cookCanonicalMeshDocument } from '../src/assets/cooker';
+import {
+  createAssetDependencyCycleFixture,
+  createAssetDependencyPublicationFixture,
+  createAssetPayloadPublicationFixture
+} from './asset-pipeline/asset-payload-publication';
+import { planAssetRetry } from '../src/assets/request-scheduler';
+import {
+  createGltfMeshBatchOperationBenchmark,
+  createGltfMeshOperationBenchmark
+} from './asset-pipeline/gltf-mesh-operation';
+import { validateMeshData } from '../src/geometry';
+import { NullDevice, UploadPlanner } from '../src/rhi';
+import { disposePreparedMesh, prepareMesh, prepareMeshBudgeted } from '../src/rendering/mesh';
+import {
+  AssetRequestStageFailure,
+  AssetRequestScheduler,
+  AssetRequestStage,
+  planAssetStageAdmission,
+  type AssetStageExecutor
+} from '../src/assets/request-scheduler';
 
 const profile = process.env.AETHER_BENCH_PROFILE ?? 'smoke';
 const vfsByteLength = profile === 'nightly' ? 1_048_576 : profile === 'standard' ? 65_536 : 1_024;
@@ -53,6 +92,98 @@ for (const mountCount of [1, 16, 128]) {
     result.bytes[0] = 255;
   });
 }
+
+const retryGateNow = 10_000;
+const retryGateScheduler = new AssetRequestScheduler({
+  retryPolicy: {
+    baseDelayMilliseconds: 5_000,
+    maximumDelayMilliseconds: 20_000,
+    maximumAttempts: 3,
+    jitterRatio: 0
+  },
+  nowMilliseconds: () => retryGateNow
+});
+const retryGateBudget = Object.freeze({
+  maxRequests: Object.freeze({
+    metadata: 2_000,
+    read: 2_000,
+    decode: 2_000,
+    finalize: 2_000,
+    upload: 2_000
+  }),
+  maxInFlightBytes: Object.freeze({
+    metadata: 1_000_000,
+    read: 1_000_000,
+    decode: 1_000_000,
+    finalize: 1_000_000,
+    upload: 1_000_000
+  }),
+  frameFinalizeMilliseconds: 1_000_000,
+  frameUploadBytes: 1_000_000,
+  frameUploadCommands: 2_000
+});
+const retryGateFailureBudget = Object.freeze({
+  ...retryGateBudget,
+  maxRequests: Object.freeze({
+    ...retryGateBudget.maxRequests,
+    metadata: 1
+  })
+});
+for (let index = 0; index < 1_000; index++) {
+  retryGateScheduler.request({
+    key: `asset:retry-gate/${index}` as never,
+    assetId: `asset:retry-gate/${index}` as never,
+    stage: AssetRequestStage.Metadata,
+    consumerId: `benchmark/${index}`,
+    priority: {
+      class: 'visible',
+      explicit: 0,
+      dependencyDepth: 0,
+      age: 0,
+      retryPenalty: 0
+    },
+    estimated: { inFlightBytes: 4 },
+    revision: 1
+  });
+}
+await retryGateScheduler.execute(AssetRequestStage.Metadata, retryGateFailureBudget, {
+  execute(request) {
+    if (request.key === 'asset:retry-gate/0') {
+      throw new AssetRequestStageFailure('offline', 'benchmark transient failure');
+    }
+  }
+});
+bench('holds one backoff request outside admission among 1000 pending assets', () => {
+  const plan = retryGateScheduler.plan(AssetRequestStage.Metadata, retryGateBudget);
+  expect(plan.admitted).toHaveLength(999);
+  expect(plan.admitted.some((request) => request.key === 'asset:retry-gate/0')).toBe(false);
+});
+
+const circuitGateScheduler = new AssetRequestScheduler({
+  circuitBreaker: { failureThreshold: 1, openMilliseconds: 5_000 },
+  nowMilliseconds: () => retryGateNow
+});
+circuitGateScheduler.request({
+  key: 'asset:circuit-gate/probe' as never,
+  assetId: 'asset:circuit-gate/probe' as never,
+  stage: AssetRequestStage.Metadata,
+  consumerId: 'benchmark/circuit-gate',
+  priority: { class: 'visible', explicit: 0, dependencyDepth: 0, age: 0, retryPenalty: 0 },
+  estimated: { inFlightBytes: 4 },
+  revision: 1
+});
+await circuitGateScheduler.execute(AssetRequestStage.Metadata, retryGateBudget, {
+  execute() {
+    throw new AssetRequestStageFailure('offline', 'benchmark circuit open');
+  }
+});
+bench('blocks matching provider requests while a stage circuit is open', () => {
+  const plan = circuitGateScheduler.plan(AssetRequestStage.Metadata, retryGateBudget);
+  expect(plan.admitted).toHaveLength(0);
+  expect(circuitGateScheduler.snapshot().circuits).toMatchObject([
+    { stage: AssetRequestStage.Metadata, failure: 'offline', kind: 'open' }
+  ]);
+});
 
 // Range read benchmarks
 const rangeChunkSize = profile === 'nightly' ? 65_536 : profile === 'standard' ? 16_384 : 1_024;
@@ -119,6 +250,133 @@ for (const size of sizes) {
     expect(result.oracleHash).toBe(expected.oracleHash);
     expect(result.counters.duplicateConsumers).toBe(Math.floor(size / 10));
   });
+
+  const productionDemands = fixture.map((demand) => ({
+    key: demand.key as never,
+    assetId: `asset:benchmark/${demand.key}` as never,
+    stage: AssetRequestStage.Upload,
+    consumerId: demand.consumerId,
+    priority: {
+      class: demand.priorityClass,
+      explicit: demand.explicitPriority,
+      screenContribution: demand.screenContribution,
+      dependencyDepth: 0,
+      age: demand.age,
+      retryPenalty: 0
+    },
+    estimated: { inFlightBytes: demand.estimatedBytes },
+    revision: 1
+  }));
+  const productionBudget = Object.freeze({
+    maxRequests: Object.freeze({
+      metadata: budget.maxRequests,
+      read: budget.maxRequests,
+      decode: budget.maxRequests,
+      finalize: budget.maxRequests,
+      upload: budget.maxRequests
+    }),
+    maxInFlightBytes: Object.freeze({
+      metadata: budget.maxBytes,
+      read: budget.maxBytes,
+      decode: budget.maxBytes,
+      finalize: budget.maxBytes,
+      upload: budget.maxBytes
+    }),
+    frameFinalizeMilliseconds: Number.MAX_SAFE_INTEGER,
+    frameUploadBytes: Number.MAX_SAFE_INTEGER,
+    frameUploadCommands: Number.MAX_SAFE_INTEGER
+  });
+  bench(`production stage admission schedules ${size} asset demands`, () => {
+    const result = planAssetStageAdmission(
+      AssetRequestStage.Upload,
+      productionDemands,
+      productionBudget
+    );
+    expect(result.admitted.map((demand) => demand.key)).toEqual(
+      expected.admitted.map((demand) => demand.key)
+    );
+    expect(result.counters.duplicateConsumers).toBe(Math.floor(size / 10));
+  });
+}
+
+const executionSizes = profile === 'nightly' ? [1_024] : profile === 'standard' ? [128] : [16];
+for (const size of executionSizes) {
+  const budget = Object.freeze({
+    maxRequests: Object.freeze({
+      metadata: size,
+      read: size,
+      decode: size,
+      finalize: size,
+      upload: size
+    }),
+    maxInFlightBytes: Object.freeze({
+      metadata: size * 16,
+      read: size * 16,
+      decode: size * 16,
+      finalize: size * 16,
+      upload: size * 16
+    }),
+    frameFinalizeMilliseconds: Number.MAX_SAFE_INTEGER,
+    frameUploadBytes: size * 16,
+    frameUploadCommands: size
+  });
+  const execute = async (deferHalf: boolean) => {
+    const scheduler = new AssetRequestScheduler();
+    let published = 0;
+    for (let index = 0; index < size; index++) {
+      scheduler.request({
+        key: `upload/${index}` as never,
+        assetId: `asset:upload/${index}` as never,
+        stage: AssetRequestStage.Upload,
+        consumerId: `consumer/${index}`,
+        priority: {
+          class: 'visible',
+          explicit: 0,
+          dependencyDepth: 0,
+          age: 0,
+          retryPenalty: 0
+        },
+        estimated: { inFlightBytes: 16, uploadBytes: 16, uploadCommands: 1 },
+        revision: 1
+      });
+    }
+    const authority: AssetStageExecutor = {
+      execute: (request) =>
+        deferHalf && Number(request.key.slice('upload/'.length)) % 2 === 0
+          ? { status: 'deferred', reason: 'ring-capacity' }
+          : undefined,
+      commit: () => {
+        published += 1;
+      }
+    };
+    const first = await scheduler.execute(AssetRequestStage.Upload, budget, authority);
+    expect(first.filter((result) => result.status === 'deferred')).toHaveLength(
+      deferHalf ? size / 2 : 0
+    );
+    if (deferHalf) {
+      const second = await scheduler.execute(AssetRequestStage.Upload, budget, {
+        execute() {},
+        commit: () => {
+          published += 1;
+        }
+      });
+      expect(second).toHaveLength(size / 2);
+      expect(second.every((result) => result.status === 'completed')).toBe(true);
+    }
+    expect(scheduler.snapshot()).toMatchObject({
+      activeLeases: 0,
+      completedLeases: size,
+      operations: []
+    });
+    expect(published).toBe(size);
+  };
+
+  bench(`executes ${size} admitted upload operations without deferral`, async () => {
+    await execute(false);
+  });
+  bench(`retries 50% of ${size} admitted upload operations next frame`, async () => {
+    await execute(true);
+  });
 }
 
 const meshSizes =
@@ -128,6 +386,41 @@ for (const vertexCount of meshSizes) {
   const expected = meshFixtureReferenceOracle(vertexCount);
   bench(`validates and isolates ${vertexCount} canonical mesh vertices`, () => {
     expect(validateMeshFixture(fixture)).toBe(expected);
+  });
+
+  const mesh = validateMeshData(fixture);
+  const variant = Object.freeze({
+    assetId: 'mesh:benchmark',
+    payloadVersion: 1,
+    featurePolicyKey: 'benchmark',
+    abiVersion: 'mesh-v1'
+  });
+  const payloadBytes =
+    mesh.streams.reduce((total, stream) => total + stream.data.byteLength, 0) +
+    (mesh.indices?.data.byteLength ?? 0);
+  bench(`directly prepares ${vertexCount} mesh vertices baseline`, () => {
+    const prepared = prepareMesh(new NullDevice(), mesh, variant);
+    expect(prepared.value.byteLength).toBe(payloadBytes);
+    disposePreparedMesh(prepared.value);
+  });
+  bench(`budget-admits and prepares ${vertexCount} mesh vertices`, () => {
+    const planner = new UploadPlanner({
+      capacityBytes: payloadBytes,
+      maxFrameBytes: payloadBytes,
+      maxFrameCommands: 2,
+      alignment: 4
+    });
+    planner.beginFrame(1);
+    const result = prepareMeshBudgeted(new NullDevice(), mesh, variant, planner);
+    if (result.status !== 'prepared') throw new Error(`Mesh benchmark deferred: ${result.reason}`);
+    expect(result.prepared.value.byteLength).toBe(payloadBytes);
+    expect(result.reservations).toHaveLength(2);
+    expect(planner.snapshot()).toMatchObject({
+      allocatedBytes: payloadBytes,
+      allocatedCommands: 2
+    });
+    for (const reservation of result.reservations) planner.release(reservation);
+    disposePreparedMesh(result.prepared.value);
   });
 }
 
@@ -156,6 +449,85 @@ for (const objectCount of cookNodeCounts) {
 
 const glbVertexCounts = profile === 'nightly' ? [10_000] : profile === 'standard' ? [3_000] : [300];
 for (const count of glbVertexCounts) {
+  const payloadFixture = createAssetPayloadPublicationFixture(count);
+  const expectedBytes = payloadFixture.source.positions.byteLength;
+  bench(`raw CPU payload copy baseline (${count} mesh vertices)`, () => {
+    const copy = payloadFixture.copyReference();
+    expect(copy.positions.byteLength).toBe(expectedBytes);
+    const checksum = copy.positions.reduce(
+      (result, value) => (result * 33 + Math.round(value * 1021)) >>> 0,
+      0
+    );
+    expect(checksum).toBe(payloadFixture.expectedChecksum);
+    expect(copy.positions.buffer).not.toBe(payloadFixture.source.positions.buffer);
+  });
+  bench(`registers and publishes owned CPU mesh payload (${count} vertices)`, () => {
+    const result = payloadFixture.publish();
+    expect(result.bytes).toBe(expectedBytes);
+    expect(result.checksum).toBe(payloadFixture.expectedChecksum);
+    expect(result.owned).toBe(true);
+  });
+  const leaseCount = profile === 'nightly' ? 100_000 : profile === 'standard' ? 10_000 : 1_000;
+  bench(`acquires and releases ${leaseCount} CPU payload leases (${count} vertices)`, () => {
+    expect(payloadFixture.cycleLeases(leaseCount)).toEqual({
+      acquisitions: leaseCount,
+      releases: leaseCount,
+      bytes: expectedBytes
+    });
+  });
+}
+
+for (const dependencyCount of [0, 16, 128]) {
+  const fixture = createAssetDependencyPublicationFixture(dependencyCount);
+  let expectedVersion = 0;
+  bench(`publishes CPU asset with ${dependencyCount} ready dependencies`, () => {
+    expectedVersion++;
+    expect(fixture.publishParent()).toEqual({
+      version: expectedVersion,
+      dependencyCount,
+      residentBytes: dependencyCount * 4 + 4
+    });
+  });
+}
+
+for (const depth of [1, 16, 128]) {
+  const fixture = createAssetDependencyCycleFixture(depth);
+  bench(`rejects cyclic CPU asset publication at dependency depth ${depth}`, () => {
+    expect(fixture.rejectCycle()).toEqual({
+      cycleLength: depth + 2,
+      retainedVersion: 1,
+      residentBytes: (depth + 1) * 4
+    });
+  });
+}
+
+const retryPolicy = Object.freeze({
+  baseDelayMilliseconds: 250,
+  maximumDelayMilliseconds: 8_000,
+  maximumAttempts: 6,
+  jitterRatio: 0.2
+});
+for (const completedAttempts of [1, 3, 5]) {
+  bench(`plans deterministic asset retry after attempt ${completedAttempts}`, () => {
+    const decision = planAssetRetry(
+      {
+        requestKey: 'asset:benchmark-retry/mesh',
+        failure: 'timeout',
+        completedAttempts,
+        nowMilliseconds: 10_000
+      },
+      retryPolicy
+    );
+    expect(decision.kind).toBe('retry');
+    if (decision.kind !== 'retry') return;
+    expect(decision.nextAttempt).toBe(completedAttempts + 1);
+    expect(decision.retryAtMilliseconds).toBe(10_000 + decision.delayMilliseconds);
+    expect(decision.delayMilliseconds).toBeGreaterThanOrEqual(0);
+    expect(decision.delayMilliseconds).toBeLessThanOrEqual(8_000);
+  });
+}
+
+for (const count of glbVertexCounts) {
   const glbFixture = createSyntheticGlbFixture(count);
   bench(`ingests and adapts synthetic GLB (${count} vertices)`, () => {
     const result = executeGlbIngestBenchmark(glbFixture);
@@ -169,4 +541,16 @@ for (const count of glbVertexCounts) {
     expect(result.primitives[0]!.hasGeneratedTangents).toBe(true);
     expect(result.totalByteLength).toBeGreaterThan(0);
   });
+
+  const executeMeshOperation = createGltfMeshOperationBenchmark(count);
+  bench(`cooks, budget-admits, and publishes glTF mesh (${count} vertices)`, async () => {
+    expect(await executeMeshOperation()).toBeGreaterThan(0);
+  });
+  const executeMeshBatch = createGltfMeshBatchOperationBenchmark(count);
+  bench(
+    `cooks and atomically publishes two glTF mesh primitives (${count} vertices each)`,
+    async () => {
+      expect(await executeMeshBatch()).toBeGreaterThan(0);
+    }
+  );
 }

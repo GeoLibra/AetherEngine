@@ -8,7 +8,11 @@ import type {
   TextureHandle
 } from '../../../render-graph';
 import type { RenderSystemDescriptor } from '../../systems';
-import type { WebGlFragmentLightListBuildOutput, WebGpuLightListBuildOutput } from '../../lighting';
+import type {
+  WebGlFragmentLightListBuildOutput,
+  WebGpuClusterLightListOutput,
+  WebGpuLightListBuildOutput
+} from '../../lighting';
 import type { PreparedDrawPhaseSnapshot } from './prepared-draw-phase-types';
 
 /** Static graph and prepared-resource inputs for one opaque view system. */
@@ -27,6 +31,7 @@ export interface OpaqueRenderSystemInput {
   }>;
   readonly shadow?: Readonly<{
     buffer: BufferHandle;
+    localBuffer: BufferHandle;
     map: TextureHandle;
   }>;
   readonly background?: Readonly<{
@@ -39,6 +44,8 @@ export interface OpaqueRenderSystemInput {
   readonly colorLoadOp?: 'clear' | 'load';
   readonly depthLoadOp?: 'clear' | 'load';
   readonly colorTarget?: TextureHandle | (() => TextureHandle);
+  /** Single-sample destination for an explicit multisample color resolve. */
+  readonly resolveTarget?: TextureHandle | (() => TextureHandle);
   readonly depthTarget?: TextureHandle | (() => TextureHandle);
   readonly present?: boolean;
   readonly publishColor?: (color: TextureHandle) => void;
@@ -46,6 +53,13 @@ export interface OpaqueRenderSystemInput {
 
 /** Backend-specific LightList resources consumed by the standard forward group at index three. */
 export type OpaqueLightListInput =
+  | Readonly<{
+      source: 'gpu-cluster';
+      packedLights: BufferHandle;
+      metadata: BufferHandle;
+      output: WebGpuClusterLightListOutput;
+      bindGroupLayout: PreparedBindGroupLayoutToken;
+    }>
   | Readonly<{
       source: 'gpu-compute';
       packedLights: BufferHandle;

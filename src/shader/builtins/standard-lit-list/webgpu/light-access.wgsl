@@ -3,7 +3,8 @@
 // Uniform buffer bindings and light list accessors.
 // ============================================================================
 
-struct PackedLightWords { values: array<vec4<u32>, 769> };
+// 4 header words + 256 fixed 16-word records, rounded to vec4<u32> elements.
+struct PackedLightWords { values: array<vec4<u32>, 1025> };
 struct PackedDirectionalWords { values: array<vec4<u32>, 16> };
 struct PackedHeaderWords { values: array<vec4<u32>, 256> };
 struct PackedIndexWords { values: array<vec4<u32>, 1024> };

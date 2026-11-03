@@ -6,6 +6,8 @@ import {
 } from '../../src';
 import { createE2EDrawPacket, executeOpaqueScene } from './opaque-scene';
 import { runWebGpuLightListGolden } from './webgpu-light-list';
+import { runWebGpuClusterLightListGolden } from './webgpu-cluster-light-list';
+import { runWebGpuTextureCopyGolden } from './webgpu-texture-copy';
 
 const WIDTH = 640;
 const HEIGHT = 360;
@@ -40,6 +42,8 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
 
   try {
     const lightListGolden = await runWebGpuLightListGolden(session);
+    const clusterLightListGolden = await runWebGpuClusterLightListGolden(session);
+    const textureCopyGolden = await runWebGpuTextureCopyGolden(session);
     const execution = executeScene(session, indexBuffer, prepared);
     await execution.execution.submission.done;
     const buildDetail = (
@@ -66,7 +70,9 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
         nativeQueueSubmits: currentFastPath.nativeQueueSubmits,
         validationErrors: currentDiagnostics.length,
         diagnostics: currentDiagnostics,
-        lightListGolden
+        lightListGolden,
+        clusterLightListGolden,
+        textureCopyGolden
       });
     };
     return Object.freeze({

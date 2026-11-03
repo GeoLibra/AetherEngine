@@ -93,6 +93,7 @@ export class WebGL2Queue extends WebGL2UploadQueue implements RHIQueue {
     let leasedResources = 0;
     for (const epoch of this.pending.values()) leasedResources += epoch.resources.size;
     return Object.freeze({
+      uploadCalls: this.webgl2Metrics.uploadCalls,
       submitted: this.submittedCount,
       pending: this.pending.size,
       completed: this.completedCount,

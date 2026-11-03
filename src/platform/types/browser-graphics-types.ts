@@ -58,6 +58,11 @@ export interface BrowserGraphicsSession {
   readonly device: RHIDevice;
   readonly surface: RHISurface;
   readonly lost: Promise<BrowserGraphicsLoss>;
+  /**
+   * Resolves after a terminal loss once this canvas may be used to create a replacement session.
+   * WebGL2 waits for `webglcontextrestored`; a lost WebGPU device permits immediate replacement.
+   */
+  readonly recoveryReady?: Promise<void>;
   subscribe(listener: (event: BrowserGraphicsLifecycleEvent) => void): () => boolean;
   resize(size: PhysicalSize): void;
   destroy(): Promise<void>;

@@ -24,6 +24,12 @@ export {
 } from './light-list';
 
 export {
+  CLUSTER_LIGHT_LIST_SHADER_ARTIFACT,
+  CLUSTER_LIGHT_LIST_SHADER_MODULE,
+  CLUSTER_LIGHT_LIST_SHADER_SOURCE
+} from './cluster-light-list';
+
+export {
   POST_COLOR_SHADER_ABI_VERSION,
   POST_COLOR_SHADER_ARTIFACT,
   POST_COLOR_SHADER_MODULE,
@@ -47,6 +53,13 @@ export {
   mapStandardLitListPhysicalBindings,
   mapStandardLitListProgramBindings
 } from './standard-lit-list';
+
+export {
+  STANDARD_LIT_CLUSTER_SHADER_ABI_VERSION,
+  STANDARD_LIT_CLUSTER_SHADER_MODULE_KEY,
+  STANDARD_LIT_CLUSTER_WEBGPU_SHADER_ARTIFACT,
+  STANDARD_LIT_CLUSTER_WEBGPU_SHADER_MODULE
+} from './standard-lit-cluster';
 
 import {
   createWebGL2TranslationRouter,

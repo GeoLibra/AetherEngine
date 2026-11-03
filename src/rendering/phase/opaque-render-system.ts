@@ -54,13 +54,26 @@ export function createOpaqueRenderSystem(
         store: 'store',
         clearValue: { r: 0, g: 0, b: 0, a: 1 }
       });
+      const resolveTarget =
+        typeof input.resolveTarget === 'function' ? input.resolveTarget() : input.resolveTarget;
+      const resolved =
+        resolveTarget === undefined
+          ? color
+          : (() => {
+              if (pass.resolveAttachment === undefined) {
+                throw new Error(
+                  'RenderGraph raster pass does not support multisample resolve attachments.'
+                );
+              }
+              return pass.resolveAttachment(0, color, resolveTarget);
+            })();
       const depthAttachment = pass.depthStencilAttachment(depth, {
         depthLoad: input.depthLoadOp ?? 'clear',
         depthStore: 'store',
         depthClearValue: 1
       });
-      input.publishColor?.(color);
-      if (input.present !== false) pass.present(color, input.surfaceFrame);
+      input.publishColor?.(resolved);
+      if (input.present !== false) pass.present(resolved, input.surfaceFrame);
       const lightList =
         input.lightList === undefined ? undefined : declareLightList(pass, input.lightList);
       const environment =
@@ -80,9 +93,16 @@ export function createOpaqueRenderSystem(
           ? undefined
           : Object.freeze({
               buffer: pass.readBuffer(input.shadow.buffer, 'uniform'),
-              map: pass.readTexture(input.shadow.map, 'sampled')
+              map: pass.readTexture(input.shadow.map, 'sampled'),
+              localBuffer: pass.readBuffer(input.shadow.localBuffer, 'uniform')
             });
-      return Object.freeze({ color, depth: depthAttachment, lightList, environment, shadow });
+      return Object.freeze({
+        color: resolved,
+        depth: depthAttachment,
+        lightList,
+        environment,
+        shadow
+      });
     },
     run(context: RasterPassContext, resources) {
       const attachments = resources as {
@@ -95,7 +115,7 @@ export function createOpaqueRenderSystem(
           prefilteredRadianceMap: TextureHandle;
           environmentBrdfLut: TextureHandle;
         };
-        shadow?: { buffer: BufferHandle; map: TextureHandle };
+        shadow?: { buffer: BufferHandle; localBuffer: BufferHandle; map: TextureHandle };
       };
       const draws = entries.map(([token]) => context.drawResources(token));
       const lightListGroup =
@@ -143,6 +163,17 @@ function declareLightList(
       overflow: pass.readBuffer(input.output.overflow, 'uniform')
     });
   }
+  if (input.source === 'gpu-cluster') {
+    return Object.freeze({
+      source: input.source,
+      packedLights: pass.readBuffer(input.packedLights, 'uniform'),
+      metadata: pass.readBuffer(input.metadata, 'uniform'),
+      directional: pass.readBuffer(input.output.directional, 'uniform'),
+      headers: pass.readBuffer(input.output.headers, 'uniform'),
+      indices: pass.readBuffer(input.output.indices, 'uniform'),
+      overflow: pass.readBuffer(input.output.overflow, 'uniform')
+    });
+  }
   return Object.freeze({
     source: input.source,
     packedLights: pass.readTexture(input.packedLights, 'sampled'),
@@ -163,7 +194,7 @@ function createLightListGroup(
     prefilteredRadianceMap: TextureHandle;
     environmentBrdfLut: TextureHandle;
   },
-  shadow?: { buffer: BufferHandle; map: TextureHandle }
+  shadow?: { buffer: BufferHandle; localBuffer: BufferHandle; map: TextureHandle }
 ) {
   const layout = context.bindGroupLayout(input.bindGroupLayout);
   const handles = [
@@ -180,7 +211,7 @@ function createLightListGroup(
       ...handles.map((handle, binding) => ({
         binding,
         resource:
-          resources.source === 'gpu-compute'
+          resources.source === 'gpu-compute' || resources.source === 'gpu-cluster'
             ? context.buffer(handle as BufferHandle, 'uniform')
             : context.texture(handle as TextureHandle, 'sampled')
       })),
@@ -202,6 +233,7 @@ function createLightListGroup(
         ? []
         : [
             { binding: 10, resource: context.buffer(shadow.buffer, 'uniform') },
+            { binding: 13, resource: context.buffer(shadow.localBuffer, 'uniform') },
             { binding: 11, resource: context.texture(shadow.map, 'sampled') },
             {
               binding: 12,
@@ -213,7 +245,10 @@ function createLightListGroup(
                 addressModeV: 'clamp-to-edge'
               })
             }
-          ])
+          ]),
+      ...(resources.source === 'gpu-cluster'
+        ? [{ binding: 14, resource: context.buffer(resources.metadata, 'uniform') }]
+        : [])
     ]
   });
 }
@@ -231,4 +266,7 @@ function validateInput(input: OpaqueRenderSystemInput): void {
     input.color.sampleCount !== input.depth.sampleCount
   )
     throw new Error('Opaque RenderSystem color and depth attachments must match.');
+  if (input.resolveTarget !== undefined && input.color.sampleCount <= 1) {
+    throw new Error('Opaque RenderSystem resolveTarget requires a multisampled color attachment.');
+  }
 }

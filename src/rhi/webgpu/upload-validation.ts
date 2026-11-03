@@ -49,6 +49,12 @@ export function lowerAndValidateTextureDestination(
   nativeTexture: unknown,
   copySize: Readonly<{ width: number; height: number; depthOrArrayLayers: number }>
 ): Readonly<Record<string, unknown>> {
+  const sampleCount = texture.descriptor.sampleCount ?? 1;
+  if (sampleCount !== 1) {
+    throw new Error(
+      `Texture copies require a single-sample texture; texture "${texture.label ?? texture.id}" has sampleCount ${sampleCount}.`
+    );
+  }
   const mipLevel = destination.mipLevel ?? 0;
   const mipCount = texture.descriptor.mipLevelCount ?? 1;
   if (!Number.isInteger(mipLevel) || mipLevel < 0 || mipLevel >= mipCount) {

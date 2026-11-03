@@ -37,6 +37,23 @@ describe('background ownership regressions', () => {
     clearBackgroundPipelineCache(secondDevice);
   });
 
+  it('keeps multisample background pipelines distinct from single-sample pipelines', () => {
+    const device = new NullDevice();
+    const singleSample = prepareBackgroundPipeline(device, { colorFormat: 'rgba16float' });
+    const multisample = prepareBackgroundPipeline(device, {
+      colorFormat: 'rgba16float',
+      sampleCount: 4
+    });
+
+    expect(multisample.prepared.pipeline).not.toBe(singleSample.prepared.pipeline);
+    expect(multisample.prepared.pipeline.descriptor.multisample?.count).toBe(4);
+    expect(singleSample.prepared.pipeline.descriptor.multisample?.count).toBe(1);
+
+    singleSample.release();
+    multisample.release();
+    clearBackgroundPipelineCache(device);
+  });
+
   it('retires cache entries only after local leases and all submissions finish', async () => {
     const device = new NullDevice();
     const frame = prepareBackground({

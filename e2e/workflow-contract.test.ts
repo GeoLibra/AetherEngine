@@ -31,6 +31,7 @@ describe('E2E GitHub Actions workflow', () => {
     const workflow = await readFile(WORKFLOW_PATH, 'utf8');
     const resolveJob = extractYamlBlock(workflow, '  resolve:');
     const e2eJob = extractYamlBlock(workflow, '  e2e:');
+    const macosJob = extractYamlBlock(workflow, '  e2e-macos:');
 
     expect(workflow).toMatch(/^on:\s*\n\s+pull_request:/m);
     expect(workflow).toContain('push:\n    branches: [main]');
@@ -50,6 +51,11 @@ describe('E2E GitHub Actions workflow', () => {
     }
     expect(resolveJob).not.toContain('actions/upload-artifact');
     expect(e2eJob).toContain('uses: actions/upload-artifact@v4');
+    expect(macosJob).toContain('runs-on: macos-latest');
+    expect(macosJob).toContain(
+      'webgl2-render, webgpu-render, react-vite-webgl2, react-vite-webgpu'
+    );
+    expect(macosJob).toContain('pnpm exec playwright install chromium');
   });
 
   test('publishes an include-only matrix and keeps resolver diagnostics separate', async () => {
@@ -98,6 +104,7 @@ describe('E2E GitHub Actions workflow', () => {
     const workflow = await readFile(WORKFLOW_PATH, 'utf8');
     const resolveJob = extractYamlBlock(workflow, '  resolve:');
     const e2eJob = extractYamlBlock(workflow, '  e2e:');
+    const macosJob = extractYamlBlock(workflow, '  e2e-macos:');
     const runStep = extractYamlBlock(e2eJob, '      - name: Run ${{ matrix.project }}');
     const uploadStep = extractYamlBlock(e2eJob, '      - name: Upload Playwright artifacts');
 
@@ -130,6 +137,12 @@ describe('E2E GitHub Actions workflow', () => {
     );
     expect(uploadStep).toContain('retention-days: 7');
     expect(uploadStep).toContain('e2e/specs/*-snapshots/*-linux.png');
+
+    expect(macosJob).toContain("needs.resolve.outputs.has-projects == 'true'");
+    expect(macosJob).toContain("contains(needs.resolve.outputs.matrix, 'webgpu-render')");
+    expect(macosJob).toContain('fail-fast: false');
+    expect(macosJob).toContain('e2e-macos-${{ matrix.project }}-${{ github.run_id }}');
+    expect(macosJob).toContain('e2e/specs/*-snapshots/*-darwin.png');
   });
 
   test('manual dispatch can run all projects or one selected project', async () => {
@@ -171,6 +184,7 @@ describe('E2E GitHub Actions workflow', () => {
 
   test('CI workflow runs the non-browser quality gate on pull requests, main pushes, and manual dispatch', async () => {
     const workflow = await readFile(CI_WORKFLOW_PATH, 'utf8');
+    const rhiStandardJob = extractYamlBlock(workflow, '  rhi-standard-benchmark:');
 
     expect(workflow).toMatch(/^on:\s*\n\s+pull_request:/m);
     expect(workflow).toContain('push:\n    branches: [main]');
@@ -186,6 +200,11 @@ describe('E2E GitHub Actions workflow', () => {
     expect(workflow).toContain('pnpm run build');
     expect(workflow).toContain('pnpm bench validate');
     expect(workflow).toContain('pnpm bench changed');
+    expect(rhiStandardJob).toContain("if: github.event_name == 'workflow_dispatch'");
+    expect(rhiStandardJob).toContain('node benchmark/rhi-command-runner.mjs standard');
+    expect(rhiStandardJob).toContain('uses: actions/upload-artifact@v4');
+    expect(rhiStandardJob).toContain('benchmark/artifacts/rhi/rhi-command-standard-*.json');
+    expect(rhiStandardJob).toContain('retention-days: 30');
   });
 
   test('routes a deleted browser path even when an ignored README also changes', async () => {

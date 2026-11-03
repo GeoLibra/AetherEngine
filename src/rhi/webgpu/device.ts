@@ -31,6 +31,7 @@ import type {
 import { WebGPUNativeOperationError } from '../contracts/errors';
 import type {
   WebGPUNativeCanvasContextPort,
+  WebGPUNativeCommandEncoderPort,
   WebGPUNativeDeviceLostInfo,
   WebGPUNativeDevicePort,
   WebGPUNativeErrorPort
@@ -125,12 +126,10 @@ export class WebGPUDevice implements RHIDevice {
   }
   createTexture(descriptor: RHITextureDescriptor): RHITexture {
     const snapshot = freezeRecord({ ...descriptor, size: normalizeExtent(descriptor.size) });
-    const native = this.native.createTexture;
-    if (native === undefined) return pending('createTexture');
     return new WebGPUTexture(
       this.allocateId(),
       this.owner,
-      native.call(this.native, snapshot),
+      this.createNative('createTexture', snapshot),
       descriptor
     );
   }
@@ -278,10 +277,11 @@ export class WebGPUDevice implements RHIDevice {
     }
   }
   createCommandEncoder(descriptor: RHICommandEncoderDescriptor = {}): RHICommandEncoder {
-    const create = this.native.createCommandEncoder;
-    if (create === undefined) return pending('createCommandEncoder');
     const id = this.allocateId();
-    const nativeEncoder = create.call(this.native, Object.freeze({ ...descriptor }));
+    const nativeEncoder = this.createNative(
+      'createCommandEncoder',
+      Object.freeze({ ...descriptor })
+    );
     this.fastPath.recordEncoder();
     return new WebGPUCommandEncoder(id, this.owner, nativeEncoder, this.fastPath);
   }
@@ -355,6 +355,14 @@ export class WebGPUDevice implements RHIDevice {
   }
 
   private createNative(
+    operation: 'createTexture',
+    descriptor: Readonly<Record<string, unknown>>
+  ): WebGPUNativeTexturePort;
+  private createNative(
+    operation: 'createCommandEncoder',
+    descriptor: Readonly<Record<string, unknown>>
+  ): WebGPUNativeCommandEncoderPort;
+  private createNative(
     operation:
       | 'createBuffer'
       | 'createSampler'
@@ -365,11 +373,26 @@ export class WebGPUDevice implements RHIDevice {
       | 'createRenderPipeline'
       | 'createComputePipeline',
     descriptor: Readonly<Record<string, unknown>>
-  ): WebGPUNativeResourcePort {
+  ): WebGPUNativeResourcePort;
+  private createNative(
+    operation:
+      | 'createBuffer'
+      | 'createTexture'
+      | 'createSampler'
+      | 'createShaderModule'
+      | 'createBindGroupLayout'
+      | 'createPipelineLayout'
+      | 'createBindGroup'
+      | 'createRenderPipeline'
+      | 'createComputePipeline'
+      | 'createCommandEncoder',
+    descriptor: Readonly<Record<string, unknown>>
+  ): WebGPUNativeResourcePort | WebGPUNativeTexturePort | WebGPUNativeCommandEncoderPort {
     const method = this.native[operation];
     if (method === undefined) return pending(operation);
     try {
-      return method.call(this.native, descriptor);
+      return Reflect.apply(method, this.native, [descriptor]) as
+        WebGPUNativeResourcePort | WebGPUNativeTexturePort | WebGPUNativeCommandEncoderPort;
     } catch (cause) {
       throw new WebGPUNativeOperationError(
         operation,

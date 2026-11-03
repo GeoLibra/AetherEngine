@@ -13,8 +13,8 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
   },
   source: {
     sourceUri: 'asset://aether/builtins/standard-lit-list-webgl.wgsl',
-    contentHash: '50a40d8cb58c0f0cf0879490f8585346d0ef98ec63afd32ddff1cd24c5f070ca',
-    byteLength: 28748
+    contentHash: 'ec6f5f76ce030060d6c787f7c604b521f3cf411c4217ad1fc79e396a3c9d8833',
+    byteLength: 32689
   },
   entryPoints: [
     {
@@ -242,6 +242,15 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
           addressSpace: 'handle',
           access: 'read',
           typeName: 'sampler_comparison'
+        },
+        {
+          group: 3,
+          binding: 13,
+          name: 'localShadowReceiverData',
+          kind: 'uniform-buffer',
+          addressSpace: 'uniform',
+          access: 'read',
+          typeName: 'LocalShadowReceiverData'
         }
       ]
     }
@@ -444,6 +453,15 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
       addressSpace: 'handle',
       access: 'read',
       typeName: 'sampler_comparison'
+    },
+    {
+      group: 3,
+      binding: 13,
+      name: 'localShadowReceiverData',
+      kind: 'uniform-buffer',
+      addressSpace: 'uniform',
+      access: 'read',
+      typeName: 'LocalShadowReceiverData'
     }
   ],
   bufferLayouts: [
@@ -481,7 +499,7 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
       group: 1,
       binding: 0,
       name: 'viewData',
-      byteSize: 80,
+      byteSize: 144,
       alignment: 16,
       fields: [
         {
@@ -492,8 +510,15 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
           typeName: 'mat4x4<f32>'
         },
         {
-          path: 'cameraPosition',
+          path: 'view',
           offset: 64,
+          size: 64,
+          alignment: 16,
+          typeName: 'mat4x4<f32>'
+        },
+        {
+          path: 'cameraPosition',
+          offset: 128,
           size: 12,
           alignment: 16,
           typeName: 'vec3<f32>'
@@ -748,6 +773,29 @@ export const STANDARD_LIT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntim
           size: 4,
           alignment: 4,
           typeName: 'u32'
+        },
+        {
+          path: 'pcfRadius',
+          offset: 356,
+          size: 4,
+          alignment: 4,
+          typeName: 'u32'
+        }
+      ]
+    },
+    {
+      group: 3,
+      binding: 13,
+      name: 'localShadowReceiverData',
+      byteSize: 1296,
+      alignment: 16,
+      fields: [
+        {
+          path: 'words',
+          offset: 0,
+          size: 1296,
+          alignment: 16,
+          typeName: 'array<vec4<u32>,81>'
         }
       ]
     }
@@ -857,6 +905,10 @@ struct DirectionalShadowData {
     vec4 splitDepths;
     vec4 params;
     uint lightIndex;
+    uint pcfRadius;
+};
+struct LocalShadowReceiverData {
+    uvec4 words[81];
 };
 struct EnvironmentData {
     vec3 diffuseIrradiance;
@@ -866,6 +918,7 @@ struct EnvironmentData {
 };
 struct ViewData {
     mat4x4 viewProjection;
+    mat4x4 view;
     vec3 cameraPosition;
 };
 struct StandardLitVertexOutput {
@@ -908,7 +961,9 @@ layout(std140) uniform DirectionalShadowData_block_2Fragment { DirectionalShadow
 
 uniform highp sampler2DArrayShadow _group_3_binding_11_fs;
 
-layout(std140) uniform EnvironmentData_block_3Fragment { EnvironmentData _group_3_binding_5_fs; };
+layout(std140) uniform LocalShadowReceiverData_block_3Fragment { LocalShadowReceiverData _group_3_binding_13_fs; };
+
+layout(std140) uniform EnvironmentData_block_4Fragment { EnvironmentData _group_3_binding_5_fs; };
 
 uniform highp sampler2D _group_3_binding_6_fs;
 
@@ -916,7 +971,7 @@ uniform highp sampler2D _group_3_binding_7_fs;
 
 uniform highp sampler2D _group_3_binding_8_fs;
 
-layout(std140) uniform ViewData_block_4Fragment { ViewData _group_1_binding_0_fs; };
+layout(std140) uniform ViewData_block_5Fragment { ViewData _group_1_binding_0_fs; };
 
 smooth in vec3 _vs2fs_location0;
 smooth in vec3 _vs2fs_location1;
@@ -1136,7 +1191,7 @@ float directionalShadowVisibility(uint lightIndex, vec3 worldPosition, vec3 norm
     bool local_6 = false;
     bool local_7 = false;
     float visibility = 0.0;
-    int y = -1;
+    int y = 0;
     int x = 0;
     float _e7 = _group_3_binding_10_fs.params.x;
     if (!((_e7 < 0.5))) {
@@ -1215,45 +1270,192 @@ float directionalShadowVisibility(uint lightIndex, vec3 worldPosition, vec3 norm
     float _e117 = _group_3_binding_10_fs.params.z;
     float bias = (_e113 + (_e117 * (1.0 - normalDotLight_2)));
     float texel_2 = _group_3_binding_10_fs.params.w;
+    uint _e128 = _group_3_binding_10_fs.pcfRadius;
+    int pcfRadius = int(_e128);
+    y = -(pcfRadius);
     bool loop_init_2 = true;
     while(true) {
         if (!loop_init_2) {
-            int _e157 = y;
-            y = (_e157 + 1);
+            int _e159 = y;
+            y = (_e159 + 1);
         }
         loop_init_2 = false;
-        int _e130 = y;
-        if ((_e130 <= 1)) {
+        int _e134 = y;
+        if ((_e134 <= pcfRadius)) {
         } else {
             break;
         }
         {
-            x = -1;
+            x = -(pcfRadius);
             bool loop_init_3 = true;
             while(true) {
                 if (!loop_init_3) {
-                    int _e154 = x;
-                    x = (_e154 + 1);
+                    int _e156 = x;
+                    x = (_e156 + 1);
                 }
                 loop_init_3 = false;
-                int _e135 = x;
-                if ((_e135 <= 1)) {
+                int _e138 = x;
+                if ((_e138 <= pcfRadius)) {
                 } else {
                     break;
                 }
                 {
-                    float _e138 = visibility;
-                    int _e141 = x;
-                    int _e143 = y;
-                    uint _e148 = cascade;
-                    float _e152 = textureGrad(_group_3_binding_11_fs, vec4((uv_1 + (vec2(float(_e141), float(_e143)) * texel_2)), int(_e148), (projected.z - bias)), vec2(0.0), vec2(0.0));
-                    visibility = (_e138 + _e152);
+                    float _e140 = visibility;
+                    int _e143 = x;
+                    int _e145 = y;
+                    uint _e150 = cascade;
+                    float _e154 = textureGrad(_group_3_binding_11_fs, vec4((uv_1 + (vec2(float(_e143), float(_e145)) * texel_2)), int(_e150), (projected.z - bias)), vec2(0.0), vec2(0.0));
+                    visibility = (_e140 + _e154);
                 }
             }
         }
     }
-    float _e160 = visibility;
-    return (_e160 / 9.0);
+    float edge = float(((pcfRadius * 2) + 1));
+    float _e167 = visibility;
+    return (_e167 / (edge * edge));
+}
+
+float localShadowVisibility(uint lightIndex_1, vec3 worldPosition_1, vec3 normal_5, vec3 lightDirection_3) {
+    uint record = 0u;
+    uint face = 0u;
+    float sc = 0.0;
+    float tc = 0.0;
+    float signedMajor = 0.0;
+    bool local_8 = false;
+    bool local_9 = false;
+    bool local_10 = false;
+    bool local_11 = false;
+    bool local_12 = false;
+    bool local_13 = false;
+    bool local_14 = false;
+    uint _e8 = _group_3_binding_13_fs.words[0].x;
+    uint count = min(_e8, 16u);
+    bool loop_init_4 = true;
+    while(true) {
+        if (!loop_init_4) {
+            uint _e262 = record;
+            record = (_e262 + 1u);
+        }
+        loop_init_4 = false;
+        uint _e13 = record;
+        if ((_e13 < count)) {
+        } else {
+            break;
+        }
+        {
+            uint _e16 = record;
+            uint base_1 = (1u + (_e16 * 5u));
+            uvec4 metadata = _group_3_binding_13_fs.words[base_1];
+            if ((metadata.x != lightIndex_1)) {
+                continue;
+            }
+            float bias_1 = (0.0005 + (0.002 * (1.0 - clamp(dot(normal_5, lightDirection_3), 0.0, 1.0))));
+            if ((metadata.y == 1u)) {
+                uint lightBase = (4u + (lightIndex_1 * 16u));
+                uint _e45 = lightWord((lightBase + 4u));
+                uint _e49 = lightWord((lightBase + 5u));
+                uint _e53 = lightWord((lightBase + 6u));
+                vec3 lightPosition = vec3(uintBitsToFloat(_e45), uintBitsToFloat(_e49), uintBitsToFloat(_e53));
+                vec3 direction_1 = (worldPosition_1 - lightPosition);
+                vec3 absolute = abs(direction_1);
+                face = 0u;
+                sc = -(direction_1.z);
+                tc = -(direction_1.y);
+                signedMajor = direction_1.x;
+                if ((absolute.y >= absolute.x)) {
+                    local_8 = (absolute.y >= absolute.z);
+                } else {
+                    local_8 = false;
+                }
+                bool _e77 = local_8;
+                if (_e77) {
+                    face = ((direction_1.y >= 0.0) ? 2u : 3u);
+                    sc = direction_1.x;
+                    tc = ((direction_1.y >= 0.0) ? direction_1.z : -(direction_1.z));
+                    signedMajor = direction_1.y;
+                } else {
+                    if ((absolute.z >= absolute.x)) {
+                        local_9 = (absolute.z >= absolute.y);
+                    } else {
+                        local_9 = false;
+                    }
+                    bool _e102 = local_9;
+                    if (_e102) {
+                        face = ((direction_1.z >= 0.0) ? 4u : 5u);
+                        sc = direction_1.x;
+                        tc = -(direction_1.y);
+                        signedMajor = direction_1.z;
+                    } else {
+                        if ((direction_1.x < 0.0)) {
+                            face = 1u;
+                            sc = direction_1.z;
+                        }
+                    }
+                }
+                uint _e124 = _group_3_binding_13_fs.words[(base_1 + 1u)].x;
+                float near = uintBitsToFloat(_e124);
+                uint _e132 = _group_3_binding_13_fs.words[(base_1 + 1u)].y;
+                float far = uintBitsToFloat(_e132);
+                float distanceToLight = length(direction_1);
+                float _e135 = signedMajor;
+                if (!((abs(_e135) <= 1e-6))) {
+                    local_10 = (distanceToLight < near);
+                } else {
+                    local_10 = true;
+                }
+                bool _e144 = local_10;
+                if (!(_e144)) {
+                    local_11 = (distanceToLight > far);
+                } else {
+                    local_11 = true;
+                }
+                bool _e150 = local_11;
+                if (_e150) {
+                    return 1.0;
+                }
+                float _e152 = sc;
+                float _e153 = signedMajor;
+                float _e156 = tc;
+                float _e157 = signedMajor;
+                vec2 uv_2 = ((vec2((_e152 / abs(_e153)), (_e156 / abs(_e157))) * 0.5) + vec2(0.5));
+                float depth = ((far / (far - near)) - ((far * near) / ((far - near) * distanceToLight)));
+                uint _e176 = face;
+                float _e180 = textureGrad(_group_3_binding_11_fs, vec4(uv_2, int((metadata.z + _e176)), (depth - bias_1)), vec2(0.0), vec2(0.0));
+                return _e180;
+            }
+            uvec4 _e186 = _group_3_binding_13_fs.words[(base_1 + 1u)];
+            uvec4 _e193 = _group_3_binding_13_fs.words[(base_1 + 2u)];
+            uvec4 _e200 = _group_3_binding_13_fs.words[(base_1 + 3u)];
+            uvec4 _e207 = _group_3_binding_13_fs.words[(base_1 + 4u)];
+            vec4 clip_1 = (mat4x4(uintBitsToFloat(_e186), uintBitsToFloat(_e193), uintBitsToFloat(_e200), uintBitsToFloat(_e207)) * vec4(worldPosition_1, 1.0));
+            vec3 projected_1 = (clip_1.xyz / vec3(clip_1.w));
+            vec2 uv_3 = ((projected_1.xy * vec2(0.5, -0.5)) + vec2(0.5));
+            if (!((projected_1.z < 0.0))) {
+                local_12 = (projected_1.z > 1.0);
+            } else {
+                local_12 = true;
+            }
+            bool _e235 = local_12;
+            if (!(_e235)) {
+                local_13 = any(lessThan(uv_3, vec2(0.0)));
+            } else {
+                local_13 = true;
+            }
+            bool _e244 = local_13;
+            if (!(_e244)) {
+                local_14 = any(greaterThan(uv_3, vec2(1.0)));
+            } else {
+                local_14 = true;
+            }
+            bool _e253 = local_14;
+            if (_e253) {
+                return 1.0;
+            }
+            float _e261 = textureGrad(_group_3_binding_11_fs, vec4(uv_3, int(metadata.z), (projected_1.z - bias_1)), vec2(0.0), vec2(0.0));
+            return _e261;
+        }
+    }
+    return 1.0;
 }
 
 vec2 directionToEquirectangularUv(vec3 direction) {
@@ -1267,11 +1469,11 @@ vec2 directionToEquirectangularUv(vec3 direction) {
     return vec2(_e19, v);
 }
 
-vec3 evaluateIbl(vec3 normal_5, vec3 viewDirection_2, vec3 baseColor_1, float metallic_1, float roughness_3, float occlusion) {
+vec3 evaluateIbl(vec3 normal_6, vec3 viewDirection_2, vec3 baseColor_1, float metallic_1, float roughness_3, float occlusion) {
     vec3 f0_2 = ((vec3(0.04) * (1.0 - metallic_1)) + (baseColor_1 * metallic_1));
-    vec3 _e16 = fresnelSchlick(max(dot(normal_5, viewDirection_2), 0.0), f0_2);
-    vec2 _e17 = directionToEquirectangularUv(normal_5);
-    vec3 reflection = reflect(-(viewDirection_2), normal_5);
+    vec3 _e16 = fresnelSchlick(max(dot(normal_6, viewDirection_2), 0.0), f0_2);
+    vec2 _e17 = directionToEquirectangularUv(normal_6);
+    vec3 reflection = reflect(-(viewDirection_2), normal_6);
     vec2 _e20 = directionToEquirectangularUv(reflection);
     vec4 _e23 = texture(_group_3_binding_6_fs, vec2(_e17));
     vec3 _e27 = _group_3_binding_5_fs.diffuseIrradiance;
@@ -1281,7 +1483,7 @@ vec3 evaluateIbl(vec3 normal_5, vec3 viewDirection_2, vec3 baseColor_1, float me
     vec4 _e38 = textureLod(_group_3_binding_7_fs, vec2(_e20), lod);
     vec3 _e42 = _group_3_binding_5_fs.prefilteredRadiance;
     vec3 prefiltered = (_e38.xyz * _e42);
-    vec4 _e50 = texture(_group_3_binding_8_fs, vec2(vec2(max(dot(normal_5, viewDirection_2), 0.0), roughness_3)));
+    vec4 _e50 = texture(_group_3_binding_8_fs, vec2(vec2(max(dot(normal_6, viewDirection_2), 0.0), roughness_3)));
     vec2 brdf = _e50.xy;
     vec3 diffuse_1 = (((((vec3(1.0) - _e16) * (1.0 - metallic_1)) * baseColor_1) * irradiance) / vec3(3.1415927));
     vec3 singleScattering = (prefiltered * ((f0_2 * brdf.x) + vec3(brdf.y)));
@@ -1291,33 +1493,47 @@ vec3 evaluateIbl(vec3 normal_5, vec3 viewDirection_2, vec3 baseColor_1, float me
     return (((diffuse_1 * occlusion) + specular_1) * _e85);
 }
 
-vec3 evaluatePackedLight(uint index_6, vec3 worldPosition_1, vec3 normal_6, vec3 viewDirection_3, StandardLitSurface surface) {
-    uint base_1 = (4u + (index_6 * 12u));
-    uint _e11 = lightWord((base_1 + 4u));
-    uint _e15 = lightWord((base_1 + 5u));
-    uint _e19 = lightWord((base_1 + 6u));
+vec3 evaluatePackedLight(uint index_6, vec3 worldPosition_2, vec3 normal_7, vec3 viewDirection_3, StandardLitSurface surface) {
+    uint base_2 = (4u + (index_6 * 16u));
+    uint _e11 = lightWord((base_2 + 4u));
+    uint _e15 = lightWord((base_2 + 5u));
+    uint _e19 = lightWord((base_2 + 6u));
     vec3 vector = vec3(uintBitsToFloat(_e11), uintBitsToFloat(_e15), uintBitsToFloat(_e19));
-    uint _e24 = lightWord((base_1 + 8u));
-    uint _e28 = lightWord((base_1 + 9u));
-    uint _e32 = lightWord((base_1 + 10u));
+    uint _e24 = lightWord((base_2 + 8u));
+    uint _e28 = lightWord((base_2 + 9u));
+    uint _e32 = lightWord((base_2 + 10u));
     vec3 color = vec3(uintBitsToFloat(_e24), uintBitsToFloat(_e28), uintBitsToFloat(_e32));
-    uint _e37 = lightWord((base_1 + 11u));
+    uint _e37 = lightWord((base_2 + 11u));
     float intensity = uintBitsToFloat(_e37);
-    uint _e39 = lightWord(base_1);
+    uint _e39 = lightWord(base_2);
     if ((_e39 == 0u)) {
-        vec3 lightDirection_3 = -(normalize(vector));
-        float _e44 = directionalShadowVisibility(index_6, worldPosition_1, normal_6, lightDirection_3);
-        vec3 _e50 = cookTorranceDirect(normal_6, viewDirection_3, lightDirection_3, surface.baseColor.xyz, surface.metallic, surface.roughness, (color * intensity));
+        vec3 lightDirection_4 = -(normalize(vector));
+        float _e44 = directionalShadowVisibility(index_6, worldPosition_2, normal_7, lightDirection_4);
+        vec3 _e50 = cookTorranceDirect(normal_7, viewDirection_3, lightDirection_4, surface.baseColor.xyz, surface.metallic, surface.roughness, (color * intensity));
         return (_e50 * _e44);
     }
-    vec3 delta = (vector - worldPosition_1);
+    vec3 delta = (vector - worldPosition_2);
     float distanceSquared = max(dot(delta, delta), 1e-6);
-    vec3 _e64 = cookTorranceDirect(normal_6, viewDirection_3, normalize(delta), surface.baseColor.xyz, surface.metallic, surface.roughness, ((color * intensity) / vec3(distanceSquared)));
-    return _e64;
+    vec3 lightDirection_5 = normalize(delta);
+    uint _e57 = lightWord(base_2);
+    if ((_e57 == 2u)) {
+        uint _e62 = lightWord((base_2 + 12u));
+        uint _e66 = lightWord((base_2 + 13u));
+        uint _e70 = lightWord((base_2 + 14u));
+        vec3 spotAxis = normalize(vec3(uintBitsToFloat(_e62), uintBitsToFloat(_e66), uintBitsToFloat(_e70)));
+        float coneCosine = dot(normalize((worldPosition_2 - vector)), spotAxis);
+        uint _e79 = lightWord((base_2 + 15u));
+        if ((coneCosine < cos(uintBitsToFloat(_e79)))) {
+            return vec3(0.0);
+        }
+    }
+    vec3 _e92 = cookTorranceDirect(normal_7, viewDirection_3, lightDirection_5, surface.baseColor.xyz, surface.metallic, surface.roughness, ((color * intensity) / vec3(distanceSquared)));
+    float _e93 = localShadowVisibility(index_6, worldPosition_2, normal_7, lightDirection_5);
+    return (_e92 * _e93);
 }
 
-vec3 evaluateSurfaceIbl(vec3 normal_7, vec3 viewDirection_4, StandardLitSurface surface_1) {
-    vec3 _e8 = evaluateIbl(normal_7, viewDirection_4, surface_1.baseColor.xyz, surface_1.metallic, surface_1.roughness, surface_1.occlusion);
+vec3 evaluateSurfaceIbl(vec3 normal_8, vec3 viewDirection_4, StandardLitSurface surface_1) {
+    vec3 _e8 = evaluateIbl(normal_8, viewDirection_4, surface_1.baseColor.xyz, surface_1.metallic, surface_1.roughness, surface_1.occlusion);
     return _e8;
 }
 
@@ -1334,19 +1550,19 @@ void main() {
     if (!(_e11)) {
         discard;
     }
-    vec3 normal_8 = _e2.normal;
+    vec3 normal_9 = _e2.normal;
     vec3 _e16 = _group_1_binding_0_fs.cameraPosition;
     vec3 viewDirection_5 = normalize((_e16 - fragmentInput.worldPosition));
-    vec3 _e20 = evaluateSurfaceIbl(normal_8, viewDirection_5, _e2);
+    vec3 _e20 = evaluateSurfaceIbl(normal_9, viewDirection_5, _e2);
     lit = _e20;
     uint _e22 = directionalLightCount();
-    bool loop_init_4 = true;
+    bool loop_init_5 = true;
     while(true) {
-        if (!loop_init_4) {
+        if (!loop_init_5) {
             uint _e33 = index;
             index = (_e33 + 1u);
         }
-        loop_init_4 = false;
+        loop_init_5 = false;
         uint _e25 = index;
         if ((_e25 < _e22)) {
         } else {
@@ -1356,18 +1572,18 @@ void main() {
             vec3 _e27 = lit;
             uint _e28 = index;
             uint _e29 = directionalIndex(_e28);
-            vec3 _e31 = evaluatePackedLight(_e29, fragmentInput.worldPosition, normal_8, viewDirection_5, _e2);
+            vec3 _e31 = evaluatePackedLight(_e29, fragmentInput.worldPosition, normal_9, viewDirection_5, _e2);
             lit = (_e27 + _e31);
         }
     }
     ReceiverLightHeader _e36 = receiverLightHeader();
-    bool loop_init_5 = true;
+    bool loop_init_6 = true;
     while(true) {
-        if (!loop_init_5) {
+        if (!loop_init_6) {
             uint _e48 = index_1;
             index_1 = (_e48 + 1u);
         }
-        loop_init_5 = false;
+        loop_init_6 = false;
         uint _e39 = index_1;
         if ((_e39 < _e36.count)) {
         } else {
@@ -1377,7 +1593,7 @@ void main() {
             vec3 _e42 = lit;
             uint _e43 = index_1;
             uint _e44 = receiverLightIndex(_e36, _e43);
-            vec3 _e46 = evaluatePackedLight(_e44, fragmentInput.worldPosition, normal_8, viewDirection_5, _e2);
+            vec3 _e46 = evaluatePackedLight(_e44, fragmentInput.worldPosition, normal_9, viewDirection_5, _e2);
             lit = (_e42 + _e46);
         }
     }
@@ -1398,10 +1614,18 @@ void main() {
           },
           {
             kind: 'uniform-buffer',
-            name: 'EnvironmentData_block_3Fragment',
+            name: 'EnvironmentData_block_4Fragment',
             resource: {
               group: 3,
               binding: 5
+            }
+          },
+          {
+            kind: 'uniform-buffer',
+            name: 'LocalShadowReceiverData_block_3Fragment',
+            resource: {
+              group: 3,
+              binding: 13
             }
           },
           {
@@ -1422,7 +1646,7 @@ void main() {
           },
           {
             kind: 'uniform-buffer',
-            name: 'ViewData_block_4Fragment',
+            name: 'ViewData_block_5Fragment',
             resource: {
               group: 1,
               binding: 0
@@ -1640,6 +1864,10 @@ struct DirectionalShadowData {
     vec4 splitDepths;
     vec4 params;
     uint lightIndex;
+    uint pcfRadius;
+};
+struct LocalShadowReceiverData {
+    uvec4 words[81];
 };
 struct EnvironmentData {
     vec3 diffuseIrradiance;
@@ -1649,6 +1877,7 @@ struct EnvironmentData {
 };
 struct ViewData {
     mat4x4 viewProjection;
+    mat4x4 view;
     vec3 cameraPosition;
 };
 struct StandardLitVertexOutput {
@@ -1791,7 +2020,7 @@ void main() {
     vec4 tangent = _p2vs_location4;
     vec4 color0_ = _p2vs_location5;
     mat4x4 _e8 = _group_0_binding_0_vs.world;
-    vec4 worldPosition_2 = (_e8 * vec4(position, 1.0));
+    vec4 worldPosition_3 = (_e8 * vec4(position, 1.0));
     mat4x4 _e14 = _group_0_binding_0_vs.normalWorld;
     vec3 worldNormal = normalize((_e14 * vec4(normal, 0.0)).xyz);
     mat4x4 _e22 = _group_0_binding_0_vs.world;
@@ -1803,7 +2032,7 @@ void main() {
     mat3x3 world3_ = mat3x3(_e35.xyz, _e40.xyz, _e45.xyz);
     float transformSign = ((determinant(world3_) >= 0.0) ? 1.0 : -1.0);
     mat4x4 _e56 = _group_1_binding_0_vs.viewProjection;
-    StandardLitVertexOutput _tmp_return = StandardLitVertexOutput((_e56 * worldPosition_2), worldNormal, worldPosition_2.xyz, uv0_, uv1_, vec4(worldTangent, (tangent.w * transformSign)), color0_);
+    StandardLitVertexOutput _tmp_return = StandardLitVertexOutput((_e56 * worldPosition_3), worldNormal, worldPosition_3.xyz, uv0_, uv1_, vec4(worldTangent, (tangent.w * transformSign)), color0_);
     gl_Position = _tmp_return.position;
     _vs2fs_location0 = _tmp_return.normal;
     _vs2fs_location1 = _tmp_return.worldPosition;

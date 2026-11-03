@@ -1,0 +1,613 @@
+import { mergeAssetRequestDemands, planAssetStageAdmission } from './admission';
+import { AssetRequestStage } from './constants';
+import { AssetRequestCircuitBreaker } from './circuit-breaker';
+import { DEFAULT_ASSET_RETRY_POLICY, planAssetRetry } from './retry-policy';
+import { AssetRequestStageFailure } from './stage-failure';
+import { assertAssetUploadDeferral } from './upload-deferral';
+import type {
+  AssetPrioritySignals,
+  AssetRequestRetrySnapshot,
+  AssetRequestSchedulerOptions,
+  AssetRequestDemand,
+  AssetRequestKey,
+  AssetRequestLease,
+  AssetRequestLeaseStatus,
+  AssetRequestSchedulerSnapshot,
+  AssetRetryPolicy,
+  AssetRequestStage as AssetRequestStageType,
+  AssetSchedulerBudget,
+  AssetStageAdmissionPlan,
+  AssetStageExecutionResult,
+  AssetStageExecutor,
+  AssetUploadDeferral,
+  MergedAssetRequestDemand
+} from './types';
+
+/**
+ * Owns independent consumer leases over deduplicated pending asset operations.
+ *
+ * This scheduler owns admission and typed retry timing only. Transport, decoding, upload execution,
+ * publication, and residency remain authority-owned integrations.
+ */
+export class AssetRequestScheduler {
+  private readonly leases = new Map<string, MutableLease>();
+  private readonly operations = new Map<AssetRequestKey, Map<string, AssetRequestDemand>>();
+  private readonly deferredExecutors = new Map<
+    AssetRequestKey,
+    Readonly<{ request: MergedAssetRequestDemand; executor: AssetStageExecutor }>
+  >();
+  private readonly inFlight = new Set<AssetRequestKey>();
+
+  private readonly retryStates = new Map<AssetRequestKey, RetryState>();
+
+  private readonly retryAttempts = new Map<AssetRequestKey, number>();
+
+  private readonly circuitBreaker: AssetRequestCircuitBreaker;
+
+  private readonly retryPolicy: AssetRetryPolicy;
+
+  private readonly nowMilliseconds: () => number;
+
+  private nextLeaseId = 1;
+  private currentRevision = 0;
+  private pressureLevel: 'normal' | 'constrained' | 'critical' = 'normal';
+
+  /** Reports the current composition-owned admission pressure policy. */
+  get pressure(): 'normal' | 'constrained' | 'critical' {
+    return this.pressureLevel;
+  }
+
+  /** Changes admission policy without cancelling consumers or interrupting active operations. */
+  setPressure(level: 'normal' | 'constrained' | 'critical'): void {
+    if (level !== 'normal' && level !== 'constrained' && level !== 'critical') {
+      throw new Error('Asset scheduler pressure level is invalid.');
+    }
+    if (this.pressureLevel === level) return;
+    this.pressureLevel = level;
+    this.currentRevision += 1;
+  }
+
+  /**
+   * Cancels only opted-in optional queued operations under critical pressure.
+   * Shared work is protected if any consumer is required, interactive, or not cancellable.
+   * Active executors retain ownership until terminal completion.
+   * Returns the cancelled operation keys for diagnostics.
+   */
+  cancelPressureEligible(): readonly AssetRequestKey[] {
+    if (this.pressureLevel !== 'critical') return EMPTY_CANCELLED_REQUEST_KEYS;
+    const cancelled: AssetRequestKey[] = [];
+    for (const [key, operation] of this.operations) {
+      if (this.inFlight.has(key)) continue;
+      const demands = [...operation.values()];
+      if (
+        !demands.every(
+          (demand) =>
+            demand.cancelOnCriticalPressure === true &&
+            demand.required !== true &&
+            demand.priority.class !== 'interactive'
+        )
+      )
+        continue;
+      for (const demand of demands) {
+        const lease = this.leases.get(demand.consumerId);
+        if (lease === undefined)
+          throw new Error('Pressure cancellation retained a missing consumer lease.');
+        this.cancel(lease, 'critical-residency-pressure');
+      }
+      cancelled.push(key);
+    }
+    return Object.freeze(cancelled);
+  }
+
+  /** Creates a scheduler with injectable time and deterministic retry bounds. */
+  constructor(options: AssetRequestSchedulerOptions = {}) {
+    this.retryPolicy = options.retryPolicy ?? DEFAULT_ASSET_RETRY_POLICY;
+    this.circuitBreaker = new AssetRequestCircuitBreaker(options.circuitBreaker);
+    this.nowMilliseconds = options.nowMilliseconds ?? Date.now;
+  }
+
+  /** Registers one independently cancellable consumer demand. */
+  request(demand: AssetRequestDemand): AssetRequestLease {
+    if (demand.required !== undefined && typeof demand.required !== 'boolean') {
+      throw new Error('Asset request required declaration must be boolean.');
+    }
+    if (
+      demand.cancelOnCriticalPressure !== undefined &&
+      typeof demand.cancelOnCriticalPressure !== 'boolean'
+    )
+      throw new Error('Pressure cancellation declaration must be boolean.');
+    const id = `asset-request-lease:${this.nextLeaseId++}`;
+    const operation = this.operations.get(demand.key) ?? new Map<string, AssetRequestDemand>();
+    if (operation.size > 0) validateCompatibleOperation(demand, operation.values().next().value);
+    const leaseDemand = Object.freeze({ ...demand, consumerId: id });
+    operation.set(id, leaseDemand);
+    this.operations.set(demand.key, operation);
+    const lease: MutableLease = {
+      id,
+      key: demand.key,
+      status: 'active',
+      demand: leaseDemand
+    };
+    this.leases.set(id, lease);
+    this.currentRevision += 1;
+    return Object.freeze({
+      id,
+      key: demand.key,
+      get status() {
+        return lease.status;
+      },
+      get cancelled() {
+        return lease.status === 'cancelled';
+      },
+      updatePriority: (priority: AssetPrioritySignals) => this.updatePriority(lease, priority),
+      cancel: (reason: string) => this.cancel(lease, reason)
+    });
+  }
+
+  /** Returns a detached immutable view of all pending merged operations. */
+  snapshot(): AssetRequestSchedulerSnapshot {
+    const operations = this.mergedOperations();
+    let completedLeases = 0;
+    for (const lease of this.leases.values()) {
+      if (lease.status === 'completed') completedLeases += 1;
+    }
+    return Object.freeze({
+      revision: this.currentRevision,
+      operations,
+      activeLeases: this.activeLeaseCount(),
+      completedLeases,
+      retries: this.retrySnapshots(),
+      circuits: this.circuitBreaker.snapshots(this.readNowMilliseconds())
+    });
+  }
+
+  /** Plans one stage using the current active consumer leases without retaining caller data. */
+  plan(stage: AssetRequestStageType, budget: AssetSchedulerBudget): AssetStageAdmissionPlan {
+    const now = this.readNowMilliseconds();
+    const stageDemands = this.activeDemandsForStage(stage);
+    // Admit shared work if any consumer is eligible, preserving all independent consumer leases.
+    const eligibleKeys = new Set(
+      stageDemands
+        .filter(
+          (demand) =>
+            demand.required === true ||
+            this.pressureLevel === 'normal' ||
+            (this.pressureLevel === 'constrained' && demand.priority.class !== 'background') ||
+            demand.priority.class === 'interactive'
+        )
+        .map((demand) => demand.key)
+    );
+    const probeKey = this.circuitBreaker.probeCandidate(stage, stageDemands, now);
+    const hasCircuit = this.circuitBreaker.hasCircuit(stage);
+    const demands = stageDemands.filter((demand) => {
+      const retry = this.retryStates.get(demand.key);
+      const retryReady =
+        retry === undefined || (retry.kind === 'backoff' && retry.retryAtMilliseconds <= now);
+      return (
+        eligibleKeys.has(demand.key) &&
+        (retryReady || demand.key === probeKey) &&
+        (!hasCircuit || demand.key === probeKey)
+      );
+    });
+    return planAssetStageAdmission(stage, demands, budget);
+  }
+
+  /**
+   * Runs admitted operations through an injected stage authority, then revalidates before state
+   * transition. Execution is sequential inside this bounded admission plan, so this seam cannot
+   * create an unbounded Promise fan-out.
+   */
+  async execute(
+    stage: AssetRequestStageType,
+    budget: AssetSchedulerBudget,
+    executor: AssetStageExecutor
+  ): Promise<readonly AssetStageExecutionResult[]> {
+    const plan = this.plan(stage, budget);
+    const results: AssetStageExecutionResult[] = [];
+    const circuit = this.circuitBreaker
+      .snapshots(this.readNowMilliseconds())
+      .find((snapshot) => snapshot.stage === stage);
+    const circuitProbeKey =
+      circuit !== undefined && circuit.kind === 'half-open'
+        ? this.circuitBreaker.probeCandidate(
+            stage,
+            this.activeDemandsForStage(stage),
+            this.readNowMilliseconds()
+          )
+        : undefined;
+    for (const request of plan.admitted) {
+      if (circuitProbeKey !== undefined && request.key !== circuitProbeKey) continue;
+      if (!this.circuitBreaker.claim(stage, request.key, this.readNowMilliseconds())) continue;
+      if (this.inFlight.has(request.key)) {
+        results.push(
+          Object.freeze({
+            key: request.key,
+            stage,
+            status: 'failed',
+            error: new Error(`Asset request "${request.key}" is already executing.`)
+          })
+        );
+        continue;
+      }
+      const retained = this.deferredExecutors.get(request.key);
+      if (retained !== undefined && retained.executor !== executor) {
+        results.push(
+          Object.freeze({
+            key: request.key,
+            stage,
+            status: 'failed',
+            error: new Error(
+              `Deferred asset operation "${request.key}" requires its original executor.`
+            )
+          })
+        );
+        continue;
+      }
+      this.inFlight.add(request.key);
+      try {
+        const execution = await executor.execute(request);
+        if (execution !== undefined) {
+          assertUploadDeferral(stage, execution);
+          const result = this.settleDeferral(request, execution);
+          if (result.status === 'deferred' && executor.discard !== undefined) {
+            this.deferredExecutors.set(request.key, { request, executor });
+          } else if (result.status === 'stale') {
+            this.deferredExecutors.delete(request.key);
+            executor.discard?.(request);
+          }
+          results.push(result);
+          this.circuitBreaker.releaseProbe(request.key);
+          if (circuitProbeKey !== undefined) break;
+          continue;
+        }
+      } catch (error) {
+        this.deferredExecutors.delete(request.key);
+        results.push(this.settleFailure(request, error));
+        this.circuitBreaker.releaseProbe(request.key);
+        if (circuitProbeKey !== undefined) break;
+        continue;
+      } finally {
+        this.inFlight.delete(request.key);
+      }
+      this.deferredExecutors.delete(request.key);
+      let executionResult: AssetStageExecutionResult;
+      try {
+        executionResult = this.settleExecution(request, executor);
+        if (executionResult.status === 'advanced' || executionResult.status === 'completed') {
+          this.retryStates.delete(request.key);
+          this.retryAttempts.delete(request.key);
+        }
+        if (executionResult.status === 'stale') executor.discard?.(request);
+        results.push(executionResult);
+      } catch (error) {
+        this.deferredExecutors.delete(request.key);
+        const result = this.settleFailure(request, error);
+        executor.discard?.(request);
+        results.push(result);
+        this.circuitBreaker.releaseProbe(request.key);
+        if (circuitProbeKey !== undefined) break;
+        continue;
+      }
+      if (
+        this.circuitBreaker.isProbe(request.key) &&
+        (executionResult.status === 'advanced' || executionResult.status === 'completed')
+      ) {
+        this.circuitBreaker.recordSuccess(request.stage);
+      }
+      this.circuitBreaker.releaseProbe(request.key);
+      if (circuitProbeKey !== undefined) break;
+    }
+    return Object.freeze(results);
+  }
+
+  /**
+   * Advances one pending operation after its current stage executor has completed successfully.
+   *
+   * @throws When the operation is absent, has no consumers, or the transition skips the declared
+   * scheduler stage order.
+   */
+  advance(key: AssetRequestKey, nextStage: AssetRequestStageType): void {
+    const operation = this.operations.get(key);
+    const first = operation?.values().next().value as AssetRequestDemand | undefined;
+    if (operation === undefined || first === undefined)
+      throw new Error(`Asset request operation "${key}" is not pending.`);
+    const expected = NEXT_STAGE[first.stage];
+    if (expected !== nextStage) {
+      throw new Error(
+        `Asset request operation "${key}" must advance from "${first.stage}" to "${expected ?? 'terminal'}".`
+      );
+    }
+    for (const [leaseId, demand] of operation) {
+      const advanced = Object.freeze({ ...demand, stage: nextStage });
+      operation.set(leaseId, advanced);
+      const lease = this.leases.get(leaseId);
+      if (lease === undefined) throw new Error('Asset request operation retained a missing lease.');
+      lease.demand = advanced;
+    }
+    this.currentRevision += 1;
+  }
+
+  private settleDeferral(
+    request: MergedAssetRequestDemand,
+    deferral: AssetUploadDeferral
+  ): AssetStageExecutionResult {
+    if (!this.isCurrentExecution(request)) {
+      return Object.freeze({ key: request.key, stage: request.stage, status: 'stale' });
+    }
+    return Object.freeze({
+      key: request.key,
+      stage: request.stage,
+      status: 'deferred',
+      reason: deferral.reason
+    });
+  }
+
+  private settleExecution(
+    request: MergedAssetRequestDemand,
+    executor: AssetStageExecutor
+  ): AssetStageExecutionResult {
+    const { key, stage } = request;
+    if (!this.isCurrentExecution(request)) {
+      return Object.freeze({ key, stage, status: 'stale' });
+    }
+    const operation = this.operations.get(key)!;
+    if (stage === AssetRequestStage.Upload) {
+      for (const leaseId of operation.keys()) {
+        const lease = this.leases.get(leaseId);
+        if (lease === undefined || lease.status !== 'active') {
+          return Object.freeze({ key, stage, status: 'stale' });
+        }
+      }
+      // Authority publication is synchronous: no cancellation can interleave between validation
+      // and the lease transition, and a failed publish leaves the operation retryable.
+      executor.commit?.(request);
+      this.operations.delete(key);
+      for (const leaseId of operation.keys()) {
+        const lease = this.leases.get(leaseId)!;
+        lease.status = 'completed';
+      }
+      this.currentRevision += 1;
+      return Object.freeze({ key, stage, status: 'completed' });
+    }
+    const nextStage = NEXT_STAGE[stage];
+    if (nextStage === undefined) return Object.freeze({ key, stage, status: 'stale' });
+    executor.commitStage?.(request);
+    this.advance(key, nextStage);
+    return Object.freeze({ key, stage, status: 'advanced' });
+  }
+
+  private isCurrentExecution(request: MergedAssetRequestDemand): boolean {
+    const operation = this.operations.get(request.key);
+    const first = operation?.values().next().value as AssetRequestDemand | undefined;
+    return (
+      operation !== undefined &&
+      first !== undefined &&
+      first.stage === request.stage &&
+      first.revision === request.revision &&
+      first.assetId === request.assetId &&
+      request.consumerIds.some((consumerId) => operation.has(consumerId))
+    );
+  }
+
+  private updatePriority(lease: MutableLease, priority: AssetPrioritySignals): void {
+    this.assertLiveLease(lease, 'update priority');
+    const operation = this.operations.get(lease.key);
+    if (operation === undefined)
+      throw new Error('Asset request operation is missing for a live lease.');
+    const updated = Object.freeze({ ...lease.demand, priority: Object.freeze({ ...priority }) });
+    operation.set(lease.id, updated);
+    lease.demand = updated;
+    this.currentRevision += 1;
+  }
+
+  private cancel(lease: MutableLease, reason: string): void {
+    if (lease.status === 'cancelled') return;
+    if (typeof reason !== 'string' || !reason.trim()) {
+      throw new Error('Asset request cancellation reason must be non-empty.');
+    }
+    let discarded:
+      | Readonly<{
+          request: MergedAssetRequestDemand;
+          executor: AssetStageExecutor;
+        }>
+      | undefined;
+    if (lease.status === 'active') {
+      const operation = this.operations.get(lease.key);
+      if (operation === undefined)
+        throw new Error('Asset request operation is missing for a live lease.');
+      operation.delete(lease.id);
+      if (operation.size === 0) {
+        this.operations.delete(lease.key);
+        discarded = this.deferredExecutors.get(lease.key);
+        this.deferredExecutors.delete(lease.key);
+      }
+    }
+    lease.status = 'cancelled';
+    this.leases.delete(lease.id);
+    this.currentRevision += 1;
+    if (!this.operations.has(lease.key)) {
+      this.retryStates.delete(lease.key);
+      this.retryAttempts.delete(lease.key);
+    }
+    discarded?.executor.discard?.(discarded.request);
+  }
+
+  private activeDemandsForStage(stage: AssetRequestStageType): readonly AssetRequestDemand[] {
+    const demands: AssetRequestDemand[] = [];
+    for (const operation of this.operations.values()) {
+      for (const demand of operation.values()) {
+        if (demand.stage === stage) demands.push(demand);
+      }
+    }
+    return Object.freeze(demands);
+  }
+
+  private settleFailure(
+    request: MergedAssetRequestDemand,
+    error: unknown
+  ): AssetStageExecutionResult {
+    if (!this.isCurrentExecution(request)) {
+      return Object.freeze({ key: request.key, stage: request.stage, status: 'stale', error });
+    }
+    const typedFailure = error instanceof AssetRequestStageFailure;
+    if (this.circuitBreaker.isProbe(request.key) && typedFailure) {
+      this.circuitBreaker.recordProbeFailure(
+        request.stage,
+        error.failure,
+        this.readNowMilliseconds()
+      );
+      this.circuitBreaker.releaseProbe(request.key);
+      return Object.freeze({ key: request.key, stage: request.stage, status: 'failed', error });
+    }
+    if (!typedFailure) {
+      if (this.circuitBreaker.isProbe(request.key)) {
+        this.circuitBreaker.recordProbeFailure(
+          request.stage,
+          'unknown',
+          this.readNowMilliseconds()
+        );
+        this.circuitBreaker.releaseProbe(request.key);
+      }
+      return Object.freeze({ key: request.key, stage: request.stage, status: 'failed', error });
+    }
+    if (isCircuitRetryableFailure(error.failure)) {
+      this.circuitBreaker.recordFailure(request.stage, error.failure, this.readNowMilliseconds());
+    }
+    const attempt = (this.retryAttempts.get(request.key) ?? 0) + 1;
+    const decision = planAssetRetry(
+      {
+        requestKey: request.key,
+        failure: error.failure,
+        completedAttempts: attempt,
+        nowMilliseconds: this.readNowMilliseconds(),
+        ...(error.retryAfterMilliseconds === undefined
+          ? {}
+          : { retryAfterMilliseconds: error.retryAfterMilliseconds })
+      },
+      this.retryPolicy
+    );
+    this.retryAttempts.set(request.key, attempt);
+    if (decision.kind === 'retry') {
+      this.retryStates.set(request.key, {
+        kind: 'backoff',
+        attempt,
+        retryAtMilliseconds: decision.retryAtMilliseconds
+      });
+    } else {
+      this.retryStates.set(request.key, {
+        kind: 'stopped',
+        attempt,
+        failure: error.failure
+      });
+    }
+    this.currentRevision += 1;
+    return Object.freeze({
+      key: request.key,
+      stage: request.stage,
+      status: 'failed',
+      error,
+      retry: decision
+    });
+  }
+
+  private retrySnapshots(): readonly AssetRequestRetrySnapshot[] {
+    return Object.freeze(
+      [...this.retryStates.entries()]
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([key, retry]) =>
+          retry.kind === 'backoff'
+            ? Object.freeze({
+                key,
+                kind: retry.kind,
+                attempt: retry.attempt,
+                retryAtMilliseconds: retry.retryAtMilliseconds
+              })
+            : Object.freeze({
+                key,
+                kind: retry.kind,
+                attempt: retry.attempt,
+                failure: retry.failure
+              })
+        )
+    );
+  }
+
+  private readNowMilliseconds(): number {
+    const now = this.nowMilliseconds();
+    if (!Number.isSafeInteger(now) || now < 0) {
+      throw new Error('Asset scheduler clock must return a non-negative safe integer.');
+    }
+    return now;
+  }
+
+  private mergedOperations(): readonly MergedAssetRequestDemand[] {
+    const demands: AssetRequestDemand[] = [];
+    for (const operation of this.operations.values()) demands.push(...operation.values());
+    return mergeAssetRequestDemands(demands);
+  }
+
+  private assertLiveLease(lease: MutableLease, action: string): void {
+    if (lease.status !== 'active' || !this.leases.has(lease.id)) {
+      throw new Error(`Cannot ${action} for a cancelled asset request lease.`);
+    }
+  }
+
+  private activeLeaseCount(): number {
+    let active = 0;
+    for (const lease of this.leases.values()) {
+      if (lease.status === 'active') active += 1;
+    }
+    return active;
+  }
+}
+
+const NEXT_STAGE: Readonly<Partial<Record<AssetRequestStageType, AssetRequestStageType>>> =
+  Object.freeze({
+    [AssetRequestStage.Metadata]: AssetRequestStage.Read,
+    [AssetRequestStage.Read]: AssetRequestStage.Decode,
+    [AssetRequestStage.Decode]: AssetRequestStage.Finalize,
+    [AssetRequestStage.Finalize]: AssetRequestStage.Upload
+  });
+
+const EMPTY_CANCELLED_REQUEST_KEYS: readonly AssetRequestKey[] = Object.freeze([]);
+
+interface MutableLease {
+  readonly id: string;
+  readonly key: AssetRequestKey;
+  status: AssetRequestLeaseStatus;
+  demand: AssetRequestDemand;
+}
+
+type RetryState =
+  | Readonly<{ kind: 'backoff'; attempt: number; retryAtMilliseconds: number }>
+  | Readonly<{ kind: 'stopped'; attempt: number; failure: string }>;
+
+function isCircuitRetryableFailure(failure: string): boolean {
+  return failure === 'offline' || failure === 'timeout' || failure === 'provider-failure';
+}
+
+function assertUploadDeferral(
+  stage: AssetRequestStageType,
+  result: unknown
+): asserts result is AssetUploadDeferral {
+  if (stage !== AssetRequestStage.Upload) {
+    throw new Error('Only an upload-stage executor may defer admitted work.');
+  }
+  assertAssetUploadDeferral(result);
+}
+
+function validateCompatibleOperation(
+  demand: AssetRequestDemand,
+  existing: AssetRequestDemand | undefined
+): void {
+  if (existing === undefined) throw new Error('Asset request operation has no existing demand.');
+  if (
+    demand.assetId !== existing.assetId ||
+    demand.stage !== existing.stage ||
+    demand.revision !== existing.revision
+  ) {
+    throw new Error(
+      `Asset request key "${demand.key}" does not describe one compatible operation.`
+    );
+  }
+}

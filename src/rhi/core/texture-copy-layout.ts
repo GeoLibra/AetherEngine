@@ -34,11 +34,51 @@ const FORMAT_BLOCKS: Readonly<Record<string, TexelBlockLayout>> = Object.freeze(
   'bgra8unorm-srgb': { width: 1, height: 1, bytes: 4 },
   rgba16float: { width: 1, height: 1, bytes: 8 },
   rgba32float: { width: 1, height: 1, bytes: 16 },
+  rgba32uint: { width: 1, height: 1, bytes: 16 },
   'bc1-rgba-unorm': { width: 4, height: 4, bytes: 8 },
   'bc1-rgba-unorm-srgb': { width: 4, height: 4, bytes: 8 },
   'bc3-rgba-unorm': { width: 4, height: 4, bytes: 16 },
   'bc3-rgba-unorm-srgb': { width: 4, height: 4, bytes: 16 }
 });
+
+/** Fails before backend lowering when a portable texture copy would change texel format. */
+export function validateTextureCopyCompatibility(
+  source: RHITexture,
+  destination: RHITexture
+): void {
+  if (source.format !== destination.format) {
+    throw new Error(
+      `Texture-to-texture copies require identical formats; source "${source.format}" and destination "${destination.format}" differ.`
+    );
+  }
+}
+
+/** Rejects overlapping copies within one texture subresource before native lowering. */
+export function validateTextureCopyAlias(
+  source: GPUImageCopyTexture,
+  destination: GPUImageCopyTexture,
+  size: RHINormalizedExtent3D
+): void {
+  if (
+    source.texture !== destination.texture ||
+    (source.mipLevel ?? 0) !== (destination.mipLevel ?? 0)
+  )
+    return;
+  const sourceOrigin = copyOrigin(source);
+  const destinationOrigin = copyOrigin(destination);
+  if (
+    rangesOverlap(sourceOrigin.x, size.width, destinationOrigin.x, size.width) &&
+    rangesOverlap(sourceOrigin.y, size.height, destinationOrigin.y, size.height) &&
+    rangesOverlap(
+      sourceOrigin.z,
+      size.depthOrArrayLayers,
+      destinationOrigin.z,
+      size.depthOrArrayLayers
+    )
+  ) {
+    throw new Error('Texture-to-texture copies cannot overlap within the same texture mip level.');
+  }
+}
 
 export function validateBufferTextureCopy(
   copy: GPUImageCopyBuffer,
@@ -54,6 +94,12 @@ export function validateBufferTextureCopy(
   requireUsage(copy.buffer, bufferUsage, bufferUsageName);
   if ((texture.usage & textureUsage) === 0) {
     throw new Error(`Texture "${texture.label ?? texture.id}" requires ${textureUsageName} usage.`);
+  }
+  const sampleCount = texture.descriptor.sampleCount ?? 1;
+  if (sampleCount !== 1) {
+    throw new Error(
+      `Buffer-texture copies require a single-sample texture; texture "${texture.label ?? texture.id}" has sampleCount ${sampleCount}.`
+    );
   }
   const block = FORMAT_BLOCKS[texture.format];
   if (block === undefined)
@@ -136,4 +182,28 @@ function validateBlockBounds(
 function requireUsage(buffer: RHIBuffer, usage: number, name: string): void {
   if ((buffer.usage & usage) === 0)
     throw new Error(`Buffer "${buffer.label ?? buffer.id}" requires ${name} usage.`);
+}
+
+function copyOrigin(copy: GPUImageCopyTexture): {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+} {
+  const tuple = Array.isArray(copy.origin) ? copy.origin : undefined;
+  const object =
+    tuple === undefined ? (copy.origin as { x?: number; y?: number; z?: number }) : undefined;
+  return {
+    x: tuple?.[0] ?? object?.x ?? 0,
+    y: tuple?.[1] ?? object?.y ?? 0,
+    z: tuple?.[2] ?? object?.z ?? 0
+  };
+}
+
+function rangesOverlap(
+  firstStart: number,
+  firstSize: number,
+  secondStart: number,
+  secondSize: number
+): boolean {
+  return firstStart < secondStart + secondSize && secondStart < firstStart + firstSize;
 }

@@ -7,10 +7,13 @@ export interface BrowserWebGL2TextureFacts {
   readonly width: number;
   readonly height: number;
   readonly depthOrArrayLayers: number;
+  /** Native storage selected from the portable sample-count contract. */
+  readonly storage: 'texture' | 'renderbuffer';
   readonly target: 'TEXTURE_2D' | 'TEXTURE_2D_ARRAY';
   readonly format: string;
   readonly aspect: 'color' | 'depth' | 'depth-stencil';
   readonly mipLevelCount: number;
+  readonly sampleCount: number;
 }
 
 export type BrowserWebGL2BufferTarget = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
@@ -61,12 +64,42 @@ export function createBrowserWebGL2ResourcePort(
       if (!Number.isInteger(depthOrArrayLayers) || depthOrArrayLayers < 1) {
         throw new TypeError('Texture depthOrArrayLayers must be a positive integer.');
       }
-      const texture = glObject(gl, 'createTexture');
       const target: BrowserWebGL2TextureFacts['target'] =
         depthOrArrayLayers === 1 ? 'TEXTURE_2D' : 'TEXTURE_2D_ARRAY';
-      glCall(gl, 'bindTexture', [constant(gl, target), texture]);
       const format = textureFormat(gl, descriptor.format);
       const mipLevelCount = optionalNumber(descriptor, 'mipLevelCount') ?? 1;
+      const sampleCount = optionalNumber(descriptor, 'sampleCount') ?? 1;
+      if (!Number.isInteger(sampleCount) || sampleCount < 1) {
+        throw new TypeError('Texture sampleCount must be a positive integer.');
+      }
+      if (sampleCount > 1) {
+        if (target !== 'TEXTURE_2D' || mipLevelCount !== 1) {
+          throw new Error('WebGL2 multisample textures require one 2D layer and one mip level.');
+        }
+        const renderbuffer = glObject(gl, 'createRenderbuffer');
+        glCall(gl, 'bindRenderbuffer', [constant(gl, 'RENDERBUFFER'), renderbuffer]);
+        glCall(gl, 'renderbufferStorageMultisample', [
+          constant(gl, 'RENDERBUFFER'),
+          sampleCount,
+          format.internalFormat,
+          width,
+          height
+        ]);
+        textureFacts.set(renderbuffer, {
+          width,
+          height,
+          depthOrArrayLayers,
+          storage: 'renderbuffer',
+          target,
+          format: String(descriptor.format),
+          aspect: format.aspect,
+          mipLevelCount,
+          sampleCount
+        });
+        return renderbuffer;
+      }
+      const texture = glObject(gl, 'createTexture');
+      glCall(gl, 'bindTexture', [constant(gl, target), texture]);
       if (target === 'TEXTURE_2D') {
         glCall(gl, 'texStorage2D', [
           constant(gl, target),
@@ -111,16 +144,21 @@ export function createBrowserWebGL2ResourcePort(
         width,
         height,
         depthOrArrayLayers,
+        storage: 'texture',
         target,
         format: String(descriptor.format),
         aspect: format.aspect,
-        mipLevelCount
+        mipLevelCount,
+        sampleCount
       });
       return texture;
     },
     deleteTexture(texture): void {
+      const facts = textureFacts.get(texture);
       textureFacts.delete(texture);
-      glCall(gl, 'deleteTexture', [texture]);
+      glCall(gl, facts?.storage === 'renderbuffer' ? 'deleteRenderbuffer' : 'deleteTexture', [
+        texture
+      ]);
     },
     createSampler(descriptor) {
       const sampler = glObject(gl, 'createSampler');
@@ -179,10 +217,13 @@ function textureFormat(
   gl: BrowserWebGL2Object,
   value: unknown
 ): { readonly internalFormat: number; readonly aspect: BrowserWebGL2TextureFacts['aspect'] } {
+  if (value === 'r8unorm') return { internalFormat: constant(gl, 'R8'), aspect: 'color' };
+  if (value === 'rg8unorm') return { internalFormat: constant(gl, 'RG8'), aspect: 'color' };
   if (value === 'rgba8unorm') return { internalFormat: constant(gl, 'RGBA8'), aspect: 'color' };
   if (value === 'rgba8unorm-srgb')
     return { internalFormat: constant(gl, 'SRGB8_ALPHA8'), aspect: 'color' };
   if (value === 'rgba32uint') return { internalFormat: constant(gl, 'RGBA32UI'), aspect: 'color' };
+  if (value === 'rgba32float') return { internalFormat: constant(gl, 'RGBA32F'), aspect: 'color' };
   if (value === 'depth24plus')
     return { internalFormat: constant(gl, 'DEPTH_COMPONENT24'), aspect: 'depth' };
   if (value === 'depth24plus-stencil8')

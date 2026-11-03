@@ -15,6 +15,9 @@ export function validateCameraProjection(projection: CameraProjection): void {
     (!Number.isFinite(projection.far) || projection.far <= projection.near)
   )
     throw new Error('Camera far plane must be greater than near.');
+  if (projection.far === 'infinite' && projection.kind !== 'perspective') {
+    throw new Error('Infinite far is supported only by perspective cameras.');
+  }
   if (
     projection.kind === 'perspective' &&
     (!Number.isFinite(projection.verticalFovRadians) ||

@@ -38,7 +38,11 @@ import type {
 } from '../types';
 import { WebGL2RenderPassEncoder, type WebGL2PassController } from './pass';
 import { throwWebGL2Unsupported } from '../unsupported';
-import { validateBufferTextureCopy } from '../../core/texture-copy-layout';
+import {
+  validateBufferTextureCopy,
+  validateTextureCopyAlias,
+  validateTextureCopyCompatibility
+} from '../../core/texture-copy-layout';
 
 export class WebGL2CommandBuffer extends WebGL2ResourceBase implements RHICommandBuffer {
   readonly kind = 'command-buffer';
@@ -203,6 +207,8 @@ export class WebGL2CommandEncoder implements RHICommandEncoder, WebGL2PassContro
     const extent = validateExtent(copySize);
     const normalizedSource = validateTextureCopy(source, extent, this.ownerToken);
     const normalizedDestination = validateTextureCopy(destination, extent, this.ownerToken);
+    validateTextureCopyCompatibility(source.texture, destination.texture);
+    validateTextureCopyAlias(source, destination, extent);
     this.lease(normalizedSource.texture);
     this.lease(normalizedDestination.texture);
     this.stats.copy.copyTextureToTexture += 1;
@@ -462,10 +468,22 @@ function validateTextureCopy(
   const resource = assertWebGL2Resource(copy.texture, owner);
   if (!(resource instanceof WebGL2Texture))
     throw new Error('Command encoder requires a WebGL2 texture.');
+  const sampleCount = resource.descriptor.sampleCount ?? 1;
+  if (sampleCount !== 1) {
+    throw new Error(
+      `Texture copies require a single-sample texture; texture "${resource.label ?? resource.id}" has sampleCount ${sampleCount}.`
+    );
+  }
   const mipLevel = copy.mipLevel ?? 0;
   const mipCount = resource.descriptor.mipLevelCount ?? 1;
   if (!Number.isInteger(mipLevel) || mipLevel < 0 || mipLevel >= mipCount)
     throw new Error(`Texture mipLevel ${mipLevel} is outside mipLevelCount ${mipCount}.`);
+  const aspect = copy.aspect ?? 'all';
+  if (aspect !== 'all') {
+    throw new Error(
+      `WebGL2 texture copies support the color "all" aspect only; received "${aspect}".`
+    );
+  }
   const origin = normalizeOrigin(copy.origin);
   const scale = 2 ** mipLevel;
   const width = Math.max(1, Math.floor(resource.width / scale));
@@ -483,7 +501,7 @@ function validateTextureCopy(
       `Texture copy range exceeds texture "${resource.label ?? resource.id}" bounds.`
     );
   }
-  return Object.freeze({ texture: resource, mipLevel, origin, aspect: copy.aspect ?? 'all' });
+  return Object.freeze({ texture: resource, mipLevel, origin, aspect });
 }
 
 function normalizeOrigin(origin: GPUImageCopyTexture['origin']) {

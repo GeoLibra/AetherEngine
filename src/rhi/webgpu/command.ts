@@ -41,7 +41,11 @@ import {
   normalizeUploadExtent,
   validateUploadBufferRange
 } from './upload-validation';
-import { validateBufferTextureCopy } from '../core/texture-copy-layout';
+import {
+  validateBufferTextureCopy,
+  validateTextureCopyAlias,
+  validateTextureCopyCompatibility
+} from '../core/texture-copy-layout';
 
 interface EncoderInteropState {
   readonly owner: WebGPUDeviceOwner;
@@ -203,6 +207,8 @@ export class WebGPUCommandEncoder implements RHICommandEncoder {
       nativeDestination,
       extent
     );
+    validateTextureCopyCompatibility(source.texture, destination.texture);
+    validateTextureCopyAlias(source, destination, extent);
     this.lease(source.texture);
     this.lease(destination.texture);
     this.native.copyTextureToTexture(loweredSource, loweredDestination, extent);

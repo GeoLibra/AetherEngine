@@ -12,6 +12,10 @@ export interface RHISubmission {
 }
 
 export interface RHIQueueMetrics {
+  /** Number of successful CPU-to-GPU upload calls accepted by this queue. */
+  readonly uploadCalls: number;
+  /** Total byte length accepted by successful CPU-to-GPU upload calls. */
+  readonly uploadBytes: number;
   readonly submitted: number;
   readonly pending: number;
   readonly completed: number;

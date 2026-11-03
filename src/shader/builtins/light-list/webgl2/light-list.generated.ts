@@ -13,7 +13,7 @@ export const LIGHT_LIST_WEBGL2_SHADER_ARTIFACT = decodeCookedShaderRuntimeArtifa
   },
   source: {
     sourceUri: 'asset://aether/builtins/light-list-webgl.wgsl',
-    contentHash: '482f52037913e79a6e878888697f140cdb3899df605ad3a8e668f288a9eed527',
+    contentHash: '0dc7ffd0dd83f6c1e7b8462a1646f64140f24b74d867a041c7c242358f23f696',
     byteLength: 10734
   },
   entryPoints: [
@@ -115,7 +115,7 @@ struct FragmentOutput {
     uvec4 overflow;
 };
 const uint LIGHT_HEADER_WORDS = 4u;
-const uint LIGHT_RECORD_WORDS = 12u;
+const uint LIGHT_RECORD_WORDS = 16u;
 const uint RECEIVER_RECORD_WORDS = 12u;
 const uint LIGHT_KIND_DIRECTIONAL = 0u;
 const uint BOUNDS_KIND_SPHERE = 0u;
@@ -499,7 +499,7 @@ struct FragmentOutput {
     uvec4 overflow;
 };
 const uint LIGHT_HEADER_WORDS = 4u;
-const uint LIGHT_RECORD_WORDS = 12u;
+const uint LIGHT_RECORD_WORDS = 16u;
 const uint RECEIVER_RECORD_WORDS = 12u;
 const uint LIGHT_KIND_DIRECTIONAL = 0u;
 const uint BOUNDS_KIND_SPHERE = 0u;

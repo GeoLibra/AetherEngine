@@ -10,6 +10,7 @@ declare global {
       state(): Readonly<Record<string, unknown>>;
       resize(width: number, height: number): Promise<void> | void;
       setRotation(angleRadians: number): Promise<void> | void;
+      setCastsShadow(enabled: boolean): void;
       destroy(): Promise<void>;
     }>;
   }
@@ -19,14 +20,12 @@ const root = document.getElementById('root');
 if (root === null) throw new Error('Example root element is missing.');
 
 const acceptance = new URLSearchParams(location.search).has('e2e');
+const acceptanceUsesStandaloneBoxScene = acceptance && location.pathname === '/';
 
-createRoot(root).render(
-  <StrictMode>
-    <App mountScene={!acceptance} />
-  </StrictMode>
-);
+const app = <App mountScene={!acceptanceUsesStandaloneBoxScene} />;
+createRoot(root).render(acceptance ? app : <StrictMode>{app}</StrictMode>);
 
-if (acceptance) {
+if (acceptanceUsesStandaloneBoxScene) {
   void mountForAcceptance().catch((error: unknown) => {
     const cause = error instanceof Error ? Reflect.get(error, 'cause') : undefined;
     window.__AETHER_EXAMPLE__ = Object.freeze({
@@ -37,6 +36,7 @@ if (acceptance) {
       }),
       resize: () => undefined,
       setRotation: () => undefined,
+      setCastsShadow: () => undefined,
       destroy: async () => undefined
     });
   });
@@ -44,7 +44,14 @@ if (acceptance) {
 
 async function mountForAcceptance(): Promise<void> {
   const canvas = await waitForCanvas();
-  const requested = new URLSearchParams(location.search).get('backend');
+  const query = new URLSearchParams(location.search);
+  const requested = query.get('backend');
+  const sampleCount = query.get('samples') === '4' ? 4 : undefined;
+  const requestedLocalShadow = query.get('localShadow');
+  const localShadow =
+    requestedLocalShadow === 'spot' || requestedLocalShadow === 'point'
+      ? requestedLocalShadow
+      : 'none';
   const preferences: Readonly<Record<string, readonly ('webgpu' | 'webgl2')[]>> = {
     webgpu: ['webgpu'],
     webgl2: ['webgl2']
@@ -58,7 +65,9 @@ async function mountForAcceptance(): Promise<void> {
     environment: 'hdr',
     background: 'hdr',
     metallic: 0.85,
-    roughness: 0.15
+    roughness: 0.15,
+    localShadow,
+    ...(sampleCount === undefined ? {} : { sampleCount })
   });
   const gl = canvas.getContext('webgl2');
   window.__AETHER_EXAMPLE__ = Object.freeze({
@@ -74,6 +83,7 @@ async function mountForAcceptance(): Promise<void> {
     }),
     resize: (width, height) => scene.resize(width, height),
     setRotation: (angleRadians) => scene.setRotation(angleRadians),
+    setCastsShadow: (enabled) => scene.setCastsShadow(enabled),
     destroy: () => scene.destroy()
   });
 }

@@ -2,10 +2,13 @@ import { describe, expect, test } from 'vitest';
 import {
   MaterialDiagnosticError,
   compileMaterialParameterLayout,
+  createMaterialParameterUploadRanges,
   createBufferLayoutManifest,
   createMaterialParameterBlock,
   defineMaterialSchema,
   writeMaterialParameters,
+  UploadPlanner,
+  uploadMaterialParameterRanges,
   type BufferLayoutManifest,
   type MaterialParameterBlock,
   type ShaderStructTypeIR
@@ -88,6 +91,98 @@ describe('Material parameter layout and writer', () => {
     expect(unchanged.bytes).toEqual(changed.bytes);
     expect(unchanged.dirtyRanges).toEqual([]);
     expect(unchanged.counters).toEqual({ resolvedFields: 6, writtenFields: 0, writtenBytes: 0 });
+  });
+
+  test('exports detached dirty payloads at the destination buffer offset', () => {
+    const fixture = createParameterFixture();
+    const first = writeMaterialParameters(
+      fixture.layout,
+      createTypedBlock(fixture.defaults, fixture.schema)
+    );
+    const changed = writeMaterialParameters(
+      fixture.layout,
+      createTypedBlock(fixture.defaults, fixture.schema).with(
+        fixture.schema.fields.normal,
+        [9, 8, 7]
+      ),
+      first
+    );
+
+    const ranges = createMaterialParameterUploadRanges(changed, 256);
+
+    expect(ranges).toHaveLength(1);
+    expect(ranges[0]?.offset).toBe(272);
+    expect(new Float32Array((ranges[0]?.data as Uint8Array).buffer)).toEqual(
+      new Float32Array([9, 8, 7])
+    );
+    (ranges[0]?.data as Uint8Array)[0] = 0xff;
+    expect(
+      new Float32Array(
+        (createMaterialParameterUploadRanges(changed, 256)[0]!.data as Uint8Array).buffer
+      )
+    ).toEqual(new Float32Array([9, 8, 7]));
+    expect(() => createMaterialParameterUploadRanges(changed, -1)).toThrow(
+      'baseOffset must be a non-negative safe integer'
+    );
+  });
+
+  test('submits all material dirty ranges only after planner admission and rolls back a deferred batch', async () => {
+    const fixture = createParameterFixture();
+    const first = writeMaterialParameters(
+      fixture.layout,
+      createTypedBlock(fixture.defaults, fixture.schema)
+    );
+    const changed = writeMaterialParameters(
+      fixture.layout,
+      createTypedBlock(fixture.defaults, fixture.schema).with(
+        fixture.schema.fields.normal,
+        [9, 8, 7]
+      ),
+      first
+    );
+    const { NullDevice } = await import('../../src');
+    const device = new NullDevice();
+    const buffer = device.createBuffer({ size: 512, usage: 1 << 3 });
+    const planner = new UploadPlanner({
+      capacityBytes: 64,
+      maxFrameBytes: 64,
+      maxFrameCommands: 2,
+      alignment: 16
+    });
+    planner.beginFrame(1);
+
+    const uploaded = uploadMaterialParameterRanges(planner, device.queue, buffer, changed, 256);
+    expect(uploaded).toEqual(
+      expect.objectContaining({ status: 'written', rangeCount: 1, byteLength: 12 })
+    );
+    await buffer.mapAsync(0);
+    expect(new Float32Array(buffer.getMappedRange(272, 12))).toEqual(new Float32Array([9, 8, 7]));
+    buffer.unmap();
+    expect(device.queue.metrics()).toMatchObject({ uploadCalls: 1, uploadBytes: 12 });
+    if (uploaded.status !== 'written') throw new Error('Expected budgeted material write.');
+    const submission = device.queue.submit([]);
+    for (const reservation of uploaded.reservations) planner.retireAfter(reservation, submission);
+    await submission.done;
+    await Promise.resolve();
+    expect(planner.snapshot()).toMatchObject({ liveBytes: 0, allocatedBytes: 12 });
+
+    const deferredPlanner = new UploadPlanner({
+      capacityBytes: 256,
+      maxFrameBytes: 256,
+      maxFrameCommands: 1,
+      alignment: 16
+    });
+    deferredPlanner.beginFrame(1);
+    expect(uploadMaterialParameterRanges(deferredPlanner, device.queue, buffer, first)).toEqual({
+      status: 'deferred',
+      reason: 'frame-command-budget'
+    });
+    expect(deferredPlanner.snapshot()).toMatchObject({
+      allocatedBytes: 0,
+      allocatedCommands: 0,
+      reservedBytes: 0,
+      liveBytes: 0
+    });
   });
 
   test('merges adjacent and overlapping reflected byte intervals deterministically', () => {

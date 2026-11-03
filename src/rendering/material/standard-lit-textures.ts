@@ -8,11 +8,15 @@ export interface StandardLitResolvedTexture {
 }
 
 export interface StandardLitResourceResolver {
+  /** Owner-scoped physical texture bytes, counted once across all material bindings. */
+  inspectResidency?(): Readonly<{ textureBytes: number; textureCount: number }>;
   resolveTexture(assetId: string): StandardLitResolvedTexture | undefined;
   resolveSampler(assetId: string): RHISampler | undefined;
 }
 
 export interface PreparedStandardLitTextureBindings {
+  /** Bytes of owned builtin texels only; resolver-owned textures retain separate accounting. */
+  readonly ownedTextureBytes: number;
   readonly views: readonly RHITextureView[];
   readonly sampler: RHISampler;
   readonly samplers?: readonly RHISampler[];
@@ -107,6 +111,7 @@ export function prepareStandardLitTextureBindings(input: {
     }
 
     return Object.freeze({
+      ownedTextureBytes: ownedTextures.length * 4,
       views: Object.freeze(views),
       sampler,
       ...(resolvedSamplers !== undefined ? { samplers: Object.freeze(resolvedSamplers) } : {}),

@@ -19,7 +19,11 @@ export function createBrowserWebGL2BindingPort(
       ]);
     },
     bindTexture(unit, texture): void {
-      const target = textureFacts.get(texture)?.target ?? 'TEXTURE_2D';
+      const facts = textureFacts.get(texture);
+      if (facts?.storage === 'renderbuffer') {
+        throw new Error('WebGL2 multisample renderbuffers cannot be bound as sampled textures.');
+      }
+      const target = facts?.target ?? 'TEXTURE_2D';
       glCall(gl, 'activeTexture', [constant(gl, 'TEXTURE0') + unit]);
       glCall(gl, 'bindTexture', [constant(gl, target), texture]);
     },

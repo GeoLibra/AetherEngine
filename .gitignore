@@ -20,3 +20,12 @@ tools/naga-shader-validator/target/
 test-results/
 .playwright-cli
 output
+engine/design/
+# Internal design and development records stay local.
+engine/
+.loops/
+.superpowers/
+docs/
+*.md
+!README.md
+!AGENTS.md

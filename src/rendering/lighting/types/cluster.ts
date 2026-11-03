@@ -1,5 +1,6 @@
 import type { Vec3 } from '../../../math/types';
 import type { PreparedLight } from './light';
+import type { RHIBuffer } from '../../../rhi/contracts';
 
 export type ClusterDepthPolicy = 'finite' | 'infinite';
 
@@ -94,4 +95,17 @@ export interface ClusterBuildResult {
   readonly headers: readonly ClusterLightListHeader[];
   readonly lightIndices: readonly number[];
   readonly counters: ClusterBuildCounters;
+}
+
+/**
+ * Physical WebGPU resources consumed together by a clustered forward shader. The ABI is kept
+ * separate from receiver-list inputs: headers are keyed by cluster index, not render entity.
+ */
+export interface ClusterForwardInputs {
+  readonly metadata: RHIBuffer;
+  readonly packedLights: RHIBuffer;
+  readonly directional: RHIBuffer;
+  readonly headers: RHIBuffer;
+  readonly indices: RHIBuffer;
+  readonly overflow: RHIBuffer;
 }

@@ -1,4 +1,7 @@
 import { ShaderParameterWriter } from '../shader/layout';
+import type { BufferWriteRange } from '../rhi/contracts/webgpu';
+import type { RHIBuffer, RHIQueue } from '../rhi/contracts';
+import { UploadPlanner, type UploadReservation } from '../rhi/core/upload-planner';
 import type {
   BufferFieldLayout,
   BufferFieldLayoutShape,
@@ -54,6 +57,7 @@ export interface MaterialParameterWrite {
 }
 
 const PARAMETER_WRITE_BYTES = new WeakMap<MaterialParameterWrite, Uint8Array>();
+const EMPTY_UPLOAD_RESERVATIONS: readonly UploadReservation[] = Object.freeze([]);
 
 /**
  * Parameter writes retain their upload bytes privately. A read returns a detached upload view so
@@ -202,6 +206,100 @@ export function writeMaterialParameters(
       writtenBytes
     })
   );
+}
+
+/**
+ * Builds detached queue-write payloads for only the changed parameter byte intervals.
+ *
+ * `baseOffset` is the destination buffer offset in bytes and must be a non-negative safe integer.
+ * Each returned data view is owned by the caller, so queue submission cannot mutate the immutable
+ * material revision retained for a later dirty-range comparison.
+ *
+ * @throws When the write is not an owned material snapshot or the destination offset is invalid.
+ */
+export function createMaterialParameterUploadRanges(
+  write: MaterialParameterWrite,
+  baseOffset = 0
+): readonly BufferWriteRange[] {
+  if (!Number.isSafeInteger(baseOffset) || baseOffset < 0) {
+    throw new Error('Material parameter upload baseOffset must be a non-negative safe integer.');
+  }
+  const bytes = PARAMETER_WRITE_BYTES.get(write);
+  if (bytes === undefined) throw new Error('Material parameter write is not an owned snapshot.');
+  const ranges = write.dirtyRanges.map((range) => {
+    const end = range.offset + range.byteLength;
+    if (!Number.isSafeInteger(range.offset) || !Number.isSafeInteger(range.byteLength)) {
+      throw new Error('Material parameter dirty range must use safe integer byte bounds.');
+    }
+    if (range.offset < 0 || range.byteLength < 0 || end > bytes.byteLength) {
+      throw new Error('Material parameter dirty range is outside the owned parameter bytes.');
+    }
+    return Object.freeze({
+      offset: baseOffset + range.offset,
+      data: bytes.slice(range.offset, end)
+    });
+  });
+  return Object.freeze(ranges);
+}
+
+/** Result of a budgeted, atomic material dirty-range queue write. */
+export type MaterialParameterUploadResult =
+  | Readonly<{
+      status: 'written';
+      rangeCount: number;
+      byteLength: number;
+      /** Live staging reservations; bind each to the frame submission with `retireAfter`. */
+      reservations: readonly UploadReservation[];
+    }>
+  | Readonly<{
+      status: 'deferred';
+      reason: 'frame-byte-budget' | 'frame-command-budget' | 'ring-capacity';
+    }>;
+
+/**
+ * Admits all changed material ranges before issuing the queue's atomic range batch.
+ *
+ * A deferred range releases every earlier reservation and emits no queue write. Likewise, a
+ * backend validation error releases the complete batch so UploadPlanner only reflects writes the
+ * queue accepted. The queue retains its existing all-or-nothing validation contract.
+ */
+export function uploadMaterialParameterRanges(
+  planner: UploadPlanner,
+  queue: RHIQueue,
+  buffer: RHIBuffer,
+  write: MaterialParameterWrite,
+  baseOffset = 0
+): MaterialParameterUploadResult {
+  const ranges = createMaterialParameterUploadRanges(write, baseOffset);
+  if (ranges.length === 0) {
+    return Object.freeze({
+      status: 'written',
+      rangeCount: 0,
+      byteLength: 0,
+      reservations: EMPTY_UPLOAD_RESERVATIONS
+    });
+  }
+  const reservations = [];
+  for (const range of ranges) {
+    const reservation = planner.reserve(range.data.byteLength);
+    if (reservation.status === 'deferred') {
+      for (const admitted of reservations) planner.release(admitted);
+      return reservation;
+    }
+    reservations.push(reservation);
+  }
+  try {
+    queue.writeBufferRanges(buffer, ranges);
+  } catch (error) {
+    for (const reservation of reservations) planner.release(reservation);
+    throw error;
+  }
+  return Object.freeze({
+    status: 'written',
+    rangeCount: ranges.length,
+    byteLength: ranges.reduce((total, range) => total + range.data.byteLength, 0),
+    reservations: Object.freeze([...reservations])
+  });
 }
 
 function indexBufferFields(

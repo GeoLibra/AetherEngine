@@ -141,6 +141,12 @@ export function validateTextureCopyView(
 ): RHINormalizedImageCopyTexture {
   assertResourceOwnedBy(view.texture, owner);
   assertResourceLive(view.texture);
+  const sampleCount = view.texture.descriptor.sampleCount ?? 1;
+  if (sampleCount !== 1) {
+    throw new Error(
+      `Texture copies require a single-sample texture; texture "${view.texture.label ?? view.texture.id}" has sampleCount ${sampleCount}.`
+    );
+  }
 
   const mipLevel = view.mipLevel ?? 0;
   if (!Number.isInteger(mipLevel) || mipLevel < 0) {

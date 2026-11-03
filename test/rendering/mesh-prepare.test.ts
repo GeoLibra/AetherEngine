@@ -158,4 +158,27 @@ describe('mesh GPU preparation', () => {
     await Promise.resolve();
     expect(prepared.value.vertexBuffers[0]!.state).toBe('disposed');
   });
+
+  test('releases prepared ownership when a submission promise rejects', async () => {
+    const registry = new PreparedAssetRegistry();
+    const prepared = prepareMesh(new NullDevice(), validateMeshData(meshInput), {
+      assetId: 'mesh:failed-submission',
+      payloadVersion: 1,
+      featurePolicyKey: 'policy-a',
+      abiVersion: 'mesh-v1'
+    });
+    registry.publish(prepared, disposePreparedMesh);
+    const lease = registry.acquire(prepared.key)!;
+    const submission: RHISubmission = {
+      id: 2,
+      status: 'pending',
+      done: Promise.reject(new Error('device queue failed'))
+    };
+    lease.retainUntil(submission);
+    registry.retire(prepared.key);
+    lease.dispose();
+    await expect(submission.done).rejects.toThrow('device queue failed');
+    await Promise.resolve();
+    expect(prepared.value.vertexBuffers[0]!.state).toBe('disposed');
+  });
 });

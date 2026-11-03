@@ -41,6 +41,35 @@ describe('browser WebGPU adapter port', () => {
     expect([...port.features]).toEqual(['timestamp-query']);
     expect(port.limits).toEqual({ maxBufferSize: 8192, maxBindGroups: 4 });
     expect(port.formats.get('bgra8unorm')).toMatchObject({ render: true, copyDst: true });
+    expect(port.formats.get('r8unorm')).toMatchObject({
+      sample: true,
+      filter: true,
+      render: true,
+      blend: true,
+      copySrc: true,
+      copyDst: true,
+      sampleCounts: [1, 4]
+    });
+    expect(port.formats.get('rgba32uint')).toMatchObject({
+      sample: true,
+      filter: false,
+      render: true,
+      blend: false,
+      storage: true,
+      copySrc: true,
+      copyDst: true,
+      sampleCounts: [1]
+    });
+    expect(port.formats.get('rgba32float')).toMatchObject({
+      sample: true,
+      filter: false,
+      render: true,
+      blend: false,
+      storage: true,
+      copySrc: true,
+      copyDst: true,
+      sampleCounts: [1]
+    });
     adapter.features.add('late-feature');
     expect(port.features.has('late-feature')).toBe(false);
   });

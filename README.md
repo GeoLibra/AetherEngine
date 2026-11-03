@@ -53,6 +53,10 @@
 
 ### 2. Architecture & Data Flow
 
+![AetherEngine V2 architecture panorama](docs/images/aetherengine-architecture-v2.png)
+
+_The diagram presents the V2 target architecture and does not imply that every subsystem is already implemented._
+
 #### Subsystem Layering
 
 ```mermaid

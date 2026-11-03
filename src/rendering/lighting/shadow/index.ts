@@ -4,3 +4,6 @@ export * from './shadow-atlas';
 export * from './shadow-graph';
 export * from './shadow-draw';
 export * from './shadow-receiver';
+export * from './local-shadow-requests';
+export * from './local-shadow-casters';
+export * from './local-shadow-receiver-layout';

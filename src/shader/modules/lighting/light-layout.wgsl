@@ -4,7 +4,7 @@
 // ============================================================================
 
 const LIGHT_HEADER_WORDS: u32 = 4u;
-const LIGHT_RECORD_WORDS: u32 = 12u;
+const LIGHT_RECORD_WORDS: u32 = 16u;
 const RECEIVER_RECORD_WORDS: u32 = 12u;
 
 const LIGHT_KIND_DIRECTIONAL: u32 = 0u;

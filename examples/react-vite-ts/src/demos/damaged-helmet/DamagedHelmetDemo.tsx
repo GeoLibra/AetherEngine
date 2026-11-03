@@ -7,6 +7,13 @@ import {
   type DamagedHelmetSceneOptions
 } from './damaged-helmet-scene';
 import { AetherSceneHost } from '../../scene-host';
+import {
+  DEMO_ANTI_ALIASING_OPTIONS,
+  DemoAntiAliasing,
+  demoAntiAliasingNotice,
+  resolveDemoSampleCount,
+  type DemoAntiAliasing as DemoAntiAliasingMode
+} from '../../anti-aliasing';
 import type { DemoProps } from '../types';
 
 type Status =
@@ -22,6 +29,11 @@ const STATIC_BACKEND_PREFERENCE = (() => {
   const requested = new URLSearchParams(window.location.search).get('backend');
   const hasPreference = VALID_BACKENDS.has(requested as any);
   return hasPreference ? ([requested as 'webgpu' | 'webgl2'] as const) : undefined;
+})();
+
+const STATIC_SAMPLE_COUNT = (() => {
+  if (typeof window === 'undefined') return undefined;
+  return new URLSearchParams(window.location.search).get('samples') === '4' ? 4 : undefined;
 })();
 
 const IS_E2E =
@@ -55,7 +67,8 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
       backgroundMode,
       backgroundMultiplier,
       animate,
-      manualRotation
+      manualRotation,
+      antiAliasing
     }
   ] = useControls(
     () => ({
@@ -98,7 +111,12 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
       }),
       'Model & Display': folder({
         animate: { value: !IS_E2E, label: 'Auto-Rotate' },
-        manualRotation: { value: 0, min: -180, max: 180, step: 1, label: 'Manual Rotation (°)' }
+        manualRotation: { value: 0, min: -180, max: 180, step: 1, label: 'Manual Rotation (°)' },
+        antiAliasing: {
+          value: STATIC_SAMPLE_COUNT === 4 ? DemoAntiAliasing.Msaa4 : DemoAntiAliasing.None,
+          options: DEMO_ANTI_ALIASING_OPTIONS,
+          label: 'Anti-aliasing'
+        }
       })
     }),
     { store },
@@ -135,6 +153,9 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
     if (target === null) return;
     const host = hostRef.current!;
     let cancelled = false;
+    const unsubscribeScene = host.subscribe((scene) => {
+      if (!cancelled) sceneRef.current = scene;
+    });
 
     setStatus({
       kind: 'loading',
@@ -144,6 +165,8 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
     void host
       .mount(target, {
         ...(STATIC_BACKEND_PREFERENCE ? { preference: STATIC_BACKEND_PREFERENCE } : {}),
+        sampleCount:
+          STATIC_SAMPLE_COUNT ?? resolveDemoSampleCount(antiAliasing as DemoAntiAliasingMode),
         animate,
         environment: environmentMode as any,
         environmentIntensity,
@@ -159,6 +182,7 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
             backend: scene.backend,
             environmentMode: scene.environmentMode,
             backgroundMode: scene.backgroundMode,
+            sampleCount: scene.sampleCount ?? 1,
             diagnostics: scene.diagnostics(),
             modelDiagnostics: scene.modelDiagnostics(),
             nativeMetrics: scene.nativeMetrics(),
@@ -175,7 +199,9 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
         setModelDiag(diag);
         setStatus({
           kind: 'ready',
-          message: `Rendering glTF PBR with ${scene.backend} (14.5k vertices, 5 PBR textures)`
+          message:
+            demoAntiAliasingNotice(antiAliasing as DemoAntiAliasingMode) ??
+            `Rendering glTF PBR with ${scene.backend} ${scene.sampleCount ?? 1}× MSAA (14.5k vertices, 5 PBR textures)`
         });
       })
       .catch((error: unknown) => {
@@ -192,11 +218,12 @@ export function DamagedHelmetDemo({ mountScene = true }: DemoProps) {
 
     return () => {
       cancelled = true;
+      unsubscribeScene();
       sceneRef.current = null;
       (window as unknown as Record<string, unknown>).__damagedHelmetScene = undefined;
       void host.unmount();
     };
-  }, [mountScene, environmentMode, backgroundMode]);
+  }, [mountScene, environmentMode, backgroundMode, antiAliasing]);
 
   return (
     <div className="demo-content">

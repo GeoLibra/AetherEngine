@@ -242,4 +242,44 @@ describe('AetherSceneHost', () => {
 
     await hostRef.current.unmount();
   });
+
+  test('recreates the active scene only after a recoverable graphics loss is ready', async () => {
+    let resolveLoss!: (value: { readonly recreationAllowed: boolean }) => void;
+    const lost = new Promise<{ readonly recreationAllowed: boolean }>((resolve) => {
+      resolveLoss = resolve;
+    });
+    let resolveRecovery!: () => void;
+    const recoveryReady = new Promise<void>((resolve) => {
+      resolveRecovery = resolve;
+    });
+    const scenes: Array<{ readonly destroy: ReturnType<typeof vi.fn> }> = [];
+    const host = new AetherSceneHost(async () => {
+      const scene = {
+        destroy: vi.fn(async () => {}),
+        lost:
+          scenes.length === 0
+            ? lost
+            : new Promise<{ readonly recreationAllowed: boolean }>(() => {}),
+        recoveryReady: scenes.length === 0 ? recoveryReady : new Promise<void>(() => {})
+      };
+      scenes.push(scene);
+      return scene;
+    });
+    const canvas = {} as HTMLCanvasElement;
+    const received: unknown[] = [];
+    const unsubscribe = host.subscribe((scene) => received.push(scene));
+
+    const first = await host.mount(canvas);
+    resolveLoss({ recreationAllowed: true });
+    await Promise.resolve();
+    expect(scenes).toHaveLength(1);
+
+    resolveRecovery();
+    await vi.waitFor(() => expect(scenes).toHaveLength(2));
+    expect(first.destroy).toHaveBeenCalledTimes(1);
+    expect(host.activeScene).toBe(scenes[1]);
+    expect(received).toEqual([first, null, scenes[1]]);
+    unsubscribe();
+    await host.unmount();
+  });
 });
