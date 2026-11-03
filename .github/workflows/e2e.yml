@@ -48,8 +48,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Test project resolver
-        run: pnpm vitest run e2e/resolve-projects.test.ts e2e/cli.test.ts
+      - name: Test project resolver and snapshot inventory
+        run: pnpm vitest run e2e/resolve-projects.test.ts e2e/cli.test.ts e2e/snapshot-inventory.test.ts
       - name: Resolve affected projects
         id: resolve
         shell: bash
