@@ -1,9 +1,19 @@
 import { expect, test } from '../fixtures/harness';
+import { writeFile } from 'node:fs/promises';
 
 test('WebGPU renders the clear, triangle, and indexed depth cube in one submission', async ({
-  harness
+  harness,
+  browser
 }, testInfo) => {
   const state = await harness.state();
+  await writeFile(
+    testInfo.outputPath('webgpu-surface-lifetime.json'),
+    JSON.stringify(
+      { platform: process.platform, architecture: process.arch, browser: browser.version(), state },
+      null,
+      2
+    )
+  );
   await testInfo.attach('webgpu-state', {
     body: JSON.stringify(state, null, 2),
     contentType: 'application/json'
@@ -57,6 +67,18 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
         matchesSource: true,
         borrowedSurvivesScopeCleanup: true,
         independentSubmissionRejected: true
+      },
+      surfaceLifetime: {
+        microtaskError: null,
+        expiryError: expect.stringMatching(/expired|destroyed/i),
+        expiredFrameState: 'released',
+        expiredTextureState: 'disposed',
+        reconfigureError: expect.stringMatching(/disposed/),
+        reconfiguredFrameState: 'released',
+        reconfiguredTextureState: 'disposed',
+        recoveryError: null,
+        recoveredFrameState: 'presented',
+        queue: { pending: 0, leasedResources: 0 }
       }
     }
   });

@@ -9,6 +9,7 @@ import { createE2EDrawPacket, executeOpaqueScene } from './opaque-scene';
 import { runWebGpuLightListGolden } from './webgpu-light-list';
 import { runWebGpuClusterLightListGolden } from './webgpu-cluster-light-list';
 import { runWebGpuTextureCopyGolden } from './webgpu-texture-copy';
+import { runWebGpuSurfaceLifetime } from './webgpu-surface-lifetime';
 
 const WIDTH = 640;
 const HEIGHT = 360;
@@ -26,6 +27,7 @@ export interface WebGPUSceneResult {
 }
 
 export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUSceneResult> {
+  const surfaceLifetime = await runWebGpuSurfaceLifetime();
   const session = await createBrowserGraphics({
     canvas,
     preference: ['webgpu'],
@@ -75,7 +77,8 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
         lightListGolden,
         clusterLightListGolden,
         textureCopyGolden,
-        interopGolden
+        interopGolden,
+        surfaceLifetime
       });
     };
     return Object.freeze({
