@@ -1,3 +1,4 @@
+import { runWebGpuBorrowedBufferGolden } from './interop/webgpu-borrowed-buffer';
 import {
   createBrowserGraphics,
   type BrowserGraphicsSession,
@@ -44,6 +45,7 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
     const lightListGolden = await runWebGpuLightListGolden(session);
     const clusterLightListGolden = await runWebGpuClusterLightListGolden(session);
     const textureCopyGolden = await runWebGpuTextureCopyGolden(session);
+    const interopGolden = await runWebGpuBorrowedBufferGolden(session);
     const execution = executeScene(session, indexBuffer, prepared);
     await execution.execution.submission.done;
     const buildDetail = (
@@ -72,7 +74,8 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
         diagnostics: currentDiagnostics,
         lightListGolden,
         clusterLightListGolden,
-        textureCopyGolden
+        textureCopyGolden,
+        interopGolden
       });
     };
     return Object.freeze({

@@ -1,4 +1,5 @@
 import type { BrowserGraphicsSession } from '../../src';
+import { runWebGpuBgraCopyGolden } from './webgpu-bgra-copy';
 
 const COPY_SRC = 1 << 2;
 const COPY_DST = 1 << 3;
@@ -25,6 +26,8 @@ export interface WebGpuTextureCopyGolden {
   readonly singleChannelMatchesSource: boolean;
   readonly twoChannelMatchesSource: boolean;
   readonly srgbMatchesSource: boolean;
+  readonly bgraMatchesSource: boolean;
+  readonly bgraSrgbMatchesSource: boolean;
   readonly bytes: readonly number[];
 }
 
@@ -85,6 +88,7 @@ export async function runWebGpuTextureCopyGolden(
     const singleChannelMatchesSource = await runSingleChannelTextureCopyGolden(session);
     const twoChannelMatchesSource = await runTwoChannelTextureCopyGolden(session);
     const srgbMatchesSource = await runSrgbTextureCopyGolden(session);
+    const bgra = await runWebGpuBgraCopyGolden(session);
     return Object.freeze({
       matchesSource,
       integerMatchesSource,
@@ -93,6 +97,7 @@ export async function runWebGpuTextureCopyGolden(
       singleChannelMatchesSource,
       twoChannelMatchesSource,
       srgbMatchesSource,
+      ...bgra,
       bytes: Object.freeze(bytes)
     });
   } finally {

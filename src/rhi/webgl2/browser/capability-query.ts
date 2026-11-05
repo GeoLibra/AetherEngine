@@ -40,10 +40,25 @@ export function queryWebGL2Formats(
   formats.set('r8unorm', format(true, true, true, true, sampleCounts));
   formats.set('rg8unorm', format(true, true, true, true, sampleCounts));
   formats.set('rgba8unorm', format(true, true, true, true, sampleCounts));
-  formats.set('rgba8unorm-srgb', format(true, true, true, true, sampleCounts));
+  // Encoded uploads preserve bytes, but source reads/copies would apply color conversion.
+  formats.set(
+    'rgba8unorm-srgb',
+    Object.freeze({
+      ...format(true, true, true, true, sampleCounts),
+      copySrc: false
+    })
+  );
   // RGBA32UI color rendering and integer sampling are core WebGL2 capabilities.
   formats.set('rgba32uint', format(true, false, true, false, [1]));
-  formats.set('depth24plus', format(false, false, true, false, sampleCounts));
+  // Depth attachments are renderable; the current native copy port supports color only.
+  formats.set(
+    'depth24plus',
+    Object.freeze({
+      ...format(false, false, true, false, sampleCounts),
+      copySrc: false,
+      copyDst: false
+    })
+  );
   if (extensions.has(COLOR_BUFFER_FLOAT_EXTENSION)) {
     // Half-float linear filtering is core in WebGL2; OES_texture_float_linear
     // controls 32-bit floating-point filtering, not RGBA16F.

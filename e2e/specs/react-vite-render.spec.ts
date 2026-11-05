@@ -1,4 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
+import type { MountedAetherScene } from '../../examples/react-vite-ts/src/aether-scene';
 
 declare global {
   interface Window {
@@ -92,26 +94,50 @@ test('renders the point-shadow receiver demo without graph binding errors', asyn
 });
 
 test('WebGL2 restores a real lost context by replacing the scene generation', async ({
-  page
+  page,
+  browser
 }, info) => {
   test.skip(!info.project.name.endsWith('webgl2'), 'WEBGL_lose_context applies only to WebGL2.');
   await page.goto('/?backend=webgl2&samples=4');
   await expect(page.locator('.status-ready')).toBeVisible({ timeout: 25_000 });
-  const didTrigger = await page.evaluate(async () => {
+  const injection = await page.evaluate(async () => {
     const canvas = document.querySelector('canvas');
     if (!(canvas instanceof HTMLCanvasElement)) throw new Error('Demo canvas is missing.');
-    const before = window.__aetherScene;
+    const before = window.__aetherScene as MountedAetherScene | undefined;
     if (before === undefined) throw new Error('Mounted scene is missing.');
     const context = canvas.getContext('webgl2');
-    const extension = context?.getExtension('WEBGL_lose_context');
-    if (extension === null || extension === undefined) return false;
+    if (context === null) throw new Error('Mounted WebGL2 context is missing.');
+    const initial = {
+      backend: before.backend,
+      diagnostics: before.diagnostics(),
+      renderer: context.getParameter(context.RENDERER) as string,
+      vendor: context.getParameter(context.VENDOR) as string
+    };
+    const extension = context.getExtension('WEBGL_lose_context');
+    if (extension === null) return { triggered: false, initial };
     extension.loseContext();
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
     extension.restoreContext();
     (window as unknown as { __aetherRecoveryBefore?: unknown }).__aetherRecoveryBefore = before;
-    return true;
+    return { triggered: true, initial };
   });
-  test.skip(!didTrigger, 'Current browser does not expose WEBGL_lose_context.');
+  const evidencePath = info.outputPath('webgl2-context-loss-recovery.json');
+  const environment = {
+    platform: process.platform,
+    architecture: process.arch,
+    browserVersion: browser.version(),
+    project: info.project.name
+  };
+  await writeFile(
+    evidencePath,
+    JSON.stringify({ environment, injection, recovered: null }, null, 2)
+  );
+  if (!injection.triggered)
+    await info.attach('webgl2-context-loss-recovery', {
+      path: evidencePath,
+      contentType: 'application/json'
+    });
+  test.skip(!injection.triggered, 'Current browser does not expose WEBGL_lose_context.');
   await expect
     .poll(
       () =>
@@ -128,6 +154,24 @@ test('WebGL2 restores a real lost context by replacing the scene generation', as
       { timeout: 25_000 }
     )
     .toBe(true);
+  const recovered = await page.evaluate(() => {
+    const scene = window.__aetherScene as MountedAetherScene | undefined;
+    if (scene === undefined) throw new Error('Recovered WebGL2 scene is missing.');
+    return {
+      backend: scene.backend,
+      diagnostics: scene.diagnostics(),
+      validationErrors: scene.validationErrors(),
+      runtimeErrors: scene.runtimeErrors()
+    };
+  });
+  await writeFile(evidencePath, JSON.stringify({ environment, injection, recovered }, null, 2));
+  await info.attach('webgl2-context-loss-recovery', {
+    path: evidencePath,
+    contentType: 'application/json'
+  });
+  expect(recovered.backend).toBe('webgl2');
+  expect(recovered.validationErrors).toEqual([]);
+  expect(recovered.runtimeErrors).toEqual([]);
 });
 
 test('navigates to DamagedHelmet demo and renders glTF PBR model', async ({ page }, info) => {

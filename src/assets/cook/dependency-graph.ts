@@ -99,36 +99,33 @@ export class CookDependencyGraph {
     const onStack = new Set<CookNodeId>();
     const path: CookNodeId[] = [];
 
-    const visit = (current: CookNodeId): CookNodeId[] | undefined => {
-      if (current === node) {
-        return [...path, current, path[0]!];
+    // Explicit enter/exit frames preserve recursive DFS order without tying asset depth
+    // to the host JavaScript call-stack limit. Storage is bounded by the traversed edges.
+    const stack: { current: CookNodeId; exit: boolean }[] = [...candidateDependencies]
+      .sort((a, b) => a.localeCompare(b))
+      .reverse()
+      .map((current) => ({ current, exit: false }));
+    while (stack.length > 0) {
+      const { current, exit } = stack.pop()!;
+      if (exit) {
+        path.pop();
+        onStack.delete(current);
+        visited.add(current);
+        continue;
       }
-      if (visited.has(current)) return undefined;
+      if (current === node) return [...path, current, path[0]!];
+      if (visited.has(current)) continue;
       if (onStack.has(current)) {
         const startIndex = path.indexOf(current);
         return startIndex >= 0 ? [...path.slice(startIndex), current] : undefined;
       }
       onStack.add(current);
       path.push(current);
-
-      const nextDependencies =
-        current === node
-          ? candidateDependencies
-          : (this.#dependencies.get(current) ?? EMPTY_NODE_SET);
-      for (const dependency of [...nextDependencies].sort((a, b) => a.localeCompare(b))) {
-        const cycle = visit(dependency);
-        if (cycle) return cycle;
-      }
-
-      path.pop();
-      onStack.delete(current);
-      visited.add(current);
-      return undefined;
-    };
-
-    for (const dependency of [...candidateDependencies].sort((a, b) => a.localeCompare(b))) {
-      const cycle = visit(dependency);
-      if (cycle) return cycle;
+      stack.push({ current, exit: true });
+      const dependencies = [...(this.#dependencies.get(current) ?? EMPTY_NODE_SET)]
+        .sort((a, b) => a.localeCompare(b))
+        .reverse();
+      for (const dependency of dependencies) stack.push({ current: dependency, exit: false });
     }
     return undefined;
   }

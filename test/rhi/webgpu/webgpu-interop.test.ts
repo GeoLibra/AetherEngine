@@ -247,6 +247,32 @@ describe('WebGPU controlled native interop', () => {
     );
   });
 
+  test('checks every native texture identity fact before claiming ownership', async () => {
+    const { interop } = await createDevice();
+    const scope = interop.createScope('texture-facts');
+    const native = new NativeTexture(8, 4, 1, 'rgba8unorm', 16);
+    const descriptor = { size: [8, 4] as const, format: 'rgba8unorm', usage: 16 };
+    expect(() => scope.importBorrowed('texture', native, { ...descriptor, size: [4, 4] })).toThrow(
+      'does not match descriptor extent'
+    );
+    expect(() =>
+      scope.importBorrowed('texture', native, { ...descriptor, format: 'rgba16float' })
+    ).toThrow('does not match descriptor format');
+    expect(() => scope.importBorrowed('texture', native, { ...descriptor, usage: 4 })).toThrow(
+      'does not match descriptor usage'
+    );
+    expect(() =>
+      scope.importBorrowed('texture', native, { ...descriptor, dimension: '3d' })
+    ).toThrow('does not match descriptor dimension');
+    expect(() =>
+      scope.importBorrowed('texture', native, { ...descriptor, mipLevelCount: 2 })
+    ).toThrow('does not match descriptor mip level count');
+    // Failed validation must not reserve the native identity or destroy caller-owned storage.
+    expect(() => scope.importBorrowed('texture', native, descriptor)).not.toThrow();
+    scope.dispose();
+    expect(native.destroyed).toBe(0);
+  });
+
   test('binds imported resources to their scope and cleans them up on dispose', async () => {
     const { device, interop } = await createDevice();
     const first = interop.createScope('first-owner');

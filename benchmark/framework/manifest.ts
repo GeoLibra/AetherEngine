@@ -140,6 +140,26 @@ export const BENCHMARK_MANIFEST: BenchmarkManifest = Object.freeze({
   ]),
   suites: Object.freeze([
     Object.freeze({
+      id: 'p1-rendering-acceptance',
+      description:
+        'CPU/Null opaque MSAA graph and owner-mediated residency pressure acceptance evidence.',
+      domainIds: Object.freeze(['rendering', 'assets']),
+      pathPrefixes: Object.freeze([
+        'benchmark/p1-rendering-acceptance/',
+        'test/benchmark/p1-rendering-acceptance.test.ts',
+        'test/rendering/baseline-msaa-graph.test.ts',
+        'test/rendering/baseline-msaa-policy.test.ts',
+        'src/rendering/baseline/baseline-renderer.ts',
+        'src/rendering/baseline/baseline-options.ts',
+        'src/rendering/world/residency-pressure.ts',
+        'src/rendering/world/prepared-assets.ts'
+      ]),
+      command: Object.freeze({
+        executable: 'node',
+        args: Object.freeze(['benchmark/p1-rendering-acceptance/runner.mjs', '{profile}'])
+      })
+    }),
+    Object.freeze({
       id: 'dynamic-plugin-runtime',
       description:
         'Dynamic plugin activation, last-good updates, reverse cleanup, and stale-message rejection.',

@@ -248,6 +248,42 @@ describe('WebGPU submission epochs', () => {
     expect(device.queue.metrics()).toMatchObject({ completed: 0, deviceLost: 2 });
   });
 
+  test('native destroyed loss invalidates old handles and retires disposed submission resources', async () => {
+    const { device, native } = await createDevice();
+    const { source, destination, commands } = recordCopy(device);
+    const submission = device.queue.submit([commands]);
+    const staleEncoder = device.createCommandEncoder();
+    source.dispose();
+    expect(native.buffers[0]?.destroyed).toBe(0);
+
+    native.lose({ reason: 'destroyed', message: 'Native device was explicitly destroyed.' });
+    await expect(device.lost).resolves.toMatchObject({
+      reason: 'destroyed',
+      generation: device.generation
+    });
+    expect(device.state).toBe('lost');
+    expect(source.state).toBe('device-lost');
+    expect(destination.state).toBe('device-lost');
+    await expect(submission.done).resolves.toEqual({ status: 'device-lost' });
+    expect(device.queue.metrics()).toMatchObject({ pending: 0, deviceLost: 1, leasedResources: 0 });
+    expect(native.buffers[0]?.destroyed).toBe(1);
+    expect(() => device.createBuffer({ size: 16, usage: 1 })).toThrow('WebGPUDevice is lost.');
+    expect(() => device.queue.submit([commands])).toThrow('lost device');
+    expect(() => staleEncoder.copyBufferToBuffer(source, 0, destination, 0, 16)).toThrow(
+      'lost device'
+    );
+
+    native.queue.complete(0);
+    await Promise.resolve();
+    expect(device.queue.metrics()).toMatchObject({ completed: 0, deviceLost: 1 });
+    expect(native.buffers[0]?.destroyed).toBe(1);
+    destination.dispose();
+    commands.dispose();
+    device.destroy();
+    device.destroy();
+    expect(native.buffers.map((buffer) => buffer.destroyed)).toEqual([1, 1]);
+  });
+
   test('defers native buffer and texture destruction until their submission is terminal', async () => {
     const { device, native } = await createDevice();
     const { source, destination, commands } = recordCopy(device);
