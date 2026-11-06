@@ -282,4 +282,36 @@ describe('AetherSceneHost', () => {
     unsubscribe();
     await host.unmount();
   });
+
+  test('does not recreate a non-recoverable scene even when recovery readiness resolves', async () => {
+    let resolveLoss!: (value: { readonly recreationAllowed: boolean }) => void;
+    const lost = new Promise<{ readonly recreationAllowed: boolean }>((resolve) => {
+      resolveLoss = resolve;
+    });
+    const scene = {
+      lost,
+      recoveryReady: Promise.resolve(),
+      destroy: vi.fn(async () => {})
+    };
+    const mount = vi.fn(async () => scene);
+    const host = new AetherSceneHost(mount);
+    const publish = vi.fn();
+    host.subscribe(publish);
+    const canvas = {} as HTMLCanvasElement;
+    await host.mount(canvas);
+
+    resolveLoss({ recreationAllowed: false });
+    await lost;
+    // A task boundary drains the asynchronous recovery continuation and queued mount chain.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(mount).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledWith(scene);
+    expect(host.activeScene).toBe(scene);
+    expect(scene.destroy).not.toHaveBeenCalled();
+
+    await host.unmount();
+    expect(scene.destroy).toHaveBeenCalledTimes(1);
+    expect(host.activeScene).toBeNull();
+  });
 });

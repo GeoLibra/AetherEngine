@@ -48,7 +48,7 @@ export default defineConfig({
     },
     {
       name: 'react-vite-webgl2',
-      testMatch: 'react-vite-render.spec.ts',
+      testMatch: ['react-vite-render.spec.ts', 'react-vite-device-loss.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),
@@ -61,7 +61,7 @@ export default defineConfig({
     },
     {
       name: 'react-vite-webgpu',
-      testMatch: 'react-vite-render.spec.ts',
+      testMatch: ['react-vite-render.spec.ts', 'react-vite-device-loss.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
         ...(process.platform === 'darwin' ? { channel: 'chrome' } : {}),

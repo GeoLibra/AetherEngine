@@ -1,3 +1,4 @@
+import { runWebGpuBorrowedBufferGolden } from './interop/webgpu-borrowed-buffer';
 import {
   createBrowserGraphics,
   type BrowserGraphicsSession,
@@ -8,6 +9,7 @@ import { createE2EDrawPacket, executeOpaqueScene } from './opaque-scene';
 import { runWebGpuLightListGolden } from './webgpu-light-list';
 import { runWebGpuClusterLightListGolden } from './webgpu-cluster-light-list';
 import { runWebGpuTextureCopyGolden } from './webgpu-texture-copy';
+import { runWebGpuSurfaceLifetime } from './webgpu-surface-lifetime';
 
 const WIDTH = 640;
 const HEIGHT = 360;
@@ -25,6 +27,7 @@ export interface WebGPUSceneResult {
 }
 
 export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUSceneResult> {
+  const surfaceLifetime = await runWebGpuSurfaceLifetime();
   const session = await createBrowserGraphics({
     canvas,
     preference: ['webgpu'],
@@ -44,6 +47,7 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
     const lightListGolden = await runWebGpuLightListGolden(session);
     const clusterLightListGolden = await runWebGpuClusterLightListGolden(session);
     const textureCopyGolden = await runWebGpuTextureCopyGolden(session);
+    const interopGolden = await runWebGpuBorrowedBufferGolden(session);
     const execution = executeScene(session, indexBuffer, prepared);
     await execution.execution.submission.done;
     const buildDetail = (
@@ -72,7 +76,9 @@ export async function runWebGPUScene(canvas: HTMLCanvasElement): Promise<WebGPUS
         diagnostics: currentDiagnostics,
         lightListGolden,
         clusterLightListGolden,
-        textureCopyGolden
+        textureCopyGolden,
+        interopGolden,
+        surfaceLifetime
       });
     };
     return Object.freeze({

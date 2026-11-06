@@ -1,9 +1,19 @@
 import { expect, test } from '../fixtures/harness';
+import { writeFile } from 'node:fs/promises';
 
 test('WebGPU renders the clear, triangle, and indexed depth cube in one submission', async ({
-  harness
+  harness,
+  browser
 }, testInfo) => {
   const state = await harness.state();
+  await writeFile(
+    testInfo.outputPath('webgpu-surface-lifetime.json'),
+    JSON.stringify(
+      { platform: process.platform, architecture: process.arch, browser: browser.version(), state },
+      null,
+      2
+    )
+  );
   await testInfo.attach('webgpu-state', {
     body: JSON.stringify(state, null, 2),
     contentType: 'application/json'
@@ -23,7 +33,7 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
       renderPasses: 1,
       drawCalls: 0,
       indexedDrawCalls: 2,
-      nativeQueueSubmits: 12,
+      nativeQueueSubmits: 16,
       validationErrors: 0,
       lightListGolden: {
         matchesCpuOracle: true,
@@ -49,7 +59,26 @@ test('WebGPU renders the clear, triangle, and indexed depth cube in one submissi
         singleChannelMatchesSource: true,
         twoChannelMatchesSource: true,
         srgbMatchesSource: true,
+        bgraMatchesSource: true,
+        bgraSrgbMatchesSource: true,
         bytes: [17, 61, 143, 255]
+      },
+      interopGolden: {
+        matchesSource: true,
+        borrowedSurvivesScopeCleanup: true,
+        independentSubmissionRejected: true
+      },
+      surfaceLifetime: {
+        microtaskError: null,
+        expiryError: expect.stringMatching(/expired|destroyed/i),
+        expiredFrameState: 'released',
+        expiredTextureState: 'disposed',
+        reconfigureError: expect.stringMatching(/disposed/),
+        reconfiguredFrameState: 'released',
+        reconfiguredTextureState: 'disposed',
+        recoveryError: null,
+        recoveredFrameState: 'presented',
+        queue: { pending: 0, leasedResources: 0 }
       }
     }
   });
@@ -71,7 +100,7 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
       physicalSize: [320, 180],
       surfaceGeneration: 2,
       rendered: true,
-      nativeQueueSubmits: 13,
+      nativeQueueSubmits: 17,
       validationErrors: 0
     }
   });
@@ -84,7 +113,7 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
       physicalSize: [0, 0],
       surfaceGeneration: 3,
       rendered: false,
-      nativeQueueSubmits: 13,
+      nativeQueueSubmits: 17,
       validationErrors: 0
     }
   });
@@ -98,7 +127,7 @@ test('WebGPU stays validation-clean across resize, zero extent, and surface gene
       physicalSize: [256, 144],
       surfaceGeneration: 4,
       rendered: true,
-      nativeQueueSubmits: 14,
+      nativeQueueSubmits: 18,
       validationErrors: 0
     }
   });

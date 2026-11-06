@@ -87,6 +87,38 @@ describe('browser graphics bootstrap', () => {
     expect(fixture.context.unconfigures).toBe(1);
   });
 
+  test('preserves native destroyed loss as non-recoverable until explicit session cleanup', async () => {
+    const fixture = createBrowserFixture();
+    const session = await createBrowserGraphics({
+      canvas: fixture.canvas,
+      environment: fixture.environment,
+      device: { requiredFeatures: [], optionalFeatures: [] },
+      surface: { width: 640, height: 360 }
+    });
+    const events: unknown[] = [];
+    session.subscribe((event) => events.push(event));
+
+    fixture.resolveLost({ reason: 'destroyed', message: 'Native device destroyed.' });
+    const loss = await session.lost;
+    expect(loss).toEqual({
+      backend: 'webgpu',
+      stage: 'device',
+      reason: 'destroyed',
+      generation: session.device.generation,
+      recreationAllowed: false
+    });
+    expect(Object.isFrozen(loss)).toBe(true);
+    expect(events).toEqual([{ kind: 'lost', loss }]);
+    expect(session.device.state).toBe('lost');
+    expect(session.surface.acquire()).toEqual({ status: 'device-lost' });
+
+    await session.destroy();
+    await session.destroy();
+    expect(fixture.context.unconfigures).toBe(1);
+    expect(events).toHaveLength(1);
+    await expect(session.lost).resolves.toBe(loss);
+  });
+
   test('rejects invalid size before probing and does not fallback after canvas binding', async () => {
     const fixture = createBrowserFixture();
     await expect(
